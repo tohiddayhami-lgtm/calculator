@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(firebase --version)",
+      "Bash(npm --version)",
+      "Bash(npm install *)"
+    ]
+  }
+}

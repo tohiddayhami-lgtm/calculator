@@ -1,10 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth, 
   signInWithCustomToken, 
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
@@ -69,11 +71,19 @@ try {
   const configStr = window.__firebase_config;
   if (configStr) {
     firebaseConfig = JSON.parse(configStr);
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    if (window.__app_id) {
-      appId = window.__app_id;
+    const hasMissingEnv = Object.values(firebaseConfig).some(
+      (value) => typeof value === 'string' && value.includes('%VITE_')
+    );
+
+    if (!hasMissingEnv) {
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+      if (window.__app_id) {
+        appId = window.__app_id;
+      }
+    } else {
+      console.warn('Firebase env vars are missing. Running in local mode.');
     }
   }
 } catch (e) {
@@ -257,8 +267,17 @@ export default function App() {
   // -- STATE: AUTH & PERSISTENCE --
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [masterActionMessage, setMasterActionMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
+  const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
   // -- STATE: MODALS --
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -499,6 +518,7 @@ export default function App() {
   // --- AUTH HANDLERS ---
   const handleGoogleLogin = async () => {
       const isMockKey = firebaseConfig?.apiKey === 'demo-api-key';
+      setAuthError('');
 
       if (isMockKey) {
           console.warn("Using Demo Login (Invalid API Key detected)");
@@ -549,6 +569,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+      setAuthError('');
       if (isDemoMode) {
           setUser(null);
           setIsDemoMode(false);
@@ -561,6 +582,65 @@ export default function App() {
           await signOut(auth);
       } catch (error) {
           console.error("Logout failed", error);
+      }
+  };
+
+  const handleEmailAuth = async () => {
+      setAuthError('');
+      const trimmedEmail = email.trim();
+      if (!trimmedEmail || !password) {
+          setAuthError('Please enter both email and password.');
+          return;
+      }
+
+      if (!auth) {
+          setAuthError('Firebase is not configured yet. Add env values first.');
+          return;
+      }
+
+      try {
+          await signInWithEmailAndPassword(auth, trimmedEmail, password);
+          setPassword('');
+      } catch (error: any) {
+          const message = error?.message || 'Authentication failed.';
+          setAuthError(message);
+      }
+  };
+
+  const handleMasterCreateUser = async () => {
+      setMasterActionMessage('');
+      const emailToCreate = newUserEmail.trim();
+      if (!emailToCreate || !newUserPassword) {
+          setMasterActionMessage('Enter new user email and password.');
+          return;
+      }
+
+      if (!firebaseConfig || !firebaseConfig.apiKey || !isMasterUser) {
+          setMasterActionMessage('Only master account can create users.');
+          return;
+      }
+
+      let secondaryApp: any = null;
+      try {
+          setIsCreatingUser(true);
+          secondaryApp = initializeApp(firebaseConfig, `secondary-${Date.now()}`);
+          const secondaryAuth = getAuth(secondaryApp);
+          await createUserWithEmailAndPassword(secondaryAuth, emailToCreate, newUserPassword);
+          await signOut(secondaryAuth);
+          setNewUserEmail('');
+          setNewUserPassword('');
+          setMasterActionMessage('User created successfully.');
+      } catch (error: any) {
+          setMasterActionMessage(error?.message || 'Failed to create user.');
+      } finally {
+          if (secondaryApp) {
+              try {
+                  await deleteApp(secondaryApp);
+              } catch (_) {
+                  // Ignore cleanup errors.
+              }
+          }
+          setIsCreatingUser(false);
       }
   };
 
@@ -4268,13 +4348,77 @@ export default function App() {
                         <button onClick={handleLogout} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors">Sign Out</button>
                     </div>
                 ) : (
-                    <button onClick={handleGoogleLogin} disabled={authLoading} className="ml-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-sm shadow-slate-300">
-                        {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-                        Sign In
-                    </button>
+                    <div className="ml-2 pl-3 border-l border-slate-200 flex items-center gap-2">
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="Email"
+                            className="w-44 px-2.5 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Password"
+                            className="w-36 px-2.5 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button
+                            onClick={handleEmailAuth}
+                            disabled={authLoading}
+                            className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-800 transition-colors flex items-center gap-1.5 shadow-sm shadow-slate-300"
+                        >
+                            {authLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
+                            Sign In
+                        </button>
+                        <button
+                            onClick={handleGoogleLogin}
+                            disabled={authLoading}
+                            className="bg-white border border-slate-300 text-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
+                        >
+                            Google
+                        </button>
+                    </div>
                 )}
             </div>
         </div>
+
+        {!user && authError && (
+            <div className="px-4 pb-2">
+                <p className="text-xs text-red-600">{authError}</p>
+            </div>
+        )}
+
+        {user && isMasterUser && (
+            <div className="px-4 pb-3">
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-indigo-700">Master User Manager</span>
+                    <input
+                        type="email"
+                        value={newUserEmail}
+                        onChange={(e) => setNewUserEmail(e.target.value)}
+                        placeholder="New user email"
+                        className="w-52 px-2.5 py-1.5 text-xs border border-indigo-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <input
+                        type="password"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        placeholder="Temporary password"
+                        className="w-44 px-2.5 py-1.5 text-xs border border-indigo-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                        onClick={handleMasterCreateUser}
+                        disabled={isCreatingUser}
+                        className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors flex items-center gap-1.5"
+                    >
+                        {isCreatingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                        Create User
+                    </button>
+                    {masterActionMessage && <span className="text-xs text-indigo-700">{masterActionMessage}</span>}
+                </div>
+            </div>
+        )}
 
         <div className="md:hidden px-3 pb-3 space-y-2">
             <nav className="flex gap-2 overflow-x-auto">

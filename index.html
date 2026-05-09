@@ -6,18 +6,17 @@
     <title>CloudExport Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      // Mock configuration to allow the app to initialize without crashing if no real config is provided.
-      // In a real environment, these would be injected by the server or build process.
       window.__firebase_config = JSON.stringify({
-        apiKey: "demo-api-key",
-        authDomain: "demo.firebaseapp.com",
-        projectId: "demo-project",
-        storageBucket: "demo.appspot.com",
-        messagingSenderId: "123456789",
-        appId: "1:123456789:web:abcdef123456"
+        apiKey: "%VITE_FIREBASE_API_KEY%",
+        authDomain: "%VITE_FIREBASE_AUTH_DOMAIN%",
+        projectId: "%VITE_FIREBASE_PROJECT_ID%",
+        storageBucket: "%VITE_FIREBASE_STORAGE_BUCKET%",
+        messagingSenderId: "%VITE_FIREBASE_MESSAGING_SENDER_ID%",
+        appId: "%VITE_FIREBASE_APP_ID%",
+        measurementId: "%VITE_FIREBASE_MEASUREMENT_ID%"
       });
-      window.__app_id = "export-pro-default";
-      window.__initial_auth_token = ""; // Leave empty for anonymous auth
+      window.__app_id = "%VITE_APP_ID%";
+      window.__initial_auth_token = "";
     </script>
   <script type="importmap">
 {
