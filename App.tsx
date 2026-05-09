@@ -734,6 +734,7 @@ function AppInner() {
       primaryColor: '#0f172a',
       backgroundColor: '#ffffff',
       textColor: '#334155',
+      headingColor: '#0f172a',
       coverColor: '#0f172a',
       layoutMode: 'grid',
       showPrices: true,
@@ -1184,6 +1185,7 @@ function AppInner() {
             includedProductIds: project.data.catalogConfig.includedProductIds || [],
             priceBasis: project.data.catalogConfig.priceBasis || 'both',
             coverColor: project.data.catalogConfig.coverColor || '#0f172a',
+            headingColor: project.data.catalogConfig.headingColor || project.data.catalogConfig.primaryColor || '#0f172a',
             coverHeaderText: project.data.catalogConfig.coverHeaderText !== undefined ? project.data.catalogConfig.coverHeaderText : 'EXPORT COLLECTION',
             coverYearText: project.data.catalogConfig.coverYearText !== undefined ? project.data.catalogConfig.coverYearText : new Date().getFullYear().toString(),
             showCoverLines: project.data.catalogConfig.showCoverLines !== undefined ? project.data.catalogConfig.showCoverLines : true,
@@ -3068,8 +3070,8 @@ function AppInner() {
                           <label className="text-xs font-semibold text-slate-500 uppercase mb-2 block flex items-center gap-1">
                               <Palette className="w-3 h-3" /> Colors
                           </label>
-                          <div className="flex gap-2">
-                             <div className="flex-1">
+                          <div className="grid grid-cols-2 gap-2">
+                             <div>
                                  <label className="text-[10px] text-slate-400 mb-1 block">Cover Bg</label>
                                  <input 
                                      type="color" 
@@ -3078,8 +3080,8 @@ function AppInner() {
                                      className="w-full h-8 rounded cursor-pointer border-0 p-0"
                                  />
                              </div>
-                             <div className="flex-1">
-                                 <label className="text-[10px] text-slate-400 mb-1 block">Primary</label>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 mb-1 block">Primary (Accents)</label>
                                  <input 
                                      type="color" 
                                      value={catalogConfig.primaryColor}
@@ -3087,12 +3089,30 @@ function AppInner() {
                                      className="w-full h-8 rounded cursor-pointer border-0 p-0"
                                  />
                              </div>
-                             <div className="flex-1">
-                                 <label className="text-[10px] text-slate-400 mb-1 block">Pages</label>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 mb-1 block">Pages Bg</label>
                                  <input 
                                      type="color" 
                                      value={catalogConfig.backgroundColor}
                                      onChange={(e) => setCatalogConfig({...catalogConfig, backgroundColor: e.target.value})}
+                                     className="w-full h-8 rounded cursor-pointer border-0 p-0"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 mb-1 block">Heading Text</label>
+                                 <input 
+                                     type="color" 
+                                     value={catalogConfig.headingColor || catalogConfig.primaryColor}
+                                     onChange={(e) => setCatalogConfig({...catalogConfig, headingColor: e.target.value})}
+                                     className="w-full h-8 rounded cursor-pointer border-0 p-0"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 mb-1 block">Body Text</label>
+                                 <input 
+                                     type="color" 
+                                     value={catalogConfig.textColor}
+                                     onChange={(e) => setCatalogConfig({...catalogConfig, textColor: e.target.value})}
                                      className="w-full h-8 rounded cursor-pointer border-0 p-0"
                                  />
                              </div>
@@ -3391,7 +3411,7 @@ function AppInner() {
                   {/* --- EXTRA PAGE: ABOUT US --- */}
                   {catalogConfig.showAboutUs && (
                       <div className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
-                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.primaryColor }}>About Us</h2>
+                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>About Us</h2>
                            <div className="text-lg leading-relaxed whitespace-pre-line text-slate-600">
                                {catalogConfig.aboutUsText || "Company description goes here..."}
                            </div>
@@ -3403,7 +3423,7 @@ function AppInner() {
                   {/* --- CUSTOM SECTIONS (BEFORE PRODUCTS) --- */}
                   {(catalogConfig.sections || []).filter(s => s.position === 'before').map((section) => (
                        <div key={section.id} className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
-                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.primaryColor }}>{section.title}</h2>
+                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>{section.title}</h2>
                            
                            <div style={{ textAlign: section.alignment, whiteSpace: 'pre-wrap' }} className="text-lg leading-relaxed text-slate-600">
                                {section.content}
@@ -3456,7 +3476,7 @@ function AppInner() {
                                 {/* Header for Group on Product Pages (if not covered by Group Cover, or for every page) */}
                                 {group.name && (
                                     <div className="flex-shrink-0 mb-3 pb-2 border-b-2 flex justify-between items-end" style={{ borderColor: catalogConfig.primaryColor }}>
-                                        <h2 className="text-xl font-bold uppercase tracking-wide" style={{ color: catalogConfig.primaryColor }}>
+                                        <h2 className="text-xl font-bold uppercase tracking-wide" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>
                                             {group.name}
                                         </h2>
                                         <span className="text-[10px] font-bold text-slate-400">PAGE {pageIdx + 1}</span>
@@ -3499,7 +3519,7 @@ function AppInner() {
                                             <div className="flex-shrink-0 p-3 relative group/card-info">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div className="w-full pr-6">
-                                                        <h3 className={`font-bold leading-tight ${catalogConfig.itemsPerPage === 6 ? 'text-xs md:text-sm' : 'text-sm md:text-lg'}`} style={{ color: catalogConfig.primaryColor }}>{p.catalogName || p.name}</h3>
+                                                        <h3 className={`font-bold leading-tight ${catalogConfig.itemsPerPage === 6 ? 'text-xs md:text-sm' : 'text-sm md:text-lg'}`} style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>{p.catalogName || p.name}</h3>
                                                         {p.hsCode && <p className="text-[10px] opacity-60 font-mono mt-1 text-slate-500">HS: {p.hsCode}</p>}
                                                     </div>
                                                     {/* Quick Edit Icon */}
@@ -3574,7 +3594,7 @@ function AppInner() {
                   {/* --- CUSTOM SECTIONS (AFTER PRODUCTS) --- */}
                   {(catalogConfig.sections || []).filter(s => s.position === 'after').map((section) => (
                        <div key={section.id} className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
-                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.primaryColor }}>{section.title}</h2>
+                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>{section.title}</h2>
                            
                            <div style={{ textAlign: section.alignment, whiteSpace: 'pre-wrap' }} className="text-lg leading-relaxed text-slate-600">
                                {section.content}
@@ -3604,7 +3624,7 @@ function AppInner() {
                   {/* --- EXTRA PAGE: GALLERY --- */}
                   {catalogConfig.showCompanyPhotos && (catalogConfig.companyPhotos || []).length > 0 && (
                       <div className="w-full h-[297mm] print-page p-8 flex flex-col relative overflow-hidden bg-white">
-                           <h2 className="text-2xl font-bold uppercase tracking-wider mb-6 pb-4 border-b" style={{ borderColor: catalogConfig.primaryColor, color: catalogConfig.primaryColor }}>Gallery</h2>
+                           <h2 className="text-2xl font-bold uppercase tracking-wider mb-6 pb-4 border-b" style={{ borderColor: catalogConfig.primaryColor, color: catalogConfig.headingColor || catalogConfig.primaryColor }}>Gallery</h2>
                            <div className="grid grid-cols-2 gap-4 auto-rows-fr h-full">
                                {(catalogConfig.companyPhotos || []).slice(0, 4).map((img, i) => (
                                    <div key={i} className="rounded-xl overflow-hidden shadow-sm border border-slate-100">

@@ -126,6 +126,7 @@ export interface CatalogConfig {
   primaryColor: string;
   backgroundColor: string;
   textColor: string;
+  headingColor?: string;
   layoutMode: 'grid' | 'list' | 'modern';
   showPrices: boolean;
   priceBasis: 'unit' | 'pack' | 'both'; // New: Control price display in catalog
