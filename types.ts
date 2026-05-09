@@ -159,6 +159,8 @@ export interface CatalogConfig {
   // Extra Company Pages
   showAboutUs?: boolean;
   aboutUsText?: string;
+  aboutUsImages?: string[];
+  aboutUsImageLayout?: 'top' | 'bottom' | 'side-right' | 'side-left' | 'grid';
   showCustomization?: boolean;
   customizationText?: string;
   showPartners?: boolean;

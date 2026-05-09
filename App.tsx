@@ -763,6 +763,8 @@ function AppInner() {
       coverOverlayOpacity: 60,
       showAboutUs: false,
       aboutUsText: '',
+      aboutUsImages: [],
+      aboutUsImageLayout: 'side-right',
       showCompanyPhotos: false,
       companyPhotos: [],
       sections: []
@@ -1197,6 +1199,8 @@ function AppInner() {
             moqLabel: project.data.catalogConfig.moqLabel || '',
             showAboutUs: project.data.catalogConfig.showAboutUs || false,
             aboutUsText: project.data.catalogConfig.aboutUsText || '',
+            aboutUsImages: project.data.catalogConfig.aboutUsImages || [],
+            aboutUsImageLayout: project.data.catalogConfig.aboutUsImageLayout || 'side-right',
             showCompanyPhotos: project.data.catalogConfig.showCompanyPhotos || false,
             companyPhotos: project.data.catalogConfig.companyPhotos || [],
             website: project.data.catalogConfig.website || '',
@@ -1385,6 +1389,24 @@ function AppInner() {
              reader.readAsDataURL(file);
         });
     }
+  };
+
+  const handleAboutUsImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file: any) => {
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const raw = reader.result as string;
+            const compressed = await compressImage(raw, 1024, 0.75);
+            setCatalogConfig(prev => ({
+                ...prev,
+                aboutUsImages: [...(prev.aboutUsImages || []), compressed]
+            }));
+        };
+        reader.readAsDataURL(file);
+    });
+    e.target.value = '';
   };
 
   const handleImageUpload = (id: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3168,13 +3190,49 @@ function AppInner() {
                                       <span className="text-xs font-semibold text-slate-700">About Us Page</span>
                                   </label>
                                   {catalogConfig.showAboutUs && (
-                                      <textarea 
-                                          rows={4} 
-                                          value={catalogConfig.aboutUsText || ''} 
-                                          onChange={(e) => setCatalogConfig({...catalogConfig, aboutUsText: e.target.value})} 
-                                          className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none focus:border-blue-500 outline-none" 
-                                          placeholder="Company history, mission, vision..."
-                                      />
+                                      <div className="space-y-2">
+                                          <textarea 
+                                              rows={4} 
+                                              value={catalogConfig.aboutUsText || ''} 
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, aboutUsText: e.target.value})} 
+                                              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none focus:border-blue-500 outline-none" 
+                                              placeholder="Company history, mission, vision..."
+                                          />
+
+                                          <div>
+                                              <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">About Us Images</label>
+                                              <div className="flex flex-wrap gap-2 mb-2">
+                                                  {(catalogConfig.aboutUsImages || []).map((img, i) => (
+                                                      <div key={i} className="w-12 h-12 relative group/del">
+                                                          <img src={img} className="w-full h-full object-cover rounded border" alt=""/>
+                                                          <button
+                                                              onClick={() => setCatalogConfig({...catalogConfig, aboutUsImages: (catalogConfig.aboutUsImages || []).filter((_, idx) => idx !== i)})}
+                                                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/del:opacity-100 transition-opacity"
+                                                          ><X className="w-2 h-2"/></button>
+                                                      </div>
+                                                  ))}
+                                                  <label className="w-12 h-12 border-2 border-dashed border-slate-300 rounded flex items-center justify-center text-slate-400 hover:bg-slate-50 cursor-pointer">
+                                                      <Plus className="w-4 h-4"/>
+                                                      <input type="file" multiple accept="image/*" className="hidden" onChange={handleAboutUsImagesUpload}/>
+                                                  </label>
+                                              </div>
+                                          </div>
+
+                                          <div>
+                                              <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">Layout</label>
+                                              <select
+                                                  value={catalogConfig.aboutUsImageLayout || 'side-right'}
+                                                  onChange={(e) => setCatalogConfig({...catalogConfig, aboutUsImageLayout: e.target.value as any})}
+                                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                              >
+                                                  <option value="side-right">Text left / Images right</option>
+                                                  <option value="side-left">Images left / Text right</option>
+                                                  <option value="top">Banner on top, text below</option>
+                                                  <option value="bottom">Text on top, gallery below</option>
+                                                  <option value="grid">Full image grid (text on top)</option>
+                                              </select>
+                                          </div>
+                                      </div>
                                   )}
                               </div>
 
@@ -3409,16 +3467,97 @@ function AppInner() {
                   </div>
                   
                   {/* --- EXTRA PAGE: ABOUT US --- */}
-                  {catalogConfig.showAboutUs && (
-                      <div className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
-                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>About Us</h2>
-                           <div className="text-lg leading-relaxed whitespace-pre-line text-slate-600">
-                               {catalogConfig.aboutUsText || "Company description goes here..."}
-                           </div>
-                           {/* Decoration */}
-                           <div className="absolute bottom-0 right-0 w-64 h-64 opacity-10" style={{ backgroundColor: catalogConfig.primaryColor, borderRadius: '100% 0 0 0' }}></div>
-                      </div>
-                  )}
+                  {catalogConfig.showAboutUs && (() => {
+                      const aboutImages = catalogConfig.aboutUsImages || [];
+                      const layout = catalogConfig.aboutUsImageLayout || 'side-right';
+                      const aboutText = catalogConfig.aboutUsText || 'Company description goes here...';
+                      const headingStyle = { color: catalogConfig.headingColor || catalogConfig.primaryColor };
+
+                      const renderHeading = (
+                          <h2 className="text-4xl font-bold uppercase tracking-wider mb-6" style={headingStyle}>About Us</h2>
+                      );
+                      const renderText = (
+                          <div className="text-lg leading-relaxed whitespace-pre-line text-slate-600">
+                              {aboutText}
+                          </div>
+                      );
+
+                      const renderImageGrid = (cols: number, heightClass: string) => (
+                          <div className={`grid gap-3 ${cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                              {aboutImages.map((img, i) => (
+                                  <div key={i} className={`${heightClass} overflow-hidden rounded-lg border border-slate-200 break-inside-avoid`}>
+                                      <img src={img} alt="" className="w-full h-full object-cover" />
+                                  </div>
+                              ))}
+                          </div>
+                      );
+
+                      let body: React.ReactNode = renderText;
+
+                      if (aboutImages.length === 0) {
+                          body = renderText;
+                      } else if (layout === 'top') {
+                          body = (
+                              <div className="flex flex-col gap-6">
+                                  {aboutImages.length === 1 ? (
+                                      <div className="w-full h-56 overflow-hidden rounded-lg border border-slate-200">
+                                          <img src={aboutImages[0]} alt="" className="w-full h-full object-cover" />
+                                      </div>
+                                  ) : (
+                                      renderImageGrid(Math.min(aboutImages.length, 3), 'h-40')
+                                  )}
+                                  {renderText}
+                              </div>
+                          );
+                      } else if (layout === 'bottom') {
+                          body = (
+                              <div className="flex flex-col gap-6">
+                                  {renderText}
+                                  {renderImageGrid(aboutImages.length === 1 ? 1 : aboutImages.length === 2 ? 2 : 3, aboutImages.length === 1 ? 'h-56' : 'h-32')}
+                              </div>
+                          );
+                      } else if (layout === 'grid') {
+                          body = (
+                              <div className="flex flex-col gap-6">
+                                  {renderText}
+                                  {renderImageGrid(aboutImages.length <= 2 ? aboutImages.length : 3, 'h-32')}
+                              </div>
+                          );
+                      } else {
+                          const imagesNode = (
+                              <div className="flex flex-col gap-3">
+                                  {aboutImages.map((img, i) => (
+                                      <div key={i} className="w-full h-40 overflow-hidden rounded-lg border border-slate-200 break-inside-avoid">
+                                          <img src={img} alt="" className="w-full h-full object-cover" />
+                                      </div>
+                                  ))}
+                              </div>
+                          );
+                          body = (
+                              <div className="grid grid-cols-5 gap-6 items-start">
+                                  {layout === 'side-left' ? (
+                                      <>
+                                          <div className="col-span-2">{imagesNode}</div>
+                                          <div className="col-span-3">{renderText}</div>
+                                      </>
+                                  ) : (
+                                      <>
+                                          <div className="col-span-3">{renderText}</div>
+                                          <div className="col-span-2">{imagesNode}</div>
+                                      </>
+                                  )}
+                              </div>
+                          );
+                      }
+
+                      return (
+                          <div className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
+                              {renderHeading}
+                              <div className="flex-1 overflow-hidden">{body}</div>
+                              <div className="absolute bottom-0 right-0 w-64 h-64 opacity-10" style={{ backgroundColor: catalogConfig.primaryColor, borderRadius: '100% 0 0 0' }}></div>
+                          </div>
+                      );
+                  })()}
 
                   {/* --- CUSTOM SECTIONS (BEFORE PRODUCTS) --- */}
                   {(catalogConfig.sections || []).filter(s => s.position === 'before').map((section) => (
