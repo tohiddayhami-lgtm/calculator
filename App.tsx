@@ -169,54 +169,69 @@ const withTimeout = async <T,>(promise: Promise<T>, ms = 15000, label = 'Operati
   });
 };
 
-const isMobileBrowser = (): boolean => {
+const isIOSDevice = (): boolean => {
     if (typeof navigator === 'undefined') return false;
     const ua = navigator.userAgent || '';
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+    if (/iPhone|iPad|iPod/i.test(ua)) return true;
+    return navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
+};
+
+const isAndroidDevice = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    return /Android/i.test(navigator.userAgent || '');
 };
 
 const triggerPrint = (): void => {
     if (typeof window === 'undefined') return;
 
-    if (!isMobileBrowser()) {
+    if (isIOSDevice()) {
         try {
-            window.print();
+            setTimeout(() => {
+                try {
+                    window.print();
+                } catch (e) {
+                    console.error('iOS print failed', e);
+                    alert('To print on iPhone: tap the Share icon in Safari, then choose "Print".');
+                }
+            }, 100);
+            return;
         } catch (e) {
-            console.error('window.print failed', e);
-            alert('Print is not available in this browser. Please use the browser menu > Print.');
+            console.error('iOS print scheduling failed', e);
         }
-        return;
+    }
+
+    if (isAndroidDevice()) {
+        try {
+            const docHtml = document.documentElement.outerHTML;
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                alert('Please allow pop-ups, or use Chrome menu > Share > Print.');
+                return;
+            }
+            printWindow.document.open();
+            printWindow.document.write(docHtml);
+            printWindow.document.close();
+            printWindow.addEventListener('load', () => {
+                setTimeout(() => {
+                    try {
+                        printWindow.focus();
+                        printWindow.print();
+                    } catch (e) {
+                        console.error('Android print failed', e);
+                    }
+                }, 400);
+            });
+            return;
+        } catch (e) {
+            console.error('Android print fallback failed', e);
+        }
     }
 
     try {
-        const docHtml = document.documentElement.outerHTML;
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            alert('Please allow pop-ups for this site to print, or use the browser menu > Share > Print.');
-            return;
-        }
-
-        printWindow.document.open();
-        printWindow.document.write(docHtml);
-        printWindow.document.close();
-
-        printWindow.addEventListener('load', () => {
-            setTimeout(() => {
-                try {
-                    printWindow.focus();
-                    printWindow.print();
-                } catch (e) {
-                    console.error('Mobile print failed', e);
-                }
-            }, 400);
-        });
+        window.print();
     } catch (e) {
-        console.error('Mobile print fallback failed', e);
-        try {
-            window.print();
-        } catch {
-            alert('Print is not available. Please use the browser menu > Print or Share.');
-        }
+        console.error('window.print failed', e);
+        alert('Print is not available in this browser. Use the browser menu > Print.');
     }
 };
 
