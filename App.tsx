@@ -924,8 +924,14 @@ function AppInner() {
         }
         
         setDeleteConfirmId(null); 
-    } catch (error) { 
-        console.error(error); 
+    } catch (error: any) { 
+        console.error(error);
+        const code = error?.code || '';
+        if (code === 'not-found') {
+            setDeleteConfirmId(null);
+            return;
+        }
+        alert(`Delete failed: ${error?.message || 'Unknown error'}`);
     } finally { 
         setIsDeleting(false); 
     }
@@ -969,11 +975,22 @@ function AppInner() {
                   createdAt: { seconds: Math.floor(Date.now() / 1000) }
               };
 
-              await dbSaveProject(newProject);
-              await loadLocalProjects();
+              const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+              if (isRealCloudUser) {
+                  const cleanData = stripUndefinedDeep(newProject.data);
+                  await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+                      name: newProject.name,
+                      folder: newProject.folder || '',
+                      createdAt: serverTimestamp(),
+                      data: cleanData
+                  });
+              } else {
+                  await dbSaveProject(newProject);
+                  await loadLocalProjects();
+              }
               
               e.target.value = '';
-              alert("Project imported successfully!");
+              alert(`Project imported successfully${isRealCloudUser ? ' to cloud' : ' (local)'}!`);
 
           } catch (err) {
               console.error("Import error", err);
