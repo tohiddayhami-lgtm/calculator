@@ -2158,9 +2158,9 @@ export default function App() {
     };
 
     return (
-      <div className="flex h-[calc(100vh-8rem)]">
+      <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
           {/* SIDEBAR CONTROLS (Hide in Print) */}
-          <div className="w-80 bg-white border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-6">
+          <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-6">
               <div>
                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
                       <LayoutTemplate className="w-4 h-4 text-blue-600" />
@@ -2642,7 +2642,7 @@ export default function App() {
           </div>
 
           {/* MAIN PREVIEW AREA */}
-          <div className="flex-1 bg-slate-100 overflow-y-auto p-8 print:p-0" id="catalog-preview">
+          <div className="flex-1 bg-slate-100 overflow-y-auto p-3 md:p-8 print:p-0" id="catalog-preview">
               <div 
                   className="max-w-[210mm] mx-auto bg-white shadow-lg min-h-[297mm] print:shadow-none print:w-full print:h-full print:max-w-none"
                   style={{ backgroundColor: catalogConfig.backgroundColor, color: catalogConfig.textColor }}
@@ -3632,9 +3632,9 @@ export default function App() {
   );
 
   const renderPriceList = () => (
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-8rem)]">
+      <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
           {/* PRICE LIST SETTINGS SIDEBAR */}
-          <div className="w-80 bg-white border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-6">
+          <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-6">
               <div>
                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
                       <List className="w-4 h-4 text-blue-600" />
@@ -3730,7 +3730,7 @@ export default function App() {
           </div>
           
           {/* MAIN PREVIEW AREA */}
-          <div className="flex-1 bg-white overflow-y-auto p-8 print:p-0 print:overflow-visible">
+          <div className="flex-1 bg-white overflow-y-auto p-3 md:p-8 print:p-0 print:overflow-visible">
               <div className="max-w-[297mm] mx-auto print:w-full">
                   <div className="text-center mb-8">
                       <h1 className="text-3xl font-bold text-slate-900 uppercase tracking-wider mb-2">{priceListConfig.title}</h1>
@@ -4050,6 +4050,10 @@ export default function App() {
                     <Save className="w-5 h-5" />
                 </button>
 
+                <button onClick={() => window.print()} className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Print / Save as PDF">
+                    <Printer className="w-5 h-5" />
+                </button>
+
                 {user ? (
                     <div className="flex items-center gap-3 ml-2 pl-3 border-l border-slate-200">
                         {user.photoURL ? (
@@ -4067,6 +4071,41 @@ export default function App() {
                         Sign In
                     </button>
                 )}
+            </div>
+        </div>
+
+        <div className="md:hidden px-3 pb-3 space-y-2">
+            <nav className="flex gap-2 overflow-x-auto">
+                {[
+                    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                    { id: 'invoice', label: 'Invoice', icon: FileText },
+                    { id: 'pricelist', label: 'Price List', icon: List },
+                    { id: 'catalog', label: 'Catalog', icon: LayoutTemplate },
+                    { id: 'suppliers', label: 'Suppliers', icon: Users },
+                ].map(item => (
+                    <button
+                        key={item.id}
+                        onClick={() => setView(item.id as any)}
+                        className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${view === item.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        <item.icon className="w-3.5 h-3.5" />
+                        {item.label}
+                    </button>
+                ))}
+            </nav>
+            <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => setShowLoadModal(true)} className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium">
+                    <FolderOpen className="w-4 h-4" />
+                    Open
+                </button>
+                <button onClick={() => { setProjectName(projectName || 'New Project'); setShowSaveModal(true); }} className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-medium">
+                    <Save className="w-4 h-4" />
+                    Save
+                </button>
+                <button onClick={() => window.print()} className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-medium">
+                    <Printer className="w-4 h-4" />
+                    Print
+                </button>
             </div>
         </div>
       </header>
