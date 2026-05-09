@@ -318,6 +318,8 @@ export default function App() {
   const [showPackInfo, setShowPackInfo] = useState(true); 
   const [basis, setBasis] = useState<'unit' | 'pack'>('unit'); 
   const [notes, setNotes] = useState('');
+  const [containerCapacity, setContainerCapacity] = useState<number>(1000);
+  const [containerType, setContainerType] = useState<'20ft' | '40ft'>('20ft');
 
   // Invoice Specific
   const [customerName, setCustomerName] = useState('');
@@ -570,7 +572,8 @@ export default function App() {
     const projectDataPayload = {
         config, rates, products, logistics, selectedTerms, notes, visibleScenarioTerms, invoiceTerms,
         customerName, customerAddress, invoiceRef, billedFrom, billedFromDetails, paymentTerms, showImages, showPackInfo,
-        invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, isInvoiceEditable, invoiceOverrides
+        invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, isInvoiceEditable, invoiceOverrides,
+        containerCapacity, containerType
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -713,6 +716,8 @@ export default function App() {
     setBankDetails(project.data.bankDetails || 'Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
     setIsInvoiceEditable((project.data as any).isInvoiceEditable || false);
     setInvoiceOverrides((project.data as any).invoiceOverrides || {});
+    if ((project.data as any).containerCapacity) setContainerCapacity((project.data as any).containerCapacity);
+    if ((project.data as any).containerType) setContainerType((project.data as any).containerType);
 
     setSuppliers(project.data.suppliers || []);
 
@@ -2021,21 +2026,218 @@ export default function App() {
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                      {calculations.breakdown.filter(b => visibleScenarioTerms.includes(b.term)).map((row) => (
-                          <tr key={row.term} className="hover:bg-slate-50">
-                              <td className="px-4 py-2 font-semibold text-slate-700">{row.term}</td>
-                              <td className="px-4 py-2 text-right text-slate-600">{formatMoney(row.unitCost, config.outputCurrency)}</td>
-                              <td className="px-4 py-2 text-right font-medium text-green-600">{formatMoney(row.unitProfit, config.outputCurrency)}</td>
-                              <td className="px-4 py-2 text-right font-medium text-blue-600 bg-slate-100/50">{formatMoney(row.unitSell, config.outputCurrency)}</td>
-                              <td className="px-4 py-2 text-right text-slate-600">{row.markupPercent.toFixed(1)}%</td>
-                              <td className="px-4 py-2 text-right text-slate-500">{row.profitMargin.toFixed(1)}%</td>
-                              <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatMoney(row.totalProfit, config.outputCurrency)}</td>
+                      {calculations.breakdown.filter(b => visibleScenarioTerms.includes(b.term)).map((row) => {
+                          const mColor = row.profitMargin >= 20 ? 'text-emerald-600' : row.profitMargin >= 10 ? 'text-amber-600' : 'text-red-500';
+                          const mBorder = row.profitMargin >= 20 ? 'border-l-emerald-400' : row.profitMargin >= 10 ? 'border-l-amber-400' : 'border-l-red-400';
+                          const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
+                          return (
+                          <tr key={row.term} className={`hover:bg-slate-50/80 border-l-4 ${mBorder} transition-colors`}>
+                              <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold ${termBadge[row.term] || 'bg-slate-100 text-slate-700'}`}>{row.term}</span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-slate-600 font-mono text-sm">{formatMoney(row.unitCost, config.outputCurrency)}</td>
+                              <td className="px-4 py-3 text-right font-semibold text-emerald-600 font-mono text-sm">{formatMoney(row.unitProfit, config.outputCurrency)}</td>
+                              <td className="px-4 py-3 text-right font-bold text-blue-600 bg-blue-50/30 font-mono">{formatMoney(row.unitSell, config.outputCurrency)}</td>
+                              <td className="px-4 py-3 text-right text-slate-600 text-sm">{row.markupPercent.toFixed(1)}%</td>
+                              <td className="px-4 py-3 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                      <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(row.profitMargin * 3, 100)}%`, background: row.profitMargin >= 20 ? '#10b981' : row.profitMargin >= 10 ? '#f59e0b' : '#ef4444' }} />
+                                      </div>
+                                      <span className={`text-sm font-semibold w-10 text-right ${mColor}`}>{row.profitMargin.toFixed(1)}%</span>
+                                  </div>
+                              </td>
+                              <td className="px-4 py-3 text-right text-emerald-600 font-bold font-mono">{formatMoney(row.totalProfit, config.outputCurrency)}</td>
                           </tr>
-                      ))}
+                          );
+                      })}
                   </tbody>
               </table>
           </div>
       </div>
+
+      {/* ===== 5. VISUAL ANALYTICS ===== */}
+      {(() => {
+        const segColors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
+        const exwRow = calculations.breakdown.find(b => b.term === 'EXW');
+        const fobRow = calculations.breakdown.find(b => b.term === 'FOB');
+        const ddpRow = calculations.breakdown.find(b => b.term === 'DDP');
+        const grandCost = exwRow?.totalCost || 0;
+        const grandRevenue = ddpRow?.totalSell || fobRow?.totalSell || 0;
+        const grandProfit = fobRow?.totalProfit || 0;
+        const margin = fobRow?.profitMargin || 0;
+        const costs = calculations.costs;
+        const grandTotalCost = costs.exw + costs.fob_inc + costs.cif_inc + costs.ddp_inc;
+        const costSegments = [
+          { label: 'Product Cost', value: costs.exw, color: '#3b82f6' },
+          { label: 'Inland & Port', value: costs.fob_inc, color: '#f59e0b' },
+          { label: 'Freight & Ins.', value: costs.cif_inc, color: '#8b5cf6' },
+          { label: 'Dest. & Duty', value: costs.ddp_inc, color: '#ef4444' },
+        ].filter(s => s.value > 0);
+        const activeProducts = calculations.processedProducts.filter(p => p.isActive && p.qty > 0);
+        const totalFillPct = containerCapacity > 0 ? Math.min((calculations.totalQty / containerCapacity) * 100, 100) : 0;
+        const containersNeeded = containerCapacity > 0 ? Math.ceil(calculations.totalQty / containerCapacity) : 0;
+        const lastContainerFill = containerCapacity > 0 && calculations.totalQty > 0
+          ? (calculations.totalQty % containerCapacity !== 0
+              ? (calculations.totalQty % containerCapacity) / containerCapacity * 100
+              : 100)
+          : 0;
+        const remainingInLast = containerCapacity > 0 && calculations.totalQty > 0 && calculations.totalQty % containerCapacity !== 0
+          ? containerCapacity - (calculations.totalQty % containerCapacity)
+          : 0;
+        let cumFill = 0;
+        const productFills = activeProducts.map((p, i) => {
+          const share = calculations.totalQty > 0 ? p.qty / calculations.totalQty : 0;
+          const pct = share * totalFillPct;
+          const r = { id: p.id, name: p.name || `Item ${i + 1}`, qty: p.qty, pct, color: segColors[i % segColors.length] };
+          cumFill += pct;
+          return r;
+        });
+        return (
+          <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Total Cost (EXW)', value: formatMoney(grandCost, config.outputCurrency), sub: 'Products only', color: 'bg-gradient-to-br from-slate-600 to-slate-800', icon: <DollarSign className="w-5 h-5 opacity-80" /> },
+                { label: 'Revenue (DDP)', value: formatMoney(grandRevenue, config.outputCurrency), sub: 'Best-case sell', color: 'bg-gradient-to-br from-blue-500 to-blue-700', icon: <BarChart3 className="w-5 h-5 opacity-80" /> },
+                { label: 'Profit (FOB)', value: formatMoney(grandProfit, config.outputCurrency), sub: `${margin.toFixed(1)}% margin`, color: margin >= 20 ? 'bg-gradient-to-br from-emerald-500 to-emerald-700' : margin >= 10 ? 'bg-gradient-to-br from-amber-500 to-amber-700' : 'bg-gradient-to-br from-red-500 to-red-700', icon: <PieChart className="w-5 h-5 opacity-80" /> },
+                { label: 'Total Units', value: calculations.totalQty.toLocaleString(), sub: `${activeProducts.length} active products`, color: 'bg-gradient-to-br from-violet-500 to-violet-700', icon: <Package className="w-5 h-5 opacity-80" /> },
+              ].map((card, i) => (
+                <div key={i} className={`${card.color} rounded-xl p-4 text-white shadow-lg`}>
+                  <div className="mb-2">{card.icon}</div>
+                  <div className="text-xl font-bold truncate">{card.value}</div>
+                  <div className="text-sm font-medium mt-1 opacity-90">{card.label}</div>
+                  <div className="text-xs mt-0.5 opacity-60">{card.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Cost Breakdown + Container */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+              {/* Cost Structure Breakdown */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 className="font-semibold text-slate-700 flex items-center gap-2 mb-4">
+                  <PieChart className="w-4 h-4 text-purple-500" />
+                  Cost Structure (Full DDP)
+                </h2>
+                {grandTotalCost > 0 ? (
+                  <div className="space-y-4">
+                    <div className="relative h-9 rounded-lg overflow-hidden flex bg-slate-100 shadow-inner">
+                      {costSegments.map((seg, i) => {
+                        const pct = (seg.value / grandTotalCost) * 100;
+                        return (
+                          <div key={i} style={{ width: `${pct}%`, background: seg.color }} className="relative h-full" title={`${seg.label}: ${formatMoney(seg.value, config.outputCurrency)}`}>
+                            {pct > 8 && <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">{pct.toFixed(0)}%</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="space-y-2.5">
+                      {costSegments.map((seg, i) => {
+                        const pct = (seg.value / grandTotalCost) * 100;
+                        return (
+                          <div key={i} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: seg.color }} />
+                              <span className="text-sm text-slate-600">{seg.label}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: seg.color }} />
+                              </div>
+                              <span className="text-xs text-slate-400 w-10 text-right">{pct.toFixed(1)}%</span>
+                              <span className="text-sm font-semibold text-slate-700 w-28 text-right font-mono">{formatMoney(seg.value, config.outputCurrency)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="pt-3 border-t border-slate-100 flex justify-between">
+                      <span className="text-sm text-slate-500 font-medium">Total DDP Cost</span>
+                      <span className="font-bold text-slate-800 font-mono">{formatMoney(grandTotalCost, config.outputCurrency)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-slate-400 text-sm italic">Add products to see cost structure</div>
+                )}
+              </div>
+
+              {/* Shipping Container Visualization */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+                    <Ship className="w-4 h-4 text-cyan-500" />
+                    Container Load Calculator
+                  </h2>
+                  <div className="flex bg-slate-100 rounded-lg p-0.5">
+                    {(['20ft', '40ft'] as const).map(ct => (
+                      <button key={ct} onClick={() => setContainerType(ct)} className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${containerType === ct ? 'bg-white text-cyan-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{ct}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mb-4">
+                  <label className="text-xs text-slate-500 whitespace-nowrap font-medium">Units per {containerType}:</label>
+                  <input
+                    type="number"
+                    value={containerCapacity}
+                    onChange={(e) => setContainerCapacity(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-24 text-sm border border-slate-200 rounded-lg px-2 py-1 text-center focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 outline-none font-mono"
+                  />
+                  <span className="text-xs text-slate-400">/ {calculations.totalQty.toLocaleString()} total</span>
+                </div>
+                {/* Container Box */}
+                <div className="relative w-full h-28 rounded-lg overflow-hidden border-[3px] border-slate-500 bg-slate-100" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.12)' }}>
+                  {[...Array(9)].map((_, i) => (
+                    <div key={i} className="absolute top-0 bottom-0 border-r border-slate-300/40" style={{ left: `${(i + 1) * 10}%` }} />
+                  ))}
+                  <div className="absolute bottom-0 left-0 top-0 flex">
+                    {productFills.map((pf) => (
+                      <div key={pf.id} style={{ width: `${pf.pct}%`, background: pf.color, opacity: 0.82, minWidth: pf.pct > 0 ? '2px' : 0 }} title={`${pf.name}: ${pf.qty.toLocaleString()} units`} className="h-full transition-all duration-500" />
+                    ))}
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="bg-white/85 backdrop-blur-sm rounded-lg px-3 py-1.5 text-center shadow-md">
+                      <div className="text-lg font-bold text-slate-800">{lastContainerFill.toFixed(0)}%</div>
+                      <div className="text-[10px] text-slate-500">{containersNeeded > 1 ? `last of ${containersNeeded} containers` : `fill of ${containerType}`}</div>
+                    </div>
+                  </div>
+                  <div className="absolute top-0 right-0 bottom-0 w-5 border-l-2 border-slate-400 bg-slate-200/60 flex flex-col justify-between items-center py-1.5">
+                    <div className="w-2 h-2 rounded-full bg-slate-400" />
+                    <div className="w-1 h-6 bg-slate-400 rounded-full" />
+                    <div className="w-2 h-2 rounded-full bg-slate-400" />
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-2">
+                    <div className="text-lg font-bold text-cyan-700">{containersNeeded || 0}</div>
+                    <div className="text-[10px] text-cyan-500 font-medium">Containers</div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-2">
+                    <div className="text-lg font-bold text-slate-700">{containerCapacity.toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-400 font-medium">Cap / unit</div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-2">
+                    <div className="text-lg font-bold text-slate-700">{remainingInLast.toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-400 font-medium">Space left</div>
+                  </div>
+                </div>
+                {productFills.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {productFills.map(pf => (
+                      <div key={pf.id} className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-full px-2 py-0.5">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: pf.color }} />
+                        <span className="text-[10px] text-slate-600 truncate max-w-[80px]">{pf.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">{pf.qty.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
