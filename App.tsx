@@ -94,7 +94,6 @@ const DEMO_USER_ID = 'demo-user-123';
 const DB_NAME = 'CloudExportProDB';
 const STORE_NAME = 'projects';
 const DB_VERSION = 1;
-const LOCAL_STORAGE_KEY_LEGACY = 'cloud_export_pro_projects';
 
 // --- UTILITY FUNCTIONS ---
 const normalizeDigits = (str: string | number): string => {
@@ -518,7 +517,7 @@ function AppInner() {
         );
         return () => unsubscribe();
     } else {
-        loadLocalProjects();
+        setSavedProjects([]);
     }
   }, [user, authLoading, isDemoMode, dataAppId]);
 
@@ -697,69 +696,31 @@ function AppInner() {
     const finalFolder = folderName.trim();
 
     try {
+      if (!isRealCloudUser) {
+        throw new Error('Cloud save unavailable. Please sign in again.');
+      }
+
       let savedId = loadedProjectId;
 
       if (mode === 'update' && loadedProjectId) {
          // Update
-         if (isRealCloudUser) {
-             await updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
-                name: projectName,
-                folder: finalFolder,
-                data: projectDataPayload
-             });
-         } else {
-             // Local Update
-             const updatedProject: SavedProject = {
-                 id: loadedProjectId,
-                 name: projectName,
-                 folder: finalFolder,
-                 createdAt: { seconds: Math.floor(Date.now() / 1000) },
-                 data: projectDataPayload
-             };
-             
-             const existing = savedProjects.find(p => p.id === loadedProjectId);
-             if (existing) updatedProject.createdAt = existing.createdAt;
-
-             await dbSaveProject(updatedProject);
-             await loadLocalProjects();
-         }
+         await updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
+            name: projectName,
+            folder: finalFolder,
+            data: projectDataPayload
+         });
       } else {
          // New
-         if (isRealCloudUser) {
-            const docRef = await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
-              name: projectName,
-              folder: finalFolder,
-              createdAt: serverTimestamp(),
-              data: projectDataPayload
-            });
-            savedId = docRef.id;
-         } else {
-            // Local New
-            const newId = `local_${Date.now()}`;
-            savedId = newId;
-            const newProject: SavedProject = {
-                id: newId,
-                name: projectName,
-                folder: finalFolder,
-                createdAt: { seconds: Math.floor(Date.now() / 1000) },
-                data: projectDataPayload
-             };
-            await dbSaveProject(newProject);
-            await loadLocalProjects();
-         }
+         const docRef = await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+          name: projectName,
+          folder: finalFolder,
+          createdAt: serverTimestamp(),
+          data: projectDataPayload
+        });
+        savedId = docRef.id;
       }
       
       if (savedId) setLoadedProjectId(savedId);
-      
-      // Backup to LocalStorage
-      if (!isRealCloudUser) {
-          try {
-              const allProjects = await dbGetAllProjects();
-              localStorage.setItem(LOCAL_STORAGE_KEY_LEGACY, JSON.stringify(allProjects));
-          } catch(e) {
-              console.warn("Backup to LocalStorage failed", e);
-          }
-      }
 
       setShowSaveModal(false);
     } catch (error: any) { 
@@ -903,21 +864,11 @@ function AppInner() {
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
 
     try { 
-        if (isRealCloudUser) {
-            await deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', deleteConfirmId)); 
-        } else {
-            // Local Delete
-            await dbDeleteProject(deleteConfirmId);
-            
-            // Sync LocalStorage
-            try {
-               let stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY_LEGACY) || '[]');
-               stored = stored.filter((p: SavedProject) => p.id !== deleteConfirmId);
-               localStorage.setItem(LOCAL_STORAGE_KEY_LEGACY, JSON.stringify(stored));
-            } catch(e) {}
-            
-            await loadLocalProjects();
+        if (!isRealCloudUser) {
+            throw new Error('Cloud delete unavailable. Please sign in again.');
         }
+
+        await deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', deleteConfirmId)); 
         
         if (deleteConfirmId === loadedProjectId) {
             setLoadedProjectId(null);
@@ -976,21 +927,20 @@ function AppInner() {
               };
 
               const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
-              if (isRealCloudUser) {
-                  const cleanData = stripUndefinedDeep(newProject.data);
-                  await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
-                      name: newProject.name,
-                      folder: newProject.folder || '',
-                      createdAt: serverTimestamp(),
-                      data: cleanData
-                  });
-              } else {
-                  await dbSaveProject(newProject);
-                  await loadLocalProjects();
+              if (!isRealCloudUser) {
+                  throw new Error('Cloud import unavailable. Please sign in again.');
               }
+
+              const cleanData = stripUndefinedDeep(newProject.data);
+              await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+                  name: newProject.name,
+                  folder: newProject.folder || '',
+                  createdAt: serverTimestamp(),
+                  data: cleanData
+              });
               
               e.target.value = '';
-              alert(`Project imported successfully${isRealCloudUser ? ' to cloud' : ' (local)'}!`);
+              alert("Project imported successfully to cloud!");
 
           } catch (err) {
               console.error("Import error", err);
