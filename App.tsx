@@ -548,64 +548,6 @@ export default function App() {
       }
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
-          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-600" />
-          <p className="text-sm text-slate-700">Checking authentication...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-sm">
-          <div className="text-center mb-6">
-            <h1 className="text-xl font-bold text-slate-900">CloudExport Pro</h1>
-            <p className="text-sm text-slate-500 mt-1">Sign in with your email and password</p>
-          </div>
-
-          <div className="space-y-3">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleEmailAuth();
-              }}
-              placeholder="Password"
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleEmailAuth}
-              disabled={authLoading || !auth}
-              className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
-            >
-              Sign In
-            </button>
-          </div>
-
-          {!auth && (
-            <p className="text-xs text-amber-700 mt-3">
-              Firebase is not configured. Add Firebase env values in `.env.local`.
-            </p>
-          )}
-          {authError && <p className="text-xs text-red-600 mt-3">{authError}</p>}
-        </div>
-      </div>
-    );
-  }
-
   const handleEmailAuth = async () => {
       setAuthError('');
       const trimmedEmail = email.trim();
@@ -664,6 +606,64 @@ export default function App() {
           setIsCreatingUser(false);
       }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-600" />
+          <p className="text-sm text-slate-700">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-sm">
+          <div className="text-center mb-6">
+            <h1 className="text-xl font-bold text-slate-900">CloudExport Pro</h1>
+            <p className="text-sm text-slate-500 mt-1">Sign in with your email and password</p>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleEmailAuth();
+              }}
+              placeholder="Password"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleEmailAuth}
+              disabled={authLoading || !auth}
+              className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              Sign In
+            </button>
+          </div>
+
+          {!auth && (
+            <p className="text-xs text-amber-700 mt-3">
+              Firebase is not configured. Add Firebase env values in `.env.local`.
+            </p>
+          )}
+          {authError && <p className="text-xs text-red-600 mt-3">{authError}</p>}
+        </div>
+      </div>
+    );
+  }
 
   // --- PROJECT CRUD HANDLERS ---
   const handleSaveProject = async (mode: 'new' | 'update' = 'new') => {
