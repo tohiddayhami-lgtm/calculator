@@ -17,6 +17,7 @@ import {
   deleteDoc, 
   doc, 
   onSnapshot, 
+  getDocs,
   serverTimestamp,
   updateDoc 
 } from 'firebase/firestore';
@@ -321,6 +322,7 @@ function AppInner() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [masterActionMessage, setMasterActionMessage] = useState('');
+  const [dataAppId, setDataAppId] = useState(appId);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
@@ -493,10 +495,17 @@ function AppInner() {
     setCloudLoadError('');
 
     if (isRealCloudUser) {
-        const projectsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'projects');
+        const projectsRef = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects');
         const unsubscribe = onSnapshot(
           projectsRef,
-          (snapshot: any) => {
+          async (snapshot: any) => {
+              if (snapshot.empty && dataAppId === appId) {
+                  const legacyAppId = await findLegacyAppIdWithProjects(user.uid);
+                  if (legacyAppId) {
+                      setDataAppId(legacyAppId);
+                      return;
+                  }
+              }
               const loadedProjects = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as SavedProject[];
               loadedProjects.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
               setSavedProjects(loadedProjects);
@@ -511,7 +520,7 @@ function AppInner() {
     } else {
         loadLocalProjects();
     }
-  }, [user, authLoading, isDemoMode]);
+  }, [user, authLoading, isDemoMode, dataAppId]);
 
   const loadLocalProjects = async () => {
       let mergedProjects: SavedProject[] = [];
@@ -547,6 +556,30 @@ function AppInner() {
 
       mergedProjects.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setSavedProjects(mergedProjects);
+  };
+
+  const findLegacyAppIdWithProjects = async (uid: string): Promise<string | null> => {
+    if (!db) return null;
+
+    const envAliasesRaw = ((import.meta as any).env?.VITE_APP_ID_ALIASES || '') as string;
+    const envAliases = envAliasesRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    const candidates = Array.from(new Set([
+      ...envAliases,
+      'cloudexport-pro',
+      'export-pro-default',
+    ])).filter((id) => id !== dataAppId);
+
+    for (const candidateId of candidates) {
+      try {
+        const candidateRef = collection(db, 'artifacts', candidateId, 'users', uid, 'projects');
+        const candidateSnapshot = await getDocs(candidateRef);
+        if (!candidateSnapshot.empty) return candidateId;
+      } catch (error) {
+        console.warn(`Legacy appId lookup failed for ${candidateId}`, error);
+      }
+    }
+
+    return null;
   };
 
   const uniqueFolders = useMemo(() => {
@@ -669,7 +702,7 @@ function AppInner() {
       if (mode === 'update' && loadedProjectId) {
          // Update
          if (isRealCloudUser) {
-             await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'projects', loadedProjectId), {
+             await updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
                 name: projectName,
                 folder: finalFolder,
                 data: projectDataPayload
@@ -693,7 +726,7 @@ function AppInner() {
       } else {
          // New
          if (isRealCloudUser) {
-            const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'projects'), {
+            const docRef = await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
               name: projectName,
               folder: finalFolder,
               createdAt: serverTimestamp(),
@@ -871,7 +904,7 @@ function AppInner() {
 
     try { 
         if (isRealCloudUser) {
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'projects', deleteConfirmId)); 
+            await deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', deleteConfirmId)); 
         } else {
             // Local Delete
             await dbDeleteProject(deleteConfirmId);
