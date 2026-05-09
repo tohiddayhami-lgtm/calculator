@@ -4,10 +4,8 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth, 
   signInWithCustomToken, 
-  signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
   User 
@@ -27,7 +25,7 @@ import {
 import { 
   Settings, Plus, Trash2, Package, Truck, Anchor, Ship, MapPin, 
   FileText, Globe, PieChart, CheckCircle, Circle, BarChart3, Save, 
-  FolderOpen, X, Clock, Loader2, LogIn, LayoutDashboard, Printer, 
+  FolderOpen, X, Clock, Loader2, LayoutDashboard, Printer, 
   FileCheck, Image as ImageIcon, Upload, List, Download, FileUp, Folder, 
   LayoutTemplate, Palette, Type, Smartphone, Globe2, Languages, Edit3, 
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
@@ -125,6 +123,24 @@ const formatMoney = (amount: number, currency: string): string => {
     minimumFractionDigits: decimals, 
     maximumFractionDigits: decimals 
   }).format(amount);
+};
+
+const stripUndefinedDeep = (value: any): any => {
+  if (Array.isArray(value)) {
+    return value.map(stripUndefinedDeep);
+  }
+
+  if (value && typeof value === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (val !== undefined) {
+        cleaned[key] = stripUndefinedDeep(val);
+      }
+    }
+    return cleaned;
+  }
+
+  return value;
 };
 
 const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promise<string> => {
@@ -412,7 +428,6 @@ export default function App() {
     
     if (!auth) {
         setAuthLoading(false);
-        loadLocalProjects();
         return;
     }
 
@@ -516,58 +531,6 @@ export default function App() {
   }, [savedProjects]);
 
   // --- AUTH HANDLERS ---
-  const handleGoogleLogin = async () => {
-      const isMockKey = firebaseConfig?.apiKey === 'demo-api-key';
-      setAuthError('');
-
-      if (isMockKey) {
-          console.warn("Using Demo Login (Invalid API Key detected)");
-          performDemoLogin();
-          return;
-      }
-      
-      if (!auth) {
-          performDemoLogin();
-          return;
-      }
-
-      try {
-          const provider = new GoogleAuthProvider();
-          await signInWithPopup(auth, provider);
-      } catch (error: any) {
-          console.error("Login failed", error);
-          if (error.code === 'auth/api-key-not-valid' || error.code === 'auth/internal-error') {
-             alert("Notice: You are using a Demo API Key.\nLogging you in as a 'Demo User' with Local Storage.");
-             performDemoLogin();
-          } else {
-             alert(`Login failed: ${error.message}`);
-          }
-      }
-  };
-
-  const performDemoLogin = () => {
-      const demoUser = { 
-        uid: DEMO_USER_ID, 
-        displayName: 'Demo User', 
-        email: 'demo@example.com', 
-        photoURL: null,
-        emailVerified: true,
-        isAnonymous: false,
-        metadata: {},
-        providerData: [],
-        refreshToken: '',
-        tenantId: null,
-        delete: async () => {},
-        getIdToken: async () => '',
-        getIdTokenResult: async () => ({} as any),
-        reload: async () => {},
-        toJSON: () => ({})
-    } as unknown as User;
-    
-    setUser(demoUser);
-    setIsDemoMode(true);
-  };
-
   const handleLogout = async () => {
       setAuthError('');
       if (isDemoMode) {
@@ -584,6 +547,64 @@ export default function App() {
           console.error("Logout failed", error);
       }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-600" />
+          <p className="text-sm text-slate-700">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-sm">
+          <div className="text-center mb-6">
+            <h1 className="text-xl font-bold text-slate-900">CloudExport Pro</h1>
+            <p className="text-sm text-slate-500 mt-1">Sign in with your email and password</p>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleEmailAuth();
+              }}
+              placeholder="Password"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleEmailAuth}
+              disabled={authLoading || !auth}
+              className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              Sign In
+            </button>
+          </div>
+
+          {!auth && (
+            <p className="text-xs text-amber-700 mt-3">
+              Firebase is not configured. Add Firebase env values in `.env.local`.
+            </p>
+          )}
+          {authError && <p className="text-xs text-red-600 mt-3">{authError}</p>}
+        </div>
+      </div>
+    );
+  }
 
   const handleEmailAuth = async () => {
       setAuthError('');
@@ -649,12 +670,13 @@ export default function App() {
     if (!projectName.trim()) return;
     setIsSaving(true);
     
-    const projectDataPayload = {
+    const projectDataPayloadRaw = {
         config, rates, products, logistics, selectedTerms, notes, visibleScenarioTerms, invoiceTerms,
         customerName, customerAddress, invoiceRef, billedFrom, billedFromDetails, paymentTerms, showImages, showPackInfo,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, isInvoiceEditable, invoiceOverrides,
         containerCapacity, containerType
     };
+    const projectDataPayload = stripUndefinedDeep(projectDataPayloadRaw);
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     const finalFolder = folderName.trim();
@@ -4336,58 +4358,18 @@ export default function App() {
                     <Printer className="w-5 h-5" />
                 </button>
 
-                {user ? (
-                    <div className="flex items-center gap-3 ml-2 pl-3 border-l border-slate-200">
-                        {user.photoURL ? (
-                            <img src={user.photoURL} className="w-8 h-8 rounded-full border border-slate-200" alt="User" />
-                        ) : (
-                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-200">
-                                {user.email?.[0].toUpperCase() || 'U'}
-                            </div>
-                        )}
-                        <button onClick={handleLogout} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors">Sign Out</button>
-                    </div>
-                ) : (
-                    <div className="ml-2 pl-3 border-l border-slate-200 flex items-center gap-2">
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="Email"
-                            className="w-44 px-2.5 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Password"
-                            className="w-36 px-2.5 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <button
-                            onClick={handleEmailAuth}
-                            disabled={authLoading}
-                            className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-800 transition-colors flex items-center gap-1.5 shadow-sm shadow-slate-300"
-                        >
-                            {authLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
-                            Sign In
-                        </button>
-                        <button
-                            onClick={handleGoogleLogin}
-                            disabled={authLoading}
-                            className="bg-white border border-slate-300 text-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
-                        >
-                            Google
-                        </button>
-                    </div>
-                )}
+                <div className="flex items-center gap-3 ml-2 pl-3 border-l border-slate-200">
+                    {user.photoURL ? (
+                        <img src={user.photoURL} className="w-8 h-8 rounded-full border border-slate-200" alt="User" />
+                    ) : (
+                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-200">
+                            {user.email?.[0].toUpperCase() || 'U'}
+                        </div>
+                    )}
+                    <button onClick={handleLogout} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors">Sign Out</button>
+                </div>
             </div>
         </div>
-
-        {!user && authError && (
-            <div className="px-4 pb-2">
-                <p className="text-xs text-red-600">{authError}</p>
-            </div>
-        )}
 
         {user && isMasterUser && (
             <div className="px-4 pb-3">
