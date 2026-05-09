@@ -143,6 +143,24 @@ const stripUndefinedDeep = (value: any): any => {
   return value;
 };
 
+const withTimeout = async <T,>(promise: Promise<T>, ms = 15000, label = 'Operation'): Promise<T> => {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out. Check internet connection and Firebase access.`));
+    }, ms);
+
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+};
+
 const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promise<string> => {
     return new Promise((resolve) => {
         const img = new Image();
@@ -571,7 +589,7 @@ function AppInner() {
     for (const candidateId of candidates) {
       try {
         const candidateRef = collection(db, 'artifacts', candidateId, 'users', uid, 'projects');
-        const candidateSnapshot = await getDocs(candidateRef);
+        const candidateSnapshot = await withTimeout(getDocs(candidateRef), 8000, 'Legacy data lookup');
         if (!candidateSnapshot.empty) return candidateId;
       } catch (error) {
         console.warn(`Legacy appId lookup failed for ${candidateId}`, error);
@@ -705,19 +723,27 @@ function AppInner() {
       if (mode === 'update' && loadedProjectId) {
          // Update
          try {
-            await updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
-              name: projectName,
-              folder: finalFolder,
-              data: projectDataPayload
-            });
-         } catch (updateError: any) {
-            if (updateError?.code === 'not-found') {
-              const docRef = await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+            await withTimeout(
+              updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
                 name: projectName,
                 folder: finalFolder,
-                createdAt: serverTimestamp(),
                 data: projectDataPayload
-              });
+              }),
+              15000,
+              'Project update'
+            );
+         } catch (updateError: any) {
+            if (updateError?.code === 'not-found') {
+              const docRef = await withTimeout(
+                addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+                  name: projectName,
+                  folder: finalFolder,
+                  createdAt: serverTimestamp(),
+                  data: projectDataPayload
+                }),
+                15000,
+                'Project create fallback'
+              );
               savedId = docRef.id;
             } else {
               throw updateError;
@@ -725,12 +751,16 @@ function AppInner() {
          }
       } else {
          // New
-         const docRef = await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
-          name: projectName,
-          folder: finalFolder,
-          createdAt: serverTimestamp(),
-          data: projectDataPayload
-        });
+         const docRef = await withTimeout(
+          addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+            name: projectName,
+            folder: finalFolder,
+            createdAt: serverTimestamp(),
+            data: projectDataPayload
+          }),
+          15000,
+          'Project create'
+        );
         savedId = docRef.id;
       }
       
@@ -882,7 +912,11 @@ function AppInner() {
             throw new Error('Cloud delete unavailable. Please sign in again.');
         }
 
-        await deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', deleteConfirmId)); 
+        await withTimeout(
+          deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', deleteConfirmId)),
+          15000,
+          'Project delete'
+        );
         setSavedProjects(prev => prev.filter(p => p.id !== deleteConfirmId));
         
         if (deleteConfirmId === loadedProjectId) {
@@ -948,12 +982,16 @@ function AppInner() {
               }
 
               const cleanData = stripUndefinedDeep(newProject.data);
-              await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
-                  name: newProject.name,
-                  folder: newProject.folder || '',
-                  createdAt: serverTimestamp(),
-                  data: cleanData
-              });
+              await withTimeout(
+                addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+                    name: newProject.name,
+                    folder: newProject.folder || '',
+                    createdAt: serverTimestamp(),
+                    data: cleanData
+                }),
+                15000,
+                'Import to cloud'
+              );
               
               e.target.value = '';
               alert("Project imported successfully to cloud!");
