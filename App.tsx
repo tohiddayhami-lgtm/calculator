@@ -730,7 +730,8 @@ export default function App() {
     }
 
     if (project.data.catalogConfig) {
-        const loadedLang = ['en'];
+        const loadedLang = project.data.catalogConfig.languages || 
+                          (project.data.catalogConfig['language'] ? [project.data.catalogConfig['language']] : ['en']);
         const loadedConfigAny = project.data.catalogConfig as any;
         const loadedPriceTerms = loadedConfigAny.priceTerms || (loadedConfigAny.priceTerm ? [loadedConfigAny.priceTerm] : ['FOB']);
 
@@ -1431,7 +1432,7 @@ export default function App() {
         <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
             <div className="flex items-center gap-4 w-full md:w-auto">
                 <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">ارز خروجی</label>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Output Currency</label>
                     <select 
                         value={config.outputCurrency}
                         onChange={(e) => setConfig({...config, outputCurrency: e.target.value})}
@@ -1444,7 +1445,7 @@ export default function App() {
                 {/* --- TARGET PROFIT INPUT (DISABLED IN FIXED MARKUP MODE) --- */}
                 <div className={`${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}>
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                        سود هدف
+                        Target Profit
                         {config.pricingMethod === 'fixed_unit_markup' && <span className="text-[9px] text-red-500">(Off)</span>}
                     </label>
                     <div className="flex items-center gap-2">
@@ -1491,14 +1492,14 @@ export default function App() {
                     className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto ${showPackInfo ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
                 >
                     <Package className="w-4 h-4" />
-                    اطلاعات بسته
+                    Pack Info
                 </button>
                  <button 
                     onClick={() => setShowRateSettings(!showRateSettings)}
                     className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto ${showRateSettings ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
                 >
                     <Settings className="w-4 h-4" />
-                    نرخ ها
+                    Rates
                 </button>
             </div>
         </div>
@@ -1527,20 +1528,20 @@ export default function App() {
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
             <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-500" />
-                محصولات
+                Products
             </h2>
             <div className="flex gap-2">
                 <button 
                     onClick={() => setShowImportProductsModal(true)} 
                     className="text-sm bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm"
                 >
-                    <FolderOpen className="w-4 h-4" /> ورود از پروژه
+                    <FolderOpen className="w-4 h-4" /> Import from Project
                 </button>
                 <button 
                     onClick={() => setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }])} 
                     className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm"
                 >
-                    <Plus className="w-4 h-4" /> افزودن محصول
+                    <Plus className="w-4 h-4" /> Add Product
                 </button>
             </div>
         </div>
@@ -1766,7 +1767,7 @@ export default function App() {
                     })}
                     {products.length === 0 && (
                         <tr>
-                            <td colSpan={showPackInfo ? 19 : 17} className="px-4 py-8 text-center text-slate-400 italic">هنوز محصولی اضافه نشده. برای شروع روی "افزودن محصول" بزنید.</td>
+                            <td colSpan={showPackInfo ? 19 : 17} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
                         </tr>
                     )}
                 </tbody>
@@ -1781,7 +1782,7 @@ export default function App() {
            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
               <h2 className="font-semibold text-slate-700 flex items-center gap-2 mb-4">
                   <Truck className="w-4 h-4 text-amber-500" />
-                  لجستیک و حمل و نقل
+                  Logistics & Transport
               </h2>
               <div className="space-y-4">
                  <div className="pb-3 border-b border-slate-100">
@@ -1898,7 +1899,7 @@ export default function App() {
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
               <h2 className="font-semibold text-slate-700 flex items-center gap-2 mb-4">
                   <PieChart className="w-4 h-4 text-purple-500" />
-                  تنظیمات سود
+                  Profit Configuration
               </h2>
               
               {/* Method Switcher */}
@@ -1992,7 +1993,7 @@ export default function App() {
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
               <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-indigo-500" />
-                  تحلیل سناریو (تجمیعی)
+                  Scenario Analysis (Aggregate)
               </h2>
               <div className="flex gap-1">
                    {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].map(term => (
@@ -2103,9 +2104,22 @@ export default function App() {
     };
 
     // Toggle Language Helper
-    const toggleLanguage = (_lang: 'en' | 'fa' | 'ar') => {
-        // Keep generated catalog/output language fixed to English.
-        setCatalogConfig({ ...catalogConfig, languages: ['en'] });
+    const toggleLanguage = (lang: 'en' | 'fa' | 'ar') => {
+        const current = catalogConfig.languages;
+        if (current.includes(lang)) {
+            // Don't allow removing the last language
+            if (current.length > 1) {
+                setCatalogConfig({ 
+                    ...catalogConfig, 
+                    languages: current.filter(l => l !== lang) 
+                });
+            }
+        } else {
+            // Add language (sort en first, then others if needed, or just append)
+            const order = ['en', 'fa', 'ar'];
+            const newLangs = [...current, lang].sort((a,b) => order.indexOf(a) - order.indexOf(b));
+            setCatalogConfig({ ...catalogConfig, languages: newLangs as any });
+        }
     };
 
     // Toggle Product Inclusion Helper
@@ -2150,7 +2164,7 @@ export default function App() {
               <div>
                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
                       <LayoutTemplate className="w-4 h-4 text-blue-600" />
-                      طراحی کاتالوگ
+                      Catalog Design
                   </h3>
                   
                   <div className="space-y-4">
@@ -2186,10 +2200,22 @@ export default function App() {
                       {/* Language Selector */}
                       <div>
                           <label className="text-xs font-semibold text-slate-500 uppercase mb-2 block flex items-center gap-1">
-                              <Languages className="w-3 h-3" /> زبان خروجی
+                              <Languages className="w-3 h-3" /> Languages
                           </label>
-                          <div className="bg-blue-50 border border-blue-200 text-blue-700 text-xs rounded-lg px-3 py-2">
-                              خروجی همیشه روی English قفل است.
+                          <div className="flex bg-slate-100 p-1 rounded-lg">
+                              {[
+                                  { code: 'en', label: 'English' },
+                                  { code: 'fa', label: 'فارسی' },
+                                  { code: 'ar', label: 'العربية' }
+                              ].map(lang => (
+                                  <button
+                                      key={lang.code}
+                                      onClick={() => toggleLanguage(lang.code as any)}
+                                      className={`flex-1 py-1 text-xs font-medium rounded-md transition-all ${catalogConfig.languages.includes(lang.code as any) ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+                                  >
+                                      {lang.label}
+                                  </button>
+                              ))}
                           </div>
                       </div>
                       
@@ -3986,11 +4012,11 @@ export default function App() {
 
                 <nav className="hidden md:flex bg-slate-100 p-1 rounded-lg border border-slate-200">
                     {[
-                        { id: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
-                        { id: 'invoice', label: 'پیش فاکتور', icon: FileText },
-                        { id: 'pricelist', label: 'لیست قیمت', icon: List },
-                        { id: 'catalog', label: 'سازنده کاتالوگ', icon: LayoutTemplate },
-                        { id: 'suppliers', label: 'تامین کنندگان', icon: Users },
+                        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                        { id: 'invoice', label: 'Proforma Invoice', icon: FileText },
+                        { id: 'pricelist', label: 'Price List', icon: List },
+                        { id: 'catalog', label: 'Catalog Gen', icon: LayoutTemplate },
+                        { id: 'suppliers', label: 'Suppliers', icon: Users },
                     ].map(item => (
                         <button
                             key={item.id}
@@ -4010,17 +4036,17 @@ export default function App() {
                      {loadedProjectId ? (
                          <span className="text-sm font-medium text-slate-700">{projectName}</span>
                      ) : (
-                         <span className="text-sm text-slate-400 italic">پروژه ذخیره نشده</span>
+                         <span className="text-sm text-slate-400 italic">Unsaved Project</span>
                      )}
                 </div>
 
                 <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
-                <button onClick={() => setShowLoadModal(true)} className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors" title="باز کردن پروژه">
+                <button onClick={() => setShowLoadModal(true)} className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors" title="Open Project">
                     <FolderOpen className="w-5 h-5" />
                 </button>
                 
-                <button onClick={() => { setProjectName(projectName || 'پروژه جدید'); setShowSaveModal(true); }} className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="ذخیره پروژه">
+                <button onClick={() => { setProjectName(projectName || 'New Project'); setShowSaveModal(true); }} className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Save Project">
                     <Save className="w-5 h-5" />
                 </button>
 
@@ -4033,12 +4059,12 @@ export default function App() {
                                 {user.email?.[0].toUpperCase() || 'U'}
                             </div>
                         )}
-                        <button onClick={handleLogout} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors">خروج</button>
+                        <button onClick={handleLogout} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors">Sign Out</button>
                     </div>
                 ) : (
                     <button onClick={handleGoogleLogin} disabled={authLoading} className="ml-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-sm shadow-slate-300">
                         {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-                        ورود
+                        Sign In
                     </button>
                 )}
             </div>
@@ -4061,30 +4087,30 @@ export default function App() {
           <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
                   <div className="p-6">
-                      <h3 className="text-lg font-bold text-slate-900 mb-1">ذخیره پروژه</h3>
-                      <p className="text-sm text-slate-500 mb-4">محاسبات خود را برای استفاده بعدی ذخیره کنید.</p>
+                      <h3 className="text-lg font-bold text-slate-900 mb-1">Save Project</h3>
+                      <p className="text-sm text-slate-500 mb-4">Save your calculation to access it later.</p>
                       
                       <div className="space-y-4">
                           <div>
-                              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">نام پروژه</label>
+                              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Project Name</label>
                               <input 
                                   type="text" 
                                   value={projectName} 
                                   onChange={(e) => setProjectName(e.target.value)} 
                                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                  placeholder="مثلا برنامه صادراتی فصل اول"
+                                  placeholder="e.g. Q1 Export Plan"
                                   autoFocus
                               />
                           </div>
                           <div>
-                              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">پوشه (اختیاری)</label>
+                              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Folder (Optional)</label>
                               <div className="relative">
                                 <input 
                                     type="text" 
                                     value={folderName} 
                                     onChange={(e) => setFolderName(e.target.value)} 
                                     className="w-full border border-slate-300 rounded-lg px-3 py-2 pl-9 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="مثلا محصولات لبنی"
+                                    placeholder="e.g. Dairy Products"
                                     list="folder-suggestions"
                                 />
                                 <Folder className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -4129,11 +4155,11 @@ export default function App() {
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
                       <div className="flex items-center gap-3">
-                          <h3 className="font-bold text-slate-800">باز کردن پروژه</h3>
+                          <h3 className="font-bold text-slate-800">Open Project</h3>
                           <div className="flex bg-white border border-slate-200 rounded-md p-0.5">
                                <label className="flex items-center gap-2 px-3 py-1 cursor-pointer hover:bg-slate-50 transition-colors">
                                    <FileUp className="w-4 h-4 text-blue-600" />
-                                   <span className="text-xs font-medium text-slate-600">ورود JSON</span>
+                                   <span className="text-xs font-medium text-slate-600">Import JSON</span>
                                    <input type="file" accept=".json" onChange={handleImportProject} className="hidden" />
                                </label>
                           </div>
@@ -4145,7 +4171,7 @@ export default function App() {
                       {savedProjects.length === 0 ? (
                           <div className="h-full flex flex-col items-center justify-center text-slate-400">
                               <FolderOpen className="w-16 h-16 mb-4 opacity-20" />
-                              <p>هیچ پروژه ذخیره شده ای پیدا نشد.</p>
+                              <p>No saved projects found.</p>
                           </div>
                       ) : (
                           <div className="space-y-8">
