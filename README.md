@@ -4,6 +4,7 @@ This app now supports:
 - online hosting on Firebase Hosting
 - authentication with email/password (and Google popup)
 - per-user data isolation in Firestore (`users/{uid}/projects`)
+- per-user file storage in Firebase Storage (`users/{uid}/uploads`)
 - master account user creation panel
 
 ## Local setup
@@ -26,10 +27,13 @@ This app now supports:
 2. Create the first master user once in Firebase Authentication (or sign up once before disabling self-signup policy).
 3. Log in with the same email as `VITE_MASTER_EMAIL` and use the in-app "Master User Manager" to create users.
 4. Create Firestore database.
-5. Deploy Firestore rules from this repo:
-   `firebase deploy --only firestore:rules`
+5. Enable Firebase Storage (Build > Storage > Get Started).
+6. Deploy Firestore + Storage rules from this repo:
+   `firebase deploy --only firestore:rules,storage`
 
-Current rules already restrict access so each user can only read/write their own projects.
+If the Firebase Console shows **"An unknown error occurred"** when enabling Storage, wait a few minutes after upgrading to Blaze, try another browser, and ensure the **Cloud Storage API** is enabled for the project in Google Cloud Console. The app will still save using **compressed Firestore-only** mode until Storage works.
+
+Current rules already restrict access so each user can only read/write their own projects and their own uploaded files.
 
 ## Deploy online
 

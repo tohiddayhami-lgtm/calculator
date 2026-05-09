@@ -21,6 +21,12 @@ import {
   serverTimestamp,
   updateDoc 
 } from 'firebase/firestore';
+import {
+  getStorage,
+  ref as storageRef,
+  uploadString,
+  getDownloadURL
+} from 'firebase/storage';
 
 // Icons
 import { 
@@ -63,6 +69,7 @@ declare global {
 let app: any;
 let auth: any;
 let db: any;
+let storage: any;
 let appId = 'export-pro-default';
 let firebaseConfig: any = {};
 
@@ -78,6 +85,7 @@ try {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = getFirestore(app);
+      storage = getStorage(app);
       if (window.__app_id) {
         appId = window.__app_id;
       }
@@ -187,6 +195,228 @@ const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promi
         };
         img.onerror = () => resolve(base64Str);
     });
+};
+
+const FIRESTORE_MAX_BYTES = 1_000_000;
+const isBase64Image = (value: any): value is string => typeof value === 'string' && value.startsWith('data:image/');
+const isBase64DataUrl = (value: any): value is string => typeof value === 'string' && value.startsWith('data:');
+
+const guessExtension = (dataUrl: string): string => {
+    const match = dataUrl.match(/^data:([^;]+);base64,/);
+    if (!match) return 'bin';
+    const mime = match[1];
+    const sub = mime.split('/')[1] || 'bin';
+    if (sub === 'jpeg') return 'jpg';
+    if (sub === 'svg+xml') return 'svg';
+    if (sub === 'quicktime') return 'mov';
+    if (sub.length > 5) return sub.slice(0, 5);
+    return sub;
+};
+
+const uploadBase64ToStorage = async (uid: string, base64: string): Promise<string> => {
+    if (!storage) throw new Error('Firebase Storage is not configured.');
+    const ext = guessExtension(base64);
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const path = `users/${uid}/uploads/${id}.${ext}`;
+    const ref = storageRef(storage, path);
+    await uploadString(ref, base64, 'data_url');
+    return await getDownloadURL(ref);
+};
+
+const uploadAllBinariesDeep = async (
+    value: any,
+    uid: string,
+    onProgress?: (current: number, total: number) => void,
+    counter = { current: 0, total: 0 }
+): Promise<any> => {
+    if (counter.total === 0) {
+        const stats = { count: 0 };
+        const countBinaries = (val: any) => {
+            if (Array.isArray(val)) return val.forEach(countBinaries);
+            if (val && typeof val === 'object') return Object.values(val).forEach(countBinaries);
+            if (isBase64DataUrl(val)) stats.count += 1;
+        };
+        countBinaries(value);
+        counter.total = stats.count;
+    }
+
+    if (Array.isArray(value)) {
+        const out = [];
+        for (const item of value) {
+            out.push(await uploadAllBinariesDeep(item, uid, onProgress, counter));
+        }
+        return out;
+    }
+
+    if (value && typeof value === 'object') {
+        const out: Record<string, any> = {};
+        for (const [key, val] of Object.entries(value)) {
+            out[key] = await uploadAllBinariesDeep(val, uid, onProgress, counter);
+        }
+        return out;
+    }
+
+    if (isBase64DataUrl(value)) {
+        const url = await uploadBase64ToStorage(uid, value);
+        counter.current += 1;
+        if (onProgress) onProgress(counter.current, counter.total);
+        return url;
+    }
+
+    return value;
+};
+
+const estimateBytes = (data: any): number => {
+    try {
+        return new Blob([JSON.stringify(data)]).size;
+    } catch {
+        return 0;
+    }
+};
+
+const compressAllImagesDeep = async (
+    value: any,
+    maxWidth: number,
+    quality: number
+): Promise<any> => {
+    if (Array.isArray(value)) {
+        const result = [];
+        for (const item of value) {
+            result.push(await compressAllImagesDeep(item, maxWidth, quality));
+        }
+        return result;
+    }
+
+    if (value && typeof value === 'object') {
+        const cleaned: Record<string, any> = {};
+        for (const [key, val] of Object.entries(value)) {
+            cleaned[key] = await compressAllImagesDeep(val, maxWidth, quality);
+        }
+        return cleaned;
+    }
+
+    if (isBase64Image(value)) {
+        try {
+            return await compressImage(value, maxWidth, quality);
+        } catch {
+            return value;
+        }
+    }
+
+    return value;
+};
+
+const stripSupplierAttachments = (data: any): { data: any; removed: number } => {
+    let removed = 0;
+    if (!data || !Array.isArray(data.suppliers)) {
+        return { data, removed };
+    }
+
+    const newSuppliers = data.suppliers.map((supplier: any) => {
+        if (!supplier || !Array.isArray(supplier.attachments)) return supplier;
+        if (supplier.attachments.length > 0) removed += supplier.attachments.length;
+        return { ...supplier, attachments: [] };
+    });
+
+    return { data: { ...data, suppliers: newSuppliers }, removed };
+};
+
+const shrinkProjectData = async (
+    data: any,
+    onStep?: (msg: string) => void
+): Promise<{ data: any; warnings: string[] }> => {
+    const warnings: string[] = [];
+    let current = data;
+
+    const passes: Array<{ width: number; quality: number; label: string }> = [
+        { width: 1024, quality: 0.7, label: 'Standard quality (1024px)' },
+        { width: 800, quality: 0.6, label: 'Reduced quality (800px)' },
+        { width: 600, quality: 0.5, label: 'Lower quality (600px)' },
+        { width: 480, quality: 0.45, label: 'Compact quality (480px)' },
+        { width: 360, quality: 0.4, label: 'Aggressive quality (360px)' }
+    ];
+
+    for (const pass of passes) {
+        if (estimateBytes(current) <= FIRESTORE_MAX_BYTES) break;
+        if (onStep) onStep(`Compressing images: ${pass.label}...`);
+        current = await compressAllImagesDeep(current, pass.width, pass.quality);
+    }
+
+    if (estimateBytes(current) > FIRESTORE_MAX_BYTES) {
+        const stripped = stripSupplierAttachments(current);
+        if (stripped.removed > 0) {
+            warnings.push(`Removed ${stripped.removed} supplier attachment(s) (PDF/Video) to reduce size.`);
+            current = stripped.data;
+        }
+    }
+
+    return { data: current, warnings };
+};
+
+const fitToFirestoreLimit = async (
+    data: any,
+    onStep?: (msg: string) => void
+): Promise<{ data: any; sizeBytes: number; warnings: string[]; success: boolean }> => {
+    const cleaned = stripUndefinedDeep(data);
+    let sizeBytes = estimateBytes(cleaned);
+
+    if (sizeBytes <= FIRESTORE_MAX_BYTES) {
+        return { data: cleaned, sizeBytes, warnings: [], success: true };
+    }
+
+    const { data: shrunk, warnings } = await shrinkProjectData(cleaned, onStep);
+    sizeBytes = estimateBytes(shrunk);
+
+    return {
+        data: shrunk,
+        sizeBytes,
+        warnings,
+        success: sizeBytes <= FIRESTORE_MAX_BYTES
+    };
+};
+
+/** Try Storage for base64 blobs; on failure or oversize, compress for Firestore-only. */
+const prepareCloudProjectData = async (
+    rawData: any,
+    uid: string,
+    setProgress: (p: { current: number; total: number } | null) => void
+): Promise<{ data: any; notice?: string }> => {
+    const notices: string[] = [];
+
+    if (storage) {
+        try {
+            const withUrls = await uploadAllBinariesDeep(
+                rawData,
+                uid,
+                (current, total) => setProgress({ current, total })
+            );
+            setProgress(null);
+            const stripped = stripUndefinedDeep(withUrls);
+            if (estimateBytes(stripped) <= FIRESTORE_MAX_BYTES) {
+                return { data: stripped, notice: notices.length ? notices.join('\n') : undefined };
+            }
+            notices.push('After upload, document still exceeded 1MB; applying extra compression.');
+        } catch (e: any) {
+            setProgress(null);
+            console.warn('Firebase Storage upload failed, using Firestore fallback:', e);
+            notices.push(
+                `Storage upload failed (${e?.message || 'unknown'}). Saving compressed copy in Firestore only.`
+            );
+        }
+    } else {
+        notices.push('Firebase Storage is not ready. Saving compressed copy in Firestore only (max ~1MB per project).');
+    }
+
+    const fit = await fitToFirestoreLimit(rawData);
+    setProgress(null);
+    if (!fit.success) {
+        throw new Error(
+            `Project is still ${Math.round(fit.sizeBytes / 1024)}KB after compression (Firestore max 1024KB). ` +
+                'Remove some images or supplier attachments, or finish enabling Storage in Firebase Console.'
+        );
+    }
+    if (fit.warnings.length) notices.push(...fit.warnings);
+    return { data: fit.data, notice: notices.filter(Boolean).join('\n') };
 };
 
 // --- INDEXED DB HELPERS ---
@@ -342,6 +572,7 @@ function AppInner() {
   const [dataAppId, setDataAppId] = useState(appId);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
@@ -708,14 +939,25 @@ function AppInner() {
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, isInvoiceEditable, invoiceOverrides,
         containerCapacity, containerType
     };
-    const projectDataPayload = stripUndefinedDeep(projectDataPayloadRaw);
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     const finalFolder = folderName.trim();
 
+    let projectDataPayload: any;
+
     try {
       if (!isRealCloudUser) {
         throw new Error('Cloud save unavailable. Please sign in again.');
+      }
+
+      const { data: prepared, notice } = await prepareCloudProjectData(
+          projectDataPayloadRaw,
+          user.uid,
+          setUploadProgress
+      );
+      projectDataPayload = prepared;
+      if (notice) {
+        alert(notice);
       }
 
       let savedId = loadedProjectId;
@@ -769,20 +1011,21 @@ function AppInner() {
       setShowSaveModal(false);
     } catch (error: any) { 
         console.error("Save Error:", error);
-        
-        // Emergency Backup Download
+        setUploadProgress(null);
+
         alert(`Save Failed: ${error?.message || 'Unknown error'}${error?.code ? ` (code: ${error.code})` : ''}\n\nDon't worry! Your data is safe. The project file will now be downloaded to your computer as a backup.`);
         const backupProject: SavedProject = {
             id: `backup_${Date.now()}`,
             name: projectName || 'Untitled Backup',
             folder: finalFolder,
             createdAt: { seconds: Math.floor(Date.now() / 1000) },
-            data: projectDataPayload
+            data: projectDataPayload || projectDataPayloadRaw
         };
         handleExportProject(backupProject, { stopPropagation: () => {} } as any);
         
     } finally { 
         setIsSaving(false); 
+        setUploadProgress(null);
     }
   };
 
@@ -981,7 +1224,15 @@ function AppInner() {
                   throw new Error('Cloud import unavailable. Please sign in again.');
               }
 
-              const cleanData = stripUndefinedDeep(newProject.data);
+              const { data: cleanData, notice } = await prepareCloudProjectData(
+                  newProject.data,
+                  user.uid,
+                  setUploadProgress
+              );
+              if (notice) {
+                  alert(notice);
+              }
+
               await withTimeout(
                 addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
                     name: newProject.name,
@@ -998,6 +1249,7 @@ function AppInner() {
 
           } catch (err) {
               console.error("Import error", err);
+              setUploadProgress(null);
               const eAny = err as any;
               alert(`Failed to import project: ${eAny?.message || 'Unknown error'}${eAny?.code ? ` (code: ${eAny.code})` : ''}`);
           }
@@ -4394,6 +4646,18 @@ function AppInner() {
             }
         }
       `}</style>
+
+      {uploadProgress && (
+          <div className="fixed bottom-4 right-4 z-[80] bg-white border border-blue-200 shadow-lg rounded-xl px-4 py-3 flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+              <div>
+                  <p className="text-sm font-semibold text-slate-900">Uploading files to cloud</p>
+                  <p className="text-xs text-slate-500">
+                      {uploadProgress.current} of {uploadProgress.total} uploaded
+                  </p>
+              </div>
+          </div>
+      )}
       
       {/* --- HEADER --- */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50 print:hidden">
