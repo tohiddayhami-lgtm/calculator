@@ -704,11 +704,25 @@ function AppInner() {
 
       if (mode === 'update' && loadedProjectId) {
          // Update
-         await updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
-            name: projectName,
-            folder: finalFolder,
-            data: projectDataPayload
-         });
+         try {
+            await updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
+              name: projectName,
+              folder: finalFolder,
+              data: projectDataPayload
+            });
+         } catch (updateError: any) {
+            if (updateError?.code === 'not-found') {
+              const docRef = await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+                name: projectName,
+                folder: finalFolder,
+                createdAt: serverTimestamp(),
+                data: projectDataPayload
+              });
+              savedId = docRef.id;
+            } else {
+              throw updateError;
+            }
+         }
       } else {
          // New
          const docRef = await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
@@ -727,7 +741,7 @@ function AppInner() {
         console.error("Save Error:", error);
         
         // Emergency Backup Download
-        alert(`Save Failed: ${error.message}\n\nDon't worry! Your data is safe. The project file will now be downloaded to your computer as a backup.`);
+        alert(`Save Failed: ${error?.message || 'Unknown error'}${error?.code ? ` (code: ${error.code})` : ''}\n\nDon't worry! Your data is safe. The project file will now be downloaded to your computer as a backup.`);
         const backupProject: SavedProject = {
             id: `backup_${Date.now()}`,
             name: projectName || 'Untitled Backup',
@@ -869,6 +883,7 @@ function AppInner() {
         }
 
         await deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', deleteConfirmId)); 
+        setSavedProjects(prev => prev.filter(p => p.id !== deleteConfirmId));
         
         if (deleteConfirmId === loadedProjectId) {
             setLoadedProjectId(null);
@@ -879,6 +894,7 @@ function AppInner() {
         console.error(error);
         const code = error?.code || '';
         if (code === 'not-found') {
+            setSavedProjects(prev => prev.filter(p => p.id !== deleteConfirmId));
             setDeleteConfirmId(null);
             return;
         }
@@ -944,7 +960,8 @@ function AppInner() {
 
           } catch (err) {
               console.error("Import error", err);
-              alert("Failed to import project. Please check the file.");
+              const eAny = err as any;
+              alert(`Failed to import project: ${eAny?.message || 'Unknown error'}${eAny?.code ? ` (code: ${eAny.code})` : ''}`);
           }
       };
       reader.readAsText(file);
