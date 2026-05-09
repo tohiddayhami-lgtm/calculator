@@ -169,6 +169,57 @@ const withTimeout = async <T,>(promise: Promise<T>, ms = 15000, label = 'Operati
   });
 };
 
+const isMobileBrowser = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+};
+
+const triggerPrint = (): void => {
+    if (typeof window === 'undefined') return;
+
+    if (!isMobileBrowser()) {
+        try {
+            window.print();
+        } catch (e) {
+            console.error('window.print failed', e);
+            alert('Print is not available in this browser. Please use the browser menu > Print.');
+        }
+        return;
+    }
+
+    try {
+        const docHtml = document.documentElement.outerHTML;
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Please allow pop-ups for this site to print, or use the browser menu > Share > Print.');
+            return;
+        }
+
+        printWindow.document.open();
+        printWindow.document.write(docHtml);
+        printWindow.document.close();
+
+        printWindow.addEventListener('load', () => {
+            setTimeout(() => {
+                try {
+                    printWindow.focus();
+                    printWindow.print();
+                } catch (e) {
+                    console.error('Mobile print failed', e);
+                }
+            }, 400);
+        });
+    } catch (e) {
+        console.error('Mobile print fallback failed', e);
+        try {
+            window.print();
+        } catch {
+            alert('Print is not available. Please use the browser menu > Print or Share.');
+        }
+    }
+};
+
 const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promise<string> => {
     return new Promise((resolve) => {
         const img = new Image();
@@ -3225,7 +3276,7 @@ function AppInner() {
 
               <div className="pt-6 border-t border-slate-200 print:hidden">
                   <button 
-                      onClick={() => window.print()} 
+                      onClick={triggerPrint} 
                       className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center justify-center gap-2"
                   >
                       <Printer className="w-4 h-4" />
@@ -3999,7 +4050,7 @@ function AppInner() {
                    </div>
 
                    <button 
-                      onClick={() => window.print()} 
+                      onClick={triggerPrint} 
                       className="w-full mt-4 bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center justify-center gap-2"
                   >
                       <Printer className="w-4 h-4" /> Print Invoice
@@ -4313,7 +4364,7 @@ function AppInner() {
 
               <div className="pt-6 border-t border-slate-200 print:hidden">
                   <button 
-                      onClick={() => window.print()} 
+                      onClick={triggerPrint} 
                       className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center justify-center gap-2"
                   >
                       <Printer className="w-4 h-4" />
@@ -4713,7 +4764,7 @@ function AppInner() {
                     <Save className="w-5 h-5" />
                 </button>
 
-                <button onClick={() => window.print()} className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Print / Save as PDF">
+                <button onClick={triggerPrint} className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Print / Save as PDF">
                     <Printer className="w-5 h-5" />
                 </button>
 
@@ -4789,7 +4840,7 @@ function AppInner() {
                     <Save className="w-4 h-4" />
                     Save
                 </button>
-                <button onClick={() => window.print()} className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-medium">
+                <button onClick={triggerPrint} className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-medium">
                     <Printer className="w-4 h-4" />
                     Print
                 </button>
