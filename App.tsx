@@ -272,8 +272,38 @@ const FormattedNumberInput = ({
   );
 };
 
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; message: string }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error?.message || 'Unknown application error' };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('App render crash:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+          <div className="bg-white border border-red-200 rounded-xl p-6 w-full max-w-xl text-center shadow-sm">
+            <h2 className="text-lg font-bold text-red-700 mb-2">Application Error</h2>
+            <p className="text-sm text-slate-700 break-words">{this.state.message}</p>
+            <p className="text-xs text-slate-500 mt-3">Please refresh. If it continues, share this message.</p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // --- MAIN APP COMPONENT ---
-export default function App() {
+function AppInner() {
   
   // -- STATE: VIEW & UI --
   const [view, setView] = useState<'dashboard' | 'invoice' | 'pricelist' | 'catalog' | 'suppliers'>('dashboard');
@@ -286,6 +316,7 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [cloudLoadError, setCloudLoadError] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
@@ -459,14 +490,23 @@ export default function App() {
     if (authLoading) return;
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    setCloudLoadError('');
 
     if (isRealCloudUser) {
         const projectsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'projects');
-        const unsubscribe = onSnapshot(projectsRef, (snapshot: any) => {
-            const loadedProjects = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as SavedProject[];
-            loadedProjects.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-            setSavedProjects(loadedProjects);
-        });
+        const unsubscribe = onSnapshot(
+          projectsRef,
+          (snapshot: any) => {
+              const loadedProjects = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as SavedProject[];
+              loadedProjects.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+              setSavedProjects(loadedProjects);
+          },
+          (error: any) => {
+              console.error('Cloud projects listener failed:', error);
+              setCloudLoadError(error?.message || 'Failed to load cloud projects.');
+              setSavedProjects([]);
+          }
+        );
         return () => unsubscribe();
     } else {
         loadLocalProjects();
@@ -606,64 +646,6 @@ export default function App() {
           setIsCreatingUser(false);
       }
   };
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
-          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-600" />
-          <p className="text-sm text-slate-700">Checking authentication...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-sm">
-          <div className="text-center mb-6">
-            <h1 className="text-xl font-bold text-slate-900">CloudExport Pro</h1>
-            <p className="text-sm text-slate-500 mt-1">Sign in with your email and password</p>
-          </div>
-
-          <div className="space-y-3">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleEmailAuth();
-              }}
-              placeholder="Password"
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleEmailAuth}
-              disabled={authLoading || !auth}
-              className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
-            >
-              Sign In
-            </button>
-          </div>
-
-          {!auth && (
-            <p className="text-xs text-amber-700 mt-3">
-              Firebase is not configured. Add Firebase env values in `.env.local`.
-            </p>
-          )}
-          {authError && <p className="text-xs text-red-600 mt-3">{authError}</p>}
-        </div>
-      </div>
-    );
-  }
 
   // --- PROJECT CRUD HANDLERS ---
   const handleSaveProject = async (mode: 'new' | 'update' = 'new') => {
@@ -4237,6 +4219,64 @@ export default function App() {
       </div>
   );
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-600" />
+          <p className="text-sm text-slate-700">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-sm">
+          <div className="text-center mb-6">
+            <h1 className="text-xl font-bold text-slate-900">CloudExport Pro</h1>
+            <p className="text-sm text-slate-500 mt-1">Sign in with your email and password</p>
+          </div>
+
+          <div className="space-y-3">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleEmailAuth();
+              }}
+              placeholder="Password"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={handleEmailAuth}
+              disabled={authLoading || !auth}
+              className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              Sign In
+            </button>
+          </div>
+
+          {!auth && (
+            <p className="text-xs text-amber-700 mt-3">
+              Firebase is not configured. Add Firebase env values in `.env.local`.
+            </p>
+          )}
+          {authError && <p className="text-xs text-red-600 mt-3">{authError}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <style>{`
@@ -4440,6 +4480,11 @@ export default function App() {
 
       {/* --- MAIN CONTENT --- */}
       <main className="max-w-[1600px] mx-auto p-4 md:p-6 print:p-0 print:max-w-none">
+          {cloudLoadError && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {cloudLoadError}
+              </div>
+          )}
           {view === 'dashboard' && renderDashboard()}
           {view === 'invoice' && renderInvoice()}
           {view === 'pricelist' && renderPriceList()}
@@ -4653,5 +4698,13 @@ export default function App() {
       )}
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppInner />
+    </AppErrorBoundary>
   );
 }
