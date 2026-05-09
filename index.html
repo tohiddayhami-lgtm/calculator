@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CloudExport Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Mock configuration to allow the app to initialize without crashing if no real config is provided.
+      // In a real environment, these would be injected by the server or build process.
+      window.__firebase_config = JSON.stringify({
+        apiKey: "demo-api-key",
+        authDomain: "demo.firebaseapp.com",
+        projectId: "demo-project",
+        storageBucket: "demo.appspot.com",
+        messagingSenderId: "123456789",
+        appId: "1:123456789:web:abcdef123456"
+      });
+      window.__app_id = "export-pro-default";
+      window.__initial_auth_token = ""; // Leave empty for anonymous auth
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
