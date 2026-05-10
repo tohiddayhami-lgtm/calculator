@@ -2068,6 +2068,75 @@ function AppInner() {
       }
   };
 
+  const handleCreateInvoiceFromInquiry = (inq: any) => {
+      if (!inq) return;
+      const cust = inq.customer || {};
+      const items = (inq.items || []) as any[];
+
+      const fullName = (cust.customer_name || '').trim();
+      const company = (cust.company || '').trim();
+      const billLines: string[] = [];
+      if (company) billLines.push(company);
+      const cityCountry = [cust.destination_port, cust.country].filter(Boolean).join(', ').trim();
+      if (cityCountry) billLines.push(cityCountry);
+      if (cust.email) billLines.push(`Email: ${cust.email}`);
+      if (cust.phone) billLines.push(`Phone: ${cust.phone}`);
+
+      setCustomerName(fullName || company || 'Customer');
+      setCustomerAddress(billLines.join('\n'));
+
+      if (cust.payment_terms) setPaymentTerms(cust.payment_terms);
+
+      if (cust.incoterm) {
+          const term = String(cust.incoterm).toUpperCase().trim();
+          if (['EXW', 'FOB', 'CIF', 'DDP'].includes(term)) {
+              setInvoiceTerms([term]);
+              setSelectedTerms((prev) => prev.includes(term) ? prev : [...prev, term]);
+          }
+      }
+
+      const overrides: Record<number, { qty?: number; unitPrices?: Record<string, number>; packPrices?: Record<string, number> }> = {};
+      const matchedSkus: string[] = [];
+      const unmatched: string[] = [];
+      items.forEach((it) => {
+          const sku = (it.sku || '').trim();
+          const totalUnits = Number(it.totalUnits) || (Number(it.qty) || 0) * (Number(it.pack) || 1);
+          if (!sku || !totalUnits) {
+              if (it.name) unmatched.push(`${it.name} (${it.qty || 0})`);
+              return;
+          }
+          const product = products.find((p) => (p.sku || '').trim().toLowerCase() === sku.toLowerCase());
+          if (product) {
+              overrides[product.id] = { ...(invoiceOverrides[product.id] || {}), qty: totalUnits };
+              matchedSkus.push(sku);
+          } else {
+              unmatched.push(`${sku} - ${it.name || ''} (${totalUnits})`);
+          }
+      });
+      if (Object.keys(overrides).length) {
+          setIsInvoiceEditable(true);
+          setInvoiceOverrides((prev) => ({ ...prev, ...overrides }));
+      }
+
+      setInvoiceRef(`INV-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
+
+      handleMarkInquiry(inq.id, 'read');
+      setShowInquiries(false);
+      setSelectedInquiry(null);
+      setView('invoice');
+
+      if (unmatched.length > 0) {
+          setTimeout(() => {
+              alert(
+                  `Invoice prepared with ${matchedSkus.length} item(s).\n\n` +
+                  `Could not match these requested items (no product with the same SKU exists in your list):\n` +
+                  `• ${unmatched.join('\n• ')}\n\n` +
+                  `Add these products manually before issuing the invoice.`
+              );
+          }, 300);
+      }
+  };
+
   const formatInquiryDate = (val: any): string => {
       try {
           if (!val) return '';
@@ -7226,25 +7295,36 @@ function AppInner() {
                               const isNew = !inq.status || inq.status === 'new';
                               const isSelected = selectedInquiry?.id === inq.id;
                               return (
-                                  <button
+                                  <div
                                       key={inq.id}
-                                      onClick={() => { setSelectedInquiry(inq); if (isNew) handleMarkInquiry(inq.id, 'read'); }}
-                                      className={`w-full text-left px-3 py-2.5 border-b border-slate-100 hover:bg-amber-50/50 transition-colors ${isSelected ? 'bg-amber-50' : ''}`}
+                                      className={`border-b border-slate-100 hover:bg-amber-50/50 transition-colors ${isSelected ? 'bg-amber-50' : ''}`}
                                   >
-                                      <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1 min-w-0">
-                                              <div className="flex items-center gap-1.5">
-                                                  {isNew && <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />}
-                                                  <span className="text-sm font-semibold text-slate-800 truncate">{cust.customer_name || 'Unnamed customer'}</span>
+                                      <button
+                                          onClick={() => { setSelectedInquiry(inq); if (isNew) handleMarkInquiry(inq.id, 'read'); }}
+                                          className="w-full text-left px-3 py-2.5"
+                                      >
+                                          <div className="flex items-start justify-between gap-2">
+                                              <div className="flex-1 min-w-0">
+                                                  <div className="flex items-center gap-1.5">
+                                                      {isNew && <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />}
+                                                      <span className="text-sm font-semibold text-slate-800 truncate">{cust.customer_name || 'Unnamed customer'}</span>
+                                                  </div>
+                                                  <div className="text-[11px] text-slate-500 truncate">{cust.company || cust.email || ''}</div>
+                                                  <div className="text-[10px] text-slate-400 mt-0.5">{formatInquiryDate(inq.createdAt)}</div>
                                               </div>
-                                              <div className="text-[11px] text-slate-500 truncate">{cust.company || cust.email || ''}</div>
-                                              <div className="text-[10px] text-slate-400 mt-0.5">{formatInquiryDate(inq.createdAt)}</div>
+                                              <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-mono flex-shrink-0">
+                                                  {(inq.items || []).length} item{(inq.items || []).length !== 1 ? 's' : ''}
+                                              </span>
                                           </div>
-                                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-mono flex-shrink-0">
-                                              {(inq.items || []).length} item{(inq.items || []).length !== 1 ? 's' : ''}
-                                          </span>
-                                      </div>
-                                  </button>
+                                      </button>
+                                      <button
+                                          onClick={(e) => { e.stopPropagation(); handleCreateInvoiceFromInquiry(inq); }}
+                                          className="w-full px-3 py-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border-t border-blue-100 flex items-center justify-center gap-1"
+                                          title="Pre-fill the Proforma Invoice and switch to it"
+                                      >
+                                          <FileCheck className="w-3 h-3" /> Create Invoice
+                                      </button>
+                                  </div>
                               );
                           })}
                       </div>
@@ -7269,7 +7349,14 @@ function AppInner() {
                                               <h4 className="text-lg font-bold text-slate-900">{cust.customer_name || 'Unnamed customer'}</h4>
                                               <p className="text-xs text-slate-500">{formatInquiryDate(inq.createdAt)} · Catalog: {inq.catalog || '-'}</p>
                                           </div>
-                                          <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                              <button
+                                                  onClick={() => handleCreateInvoiceFromInquiry(inq)}
+                                                  className="px-3 py-1.5 text-xs font-bold bg-blue-600 text-white rounded shadow hover:bg-blue-700 flex items-center gap-1.5"
+                                                  title="Pre-fill the Proforma Invoice with this customer's info and requested quantities"
+                                              >
+                                                  <FileCheck className="w-3.5 h-3.5" /> Create Invoice
+                                              </button>
                                               {cust.email && (
                                                   <a
                                                       href={`mailto:${cust.email}?subject=${encodeURIComponent('Re: Your inquiry - ' + (inq.catalog || ''))}`}
