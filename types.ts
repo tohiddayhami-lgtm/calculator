@@ -283,6 +283,13 @@ export interface SavedProject {
     invoiceRef?: string;
     billedFrom?: string; // Company Name
     billedFromDetails?: string; // Address/Country
+    /** Logo image (data URL or cloud URL after save) — shown on proforma header */
+    invoiceLogo?: string;
+    invoiceSellerEmail?: string;
+    invoiceSellerPhone?: string;
+    invoiceSellerWebsite?: string;
+    /** VAT / tax / company registration ID */
+    invoiceSellerTaxId?: string;
     paymentTerms?: string;
     showImages?: boolean; // Preference to show images on invoice
     showPackInfo?: boolean; // New: Preference to show pack info in dashboard

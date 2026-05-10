@@ -45,7 +45,7 @@ import {
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
-  AlignJustify, ArrowLeft, Pencil, Inbox, Mail, ShoppingCart, Link2
+  AlignJustify, ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2, Building2, Phone
 } from 'lucide-react';
 
 // Types
@@ -1724,6 +1724,11 @@ function AppInner() {
   const [customerAddress, setCustomerAddress] = useState('');
   const [billedFrom, setBilledFrom] = useState('');
   const [billedFromDetails, setBilledFromDetails] = useState('');
+  const [invoiceLogo, setInvoiceLogo] = useState('');
+  const [invoiceSellerEmail, setInvoiceSellerEmail] = useState('');
+  const [invoiceSellerPhone, setInvoiceSellerPhone] = useState('');
+  const [invoiceSellerWebsite, setInvoiceSellerWebsite] = useState('');
+  const [invoiceSellerTaxId, setInvoiceSellerTaxId] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('T/T 50% Advance');
   const [invoiceRef, setInvoiceRef] = useState(String(Math.floor(Math.random() * 10000)));
   const [invoiceTitle, setInvoiceTitle] = useState('Proforma Invoice');
@@ -2447,7 +2452,9 @@ function AppInner() {
     
     const projectDataPayloadRaw = {
         config, rates, products, logistics, selectedTerms, notes, visibleScenarioTerms, invoiceTerms,
-        customerName, customerAddress, invoiceRef, billedFrom, billedFromDetails, paymentTerms, showImages, showPackInfo,
+        customerName, customerAddress, invoiceRef,
+        billedFrom, billedFromDetails, invoiceLogo, invoiceSellerEmail, invoiceSellerPhone, invoiceSellerWebsite, invoiceSellerTaxId,
+        paymentTerms, showImages, showPackInfo,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
         containerCapacity, containerType
@@ -2596,6 +2603,11 @@ function AppInner() {
     setCustomerAddress(project.data.customerAddress || '');
     setBilledFrom(project.data.billedFrom || '');
     setBilledFromDetails(project.data.billedFromDetails || '');
+    setInvoiceLogo((project.data as any).invoiceLogo || '');
+    setInvoiceSellerEmail((project.data as any).invoiceSellerEmail || '');
+    setInvoiceSellerPhone((project.data as any).invoiceSellerPhone || '');
+    setInvoiceSellerWebsite((project.data as any).invoiceSellerWebsite || '');
+    setInvoiceSellerTaxId((project.data as any).invoiceSellerTaxId || '');
     setPaymentTerms(project.data.paymentTerms || 'T/T 50% Advance');
     setInvoiceRef(project.data.invoiceRef || String(Math.floor(Math.random() * 10000)));
     setShowImages(project.data.showImages || false);
@@ -2971,6 +2983,22 @@ function AppInner() {
         };
         reader.readAsDataURL(file);
     }
+  };
+
+  const handleInvoiceLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) {
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const raw = reader.result as string;
+      const compressed = await compressImage(raw, 420, 0.85);
+      setInvoiceLogo(compressed);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleSupplierImageUpload = (id: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3529,6 +3557,11 @@ function AppInner() {
             invoiceRef,
             billedFrom,
             billedFromDetails,
+            invoiceLogo,
+            invoiceSellerEmail,
+            invoiceSellerPhone,
+            invoiceSellerWebsite,
+            invoiceSellerTaxId,
             paymentTerms,
             showImages,
             showPackInfo,
@@ -3579,6 +3612,11 @@ function AppInner() {
     invoiceRef,
     billedFrom,
     billedFromDetails,
+    invoiceLogo,
+    invoiceSellerEmail,
+    invoiceSellerPhone,
+    invoiceSellerWebsite,
+    invoiceSellerTaxId,
     paymentTerms,
     showImages,
     showPackInfo,
@@ -6830,15 +6868,74 @@ function AppInner() {
                    
                    <hr className="border-slate-100"/>
 
-                   <div>
-                       <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Seller Name (Billed From)</label>
-                       <input type="text" value={billedFrom} onChange={(e) => setBilledFrom(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" placeholder="Your Company Name" />
+                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                       <div className="flex items-center gap-2 text-slate-800">
+                           <Building2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                           <span className="text-xs font-bold uppercase tracking-wide">Seller / business</span>
+                       </div>
+                       <p className="text-[9px] text-slate-500 leading-snug">
+                           Stored in this project when you save to cloud (or export JSON). Use Save Project to keep logo and details.
+                       </p>
+                       <div>
+                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Legal / trading name</label>
+                           <input type="text" value={billedFrom} onChange={(e) => setBilledFrom(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 bg-white" placeholder="Company name" />
+                       </div>
+                       <div>
+                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Address & details</label>
+                           <textarea rows={4} value={billedFromDetails} onChange={(e) => setBilledFromDetails(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-y min-h-[5rem] bg-white" placeholder="Street, city, country, postal code…" />
+                       </div>
+                       <div className="grid grid-cols-1 gap-2">
+                           <div>
+                               <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5 flex items-center gap-1">
+                                   <Phone className="w-3 h-3" /> Phone
+                               </label>
+                               <input type="text" value={invoiceSellerPhone} onChange={(e) => setInvoiceSellerPhone(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white" placeholder="+98 …" />
+                           </div>
+                           <div>
+                               <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5 flex items-center gap-1">
+                                   <Mail className="w-3 h-3" /> Email
+                               </label>
+                               <input type="email" value={invoiceSellerEmail} onChange={(e) => setInvoiceSellerEmail(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white" placeholder="sales@company.com" />
+                           </div>
+                           <div>
+                               <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5 flex items-center gap-1">
+                                   <Globe className="w-3 h-3" /> Website
+                               </label>
+                               <input type="text" value={invoiceSellerWebsite} onChange={(e) => setInvoiceSellerWebsite(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white" placeholder="www.example.com" />
+                           </div>
+                           <div>
+                               <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Tax / VAT / reg. ID</label>
+                               <input type="text" value={invoiceSellerTaxId} onChange={(e) => setInvoiceSellerTaxId(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white" placeholder="Economic code, VAT ID…" />
+                           </div>
+                       </div>
+                       <div>
+                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Logo (print & PDF)</label>
+                           <div className="flex flex-wrap items-center gap-2">
+                               <label className="inline-flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium bg-white border border-slate-300 rounded cursor-pointer hover:bg-slate-50">
+                                   <Upload className="w-3.5 h-3.5" />
+                                   Upload image
+                                   <input type="file" accept="image/*" className="hidden" onChange={handleInvoiceLogoUpload} />
+                               </label>
+                               {invoiceLogo ? (
+                                   <button
+                                       type="button"
+                                       onClick={() => setInvoiceLogo('')}
+                                       className="text-[11px] text-red-600 hover:underline"
+                                   >
+                                       Remove logo
+                                   </button>
+                               ) : null}
+                           </div>
+                           {invoiceLogo ? (
+                               <div className="mt-2 flex justify-center p-2 bg-white border border-slate-200 rounded">
+                                   <img src={invoiceLogo} alt="Invoice logo preview" className="max-h-16 max-w-full object-contain" />
+                               </div>
+                           ) : (
+                               <p className="text-[9px] text-slate-400 mt-1">PNG or JPG recommended. Shown top-right on the invoice.</p>
+                           )}
+                       </div>
                    </div>
-                   <div>
-                       <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Seller Address/Country</label>
-                       <textarea rows={3} value={billedFromDetails} onChange={(e) => setBilledFromDetails(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none" placeholder="Address, City, Country..." />
-                   </div>
-                   
+
                    <hr className="border-slate-100"/>
 
                    <div>
@@ -7023,15 +7120,51 @@ function AppInner() {
                <div className="max-w-[210mm] mx-auto bg-white p-12 shadow-sm min-h-[297mm] print:shadow-none print:w-full print:max-w-none">
                    
                    {/* Header */}
-                   <div className="flex justify-between items-start mb-12">
-                       <div>
+                   <div className="flex justify-between items-start gap-6 mb-12">
+                       <div className="min-w-0 flex-1">
                            <h1 className="text-4xl font-bold text-slate-900 mb-2">{invoiceTitle}</h1>
                            <p className="text-slate-500 text-sm">#{invoiceRef}</p>
                            <p className="text-slate-500 text-sm">Date: {new Date().toLocaleDateString()}</p>
                        </div>
-                       <div className="text-right">
-                           <h2 className="text-lg font-bold text-slate-800">{billedFrom || 'Your Company Name'}</h2>
-                           <div className="text-sm text-slate-600 whitespace-pre-line font-medium">{billedFromDetails || 'Address Line 1\nCountry'}</div>
+                       <div className="text-right shrink-0 max-w-[min(100%,280px)] flex flex-col items-end gap-3">
+                           {invoiceLogo ? (
+                               <img
+                                   src={invoiceLogo}
+                                   alt=""
+                                   className="max-h-[72px] max-w-[200px] w-auto object-contain object-right print:max-h-[64px]"
+                               />
+                           ) : null}
+                           <div className="w-full">
+                               <h2 className="text-lg font-bold text-slate-800">{billedFrom || 'Your Company Name'}</h2>
+                               {billedFromDetails ? (
+                                   <div className="text-sm text-slate-600 whitespace-pre-line font-medium mt-1">{billedFromDetails}</div>
+                               ) : (
+                                   <div className="text-sm text-slate-400 whitespace-pre-line font-medium mt-1">Address line…</div>
+                               )}
+                               {(invoiceSellerPhone || invoiceSellerEmail || invoiceSellerWebsite || invoiceSellerTaxId) && (
+                                   <div className="text-xs text-slate-500 mt-2 space-y-0.5 text-right">
+                                       {invoiceSellerPhone ? <div>{invoiceSellerPhone}</div> : null}
+                                       {invoiceSellerEmail ? <div>{invoiceSellerEmail}</div> : null}
+                                       {invoiceSellerWebsite ? (
+                                           <div>
+                                               <a
+                                                   href={
+                                                       /^https?:\/\//i.test(invoiceSellerWebsite.trim())
+                                                           ? invoiceSellerWebsite.trim()
+                                                           : `https://${invoiceSellerWebsite.trim()}`
+                                                   }
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   className="text-blue-600 underline break-all"
+                                               >
+                                                   {invoiceSellerWebsite.trim()}
+                                               </a>
+                                           </div>
+                                       ) : null}
+                                       {invoiceSellerTaxId ? <div className="text-slate-600 font-medium">Tax / VAT: {invoiceSellerTaxId}</div> : null}
+                                   </div>
+                               )}
+                           </div>
                        </div>
                    </div>
 
