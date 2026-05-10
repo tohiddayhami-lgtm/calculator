@@ -193,6 +193,15 @@ export interface CatalogConfig {
   googleFormUrl?: string;
   googleFormButtonText?: string;
   googleFormHelperText?: string;
+
+  // Shopping cart on HTML export
+  cartEnabled?: boolean;
+  orderEmail?: string;
+  orderIncoterms?: string[]; // e.g. ['EXW', 'FOB', 'CIF', 'DDP']
+  orderPorts?: string[]; // suggestion list of common destination ports
+  cartButtonText?: string;
+  cartTitle?: string;
+  orderThankYouText?: string;
   showCustomization?: boolean;
   customizationText?: string;
   showPartners?: boolean;

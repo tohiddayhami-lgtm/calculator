@@ -319,6 +319,14 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const formButton = cc.googleFormButtonText || 'Send Purchase Request';
     const formHelper = cc.googleFormHelperText || '';
 
+    const cartEnabled = cc.cartEnabled !== false;
+    const orderEmail = (cc.orderEmail || '').trim();
+    const incoterms: string[] = (cc.orderIncoterms && cc.orderIncoterms.length) ? cc.orderIncoterms : ['EXW', 'FOB', 'CIF', 'DDP'];
+    const orderPorts: string[] = cc.orderPorts || [];
+    const cartButtonText = cc.cartButtonText || 'Request Quote';
+    const cartTitle = cc.cartTitle || 'Your Inquiry Cart';
+    const orderThankYouText = cc.orderThankYouText || 'Thank you! Your inquiry has been received.';
+
     // Convert target prices using rates from app — passed via products that already have toOutput-applied targetUnitOutput? No, we need to compute here.
     // We'll add helper that uses rates inline. Pass conversion via product's already-computed scenarioPrices for sell, and the raw targetPrice we convert via simple ratio that we don't have here.
     // To avoid passing rates, we precompute targetUnitOutput on the product objects before calling this function would be cleaner. For now: we trust the targetPrice is in any currency stored on product, but we won't convert here — we'll just display in its own currency if different, or in output currency if same.
@@ -415,8 +423,26 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             ? `<span class="hs-badge">HS: ${escapeHtml(p.hsCode)}</span>`
             : '';
 
+        const cartName = p.catalogName || p.name || 'Item';
+        const cartUnit = p.measurementUnit || baseUnit;
+        const cartThumb = (p.image || allImages[0] || '');
+        const cartDataAttrs = cartEnabled ? `
+            data-cart-sku="${escapeAttr(p.sku || '')}"
+            data-cart-name="${escapeAttr(cartName)}"
+            data-cart-unit="${escapeAttr(cartUnit)}"
+            data-cart-pack="${escapeAttr(String(p.itemsPerPack || 0))}"
+            data-cart-moq="${escapeAttr(String(p.catalogMOQ || p.qty || 0))}"
+            data-cart-img="${escapeAttr(cartThumb)}"
+        ` : '';
+        const addToCartBtn = cartEnabled
+            ? `<button type="button" class="card-cta cart-add-btn" data-add-to-cart>Add to Inquiry</button>`
+            : '';
+        const inquireBtn = formUrl
+            ? `<a class="card-cta cta-secondary" href="${escapeAttr(formUrl)}?utm_sku=${encodeURIComponent(p.sku || '')}" target="_blank" rel="noopener">Inquire (form)</a>`
+            : '';
+
         return `
-            <article class="card" data-idx="${idx}">
+            <article class="card" data-idx="${idx}" ${cartDataAttrs}>
                 <div class="carousel" data-images="${allImages.length}">
                     ${slidesHtml}
                     ${arrowsHtml}
@@ -424,12 +450,13 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     ${groupBadge}
                 </div>
                 <div class="card-body">
-                    <h3 class="product-name">${escapeHtml(p.catalogName || p.name)}</h3>
+                    <h3 class="product-name">${escapeHtml(cartName)}</h3>
                     <div class="badges">${skuBadge}${hsBadge}</div>
                     ${descHtml}
                     <div class="meta-grid">${packHtml}${moqHtml}</div>
                     ${(showPrices || targetRowHtml) ? `<div class="prices">${priceRows}${targetRowHtml}</div>` : ''}
-                    ${formUrl ? `<a class="card-cta" href="${escapeAttr(formUrl)}?utm_sku=${encodeURIComponent(p.sku || '')}" target="_blank" rel="noopener">Inquire about this item</a>` : ''}
+                    ${addToCartBtn}
+                    ${inquireBtn}
                 </div>
             </article>
         `;
@@ -644,11 +671,137 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .social-chip { background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 999px; font-size: 12px; }
         .footer-text { font-size: 11px; opacity: 0.5; margin-top: 24px; }
 
+        /* ============ INQUIRY CART ============ */
+        .cta-secondary { background: transparent !important; color: var(--primary) !important; border: 1px solid var(--primary); }
+        .cart-add-btn { background: var(--primary); }
+        .cart-add-btn.added { background: #10b981 !important; }
+
+        .cart-fab { position: fixed; bottom: 18px; right: 18px; z-index: 1000; background: var(--primary); color: #fff; border: none; cursor: pointer; padding: 14px 20px; border-radius: 999px; font-size: 14px; font-weight: 700; box-shadow: 0 12px 32px rgba(0,0,0,0.3); display: none; align-items: center; gap: 10px; transition: transform 0.18s; }
+        .cart-fab.show { display: inline-flex; }
+        .cart-fab:active { transform: scale(0.96); }
+        .cart-fab .badge { background: #fff; color: var(--primary); font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 999px; min-width: 22px; text-align: center; }
+        @supports (padding: max(0px)) { .cart-fab { bottom: max(18px, env(safe-area-inset-bottom)); right: max(18px, env(safe-area-inset-right)); } }
+
+        .cart-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.55); backdrop-filter: blur(4px); z-index: 1100; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+        .cart-overlay.open { opacity: 1; pointer-events: auto; }
+
+        .cart-drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(440px, 100vw); background: #fff; z-index: 1200; transform: translateX(100%); transition: transform 0.3s ease; display: flex; flex-direction: column; box-shadow: -20px 0 40px rgba(0,0,0,0.2); }
+        html[dir="rtl"] .cart-drawer { right: auto; left: 0; transform: translateX(-100%); box-shadow: 20px 0 40px rgba(0,0,0,0.2); }
+        .cart-drawer.open { transform: translateX(0); }
+        .cart-header { flex-shrink: 0; padding: 18px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: var(--primary); color: #fff; }
+        .cart-header h2 { font-size: 17px; font-weight: 800; }
+        .cart-close { background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; font-size: 22px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .cart-body { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+        .cart-empty { text-align: center; padding: 40px 20px; color: #94a3b8; }
+        .cart-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+        .cart-item:last-child { border-bottom: none; }
+        .cart-item img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: #f1f5f9; flex-shrink: 0; }
+        .cart-item .info { flex: 1; min-width: 0; }
+        .cart-item .name { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.3; }
+        .cart-item .sku { font-size: 11px; font-family: ui-monospace, monospace; color: #64748b; margin-top: 2px; }
+        .cart-item .row2 { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+        .qty-row { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+        .qty-row button { width: 26px; height: 26px; border: none; background: #f8fafc; color: #475569; cursor: pointer; font-size: 16px; font-weight: 700; line-height: 1; }
+        .qty-row button:active { background: #e2e8f0; }
+        .qty-row input { width: 60px; height: 26px; border: none; text-align: center; font-size: 13px; font-weight: 600; color: #0f172a; outline: none; -moz-appearance: textfield; }
+        .qty-row input::-webkit-outer-spin-button, .qty-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .cart-item .unit { font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+        .cart-item .remove { margin-left: auto; background: transparent; border: none; color: #ef4444; cursor: pointer; font-size: 12px; padding: 4px 6px; }
+
+        .cart-form { padding: 16px; border-top: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0; max-height: 55vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .cart-form h3 { font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .cart-form .field { margin-bottom: 10px; }
+        .cart-form label { display: block; font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 4px; }
+        .cart-form input, .cart-form select, .cart-form textarea { width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; background: #fff; outline: none; font-family: inherit; }
+        .cart-form input:focus, .cart-form select:focus, .cart-form textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,23,42,0.08); }
+        .cart-form .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .cart-form .req::after { content: ' *'; color: #ef4444; }
+        .submit-btn { width: 100%; padding: 14px 20px; background: var(--primary); color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 20px rgba(0,0,0,0.15); transition: transform 0.18s, opacity 0.18s; margin-top: 8px; }
+        .submit-btn:active { transform: scale(0.98); }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .submit-status { font-size: 12px; text-align: center; margin-top: 8px; min-height: 1em; }
+        .submit-status.error { color: #ef4444; }
+        .submit-status.ok { color: #059669; }
+
+        .thanks-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.7); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(6px); }
+        .thanks-overlay.open { display: flex; }
+        .thanks-card { background: #fff; padding: 32px 28px; border-radius: 24px; max-width: 380px; text-align: center; box-shadow: 0 32px 64px rgba(0,0,0,0.3); }
+        .thanks-icon { width: 64px; height: 64px; border-radius: 50%; background: #10b981; color: #fff; font-size: 32px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+        .thanks-card h3 { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+        .thanks-card p { font-size: 14px; color: #64748b; line-height: 1.6; margin-bottom: 20px; }
+        .thanks-card button { padding: 12px 28px; background: var(--primary); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+
         @media print {
-            .nav, .card-cta { display: none !important; }
+            .nav, .card-cta, .cart-fab, .cart-overlay, .cart-drawer, .thanks-overlay { display: none !important; }
             .card { break-inside: avoid; }
         }
     `;
+
+    const cartHtml = cartEnabled ? `
+        <button type="button" class="cart-fab" id="cart-fab" aria-label="Open inquiry cart">
+            <span>${escapeHtml(cartButtonText)}</span>
+            <span class="badge" id="cart-fab-count">0</span>
+        </button>
+        <div class="cart-overlay" id="cart-overlay"></div>
+        <aside class="cart-drawer" id="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title">
+            <header class="cart-header">
+                <h2 id="cart-title">${escapeHtml(cartTitle)}</h2>
+                <button type="button" class="cart-close" id="cart-close" aria-label="Close">&times;</button>
+            </header>
+            <div class="cart-body" id="cart-body">
+                <div class="cart-empty" id="cart-empty">No items yet. Tap "Add to Inquiry" on a product to start.</div>
+            </div>
+            <form class="cart-form" id="cart-form" autocomplete="on" novalidate>
+                <h3>Your Information</h3>
+                <div class="grid2">
+                    <div class="field"><label class="req" for="cf-name">Full Name</label><input id="cf-name" name="customer_name" type="text" required autocomplete="name" /></div>
+                    <div class="field"><label for="cf-company">Company</label><input id="cf-company" name="company" type="text" autocomplete="organization" /></div>
+                </div>
+                <div class="grid2">
+                    <div class="field"><label class="req" for="cf-email">Email</label><input id="cf-email" name="email" type="email" required autocomplete="email" /></div>
+                    <div class="field"><label class="req" for="cf-phone">Phone (WhatsApp)</label><input id="cf-phone" name="phone" type="tel" required autocomplete="tel" placeholder="+1 234 567 8900" /></div>
+                </div>
+                <div class="grid2">
+                    <div class="field"><label class="req" for="cf-country">Country</label><input id="cf-country" name="country" type="text" required autocomplete="country-name" /></div>
+                    <div class="field"><label class="req" for="cf-port">Destination Port / City</label>
+                        <input id="cf-port" name="destination_port" type="text" required list="cf-port-list" placeholder="e.g. Hamburg, DE" />
+                        ${orderPorts.length ? `<datalist id="cf-port-list">${orderPorts.map(p => `<option value="${escapeAttr(p)}"></option>`).join('')}</datalist>` : ''}
+                    </div>
+                </div>
+                <div class="grid2">
+                    <div class="field"><label class="req" for="cf-incoterm">Incoterm</label>
+                        <select id="cf-incoterm" name="incoterm" required>
+                            <option value="">Select...</option>
+                            ${incoterms.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="field"><label for="cf-payment">Preferred Payment</label>
+                        <select id="cf-payment" name="payment_terms">
+                            <option value="">Select...</option>
+                            <option>T/T 30% Advance, 70% before shipment</option>
+                            <option>T/T 50% Advance, 50% before shipment</option>
+                            <option>T/T 100% Advance</option>
+                            <option>L/C at Sight</option>
+                            <option>D/P (Documents against Payment)</option>
+                            <option>Other (specify in notes)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field"><label for="cf-notes">Additional Notes / Special Requirements</label><textarea id="cf-notes" name="notes" rows="3" placeholder="Packaging, labelling, certificates, delivery time, etc."></textarea></div>
+
+                <button type="submit" class="submit-btn" id="cart-submit">${escapeHtml(cartButtonText)}</button>
+                <div class="submit-status" id="cart-status"></div>
+            </form>
+        </aside>
+        <div class="thanks-overlay" id="thanks-overlay">
+            <div class="thanks-card">
+                <div class="thanks-icon">&#10003;</div>
+                <h3>Inquiry sent!</h3>
+                <p id="thanks-msg">${escapeHtml(orderThankYouText)}</p>
+                <button type="button" id="thanks-close">Close</button>
+            </div>
+        </div>
+    ` : '';
 
     const js = `
         (function(){
@@ -670,7 +823,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 dots.forEach(function(d){
                     d.addEventListener('click', function(){ show(parseInt(d.getAttribute('data-idx'), 10) || 0); });
                 });
-                // Touch swipe
                 var startX = 0, isTouch = false;
                 car.addEventListener('touchstart', function(e){ startX = e.touches[0].clientX; isTouch = true; }, {passive:true});
                 car.addEventListener('touchend', function(e){
@@ -682,6 +834,185 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 });
             });
         })();
+
+        ${cartEnabled ? `
+        /* ============ INQUIRY CART ============ */
+        (function(){
+            var ORDER_EMAIL = ${JSON.stringify(orderEmail)};
+            var SUBJECT_PREFIX = ${JSON.stringify(catalogConfig.title || 'Catalog Inquiry')};
+            var STORAGE_KEY = 'cat_cart_v1';
+            var cart = {};
+            try { cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch(e){ cart = {}; }
+
+            var fab = document.getElementById('cart-fab');
+            var fabCount = document.getElementById('cart-fab-count');
+            var overlay = document.getElementById('cart-overlay');
+            var drawer = document.getElementById('cart-drawer');
+            var closeBtn = document.getElementById('cart-close');
+            var body = document.getElementById('cart-body');
+            var empty = document.getElementById('cart-empty');
+            var form = document.getElementById('cart-form');
+            var submitBtn = document.getElementById('cart-submit');
+            var status = document.getElementById('cart-status');
+            var thanks = document.getElementById('thanks-overlay');
+            var thanksClose = document.getElementById('thanks-close');
+
+            function save(){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cart)); } catch(e){} }
+            function totalCount(){
+                var n = 0;
+                Object.keys(cart).forEach(function(k){ n += (cart[k].qty || 0); });
+                return n;
+            }
+            function refresh(){
+                var keys = Object.keys(cart);
+                if (fab) {
+                    if (keys.length > 0) fab.classList.add('show'); else fab.classList.remove('show');
+                    if (fabCount) fabCount.textContent = String(totalCount());
+                }
+                if (empty) empty.style.display = keys.length ? 'none' : 'block';
+                // Render rows
+                var existingRows = body.querySelectorAll('.cart-item');
+                existingRows.forEach(function(r){ r.remove(); });
+                keys.forEach(function(k){
+                    var it = cart[k];
+                    var row = document.createElement('div');
+                    row.className = 'cart-item';
+                    row.innerHTML = '' +
+                        '<img src="' + (it.img || '') + '" alt="" onerror="this.style.visibility=\\'hidden\\'" />' +
+                        '<div class="info">' +
+                            '<div class="name">' + escapeText(it.name) + '</div>' +
+                            (it.sku ? '<div class="sku">' + escapeText(it.sku) + '</div>' : '') +
+                            '<div class="row2">' +
+                                '<div class="qty-row">' +
+                                    '<button type="button" data-act="dec">-</button>' +
+                                    '<input type="number" min="1" value="' + (it.qty||1) + '" />' +
+                                    '<button type="button" data-act="inc">+</button>' +
+                                '</div>' +
+                                '<span class="unit">' + escapeText(it.unit || '') + '</span>' +
+                                '<button type="button" class="remove" data-act="rm">Remove</button>' +
+                            '</div>' +
+                        '</div>';
+                    var qInput = row.querySelector('input');
+                    var inc = row.querySelector('[data-act="inc"]');
+                    var dec = row.querySelector('[data-act="dec"]');
+                    var rm = row.querySelector('[data-act="rm"]');
+                    inc.addEventListener('click', function(){ it.qty = (parseInt(qInput.value,10)||1) + 1; qInput.value = it.qty; save(); refresh(); });
+                    dec.addEventListener('click', function(){ var v = (parseInt(qInput.value,10)||1) - 1; if (v < 1) v = 1; it.qty = v; qInput.value = v; save(); refresh(); });
+                    qInput.addEventListener('input', function(){ var v = parseInt(qInput.value,10); if (!v || v < 1) v = 1; it.qty = v; save(); if (fabCount) fabCount.textContent = String(totalCount()); });
+                    rm.addEventListener('click', function(){ delete cart[k]; save(); refresh(); });
+                    body.insertBefore(row, form);
+                });
+            }
+            function escapeText(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+            function openDrawer(){ overlay.classList.add('open'); drawer.classList.add('open'); document.body.style.overflow = 'hidden'; }
+            function closeDrawer(){ overlay.classList.remove('open'); drawer.classList.remove('open'); document.body.style.overflow = ''; status.textContent = ''; status.className = 'submit-status'; }
+
+            // Add to cart buttons
+            document.querySelectorAll('[data-add-to-cart]').forEach(function(btn){
+                var card = btn.closest('.card');
+                if (!card) return;
+                var sku = card.getAttribute('data-cart-sku') || '';
+                var key = sku || ('p_' + (card.getAttribute('data-idx') || Math.random().toString(36).slice(2)));
+                btn.addEventListener('click', function(e){
+                    e.preventDefault();
+                    var name = card.getAttribute('data-cart-name') || 'Item';
+                    var moq = parseInt(card.getAttribute('data-cart-moq') || '0', 10) || 1;
+                    var existing = cart[key];
+                    cart[key] = {
+                        sku: sku,
+                        name: name,
+                        unit: card.getAttribute('data-cart-unit') || '',
+                        pack: parseInt(card.getAttribute('data-cart-pack') || '0', 10) || 0,
+                        img: card.getAttribute('data-cart-img') || '',
+                        qty: existing ? (existing.qty + (moq||1)) : (moq||1)
+                    };
+                    save();
+                    refresh();
+                    btn.classList.add('added');
+                    var orig = btn.textContent;
+                    btn.textContent = 'Added \\u2713';
+                    setTimeout(function(){ btn.classList.remove('added'); btn.textContent = orig; }, 1200);
+                    openDrawer();
+                });
+            });
+
+            if (fab) fab.addEventListener('click', openDrawer);
+            if (overlay) overlay.addEventListener('click', closeDrawer);
+            if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+            if (thanksClose) thanksClose.addEventListener('click', function(){ thanks.classList.remove('open'); });
+
+            function buildPlainOrder(){
+                var lines = [];
+                lines.push('NEW INQUIRY FROM CATALOG');
+                lines.push('Catalog: ' + SUBJECT_PREFIX);
+                lines.push('Date: ' + new Date().toLocaleString());
+                lines.push('');
+                lines.push('=== CUSTOMER ===');
+                ['customer_name','company','email','phone','country','destination_port','incoterm','payment_terms'].forEach(function(f){
+                    var el = form.querySelector('[name="' + f + '"]');
+                    if (el && el.value) lines.push(f.replace(/_/g,' ').toUpperCase() + ': ' + el.value);
+                });
+                lines.push('');
+                lines.push('=== ITEMS ===');
+                Object.keys(cart).forEach(function(k, i){
+                    var it = cart[k];
+                    lines.push((i+1) + '. ' + it.name + ' [' + (it.sku||'-') + ']  Qty: ' + (it.qty||0) + ' ' + (it.unit||''));
+                });
+                var notes = form.querySelector('[name="notes"]');
+                if (notes && notes.value) { lines.push(''); lines.push('=== NOTES ==='); lines.push(notes.value); }
+                return lines.join('\\n');
+            }
+
+            function showThanks(){ thanks.classList.add('open'); cart = {}; save(); refresh(); form.reset(); closeDrawer(); }
+
+            function tryMailto(){
+                var subject = encodeURIComponent('[Inquiry] ' + SUBJECT_PREFIX + ' - ' + (form.querySelector('[name="customer_name"]').value || ''));
+                var body = encodeURIComponent(buildPlainOrder());
+                window.location.href = 'mailto:' + encodeURIComponent(ORDER_EMAIL) + '?subject=' + subject + '&body=' + body;
+                setTimeout(showThanks, 800);
+            }
+
+            if (form) form.addEventListener('submit', function(e){
+                e.preventDefault();
+                if (Object.keys(cart).length === 0) { status.textContent = 'Add at least one product first.'; status.className = 'submit-status error'; return; }
+                if (!form.checkValidity()) { status.textContent = 'Please fill required fields.'; status.className = 'submit-status error'; form.reportValidity(); return; }
+                if (!ORDER_EMAIL) { status.textContent = 'No order email configured.'; status.className = 'submit-status error'; return; }
+                status.textContent = 'Sending...'; status.className = 'submit-status'; submitBtn.disabled = true;
+
+                // Build FormSubmit.co payload (free, no signup, sends to ORDER_EMAIL)
+                var fd = new FormData(form);
+                fd.append('_subject', '[Inquiry] ' + SUBJECT_PREFIX + ' - ' + (form.querySelector('[name="customer_name"]').value || ''));
+                fd.append('_template', 'table');
+                fd.append('_captcha', 'false');
+                fd.append('items_summary', buildPlainOrder());
+                Object.keys(cart).forEach(function(k, i){
+                    var it = cart[k];
+                    fd.append('item_' + (i+1), (it.name||'') + ' | SKU:' + (it.sku||'-') + ' | Qty:' + (it.qty||0) + ' ' + (it.unit||''));
+                });
+
+                var endpoint = 'https://formsubmit.co/ajax/' + encodeURIComponent(ORDER_EMAIL);
+                fetch(endpoint, { method: 'POST', body: fd, headers: { 'Accept': 'application/json' } })
+                    .then(function(r){ return r.json().catch(function(){ return null; }); })
+                    .then(function(j){
+                        submitBtn.disabled = false;
+                        if (j && (j.success === 'true' || j.success === true)) {
+                            status.textContent = ''; showThanks();
+                        } else {
+                            status.innerHTML = 'Online send failed. Opening your mail app instead...'; status.className = 'submit-status';
+                            tryMailto();
+                        }
+                    })
+                    .catch(function(){
+                        submitBtn.disabled = false;
+                        status.innerHTML = 'No internet — opening your mail app...'; status.className = 'submit-status';
+                        tryMailto();
+                    });
+            });
+
+            refresh();
+        })();
+        ` : ''}
     `;
 
     const lang = (cc.languages && cc.languages[0]) === 'fa' ? 'fa' : (cc.languages && cc.languages[0]) === 'ar' ? 'ar' : 'en';
@@ -732,6 +1063,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     ${socialsHtml ? `<div class="socials">${socialsHtml}</div>` : ''}
     ${cc.footerText ? `<p class="footer-text">${escapeHtml(cc.footerText)}</p>` : ''}
 </footer>
+
+${cartHtml}
 
 <script>${js}</script>
 </body>
@@ -1300,6 +1633,13 @@ function AppInner() {
       googleFormUrl: '',
       googleFormButtonText: 'Send Purchase Request',
       googleFormHelperText: 'Tap below to fill out the order form',
+      cartEnabled: true,
+      orderEmail: 'info@tohiddayhami.com',
+      orderIncoterms: ['EXW', 'FOB', 'CIF', 'DDP'],
+      orderPorts: ['Bandar Abbas (BND)', 'Jebel Ali (JEA)', 'Hamburg (HAM)', 'Rotterdam (RTM)', 'Shanghai (SHA)', 'Mumbai (BOM)'],
+      cartButtonText: 'Request Quote',
+      cartTitle: 'Your Inquiry Cart',
+      orderThankYouText: 'Thank you! Your inquiry has been received. We will prepare a proforma invoice and contact you shortly.',
       showCompanyPhotos: false,
       companyPhotos: [],
       sections: []
@@ -1808,6 +2148,13 @@ function AppInner() {
             googleFormUrl: project.data.catalogConfig.googleFormUrl || '',
             googleFormButtonText: project.data.catalogConfig.googleFormButtonText || 'Send Purchase Request',
             googleFormHelperText: project.data.catalogConfig.googleFormHelperText || 'Tap below to fill out the order form',
+            cartEnabled: project.data.catalogConfig.cartEnabled !== undefined ? project.data.catalogConfig.cartEnabled : true,
+            orderEmail: project.data.catalogConfig.orderEmail || 'info@tohiddayhami.com',
+            orderIncoterms: project.data.catalogConfig.orderIncoterms || ['EXW', 'FOB', 'CIF', 'DDP'],
+            orderPorts: project.data.catalogConfig.orderPorts || ['Bandar Abbas (BND)', 'Jebel Ali (JEA)', 'Hamburg (HAM)', 'Rotterdam (RTM)', 'Shanghai (SHA)', 'Mumbai (BOM)'],
+            cartButtonText: project.data.catalogConfig.cartButtonText || 'Request Quote',
+            cartTitle: project.data.catalogConfig.cartTitle || 'Your Inquiry Cart',
+            orderThankYouText: project.data.catalogConfig.orderThankYouText || 'Thank you! Your inquiry has been received. We will prepare a proforma invoice and contact you shortly.',
             showTargetPrice: project.data.catalogConfig.showTargetPrice || false,
             targetPriceLabel: project.data.catalogConfig.targetPriceLabel || 'Target',
             showTargetProfit: project.data.catalogConfig.showTargetProfit || false,
@@ -4270,6 +4617,87 @@ function AppInner() {
                                               <Plus className="w-3 h-3"/> Add Photos
                                               <input type="file" multiple accept="image/*" className="hidden" onChange={handleCompanyPhotosUpload} />
                                           </label>
+                                      </div>
+                                  )}
+                              </div>
+
+                              {/* SHOPPING CART / INQUIRY ORDER */}
+                              <div className="pt-4 border-t border-slate-100 space-y-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                          type="checkbox"
+                                          checked={catalogConfig.cartEnabled !== false}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, cartEnabled: e.target.checked})}
+                                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                                      />
+                                      <span className="text-xs font-semibold text-slate-700">Enable Inquiry Cart on HTML export</span>
+                                  </label>
+                                  {catalogConfig.cartEnabled !== false && (
+                                      <div className="space-y-2 bg-emerald-50/40 border border-emerald-100 rounded-md p-2">
+                                          <div className="space-y-1">
+                                              <label className="text-[10px] text-slate-500 font-semibold">Receive orders at (email)</label>
+                                              <input
+                                                  type="email"
+                                                  value={catalogConfig.orderEmail || ''}
+                                                  onChange={(e) => setCatalogConfig({...catalogConfig, orderEmail: e.target.value})}
+                                                  className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
+                                                  placeholder="info@yourdomain.com"
+                                              />
+                                              <p className="text-[10px] text-slate-400">Inquiries from customers are emailed here. (First-time use of FormSubmit.co requires email confirmation — see below.)</p>
+                                          </div>
+                                          <div className="space-y-1">
+                                              <label className="text-[10px] text-slate-500 font-semibold">Cart button text</label>
+                                              <input
+                                                  type="text"
+                                                  value={catalogConfig.cartButtonText || ''}
+                                                  onChange={(e) => setCatalogConfig({...catalogConfig, cartButtonText: e.target.value})}
+                                                  className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
+                                                  placeholder="Request Quote"
+                                              />
+                                          </div>
+                                          <div className="space-y-1">
+                                              <label className="text-[10px] text-slate-500 font-semibold">Cart page title</label>
+                                              <input
+                                                  type="text"
+                                                  value={catalogConfig.cartTitle || ''}
+                                                  onChange={(e) => setCatalogConfig({...catalogConfig, cartTitle: e.target.value})}
+                                                  className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
+                                                  placeholder="Your Inquiry Cart"
+                                              />
+                                          </div>
+                                          <div className="space-y-1">
+                                              <label className="text-[10px] text-slate-500 font-semibold">Available Incoterms (comma-separated)</label>
+                                              <input
+                                                  type="text"
+                                                  value={(catalogConfig.orderIncoterms || []).join(', ')}
+                                                  onChange={(e) => setCatalogConfig({...catalogConfig, orderIncoterms: e.target.value.split(',').map(x => x.trim()).filter(Boolean)})}
+                                                  className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white font-mono"
+                                                  placeholder="EXW, FOB, CIF, DDP"
+                                              />
+                                          </div>
+                                          <div className="space-y-1">
+                                              <label className="text-[10px] text-slate-500 font-semibold">Suggested ports (comma-separated, optional)</label>
+                                              <textarea
+                                                  rows={2}
+                                                  value={(catalogConfig.orderPorts || []).join(', ')}
+                                                  onChange={(e) => setCatalogConfig({...catalogConfig, orderPorts: e.target.value.split(',').map(x => x.trim()).filter(Boolean)})}
+                                                  className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
+                                                  placeholder="Bandar Abbas, Jebel Ali, Hamburg..."
+                                              />
+                                          </div>
+                                          <div className="space-y-1">
+                                              <label className="text-[10px] text-slate-500 font-semibold">Thank-you message (after submit)</label>
+                                              <textarea
+                                                  rows={2}
+                                                  value={catalogConfig.orderThankYouText || ''}
+                                                  onChange={(e) => setCatalogConfig({...catalogConfig, orderThankYouText: e.target.value})}
+                                                  className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
+                                                  placeholder="We will get back to you shortly"
+                                              />
+                                          </div>
+                                          <p className="text-[10px] text-emerald-700 leading-snug">
+                                              <b>How it works:</b> uses <a className="underline" target="_blank" rel="noopener" href="https://formsubmit.co">FormSubmit.co</a> (free, no signup) to deliver inquiries to your email. The first inquiry will ask you to confirm your email — after that all future orders arrive automatically. Falls back to opening the customer&apos;s default email app if FormSubmit fails.
+                                          </p>
                                       </div>
                                   )}
                               </div>
