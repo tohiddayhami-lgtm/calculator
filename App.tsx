@@ -1152,6 +1152,7 @@ function AppInner() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [shareLinkInfo, setShareLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string } | null>(null);
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
@@ -3564,47 +3565,118 @@ function AppInner() {
             const fileName = `${safeTitle}.html`;
             const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
 
+            // ---- Path A: cloud share link (works on every device — just a URL) ----
+            if (user && storage) {
+                setShareLinkInfo({ url: '', qr: '', uploading: true });
+                try {
+                    const path = `users/${user.uid}/catalogs/${safeTitle}-${Date.now()}.html`;
+                    const ref = storageRef(storage, path);
+                    await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
+                    const url = await getDownloadURL(ref);
+                    let qr = '';
+                    try {
+                        qr = await QRCode.toDataURL(url, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+                    } catch {}
+                    setShareLinkInfo({ url, qr, uploading: false });
+                    return;
+                } catch (err: any) {
+                    console.error('Cloud upload failed, falling back to local download', err);
+                    setShareLinkInfo({ url: '', qr: '', uploading: false, error: err?.message || String(err) });
+                    setTimeout(() => setShareLinkInfo(null), 50);
+                    // continue to local download fallback below
+                }
+            }
+
+            // ---- Path B: local file (download or share-as-file) ----
             const nav: any = typeof navigator !== 'undefined' ? navigator : {};
             const file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'text/html;charset=utf-8' }) : null;
 
-            // 1) On mobile (especially iOS Safari), use Web Share API with files so the user
-            //    can send/save the actual file (Files app, WhatsApp, Telegram, AirDrop) instead of a link.
             if (file && typeof nav.canShare === 'function' && nav.canShare({ files: [file] }) && typeof nav.share === 'function') {
                 try {
                     await nav.share({ files: [file], title: catalogConfig.title || 'Catalog', text: 'Product catalog' });
                     return;
                 } catch (shareErr: any) {
-                    if (shareErr && shareErr.name === 'AbortError') return; // user cancelled
+                    if (shareErr && shareErr.name === 'AbortError') return;
                     console.warn('Web Share failed, falling back to download', shareErr);
                 }
             }
 
-            // 2) Standard browser download (desktop + Android Chrome)
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = fileName;
             a.rel = 'noopener';
-            a.target = '_blank';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             setTimeout(() => URL.revokeObjectURL(url), 1500);
-
-            // 3) iOS Safari fallback hint: if share API is missing entirely (older iOS),
-            //    open the blob in a new tab so the user can use Share -> "Save to Files".
-            if (isIOSDevice() && typeof nav.share !== 'function') {
-                setTimeout(() => {
-                    try {
-                        const win = window.open(URL.createObjectURL(blob), '_blank');
-                        if (!win) alert('On iPhone: tap the Share icon in the page that just opened, then "Save to Files" or "Save to Drive".');
-                    } catch {}
-                }, 600);
-            }
         } catch (err: any) {
             console.error('HTML export failed', err);
             alert('Failed to export HTML: ' + (err?.message || err));
         }
+    };
+
+    const handleDownloadCatalogHtmlFile = async () => {
+        try {
+            const html = buildCatalogHtml({
+                products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
+                config,
+                catalogConfig,
+                qrDataUrl,
+                tCombined
+            });
+            const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
+            const fileName = `${safeTitle}.html`;
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+
+            const nav: any = typeof navigator !== 'undefined' ? navigator : {};
+            const file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'text/html;charset=utf-8' }) : null;
+            if (file && typeof nav.canShare === 'function' && nav.canShare({ files: [file] }) && typeof nav.share === 'function') {
+                try {
+                    await nav.share({ files: [file], title: catalogConfig.title || 'Catalog', text: 'Product catalog' });
+                    return;
+                } catch (shareErr: any) {
+                    if (shareErr && shareErr.name === 'AbortError') return;
+                }
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
+        } catch (err: any) {
+            console.error('HTML download failed', err);
+            alert('Failed to download HTML: ' + (err?.message || err));
+        }
+    };
+
+    const handleCopyShareLink = async () => {
+        if (!shareLinkInfo?.url) return;
+        try {
+            await navigator.clipboard.writeText(shareLinkInfo.url);
+            alert('Link copied to clipboard.');
+        } catch {
+            window.prompt('Copy this link:', shareLinkInfo.url);
+        }
+    };
+
+    const handleShareShareLink = async () => {
+        const url = shareLinkInfo?.url;
+        if (!url) return;
+        const nav: any = navigator;
+        if (typeof nav.share === 'function') {
+            try {
+                await nav.share({ title: catalogConfig.title || 'Catalog', text: 'Product catalog', url });
+                return;
+            } catch (err: any) {
+                if (err && err.name === 'AbortError') return;
+            }
+        }
+        await handleCopyShareLink();
     };
 
     return (
@@ -4379,11 +4451,19 @@ function AppInner() {
                       onClick={handleExportCatalogHtml}
                       className="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center justify-center gap-2"
                   >
+                      <Sparkles className="w-4 h-4" />
+                      Generate Online Share Link
+                  </button>
+                  <button
+                      onClick={handleDownloadCatalogHtmlFile}
+                      className="w-full bg-white border border-slate-300 text-slate-700 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center justify-center gap-2"
+                  >
                       <Download className="w-4 h-4" />
-                      Export &amp; Share HTML
+                      Download HTML File
                   </button>
                   <p className="text-[10px] text-slate-400 text-center leading-snug">
-                      Self-contained HTML file. On phones the system share sheet opens — choose <b>Save to Files</b>, WhatsApp, Telegram, etc. to send as a real file (not a link).
+                      <b>Share Link</b>: uploads to your account & gives a URL anyone can open on any device.<br/>
+                      <b>Download</b>: saves a self-contained .html file to this device.
                   </p>
               </div>
           </div>
@@ -4925,6 +5005,77 @@ function AppInner() {
                   </div>
               </div>
           </div>
+
+          {/* SHARE LINK MODAL */}
+          {shareLinkInfo && (
+              <div className="fixed inset-0 z-[80] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95">
+                      <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                          <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-emerald-600" />
+                              Share Catalog Link
+                          </h3>
+                          <button onClick={() => setShareLinkInfo(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                      </div>
+                      <div className="p-5 space-y-4">
+                          {shareLinkInfo.uploading ? (
+                              <div className="py-10 flex flex-col items-center gap-3">
+                                  <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin"></div>
+                                  <p className="text-sm text-slate-500">Uploading catalog to the cloud...</p>
+                              </div>
+                          ) : shareLinkInfo.url ? (
+                              <>
+                                  <p className="text-xs text-slate-500">
+                                      Your catalog is live online. Anyone with this link can open it on any phone or computer — no app, no download.
+                                  </p>
+                                  <div className="flex gap-2">
+                                      <input
+                                          type="text"
+                                          value={shareLinkInfo.url}
+                                          readOnly
+                                          onFocus={(e) => e.currentTarget.select()}
+                                          className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 font-mono outline-none focus:border-emerald-500 truncate"
+                                      />
+                                      <button
+                                          onClick={handleCopyShareLink}
+                                          className="flex-shrink-0 bg-slate-900 text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-800"
+                                      >
+                                          Copy
+                                      </button>
+                                  </div>
+                                  <div className="flex gap-2">
+                                      <a
+                                          href={shareLinkInfo.url}
+                                          target="_blank"
+                                          rel="noopener"
+                                          className="flex-1 bg-blue-600 text-white text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-blue-700 text-center"
+                                      >
+                                          Open
+                                      </a>
+                                      <button
+                                          onClick={handleShareShareLink}
+                                          className="flex-1 bg-emerald-600 text-white text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-emerald-700"
+                                      >
+                                          Share
+                                      </button>
+                                  </div>
+                                  {shareLinkInfo.qr && (
+                                      <div className="border border-slate-200 rounded-xl p-4 flex flex-col items-center gap-2 bg-slate-50">
+                                          <img src={shareLinkInfo.qr} alt="QR" className="w-40 h-40 bg-white rounded-lg" />
+                                          <p className="text-[11px] text-slate-500">Customers can scan this QR with any phone camera to open the catalog.</p>
+                                      </div>
+                                  )}
+                                  <p className="text-[10px] text-slate-400 text-center">
+                                      Tip: copy this link into WhatsApp, Telegram, Email, or your Google Form description.
+                                  </p>
+                              </>
+                          ) : (
+                              <p className="text-sm text-rose-600">Failed to upload. Please try again.</p>
+                          )}
+                      </div>
+                  </div>
+              </div>
+          )}
 
           {/* CATALOG DETAILS EDIT MODAL */}
           {editingCatalogDetailsId !== null && (
