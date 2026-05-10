@@ -732,7 +732,11 @@ function AppInner() {
       footerText: 'Prices are subject to change without prior notice.\nPayment Terms: T/T 50% Advance.\nValidity: 30 Days.',
       showImages: false,
       priceBasis: 'unit',
-      terms: ['FOB']
+      terms: ['FOB'],
+      showTargetPrice: false,
+      targetPriceLabel: 'Target',
+      showTargetProfit: false,
+      targetProfitLabel: 'Your profit on this deal'
   });
 
   // Catalog Config
@@ -751,6 +755,10 @@ function AppInner() {
       showMOQ: true,
       moqLabel: '',
       showGroupCovers: false,
+      showTargetPrice: false,
+      targetPriceLabel: 'Target',
+      showTargetProfit: false,
+      targetProfitLabel: 'Your profit on this deal',
       priceTerms: ['FOB'],
       contactEmail: 'sales@example.com',
       contactPhone: '+1 234 567 890',
@@ -1176,7 +1184,9 @@ function AppInner() {
         customProfit: p.customProfit,
         group: p.group || '',
         supplierId: p.supplierId,
-        measurementUnit: p.measurementUnit
+        measurementUnit: p.measurementUnit,
+        targetPrice: p.targetPrice,
+        targetPriceCurrency: p.targetPriceCurrency
     }));
     setProducts(loadedProducts);
     setLogistics({ 
@@ -1210,7 +1220,13 @@ function AppInner() {
     setSuppliers(project.data.suppliers || []);
 
     if (project.data.priceListConfig) {
-        setPriceListConfig(project.data.priceListConfig);
+        setPriceListConfig({
+            ...project.data.priceListConfig,
+            showTargetPrice: project.data.priceListConfig.showTargetPrice || false,
+            targetPriceLabel: project.data.priceListConfig.targetPriceLabel || 'Target',
+            showTargetProfit: project.data.priceListConfig.showTargetProfit || false,
+            targetProfitLabel: project.data.priceListConfig.targetProfitLabel || 'Your profit on this deal'
+        });
     } else {
         setPriceListConfig({
              title: 'EXPORT PRICE LIST',
@@ -1218,7 +1234,11 @@ function AppInner() {
              footerText: 'Prices are subject to change without prior notice.\nPayment Terms: T/T 50% Advance.\nValidity: 30 Days.',
              showImages: false,
              priceBasis: 'unit',
-             terms: ['FOB']
+             terms: ['FOB'],
+             showTargetPrice: false,
+             targetPriceLabel: 'Target',
+             showTargetProfit: false,
+             targetProfitLabel: 'Your profit on this deal'
         });
     }
 
@@ -1265,6 +1285,10 @@ function AppInner() {
             showQrCode: project.data.catalogConfig.showQrCode || false,
             qrCodeValue: project.data.catalogConfig.qrCodeValue || '',
             qrCodeLabel: project.data.catalogConfig.qrCodeLabel || 'Scan to visit',
+            showTargetPrice: project.data.catalogConfig.showTargetPrice || false,
+            targetPriceLabel: project.data.catalogConfig.targetPriceLabel || 'Target',
+            showTargetProfit: project.data.catalogConfig.showTargetProfit || false,
+            targetProfitLabel: project.data.catalogConfig.targetProfitLabel || 'Your profit on this deal',
             showCompanyPhotos: project.data.catalogConfig.showCompanyPhotos || false,
             companyPhotos: project.data.catalogConfig.companyPhotos || [],
             website: project.data.catalogConfig.website || '',
@@ -2155,6 +2179,10 @@ function AppInner() {
                             {basis === 'unit' ? 'Unit' : 'Pack'} Sell ({config.outputCurrency})
                         </th>
                         <th className="px-4 py-2 w-32 min-w-[120px] bg-green-50 text-green-700">Total Sell ({config.outputCurrency})</th>
+                        <th className="px-4 py-2 w-32 min-w-[120px] bg-amber-50 text-amber-700" title="Optional: Buyer / market target price per unit">
+                            Target Price
+                            <span className="block text-[9px] font-normal text-amber-500/80">Optional</span>
+                        </th>
                         <th className="px-4 py-2 w-10 bg-slate-50"></th>
                     </tr>
                 </thead>
@@ -2333,6 +2361,43 @@ function AppInner() {
                                 <td className="px-4 py-2 bg-green-50/30 text-right font-medium text-green-700">
                                     {formatMoney(p.totalSellPrice || 0, config.outputCurrency)}
                                 </td>
+                                <td className="px-4 py-2 bg-amber-50/30">
+                                    {(() => {
+                                        const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
+                                        const tVal = p.targetPrice;
+                                        const sellInOutput = (p.unitSellPrice || 0) * viewMult;
+                                        const targetInOutput = tVal !== undefined && tVal !== null
+                                            ? toOutput(toBase(tVal, tCurr)) * viewMult
+                                            : null;
+                                        const diff = targetInOutput !== null && sellInOutput > 0
+                                            ? ((sellInOutput - targetInOutput) / targetInOutput) * 100
+                                            : null;
+                                        return (
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-1">
+                                                    <FormattedNumberInput
+                                                        value={tVal !== undefined ? tVal : 0}
+                                                        onChange={(val) => updateProduct(p.id, 'targetPrice', val === 0 && (tVal === undefined) ? undefined : val)}
+                                                        className="w-full bg-transparent border-b border-amber-200 focus:border-amber-500 outline-none text-right text-amber-800 font-medium px-1 py-0.5"
+                                                        placeholder="0"
+                                                    />
+                                                    <select
+                                                        value={tCurr}
+                                                        onChange={(e) => updateProduct(p.id, 'targetPriceCurrency', e.target.value)}
+                                                        className="bg-transparent text-[10px] text-amber-600 border-none p-0 focus:ring-0"
+                                                    >
+                                                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                </div>
+                                                {diff !== null && tVal ? (
+                                                    <div className={`text-[10px] text-right font-medium ${Math.abs(diff) < 1 ? 'text-slate-400' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                        {diff > 0 ? '+' : ''}{diff.toFixed(1)}% vs sell
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })()}
+                                </td>
                                 <td className="px-4 py-2 text-center">
                                     <button onClick={() => setProducts(products.filter(item => item.id !== p.id))} className="text-slate-300 hover:text-red-500 transition-colors">
                                         <Trash2 className="w-4 h-4" />
@@ -2343,7 +2408,7 @@ function AppInner() {
                     })}
                     {products.length === 0 && (
                         <tr>
-                            <td colSpan={showPackInfo ? 19 : 17} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
+                            <td colSpan={showPackInfo ? 20 : 18} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
                         </tr>
                     )}
                 </tbody>
@@ -3151,6 +3216,48 @@ function AppInner() {
                                       {t}
                                   </button>
                               ))}
+                          </div>
+
+                          {/* Target Price Toggle */}
+                          <div className="mt-3 space-y-2 bg-amber-50/40 border border-amber-100 rounded-md p-2">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                      type="checkbox"
+                                      checked={catalogConfig.showTargetPrice || false}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, showTargetPrice: e.target.checked})}
+                                      className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                  />
+                                  <span className="text-xs font-semibold text-amber-800">Show Target Price (Optional)</span>
+                              </label>
+                              {catalogConfig.showTargetPrice && (
+                                  <>
+                                      <input
+                                          type="text"
+                                          value={catalogConfig.targetPriceLabel || ''}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, targetPriceLabel: e.target.value})}
+                                          placeholder="Label (default: Target)"
+                                          className="w-full text-xs border border-amber-200 rounded px-2 py-1 focus:border-amber-500 outline-none bg-white"
+                                      />
+                                      <label className="flex items-center gap-2 cursor-pointer pl-5">
+                                          <input
+                                              type="checkbox"
+                                              checked={catalogConfig.showTargetProfit || false}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, showTargetProfit: e.target.checked})}
+                                              className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                                          />
+                                          <span className="text-[11px] text-emerald-700">Show buyer&apos;s profit message (always green)</span>
+                                      </label>
+                                      {catalogConfig.showTargetProfit && (
+                                          <input
+                                              type="text"
+                                              value={catalogConfig.targetProfitLabel || ''}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, targetProfitLabel: e.target.value})}
+                                              placeholder="Default: Your profit on this deal"
+                                              className="w-full text-xs border border-emerald-200 rounded px-2 py-1 focus:border-emerald-500 outline-none bg-white"
+                                          />
+                                      )}
+                                  </>
+                              )}
                           </div>
                       </div>
                       
@@ -3994,6 +4101,35 @@ function AppInner() {
                                                                     </div>
                                                                 );
                                                             })}
+                                                            {catalogConfig.showTargetPrice && p.targetPrice !== undefined && p.targetPrice !== null && p.targetPrice > 0 && (() => {
+                                                                const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
+                                                                const tUnit = toOutput(toBase(p.targetPrice, tCurr));
+                                                                const tPack = tUnit * (p.itemsPerPack || 0);
+                                                                const refTerm = catalogConfig.priceTerms[0];
+                                                                const refSell = refTerm ? (p.scenarioPrices?.[refTerm] || 0) : (p.unitSellPrice || 0);
+                                                                const diff = tUnit > 0 && refSell > 0 ? ((refSell - tUnit) / tUnit) * 100 : null;
+                                                                return (
+                                                                    <div className="mt-1 pt-1 border-t border-dashed border-amber-200">
+                                                                        <div className="flex justify-between items-end py-0.5">
+                                                                            <span className="font-bold text-[10px] px-2 py-0.5 rounded shadow-sm bg-amber-100 text-amber-800 border border-amber-200">{catalogConfig.targetPriceLabel || 'Target'}</span>
+                                                                            <div className="text-right">
+                                                                                {(catalogConfig.priceBasis === 'unit' || catalogConfig.priceBasis === 'both') && (
+                                                                                    <span className="font-bold block text-xs md:text-sm text-amber-700">{formatMoney(tUnit, config.outputCurrency)} <span className="text-[9px] font-normal text-amber-500 uppercase">/{displayUnit}</span></span>
+                                                                                )}
+                                                                                {(catalogConfig.priceBasis === 'pack' || catalogConfig.priceBasis === 'both') && (p.itemsPerPack || 0) > 0 && (
+                                                                                    <span className="font-bold block text-xs md:text-sm text-amber-700 mt-0.5">{formatMoney(tPack, config.outputCurrency)} <span className="text-[9px] font-normal text-amber-500 uppercase">/pack</span></span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                        {catalogConfig.showTargetProfit && diff !== null && (
+                                                                            <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                                                                                <span className="truncate">{catalogConfig.targetProfitLabel || 'Your profit on this deal'}: +{Math.abs(diff).toFixed(1)}%</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     )}
                                                 </div>
@@ -4824,6 +4960,47 @@ function AppInner() {
                           </div>
                       </div>
 
+                      <div className="bg-amber-50/40 border border-amber-100 rounded-md p-2 space-y-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                  type="checkbox"
+                                  checked={priceListConfig.showTargetPrice || false}
+                                  onChange={(e) => setPriceListConfig({...priceListConfig, showTargetPrice: e.target.checked})}
+                                  className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                              />
+                              <span className="text-xs font-semibold text-amber-800">Show Target Price column (Optional)</span>
+                          </label>
+                          {priceListConfig.showTargetPrice && (
+                              <>
+                                  <input
+                                      type="text"
+                                      value={priceListConfig.targetPriceLabel || ''}
+                                      onChange={(e) => setPriceListConfig({...priceListConfig, targetPriceLabel: e.target.value})}
+                                      placeholder="Column label (default: Target)"
+                                      className="w-full text-xs border border-amber-200 rounded px-2 py-1 focus:border-amber-500 outline-none bg-white"
+                                  />
+                                  <label className="flex items-center gap-2 cursor-pointer pl-5">
+                                      <input
+                                          type="checkbox"
+                                          checked={priceListConfig.showTargetProfit || false}
+                                          onChange={(e) => setPriceListConfig({...priceListConfig, showTargetProfit: e.target.checked})}
+                                          className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                                      />
+                                      <span className="text-[11px] text-emerald-700">Show buyer&apos;s profit message (always green)</span>
+                                  </label>
+                                  {priceListConfig.showTargetProfit && (
+                                      <input
+                                          type="text"
+                                          value={priceListConfig.targetProfitLabel || ''}
+                                          onChange={(e) => setPriceListConfig({...priceListConfig, targetProfitLabel: e.target.value})}
+                                          placeholder="Default: Your profit on this deal"
+                                          className="w-full text-xs border border-emerald-200 rounded px-2 py-1 focus:border-emerald-500 outline-none bg-white"
+                                      />
+                                  )}
+                              </>
+                          )}
+                      </div>
+
                       <div>
                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Footer / Terms</label>
                           <textarea 
@@ -4873,6 +5050,14 @@ function AppInner() {
                                       {priceListConfig.priceBasis === 'pack' && <span className="block text-[9px] font-normal text-slate-500">(Pack)</span>}
                                   </th>
                               ))}
+                              {priceListConfig.showTargetPrice && (
+                                  <th className="border border-amber-200 px-4 py-2 text-right w-32 bg-amber-50 text-amber-800">
+                                      {priceListConfig.targetPriceLabel || 'Target'}
+                                      {priceListConfig.priceBasis === 'both' && <span className="block text-[9px] font-normal text-amber-600">(Unit / Pack)</span>}
+                                      {priceListConfig.priceBasis === 'unit' && <span className="block text-[9px] font-normal text-amber-600">(Unit)</span>}
+                                      {priceListConfig.priceBasis === 'pack' && <span className="block text-[9px] font-normal text-amber-600">(Pack)</span>}
+                                  </th>
+                              )}
                           </tr>
                       </thead>
                       <tbody>
@@ -4904,6 +5089,37 @@ function AppInner() {
                                           </td>
                                       );
                                   })}
+                                  {priceListConfig.showTargetPrice && (() => {
+                                      const hasTarget = p.targetPrice !== undefined && p.targetPrice !== null && p.targetPrice > 0;
+                                      const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
+                                      const tUnit = hasTarget ? toOutput(toBase(p.targetPrice as number, tCurr)) : 0;
+                                      const tPack = tUnit * (p.itemsPerPack || 0);
+                                      const refTerm = priceListConfig.terms[0];
+                                      const refSell = refTerm ? (p.scenarioPrices?.[refTerm] || 0) : (p.unitSellPrice || 0);
+                                      const diff = hasTarget && tUnit > 0 && refSell > 0 ? ((refSell - tUnit) / tUnit) * 100 : null;
+                                      return (
+                                          <td className="border border-amber-200 px-4 py-2 text-right font-mono font-medium bg-amber-50/40 text-amber-800">
+                                              {!hasTarget ? <span className="text-amber-300">—</span> : (
+                                                  <>
+                                                      {priceListConfig.priceBasis === 'unit' && formatMoney(tUnit, config.outputCurrency)}
+                                                      {priceListConfig.priceBasis === 'pack' && formatMoney(tPack, config.outputCurrency)}
+                                                      {priceListConfig.priceBasis === 'both' && (
+                                                          <div className="flex flex-col">
+                                                              <span>{formatMoney(tUnit, config.outputCurrency)}</span>
+                                                              <span className="text-[10px] text-amber-500">{formatMoney(tPack, config.outputCurrency)}</span>
+                                                          </div>
+                                                      )}
+                                                      {priceListConfig.showTargetProfit && diff !== null && (
+                                                          <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5">
+                                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                                                              <span>{priceListConfig.targetProfitLabel || 'Your profit on this deal'}: +{Math.abs(diff).toFixed(1)}%</span>
+                                                          </div>
+                                                      )}
+                                                  </>
+                                              )}
+                                          </td>
+                                      );
+                                  })()}
                               </tr>
                           ))}
                       </tbody>

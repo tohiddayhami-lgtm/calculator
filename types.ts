@@ -30,6 +30,9 @@ export interface Product {
   };
   group?: string; // New: Group/Category name
   supplierId?: number; // New: Link to a specific supplier
+  // Optional: Target price (per unit) requested by buyer / target market
+  targetPrice?: number;
+  targetPriceCurrency?: string;
   // Computed fields (optional as they are added during calculation)
   isActive?: boolean;
   unitCostOutput?: number;
@@ -134,6 +137,10 @@ export interface CatalogConfig {
   moqLabel?: string; // New: Custom label for MOQ
   showLogisticsDetails?: boolean; // New: Toggle to show box/pallet/container capacities
   showGroupCovers?: boolean; // New: Option to show separate covers for groups
+  showTargetPrice?: boolean; // New: Optional - show buyer Target Price in catalog
+  targetPriceLabel?: string; // New: Custom label for Target Price (default: "Target")
+  showTargetProfit?: boolean; // New: Optional - show profit % vs Target Price
+  targetProfitLabel?: string; // New: Custom label for the profit-from-deal message
   priceTerms: string[]; // Changed: Array of strings instead of single string
   contactEmail: string;
   contactPhone: string;
@@ -198,6 +205,10 @@ export interface PriceListConfig {
   showImages: boolean;
   priceBasis: 'unit' | 'pack' | 'both';
   terms: string[];
+  showTargetPrice?: boolean; // New: Optional - show buyer Target Price column
+  targetPriceLabel?: string; // New: Custom label for Target Price column
+  showTargetProfit?: boolean; // New: Optional - show profit % vs Target Price
+  targetProfitLabel?: string; // New: Custom label for the profit-from-deal message
 }
 
 export interface SupplierAttachment {
