@@ -6,10 +6,29 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Saved HTML catalog share-link metadata (owner only)
+    match /artifacts/{appId}/users/{userId}/catalogLinks/{linkId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Public short-link lookup: anyone with the code can read the long Storage URL (then browser redirects).
+    // Create/delete only by the owning user (ownerUserId must match auth uid).
+    match /catalog_short_links/{code} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['url', 'ownerUserId', 'storagePath', 'createdAt'])
+                    && request.resource.data.ownerUserId == request.auth.uid
+                    && request.resource.data.url is string
+                    && request.resource.data.storagePath is string
+                    && request.resource.data.url.size() < 4000
+                    && request.resource.data.storagePath.size() < 500
+                    && code.size() >= 8
+                    && code.size() <= 16;
+      allow delete: if request.auth != null && resource.data.ownerUserId == request.auth.uid;
+      allow update: if false;
+    }
+
     // Customer inquiries (from the public HTML catalog)
-    // - Anyone (even unauthenticated) can CREATE a new inquiry document.
-    //   Basic validation prevents spam/abuse: must have minimal customer fields, doc must be small, must include createdAt server timestamp.
-    // - Only the owning seller (matching userId) can READ / UPDATE / DELETE their inquiries.
     match /artifacts/{appId}/users/{userId}/inquiries/{inquiryId} {
       allow create: if request.resource.data.keys().hasAny(['customer', 'items'])
                     && request.resource.data.size() < 30

@@ -18,6 +18,8 @@ import {
   doc, 
   onSnapshot, 
   getDocs,
+  getDoc,
+  setDoc,
   serverTimestamp,
   updateDoc,
   query,
@@ -28,7 +30,8 @@ import {
   getStorage,
   ref as storageRef,
   uploadString,
-  getDownloadURL
+  getDownloadURL,
+  deleteObject
 } from 'firebase/storage';
 import QRCode from 'qrcode';
 
@@ -42,7 +45,7 @@ import {
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
-  AlignJustify, ArrowLeft, Pencil, Inbox, Mail, ShoppingCart
+  AlignJustify, ArrowLeft, Pencil, Inbox, Mail, ShoppingCart, Link2
 } from 'lucide-react';
 
 // Types
@@ -171,6 +174,14 @@ const withTimeout = async <T,>(promise: Promise<T>, ms = 15000, label = 'Operati
         reject(error);
       });
   });
+};
+
+/** Random id for catalog short links (Firestore doc id under `catalog_short_links`). */
+const generateCatalogShortCode = (len = 10): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let s = '';
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
 };
 
 const isIOSDevice = (): boolean => {
@@ -1633,11 +1644,12 @@ function AppInner() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [shareLinkInfo, setShareLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string } | null>(null);
+  const [shareLinkInfo, setShareLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
   const [inquiries, setInquiries] = useState<any[]>([]);
   const [showInquiries, setShowInquiries] = useState(false);
   const [selectedInquiry, setSelectedInquiry] = useState<any | null>(null);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
+  const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
@@ -1944,6 +1956,57 @@ function AppInner() {
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId]);
 
+  // Saved HTML catalog share links (metadata only; file lives in Storage)
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) {
+      setSavedCatalogLinks([]);
+      return;
+    }
+    const linksRef = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'catalogLinks');
+    let q: any;
+    try {
+      q = query(linksRef, orderBy('createdAt', 'desc'), limit(80));
+    } catch {
+      q = linksRef;
+    }
+    const unsub = onSnapshot(
+      q,
+      (snap: any) => {
+        setSavedCatalogLinks(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+      },
+      (err: any) => {
+        console.error('Catalog links listener failed:', err);
+      }
+    );
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId]);
+
+  // Short link ?c=CODE → redirect to hosted catalog HTML (full Storage URL)
+  useEffect(() => {
+    if (!db || typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const c = sp.get('c');
+    if (!c || !/^[A-Za-z0-9]{8,14}$/.test(c)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'catalog_short_links', c));
+        if (cancelled || !snap.exists()) return;
+        const target = snap.data()?.url;
+        if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
+          window.location.replace(target);
+        }
+      } catch (e) {
+        console.error('Catalog short link redirect failed:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [db]);
+
   const loadLocalProjects = async () => {
       let mergedProjects: SavedProject[] = [];
 
@@ -2068,6 +2131,34 @@ function AppInner() {
           );
       } catch (err: any) {
           alert('Failed to update inquiry: ' + (err?.message || err));
+      }
+  };
+
+  const handleDeleteSavedCatalogLink = async (link: { id: string; shortCode?: string; storagePath?: string }) => {
+      if (!user || !db) return;
+      if (!window.confirm('Delete this hosted catalog file and remove both the short link and the long link from your list?')) return;
+      try {
+          if (storage && link.storagePath) {
+              await withTimeout(deleteObject(storageRef(storage, link.storagePath)), 20000, 'Delete file');
+          }
+      } catch (e: any) {
+          console.warn('Storage delete (catalog):', e);
+      }
+      try {
+          if (link.shortCode) {
+              await withTimeout(deleteDoc(doc(db, 'catalog_short_links', link.shortCode)), 10000, 'Delete short link');
+          }
+      } catch (e: any) {
+          console.warn('Short link doc delete:', e);
+      }
+      try {
+          await withTimeout(
+              deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'catalogLinks', link.id)),
+              10000,
+              'Remove link record'
+          );
+      } catch (err: any) {
+          alert('Could not remove link from database: ' + (err?.message || err));
       }
   };
 
@@ -4226,11 +4317,43 @@ function AppInner() {
                     const ref = storageRef(storage, path);
                     await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
                     const url = await getDownloadURL(ref);
+                    let shortUrl: string | undefined;
+                    if (db && user && !isDemoMode && user.uid !== DEMO_USER_ID) {
+                        try {
+                            for (let attempt = 0; attempt < 24; attempt++) {
+                                const shortCode = generateCatalogShortCode(10);
+                                const pubRef = doc(db, 'catalog_short_links', shortCode);
+                                const existing = await getDoc(pubRef);
+                                if (existing.exists()) continue;
+                                const shortUrlFull = new URL(`?c=${encodeURIComponent(shortCode)}`, window.location.href).href;
+                                await setDoc(pubRef, {
+                                    url,
+                                    ownerUserId: user.uid,
+                                    storagePath: path,
+                                    createdAt: serverTimestamp()
+                                });
+                                await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'catalogLinks'), {
+                                    fullUrl: url,
+                                    shortUrl: shortUrlFull,
+                                    shortCode,
+                                    storagePath: path,
+                                    catalogTitle: catalogConfig.title || 'Catalog',
+                                    fileName,
+                                    createdAt: serverTimestamp()
+                                });
+                                shortUrl = shortUrlFull;
+                                break;
+                            }
+                        } catch (metaErr) {
+                            console.warn('Catalog link metadata / short URL save failed:', metaErr);
+                        }
+                    }
+                    const linkForQr = shortUrl || url;
                     let qr = '';
                     try {
-                        qr = await QRCode.toDataURL(url, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+                        qr = await QRCode.toDataURL(linkForQr, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
                     } catch {}
-                    setShareLinkInfo({ url, qr, uploading: false });
+                    setShareLinkInfo({ url, shortUrl, qr, uploading: false });
                     return;
                 } catch (err: any) {
                     console.error('Cloud upload failed, falling back to local download', err);
@@ -4321,8 +4444,19 @@ function AppInner() {
         }
     };
 
+    const handleCopyShareShortLink = async () => {
+        const u = shareLinkInfo?.shortUrl;
+        if (!u) return;
+        try {
+            await navigator.clipboard.writeText(u);
+            alert('Short link copied to clipboard.');
+        } catch {
+            window.prompt('Copy this short link:', u);
+        }
+    };
+
     const handleShareShareLink = async () => {
-        const url = shareLinkInfo?.url;
+        const url = shareLinkInfo?.shortUrl || shareLinkInfo?.url;
         if (!url) return;
         const nav: any = navigator;
         if (typeof nav.share === 'function') {
@@ -5215,6 +5349,73 @@ function AppInner() {
                       <b>Share Link</b>: uploads to your account & gives a URL anyone can open on any device.<br/>
                       <b>Download</b>: saves a self-contained .html file to this device.
                   </p>
+
+                  <div className="pt-4 border-t border-slate-200 space-y-2">
+                      <label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">
+                          <Link2 className="w-3 h-3" /> Saved online links
+                      </label>
+                      {!user || isDemoMode ? (
+                          <p className="text-[10px] text-slate-400 leading-snug">Sign in (not demo) to keep a list of generated share links here.</p>
+                      ) : savedCatalogLinks.length === 0 ? (
+                          <p className="text-[10px] text-slate-400 leading-snug">No links saved yet. After a successful upload, the link appears here with copy and delete options.</p>
+                      ) : (
+                          <ul className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
+                              {savedCatalogLinks.map((link: any) => (
+                                  <li key={link.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[10px] space-y-1.5">
+                                      <div className="font-semibold text-slate-800 truncate" title={link.catalogTitle}>{link.catalogTitle || 'Catalog'}</div>
+                                      <div className="text-slate-400">{formatInquiryDate(link.createdAt)}</div>
+                                      <div className="flex flex-wrap gap-1">
+                                          {link.shortUrl ? (
+                                              <button
+                                                  type="button"
+                                                  onClick={async () => {
+                                                      try {
+                                                          await navigator.clipboard.writeText(link.shortUrl);
+                                                          alert('Short link copied.');
+                                                      } catch {
+                                                          window.prompt('Copy short link:', link.shortUrl);
+                                                      }
+                                                  }}
+                                                  className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-medium hover:bg-emerald-200"
+                                              >
+                                                  Copy short
+                                              </button>
+                                          ) : null}
+                                          <button
+                                              type="button"
+                                              onClick={async () => {
+                                                  try {
+                                                      await navigator.clipboard.writeText(link.fullUrl);
+                                                      alert('Direct link copied.');
+                                                  } catch {
+                                                      window.prompt('Copy direct link:', link.fullUrl);
+                                                  }
+                                              }}
+                                              className="px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded font-medium hover:bg-slate-300"
+                                          >
+                                              Copy direct
+                                          </button>
+                                          <a
+                                              href={link.fullUrl}
+                                              target="_blank"
+                                              rel="noopener"
+                                              className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium hover:bg-blue-200 inline-block"
+                                          >
+                                              Open
+                                          </a>
+                                          <button
+                                              type="button"
+                                              onClick={() => handleDeleteSavedCatalogLink(link)}
+                                              className="px-1.5 py-0.5 bg-red-50 text-red-700 rounded font-medium hover:bg-red-100"
+                                          >
+                                              Delete
+                                          </button>
+                                      </div>
+                                  </li>
+                              ))}
+                          </ul>
+                      )}
+                  </div>
               </div>
           </div>
 
@@ -5778,7 +5979,31 @@ function AppInner() {
                                   <p className="text-xs text-slate-500">
                                       Your catalog is live online. Anyone with this link can open it on any phone or computer — no app, no download.
                                   </p>
-                                  <div className="flex gap-2">
+                                  {shareLinkInfo.shortUrl ? (
+                                      <div className="space-y-1">
+                                          <label className="text-[10px] font-semibold text-emerald-700 uppercase">Short link (same catalog, easier to share)</label>
+                                          <div className="flex gap-2">
+                                              <input
+                                                  type="text"
+                                                  value={shareLinkInfo.shortUrl}
+                                                  readOnly
+                                                  onFocus={(e) => e.currentTarget.select()}
+                                                  className="flex-1 text-xs border border-emerald-200 rounded-lg px-3 py-2 bg-emerald-50/50 font-mono outline-none focus:border-emerald-500 truncate"
+                                              />
+                                              <button
+                                                  type="button"
+                                                  onClick={handleCopyShareShortLink}
+                                                  className="flex-shrink-0 bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-emerald-800"
+                                              >
+                                                  Copy
+                                              </button>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400">Opens this app once, then sends the visitor to your catalog file.</p>
+                                      </div>
+                                  ) : null}
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] font-semibold text-slate-500 uppercase">Direct file link</label>
+                                      <div className="flex gap-2">
                                       <input
                                           type="text"
                                           value={shareLinkInfo.url}
@@ -5792,6 +6017,7 @@ function AppInner() {
                                       >
                                           Copy
                                       </button>
+                                  </div>
                                   </div>
                                   <div className="flex gap-2">
                                       <a
@@ -5812,7 +6038,11 @@ function AppInner() {
                                   {shareLinkInfo.qr && (
                                       <div className="border border-slate-200 rounded-xl p-4 flex flex-col items-center gap-2 bg-slate-50">
                                           <img src={shareLinkInfo.qr} alt="QR" className="w-40 h-40 bg-white rounded-lg" />
-                                          <p className="text-[11px] text-slate-500">Customers can scan this QR with any phone camera to open the catalog.</p>
+                                          <p className="text-[11px] text-slate-500">
+                                              {shareLinkInfo.shortUrl
+                                                  ? 'QR encodes the short link (recommended for WhatsApp / print).'
+                                                  : 'Customers can scan this QR with any phone camera to open the catalog.'}
+                                          </p>
                                       </div>
                                   )}
                                   <p className="text-[10px] text-slate-400 text-center">
@@ -6384,6 +6614,7 @@ function AppInner() {
                                <tr key={p.id}>
                                    <td className="py-4">
                                        <p className="font-bold text-slate-800">{p.name}</p>
+                                       {p.sku ? <p className="text-xs text-slate-600 font-mono mt-0.5">SKU: {p.sku}</p> : null}
                                        {p.hsCode && <p className="text-xs text-slate-500">HS: {p.hsCode}</p>}
                                    </td>
                                    {showImages && (
