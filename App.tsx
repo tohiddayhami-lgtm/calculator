@@ -3551,7 +3551,7 @@ function AppInner() {
         return "grid-cols-2 grid-rows-3";
     };
 
-    const handleExportCatalogHtml = () => {
+    const handleExportCatalogHtml = async () => {
         try {
             const html = buildCatalogHtml({
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
@@ -3560,16 +3560,47 @@ function AppInner() {
                 qrDataUrl,
                 tCombined
             });
+            const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
+            const fileName = `${safeTitle}.html`;
             const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+
+            const nav: any = typeof navigator !== 'undefined' ? navigator : {};
+            const file = (typeof File !== 'undefined') ? new File([blob], fileName, { type: 'text/html;charset=utf-8' }) : null;
+
+            // 1) On mobile (especially iOS Safari), use Web Share API with files so the user
+            //    can send/save the actual file (Files app, WhatsApp, Telegram, AirDrop) instead of a link.
+            if (file && typeof nav.canShare === 'function' && nav.canShare({ files: [file] }) && typeof nav.share === 'function') {
+                try {
+                    await nav.share({ files: [file], title: catalogConfig.title || 'Catalog', text: 'Product catalog' });
+                    return;
+                } catch (shareErr: any) {
+                    if (shareErr && shareErr.name === 'AbortError') return; // user cancelled
+                    console.warn('Web Share failed, falling back to download', shareErr);
+                }
+            }
+
+            // 2) Standard browser download (desktop + Android Chrome)
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
-            a.download = `${safeTitle}.html`;
+            a.download = fileName;
+            a.rel = 'noopener';
+            a.target = '_blank';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+            // 3) iOS Safari fallback hint: if share API is missing entirely (older iOS),
+            //    open the blob in a new tab so the user can use Share -> "Save to Files".
+            if (isIOSDevice() && typeof nav.share !== 'function') {
+                setTimeout(() => {
+                    try {
+                        const win = window.open(URL.createObjectURL(blob), '_blank');
+                        if (!win) alert('On iPhone: tap the Share icon in the page that just opened, then "Save to Files" or "Save to Drive".');
+                    } catch {}
+                }, 600);
+            }
         } catch (err: any) {
             console.error('HTML export failed', err);
             alert('Failed to export HTML: ' + (err?.message || err));
@@ -4349,9 +4380,11 @@ function AppInner() {
                       className="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center justify-center gap-2"
                   >
                       <Download className="w-4 h-4" />
-                      Export HTML (Mobile-Friendly)
+                      Export &amp; Share HTML
                   </button>
-                  <p className="text-[10px] text-slate-400 text-center">Self-contained HTML — works on any phone/desktop offline.</p>
+                  <p className="text-[10px] text-slate-400 text-center leading-snug">
+                      Self-contained HTML file. On phones the system share sheet opens — choose <b>Save to Files</b>, WhatsApp, Telegram, etc. to send as a real file (not a link).
+                  </p>
               </div>
           </div>
 
