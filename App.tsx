@@ -1033,41 +1033,63 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
             if (form) form.addEventListener('submit', function(e){
                 e.preventDefault();
-                if (Object.keys(cart).length === 0) { statusEl.textContent = 'Add at least one product first.'; statusEl.className = 'submit-status error'; return; }
-                if (!form.checkValidity()) { statusEl.textContent = 'Please fill required fields.'; statusEl.className = 'submit-status error'; form.reportValidity(); return; }
-                if (!ORDER_EMAIL) { statusEl.textContent = 'No order email configured.'; statusEl.className = 'submit-status error'; return; }
-                statusEl.textContent = 'Sending...'; statusEl.className = 'submit-status'; submitBtn.disabled = true;
+                if (Object.keys(cart).length === 0) { statusEl.textContent = 'Please add at least one product first.'; statusEl.className = 'submit-status error'; return; }
+                if (!form.checkValidity()) { statusEl.textContent = 'Please fill all required fields.'; statusEl.className = 'submit-status error'; form.reportValidity(); return; }
+                if (!ORDER_EMAIL) { statusEl.textContent = 'Order email is not configured. Please contact the seller.'; statusEl.className = 'submit-status error'; return; }
+                statusEl.textContent = 'Sending your inquiry...'; statusEl.className = 'submit-status'; submitBtn.disabled = true;
 
-                var fd = new FormData(form);
-                fd.append('_subject', '[Inquiry] ' + SUBJECT_PREFIX + ' - ' + (form.querySelector('[name="customer_name"]').value || ''));
-                fd.append('_template', 'table');
-                fd.append('_captcha', 'false');
-                fd.append('items_summary', buildPlainOrder());
+                // Build a JSON payload (FormSubmit recommends JSON for AJAX submissions)
+                var payload = {
+                    _subject: '[Inquiry] ' + SUBJECT_PREFIX + ' - ' + (form.querySelector('[name="customer_name"]').value || ''),
+                    _template: 'table',
+                    _captcha: 'false',
+                    catalog: SUBJECT_PREFIX,
+                    submitted_at: new Date().toISOString()
+                };
+                ['customer_name','company','email','phone','country','destination_port','incoterm','payment_terms','notes'].forEach(function(f){
+                    var el = form.querySelector('[name="' + f + '"]');
+                    if (el) payload[f] = el.value || '';
+                });
+                payload.items_summary = buildPlainOrder();
                 Object.keys(cart).forEach(function(k, i){
                     var it = cart[k];
                     var totalU = (it.mode === 'pack' && it.pack) ? (it.qty || 0) * it.pack : (it.qty || 0);
                     var qtyStr = (it.mode === 'pack' && it.pack)
                         ? (it.qty || 0) + ' pack(s) = ' + totalU + ' ' + (it.unit || 'units')
                         : (it.qty || 0) + ' ' + (it.unit || 'units');
-                    fd.append('item_' + (i+1), (it.name || '') + ' | SKU:' + (it.sku || '-') + ' | ' + qtyStr);
+                    payload['item_' + (i + 1)] = (it.name || '') + ' | SKU:' + (it.sku || '-') + ' | ' + qtyStr;
                 });
 
                 var endpoint = 'https://formsubmit.co/ajax/' + encodeURIComponent(ORDER_EMAIL);
-                fetch(endpoint, { method: 'POST', body: fd, headers: { 'Accept': 'application/json' } })
-                    .then(function(r){ return r.json().catch(function(){ return null; }); })
-                    .then(function(j){
+                fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                })
+                    .then(function(r){
+                        return r.json().then(function(j){ return { ok: r.ok, j: j }; }).catch(function(){ return { ok: r.ok, j: null }; });
+                    })
+                    .then(function(res){
                         submitBtn.disabled = false;
-                        if (j && (j.success === 'true' || j.success === true)) {
-                            statusEl.textContent = ''; showThanks();
-                        } else {
-                            statusEl.textContent = 'Online send failed. Opening your mail app instead...'; statusEl.className = 'submit-status';
-                            tryMailto();
+                        var success = res && res.j && (res.j.success === 'true' || res.j.success === true);
+                        if (success) {
+                            statusEl.textContent = '';
+                            showThanks();
+                            return;
                         }
+                        // If response says we need email confirmation, also fall through to mailto so the order isn't lost
+                        statusEl.textContent = 'Opening your mail app as a backup so the seller still receives your order...';
+                        statusEl.className = 'submit-status';
+                        setTimeout(tryMailto, 400);
                     })
                     .catch(function(){
                         submitBtn.disabled = false;
-                        statusEl.textContent = 'No internet — opening your mail app...'; statusEl.className = 'submit-status';
-                        tryMailto();
+                        statusEl.textContent = 'Opening your mail app to deliver your order...';
+                        statusEl.className = 'submit-status';
+                        setTimeout(tryMailto, 200);
                     });
             });
 
@@ -1547,6 +1569,7 @@ function AppInner() {
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [shareLinkInfo, setShareLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string } | null>(null);
+  const [formActivation, setFormActivation] = useState<{ status: 'idle' | 'sending' | 'sent' | 'error'; message: string }>({ status: 'idle', message: '' });
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
@@ -4087,6 +4110,48 @@ function AppInner() {
         await handleCopyShareLink();
     };
 
+    const handleSendActivationEmail = async () => {
+        const orderEmail = (catalogConfig.orderEmail || '').trim();
+        if (!orderEmail) {
+            setFormActivation({ status: 'error', message: 'Please enter an order email above first.' });
+            return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(orderEmail)) {
+            setFormActivation({ status: 'error', message: 'Email format looks invalid.' });
+            return;
+        }
+        setFormActivation({ status: 'sending', message: 'Sending activation request to FormSubmit.co...' });
+        try {
+            const endpoint = `https://formsubmit.co/ajax/${encodeURIComponent(orderEmail)}`;
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    _subject: '[Activation] Catalog Inquiry Cart',
+                    _captcha: 'false',
+                    _template: 'table',
+                    name: 'Activation Test',
+                    email: orderEmail,
+                    message: 'This is a one-time activation test from your Catalog app. Please check your inbox for a confirmation email from FormSubmit.co and click the link to enable receiving customer inquiries.'
+                })
+            });
+            let data: any = null;
+            try { data = await res.json(); } catch { /* ignore */ }
+            if (data && (data.success === 'true' || data.success === true)) {
+                setFormActivation({
+                    status: 'sent',
+                    message: `Done. Now check the inbox of "${orderEmail}" for an email from FormSubmit.co and click the confirmation link. After that, all customer inquiries will arrive automatically.`
+                });
+            } else if (data && data.message) {
+                setFormActivation({ status: 'sent', message: `Server response: ${data.message}. If this is your first time, check your inbox for a FormSubmit.co confirmation email.` });
+            } else {
+                setFormActivation({ status: 'sent', message: 'Request sent. Check your inbox for a FormSubmit.co confirmation email and click the link.' });
+            }
+        } catch (err: any) {
+            setFormActivation({ status: 'error', message: `Could not reach FormSubmit.co: ${err?.message || 'network error'}.` });
+        }
+    };
+
     return (
       <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
           {/* SIDEBAR CONTROLS (Hide in Print) */}
@@ -4756,8 +4821,31 @@ function AppInner() {
                                                   placeholder="We will get back to you shortly"
                                               />
                                           </div>
-                                          <p className="text-[10px] text-emerald-700 leading-snug">
-                                              <b>How it works:</b> uses <a className="underline" target="_blank" rel="noopener" href="https://formsubmit.co">FormSubmit.co</a> (free, no signup) to deliver inquiries to your email. The first inquiry will ask you to confirm your email — after that all future orders arrive automatically. Falls back to opening the customer&apos;s default email app if FormSubmit fails.
+                                          <div className="rounded-md border border-amber-200 bg-amber-50 p-2 space-y-2">
+                                              <p className="text-[10px] text-amber-800 leading-snug">
+                                                  <b>Important — first-time setup:</b> The free <a className="underline" target="_blank" rel="noopener" href="https://formsubmit.co">FormSubmit.co</a> service requires a <b>one-time email confirmation</b>. Without it, customer inquiries fail with &quot;send failed&quot;.
+                                              </p>
+                                              <ol className="text-[10px] text-amber-800 list-decimal list-inside space-y-0.5">
+                                                  <li>Click the button below to send an activation request.</li>
+                                                  <li>Open the inbox of the email above and click the confirmation link from <b>FormSubmit.co</b>.</li>
+                                                  <li>Done — customers&apos; orders will start arriving.</li>
+                                              </ol>
+                                              <button
+                                                  type="button"
+                                                  onClick={handleSendActivationEmail}
+                                                  disabled={formActivation.status === 'sending'}
+                                                  className="w-full text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold rounded px-2 py-1.5 transition"
+                                              >
+                                                  {formActivation.status === 'sending' ? 'Sending...' : 'Send Activation Email Now'}
+                                              </button>
+                                              {formActivation.status !== 'idle' && (
+                                                  <p className={`text-[10px] leading-snug ${formActivation.status === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>
+                                                      {formActivation.message}
+                                                  </p>
+                                              )}
+                                          </div>
+                                          <p className="text-[10px] text-slate-500 leading-snug">
+                                              If FormSubmit fails for any reason, the customer&apos;s order falls back to opening their default mail app with the order pre-filled — so no inquiry is ever lost.
                                           </p>
                                       </div>
                                   )}
