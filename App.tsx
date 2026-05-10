@@ -447,6 +447,47 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         `
         : '';
 
+    const sectionsAll: any[] = Array.isArray(cc.sections) ? cc.sections : [];
+    const headingCol = heading;
+    const primaryCol = primary;
+    const buildSectionsBlock = (position: 'before' | 'after') => {
+        const list = sectionsAll.filter((s: any) => (s.position || 'after') === position);
+        if (!list.length) return '';
+        return list.map((section: any) => {
+            const align = section.alignment || 'left';
+            const textAlign = align === 'justify' ? 'justify' : align;
+            const imgs: string[] =
+                section.images && section.images.length > 0
+                    ? section.images.filter(Boolean)
+                    : section.image
+                    ? [section.image]
+                    : [];
+            const layout = section.imageLayout || 'single';
+            let gridClass = 'img-grid img-grid-single';
+            if (layout === 'two-column') gridClass = 'img-grid img-grid-2';
+            else if (layout === 'three-column') gridClass = 'img-grid img-grid-3';
+            else if (layout === 'grid') gridClass = 'img-grid img-grid-auto';
+            const imgsHtml = imgs.length
+                ? `<div class="${gridClass}">${imgs
+                      .map(
+                          (img: string) =>
+                              `<div class="img-cell"><img src="${escapeAttr(img)}" alt="" loading="lazy" /></div>`
+                      )
+                      .join('')}</div>`
+                : '';
+            const title = escapeHtml(section.title || 'Page');
+            const content = escapeHtml(section.content || '');
+            return `
+            <section class="custom-page">
+                <h2 class="custom-page-title" style="color:${escapeAttr(headingCol)};border-bottom-color:${escapeAttr(primaryCol)}">${title}</h2>
+                <div class="custom-page-content" style="text-align:${escapeAttr(textAlign)};white-space:pre-wrap">${content}</div>
+                ${imgsHtml}
+            </section>`;
+        }).join('');
+    };
+    const customSectionsBeforeHtml = buildSectionsBlock('before');
+    const customSectionsAfterHtml = buildSectionsBlock('after');
+
     const ctaHtml = formUrl
         ? `
             <section class="cta-section">
@@ -513,6 +554,21 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .about-text { font-size: 15px; line-height: 1.7; color: var(--text); }
         .about-images { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
         .about-images img { aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+
+        /* Custom pages (Catalog sections) */
+        .custom-page { margin: 40px 0; padding: 28px 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .custom-page + .custom-page { margin-top: 20px; }
+        .custom-page-title { font-size: clamp(20px, 3.5vw, 32px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid; }
+        .custom-page-content { font-size: 16px; line-height: 1.75; color: var(--text); }
+        .custom-page .img-grid { display: grid; gap: 14px; margin-top: 24px; }
+        .custom-page .img-grid-single { grid-template-columns: 1fr; }
+        .custom-page .img-grid-2 { grid-template-columns: 1fr 1fr; }
+        .custom-page .img-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .custom-page .img-grid-auto { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+        @media (max-width: 640px) {
+            .custom-page .img-grid-2, .custom-page .img-grid-3 { grid-template-columns: 1fr; }
+        }
+        .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #f1f5f9; background: #fafafa; }
 
         /* Product grid */
         .products-section { padding: 24px 16px 48px; }
@@ -652,6 +708,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
 <main class="container">
     ${aboutUsHtml}
+    ${customSectionsBeforeHtml}
     <section class="products-section">
         <h2 class="section-title">${escapeHtml(tCombined('productList') || 'Products')}</h2>
         <div class="grid">
@@ -659,6 +716,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         </div>
     </section>
 
+    ${customSectionsAfterHtml}
     ${ctaHtml}
 </main>
 
