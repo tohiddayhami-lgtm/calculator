@@ -707,6 +707,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .qty-row input::-webkit-outer-spin-button, .qty-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .cart-item .unit { font-size: 11px; color: #94a3b8; text-transform: uppercase; }
         .cart-item .remove { margin-left: auto; background: transparent; border: none; color: #ef4444; cursor: pointer; font-size: 12px; padding: 4px 6px; }
+        .mode-toggle { display: inline-flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+        .mode-toggle button { background: #fff; color: #64748b; border: none; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; line-height: 1; }
+        .mode-toggle button.active { background: var(--primary); color: #fff; }
+        .cart-item .total-line { font-size: 11px; color: #64748b; margin-top: 6px; font-weight: 600; }
+        .cart-item .total-line strong { color: #0f172a; }
 
         .cart-form { padding: 16px; border-top: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0; max-height: 55vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .cart-form h3 { font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -750,6 +755,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             </header>
             <div class="cart-body" id="cart-body">
                 <div class="cart-empty" id="cart-empty">No items yet. Tap "Add to Inquiry" on a product to start.</div>
+                <div id="cart-list"></div>
             </div>
             <form class="cart-form" id="cart-form" autocomplete="on" novalidate>
                 <h3>Your Information</h3>
@@ -840,7 +846,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         (function(){
             var ORDER_EMAIL = ${JSON.stringify(orderEmail)};
             var SUBJECT_PREFIX = ${JSON.stringify(catalogConfig.title || 'Catalog Inquiry')};
-            var STORAGE_KEY = 'cat_cart_v1';
+            var STORAGE_KEY = 'cat_cart_v2';
             var cart = {};
             try { cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch(e){ cart = {}; }
 
@@ -850,63 +856,110 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             var drawer = document.getElementById('cart-drawer');
             var closeBtn = document.getElementById('cart-close');
             var body = document.getElementById('cart-body');
-            var empty = document.getElementById('cart-empty');
+            var emptyEl = document.getElementById('cart-empty');
+            var listEl = document.getElementById('cart-list');
             var form = document.getElementById('cart-form');
             var submitBtn = document.getElementById('cart-submit');
-            var status = document.getElementById('cart-status');
+            var statusEl = document.getElementById('cart-status');
             var thanks = document.getElementById('thanks-overlay');
             var thanksClose = document.getElementById('thanks-close');
 
+            function escapeText(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
             function save(){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cart)); } catch(e){} }
-            function totalCount(){
+            function totalUnits(){
                 var n = 0;
-                Object.keys(cart).forEach(function(k){ n += (cart[k].qty || 0); });
+                Object.keys(cart).forEach(function(k){
+                    var it = cart[k];
+                    var per = (it.pack && it.mode === 'pack') ? it.pack : 1;
+                    n += (it.qty || 0) * per;
+                });
                 return n;
             }
+            function totalLines(){ return Object.keys(cart).length; }
+
+            function renderRow(key){
+                var it = cart[key];
+                var hasPack = (it.pack || 0) > 0;
+                var mode = it.mode || (hasPack ? 'pack' : 'unit');
+                it.mode = mode;
+                var totalUnitsForItem = (mode === 'pack' && hasPack) ? (it.qty || 0) * it.pack : (it.qty || 0);
+                var modeToggle = hasPack
+                    ? '<div class="mode-toggle">' +
+                          '<button type="button" data-mode="unit" class="' + (mode === 'unit' ? 'active' : '') + '">' + escapeText(it.unit || 'Unit') + '</button>' +
+                          '<button type="button" data-mode="pack" class="' + (mode === 'pack' ? 'active' : '') + '">Pack</button>' +
+                      '</div>'
+                    : '<span class="unit">' + escapeText(it.unit || 'unit') + '</span>';
+                var totalLine = (mode === 'pack' && hasPack)
+                    ? '<div class="total-line">= <strong>' + totalUnitsForItem + '</strong> ' + escapeText(it.unit || 'units') + ' (' + (it.qty || 0) + ' × ' + it.pack + ')</div>'
+                    : '';
+                var row = document.createElement('div');
+                row.className = 'cart-item';
+                row.setAttribute('data-key', key);
+                row.innerHTML = '' +
+                    '<img src="' + escapeText(it.img || '') + '" alt="" onerror="this.style.visibility=\\'hidden\\'" />' +
+                    '<div class="info">' +
+                        '<div class="name">' + escapeText(it.name) + '</div>' +
+                        (it.sku ? '<div class="sku">' + escapeText(it.sku) + '</div>' : '') +
+                        '<div class="row2">' +
+                            '<div class="qty-row">' +
+                                '<button type="button" data-act="dec" aria-label="Decrease">-</button>' +
+                                '<input type="number" min="1" inputmode="numeric" value="' + (it.qty || 1) + '" />' +
+                                '<button type="button" data-act="inc" aria-label="Increase">+</button>' +
+                            '</div>' +
+                            modeToggle +
+                            '<button type="button" class="remove" data-act="rm">Remove</button>' +
+                        '</div>' +
+                        totalLine +
+                    '</div>';
+                var qInput = row.querySelector('input[type="number"]');
+                var inc = row.querySelector('[data-act="inc"]');
+                var dec = row.querySelector('[data-act="dec"]');
+                var rm = row.querySelector('[data-act="rm"]');
+                if (inc) inc.addEventListener('click', function(){ it.qty = (parseInt(qInput.value, 10) || 0) + 1; if (it.qty < 1) it.qty = 1; save(); refresh(); });
+                if (dec) dec.addEventListener('click', function(){ var v = (parseInt(qInput.value, 10) || 1) - 1; if (v < 1) v = 1; it.qty = v; save(); refresh(); });
+                if (qInput) {
+                    qInput.addEventListener('input', function(){ var v = parseInt(qInput.value, 10); if (!v || v < 1) v = 1; it.qty = v; save(); updateBadge(); updateTotalLine(row); });
+                    qInput.addEventListener('blur', function(){ refresh(); });
+                }
+                if (rm) rm.addEventListener('click', function(){ delete cart[key]; save(); refresh(); });
+                row.querySelectorAll('.mode-toggle button').forEach(function(b){
+                    b.addEventListener('click', function(){
+                        it.mode = b.getAttribute('data-mode') || 'unit';
+                        save(); refresh();
+                    });
+                });
+                return row;
+            }
+
+            function updateBadge(){
+                if (!fabCount) return;
+                fabCount.textContent = String(totalLines()) + (totalLines() ? '' : '');
+            }
+
+            function updateTotalLine(row){
+                var key = row.getAttribute('data-key');
+                if (!key || !cart[key]) return;
+                var it = cart[key];
+                var t = row.querySelector('.total-line');
+                if (it.mode === 'pack' && it.pack > 0 && t) {
+                    t.innerHTML = '= <strong>' + ((it.qty || 0) * it.pack) + '</strong> ' + escapeText(it.unit || 'units') + ' (' + (it.qty || 0) + ' × ' + it.pack + ')';
+                }
+            }
+
             function refresh(){
+                if (!listEl) return;
+                listEl.innerHTML = '';
                 var keys = Object.keys(cart);
+                if (emptyEl) emptyEl.style.display = keys.length ? 'none' : 'block';
+                keys.forEach(function(k){ listEl.appendChild(renderRow(k)); });
                 if (fab) {
                     if (keys.length > 0) fab.classList.add('show'); else fab.classList.remove('show');
-                    if (fabCount) fabCount.textContent = String(totalCount());
                 }
-                if (empty) empty.style.display = keys.length ? 'none' : 'block';
-                // Render rows
-                var existingRows = body.querySelectorAll('.cart-item');
-                existingRows.forEach(function(r){ r.remove(); });
-                keys.forEach(function(k){
-                    var it = cart[k];
-                    var row = document.createElement('div');
-                    row.className = 'cart-item';
-                    row.innerHTML = '' +
-                        '<img src="' + (it.img || '') + '" alt="" onerror="this.style.visibility=\\'hidden\\'" />' +
-                        '<div class="info">' +
-                            '<div class="name">' + escapeText(it.name) + '</div>' +
-                            (it.sku ? '<div class="sku">' + escapeText(it.sku) + '</div>' : '') +
-                            '<div class="row2">' +
-                                '<div class="qty-row">' +
-                                    '<button type="button" data-act="dec">-</button>' +
-                                    '<input type="number" min="1" value="' + (it.qty||1) + '" />' +
-                                    '<button type="button" data-act="inc">+</button>' +
-                                '</div>' +
-                                '<span class="unit">' + escapeText(it.unit || '') + '</span>' +
-                                '<button type="button" class="remove" data-act="rm">Remove</button>' +
-                            '</div>' +
-                        '</div>';
-                    var qInput = row.querySelector('input');
-                    var inc = row.querySelector('[data-act="inc"]');
-                    var dec = row.querySelector('[data-act="dec"]');
-                    var rm = row.querySelector('[data-act="rm"]');
-                    inc.addEventListener('click', function(){ it.qty = (parseInt(qInput.value,10)||1) + 1; qInput.value = it.qty; save(); refresh(); });
-                    dec.addEventListener('click', function(){ var v = (parseInt(qInput.value,10)||1) - 1; if (v < 1) v = 1; it.qty = v; qInput.value = v; save(); refresh(); });
-                    qInput.addEventListener('input', function(){ var v = parseInt(qInput.value,10); if (!v || v < 1) v = 1; it.qty = v; save(); if (fabCount) fabCount.textContent = String(totalCount()); });
-                    rm.addEventListener('click', function(){ delete cart[k]; save(); refresh(); });
-                    body.insertBefore(row, form);
-                });
+                updateBadge();
             }
-            function escapeText(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
             function openDrawer(){ overlay.classList.add('open'); drawer.classList.add('open'); document.body.style.overflow = 'hidden'; }
-            function closeDrawer(){ overlay.classList.remove('open'); drawer.classList.remove('open'); document.body.style.overflow = ''; status.textContent = ''; status.className = 'submit-status'; }
+            function closeDrawer(){ overlay.classList.remove('open'); drawer.classList.remove('open'); document.body.style.overflow = ''; if (statusEl) { statusEl.textContent = ''; statusEl.className = 'submit-status'; } }
 
             // Add to cart buttons
             document.querySelectorAll('[data-add-to-cart]').forEach(function(btn){
@@ -917,15 +970,16 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 btn.addEventListener('click', function(e){
                     e.preventDefault();
                     var name = card.getAttribute('data-cart-name') || 'Item';
-                    var moq = parseInt(card.getAttribute('data-cart-moq') || '0', 10) || 1;
+                    var pack = parseInt(card.getAttribute('data-cart-pack') || '0', 10) || 0;
                     var existing = cart[key];
                     cart[key] = {
                         sku: sku,
                         name: name,
                         unit: card.getAttribute('data-cart-unit') || '',
-                        pack: parseInt(card.getAttribute('data-cart-pack') || '0', 10) || 0,
+                        pack: pack,
                         img: card.getAttribute('data-cart-img') || '',
-                        qty: existing ? (existing.qty + (moq||1)) : (moq||1)
+                        qty: existing ? (existing.qty || 0) + 1 : 1,
+                        mode: existing ? existing.mode : (pack > 0 ? 'pack' : 'unit')
                     };
                     save();
                     refresh();
@@ -957,7 +1011,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 lines.push('=== ITEMS ===');
                 Object.keys(cart).forEach(function(k, i){
                     var it = cart[k];
-                    lines.push((i+1) + '. ' + it.name + ' [' + (it.sku||'-') + ']  Qty: ' + (it.qty||0) + ' ' + (it.unit||''));
+                    var totalU = (it.mode === 'pack' && it.pack) ? (it.qty || 0) * it.pack : (it.qty || 0);
+                    var qtyStr = (it.mode === 'pack' && it.pack)
+                        ? (it.qty || 0) + ' pack(s) (' + totalU + ' ' + (it.unit || 'units') + ')'
+                        : (it.qty || 0) + ' ' + (it.unit || 'units');
+                    lines.push((i+1) + '. ' + it.name + ' [' + (it.sku || '-') + ']  Qty: ' + qtyStr);
                 });
                 var notes = form.querySelector('[name="notes"]');
                 if (notes && notes.value) { lines.push(''); lines.push('=== NOTES ==='); lines.push(notes.value); }
@@ -975,12 +1033,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
             if (form) form.addEventListener('submit', function(e){
                 e.preventDefault();
-                if (Object.keys(cart).length === 0) { status.textContent = 'Add at least one product first.'; status.className = 'submit-status error'; return; }
-                if (!form.checkValidity()) { status.textContent = 'Please fill required fields.'; status.className = 'submit-status error'; form.reportValidity(); return; }
-                if (!ORDER_EMAIL) { status.textContent = 'No order email configured.'; status.className = 'submit-status error'; return; }
-                status.textContent = 'Sending...'; status.className = 'submit-status'; submitBtn.disabled = true;
+                if (Object.keys(cart).length === 0) { statusEl.textContent = 'Add at least one product first.'; statusEl.className = 'submit-status error'; return; }
+                if (!form.checkValidity()) { statusEl.textContent = 'Please fill required fields.'; statusEl.className = 'submit-status error'; form.reportValidity(); return; }
+                if (!ORDER_EMAIL) { statusEl.textContent = 'No order email configured.'; statusEl.className = 'submit-status error'; return; }
+                statusEl.textContent = 'Sending...'; statusEl.className = 'submit-status'; submitBtn.disabled = true;
 
-                // Build FormSubmit.co payload (free, no signup, sends to ORDER_EMAIL)
                 var fd = new FormData(form);
                 fd.append('_subject', '[Inquiry] ' + SUBJECT_PREFIX + ' - ' + (form.querySelector('[name="customer_name"]').value || ''));
                 fd.append('_template', 'table');
@@ -988,7 +1045,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 fd.append('items_summary', buildPlainOrder());
                 Object.keys(cart).forEach(function(k, i){
                     var it = cart[k];
-                    fd.append('item_' + (i+1), (it.name||'') + ' | SKU:' + (it.sku||'-') + ' | Qty:' + (it.qty||0) + ' ' + (it.unit||''));
+                    var totalU = (it.mode === 'pack' && it.pack) ? (it.qty || 0) * it.pack : (it.qty || 0);
+                    var qtyStr = (it.mode === 'pack' && it.pack)
+                        ? (it.qty || 0) + ' pack(s) = ' + totalU + ' ' + (it.unit || 'units')
+                        : (it.qty || 0) + ' ' + (it.unit || 'units');
+                    fd.append('item_' + (i+1), (it.name || '') + ' | SKU:' + (it.sku || '-') + ' | ' + qtyStr);
                 });
 
                 var endpoint = 'https://formsubmit.co/ajax/' + encodeURIComponent(ORDER_EMAIL);
@@ -997,15 +1058,15 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     .then(function(j){
                         submitBtn.disabled = false;
                         if (j && (j.success === 'true' || j.success === true)) {
-                            status.textContent = ''; showThanks();
+                            statusEl.textContent = ''; showThanks();
                         } else {
-                            status.innerHTML = 'Online send failed. Opening your mail app instead...'; status.className = 'submit-status';
+                            statusEl.textContent = 'Online send failed. Opening your mail app instead...'; statusEl.className = 'submit-status';
                             tryMailto();
                         }
                     })
                     .catch(function(){
                         submitBtn.disabled = false;
-                        status.innerHTML = 'No internet — opening your mail app...'; status.className = 'submit-status';
+                        statusEl.textContent = 'No internet — opening your mail app...'; statusEl.className = 'submit-status';
                         tryMailto();
                     });
             });
