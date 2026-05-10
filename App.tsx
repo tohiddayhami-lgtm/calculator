@@ -238,6 +238,7 @@ const triggerPrint = (): void => {
 
 const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promise<string> => {
     return new Promise((resolve) => {
+        const preserveTransparency = /^data:image\/(png|webp|gif|svg\+xml)/i.test(base64Str);
         const img = new Image();
         img.src = base64Str;
         img.onload = () => {
@@ -252,10 +253,16 @@ const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promi
 
             canvas.width = width;
             canvas.height = height;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { alpha: true });
             if (ctx) {
-                ctx.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', quality));
+                if (preserveTransparency) {
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/png'));
+                } else {
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                }
             } else {
                 resolve(base64Str);
             }
