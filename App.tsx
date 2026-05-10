@@ -60,7 +60,8 @@ import {
   PriceListConfig,
   Supplier,
   SupplierAttachment,
-  CatalogSection
+  CatalogSection,
+  Buyer
 } from './types';
 
 // --- GLOBAL DECLARATIONS ---
@@ -1626,7 +1627,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 function AppInner() {
   
   // -- STATE: VIEW & UI --
-  const [view, setView] = useState<'dashboard' | 'invoice' | 'pricelist' | 'catalog' | 'suppliers'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'invoice' | 'pricelist' | 'catalog' | 'suppliers' | 'buyers'>('dashboard');
   const [showRateSettings, setShowRateSettings] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   
@@ -1704,6 +1705,8 @@ function AppInner() {
   });
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [buyers, setBuyers] = useState<Buyer[]>([]);
+  const [selectedBuyerId, setSelectedBuyerId] = useState<number | ''>('');
 
   // -- STATE: DOCUMENT SETTINGS (INVOICE/CATALOG/PRICELIST) --
   const [selectedTerms, setSelectedTerms] = useState<string[]>(['FOB', 'DDP']); 
@@ -2225,6 +2228,38 @@ function AppInner() {
 
       setInvoiceRef(`INV-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
 
+      // Auto-create or refresh a Buyer record from this customer so they're saved for future repeat orders.
+      if (fullName || company || cust.email) {
+          const matchKey = (cust.email || fullName || company).trim().toLowerCase();
+          const existing = buyers.find((b) =>
+              (b.email && b.email.trim().toLowerCase() === matchKey) ||
+              (b.name && b.name.trim().toLowerCase() === matchKey) ||
+              (b.company && b.company.trim().toLowerCase() === matchKey)
+          );
+          if (existing) {
+              setBuyers((prev) => prev.map((b) => b.id === existing.id ? { ...b, lastOrderAt: Date.now() } : b));
+              setSelectedBuyerId(existing.id);
+          } else {
+              const newBuyer: Buyer = {
+                  id: Date.now() + Math.floor(Math.random() * 1000),
+                  name: fullName || company || 'Customer',
+                  company,
+                  email: cust.email || '',
+                  phone: cust.phone || '',
+                  country: cust.country || '',
+                  destinationPort: cust.destination_port || '',
+                  incoterm: (cust.incoterm || '').toUpperCase().trim(),
+                  paymentTerms: cust.payment_terms || '',
+                  address: '',
+                  notes: cust.notes || '',
+                  vatId: '',
+                  lastOrderAt: Date.now()
+              };
+              setBuyers((prev) => [newBuyer, ...prev]);
+              setSelectedBuyerId(newBuyer.id);
+          }
+      }
+
       handleMarkInquiry(inq.id, 'read');
       setShowInquiries(false);
       setSelectedInquiry(null);
@@ -2240,6 +2275,69 @@ function AppInner() {
               );
           }, 300);
       }
+  };
+
+  /** Build a multi-line "Bill To" address block from a Buyer record. */
+  const buildBuyerAddressBlock = (b: Buyer): string => {
+      const lines: string[] = [];
+      if (b.company) lines.push(b.company);
+      if (b.address) lines.push(b.address);
+      const cityCountry = [b.destinationPort, b.country].filter(Boolean).join(', ').trim();
+      if (cityCountry) lines.push(cityCountry);
+      if (b.email) lines.push(`Email: ${b.email}`);
+      if (b.phone) lines.push(`Phone: ${b.phone}`);
+      if (b.vatId) lines.push(`Tax/VAT: ${b.vatId}`);
+      return lines.join('\n');
+  };
+
+  /** Fill the Proforma Invoice fields from a saved Buyer. */
+  const applyBuyerToInvoice = (buyer: Buyer | undefined | null) => {
+      if (!buyer) return;
+      setCustomerName(buyer.name || buyer.company || 'Customer');
+      setCustomerAddress(buildBuyerAddressBlock(buyer));
+      if (buyer.paymentTerms) setPaymentTerms(buyer.paymentTerms);
+      if (buyer.incoterm) {
+          const term = String(buyer.incoterm).toUpperCase().trim();
+          if (['EXW', 'FOB', 'CIF', 'DDP', 'FCA'].includes(term)) {
+              setInvoiceTerms((prev) => (prev.includes(term) ? prev : [term, ...prev]));
+              setSelectedTerms((prev) => (prev.includes(term) ? prev : [...prev, term]));
+          }
+      }
+      setBuyers((prev) => prev.map((b) => (b.id === buyer.id ? { ...b, lastOrderAt: Date.now() } : b)));
+  };
+
+  /** Snapshot current invoice "Bill To" form values into a new Buyer record. */
+  const handleSaveCurrentBuyer = () => {
+      const trimmedName = (customerName || '').trim();
+      if (!trimmedName) {
+          alert('Enter a customer name in the invoice first.');
+          return;
+      }
+      const dup = buyers.find(
+          (b) => b.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      );
+      if (dup && !window.confirm(`A buyer named "${dup.name}" already exists. Save as a new entry anyway?`)) {
+          setSelectedBuyerId(dup.id);
+          return;
+      }
+      const newBuyer: Buyer = {
+          id: Date.now(),
+          name: trimmedName,
+          company: '',
+          email: '',
+          phone: '',
+          country: '',
+          destinationPort: '',
+          incoterm: invoiceTerms[0] || '',
+          paymentTerms: paymentTerms || '',
+          address: (customerAddress || '').trim(),
+          notes: '',
+          vatId: '',
+          lastOrderAt: Date.now()
+      };
+      setBuyers((prev) => [newBuyer, ...prev]);
+      setSelectedBuyerId(newBuyer.id);
+      alert(`Saved "${trimmedName}" to Buyers. Open the Buyers tab to add more contact details.`);
   };
 
   const formatInquiryDate = (val: any): string => {
@@ -2324,7 +2422,7 @@ function AppInner() {
     const projectDataPayloadRaw = {
         config, rates, products, logistics, selectedTerms, notes, visibleScenarioTerms, invoiceTerms,
         customerName, customerAddress, invoiceRef, billedFrom, billedFromDetails, paymentTerms, showImages, showPackInfo,
-        invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, isInvoiceEditable, invoiceOverrides,
+        invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
         containerCapacity, containerType
     };
 
@@ -2484,6 +2582,8 @@ function AppInner() {
     if ((project.data as any).containerType) setContainerType((project.data as any).containerType);
 
     setSuppliers(project.data.suppliers || []);
+    setBuyers(((project.data as any).buyers || []) as Buyer[]);
+    setSelectedBuyerId('');
 
     if (project.data.priceListConfig) {
         setPriceListConfig({
@@ -3398,6 +3498,7 @@ function AppInner() {
             invoiceBasis,
             priceListConfig,
             suppliers,
+            buyers,
             isInvoiceEditable,
             invoiceOverrides,
             containerCapacity,
@@ -3442,6 +3543,7 @@ function AppInner() {
     invoiceBasis,
     priceListConfig,
     suppliers,
+    buyers,
     isInvoiceEditable,
     invoiceOverrides,
     containerCapacity,
@@ -6628,8 +6730,50 @@ function AppInner() {
 
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Buyer (Billed To)</label>
-                       <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 mb-2" />
-                       <textarea rows={3} placeholder="Address..." value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none" />
+                       {buyers.length > 0 && (
+                           <div className="mb-2 flex gap-1">
+                               <select
+                                   value={selectedBuyerId}
+                                   onChange={(e) => {
+                                       const v = e.target.value;
+                                       if (!v) { setSelectedBuyerId(''); return; }
+                                       const id = parseInt(v, 10);
+                                       setSelectedBuyerId(id);
+                                       const b = buyers.find((x) => x.id === id);
+                                       if (b) applyBuyerToInvoice(b);
+                                   }}
+                                   className="flex-1 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500"
+                                   title="Pick a saved buyer to auto-fill this invoice"
+                               >
+                                   <option value="">— Pick saved buyer —</option>
+                                   {buyers
+                                       .slice()
+                                       .sort((a, b) => (b.lastOrderAt || 0) - (a.lastOrderAt || 0))
+                                       .map((b) => (
+                                           <option key={b.id} value={b.id}>
+                                               {b.name}{b.company ? ` · ${b.company}` : ''}{b.country ? ` (${b.country})` : ''}
+                                           </option>
+                                       ))}
+                               </select>
+                               <button
+                                   type="button"
+                                   onClick={() => setView('buyers')}
+                                   className="px-2 py-1.5 text-[11px] font-semibold border border-slate-300 text-slate-700 rounded hover:bg-slate-100"
+                                   title="Go to Buyers tab to edit / add"
+                               >
+                                   Manage
+                               </button>
+                           </div>
+                       )}
+                       <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => { setCustomerName(e.target.value); setSelectedBuyerId(''); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 mb-2" />
+                       <textarea rows={3} placeholder="Address..." value={customerAddress} onChange={(e) => { setCustomerAddress(e.target.value); setSelectedBuyerId(''); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none mb-2" />
+                       <button
+                           type="button"
+                           onClick={handleSaveCurrentBuyer}
+                           className="w-full text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded px-2 py-1.5 transition-colors"
+                       >
+                           + Save current customer to Buyers
+                       </button>
                    </div>
 
                    <hr className="border-slate-100"/>
@@ -7163,6 +7307,145 @@ function AppInner() {
       </div>
   );
 
+  const renderBuyers = () => {
+      const newBlankBuyer = (): Buyer => ({
+          id: Date.now(),
+          name: '',
+          company: '',
+          email: '',
+          phone: '',
+          country: '',
+          destinationPort: '',
+          incoterm: '',
+          paymentTerms: '',
+          address: '',
+          notes: '',
+          vatId: '',
+          lastOrderAt: undefined
+      });
+      const updateBuyer = (id: number, patch: Partial<Buyer>) =>
+          setBuyers((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+      const removeBuyer = (id: number) => {
+          if (!window.confirm('Delete this buyer permanently?')) return;
+          setBuyers((prev) => prev.filter((b) => b.id !== id));
+          if (selectedBuyerId === id) setSelectedBuyerId('');
+      };
+      return (
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden min-h-[500px]">
+              <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                  <div>
+                      <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+                          <Users className="w-5 h-5 text-emerald-600" />
+                          Buyers / Customers
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Save your customers&apos; contact details so you can drop them straight into a Proforma Invoice next time.</p>
+                  </div>
+                  <button
+                      onClick={() => setBuyers([newBlankBuyer(), ...buyers])}
+                      className="text-sm bg-emerald-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-emerald-700 flex items-center gap-2 shadow-sm"
+                  >
+                      <Plus className="w-4 h-4" /> Add Buyer
+                  </button>
+              </div>
+
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {buyers.length === 0 && (
+                      <div className="col-span-full py-12 text-center text-slate-400 italic bg-slate-50/50 rounded-xl border-2 border-dashed border-slate-200">
+                          <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                          <p>No buyers saved yet.</p>
+                          <p className="text-xs text-slate-500 mt-1">Click &quot;Add Buyer&quot; or save the current invoice customer from the Proforma Invoice tab.</p>
+                      </div>
+                  )}
+                  {buyers.map((b) => (
+                      <div key={b.id} className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-all group bg-white space-y-3">
+                          <div className="flex justify-between items-start">
+                              <input
+                                  value={b.name}
+                                  onChange={(e) => updateBuyer(b.id, { name: e.target.value })}
+                                  className="font-bold text-base text-slate-800 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 outline-none w-full mr-2"
+                                  placeholder="Full Name"
+                              />
+                              <button onClick={() => removeBuyer(b.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1" title="Delete">
+                                  <Trash2 className="w-4 h-4" />
+                              </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                              <div className="col-span-2">
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Company</label>
+                                  <input value={b.company} onChange={(e) => updateBuyer(b.id, { company: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Company / Importer" />
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Email</label>
+                                  <input type="email" value={b.email} onChange={(e) => updateBuyer(b.id, { email: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="name@company.com" />
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Phone (WhatsApp)</label>
+                                  <input value={b.phone} onChange={(e) => updateBuyer(b.id, { phone: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="+1 …" />
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Country</label>
+                                  <input value={b.country} onChange={(e) => updateBuyer(b.id, { country: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Germany" />
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Destination Port</label>
+                                  <input value={b.destinationPort} onChange={(e) => updateBuyer(b.id, { destinationPort: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Hamburg" />
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Incoterm</label>
+                                  <select value={b.incoterm} onChange={(e) => updateBuyer(b.id, { incoterm: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none">
+                                      <option value="">Select…</option>
+                                      {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].map((t) => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Payment Terms</label>
+                                  <input value={b.paymentTerms} onChange={(e) => updateBuyer(b.id, { paymentTerms: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="T/T 30/70" />
+                              </div>
+                              <div className="col-span-2">
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Tax / VAT / EORI</label>
+                                  <input value={b.vatId || ''} onChange={(e) => updateBuyer(b.id, { vatId: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="VAT / Importer code (optional)" />
+                              </div>
+                              <div className="col-span-2">
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Billing Address</label>
+                                  <textarea rows={2} value={b.address} onChange={(e) => updateBuyer(b.id, { address: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 resize-none focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Street, City, ZIP" />
+                              </div>
+                              <div className="col-span-2">
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Notes</label>
+                                  <textarea rows={2} value={b.notes} onChange={(e) => updateBuyer(b.id, { notes: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 resize-none focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Preferred shipping, packaging, contact times…" />
+                              </div>
+                          </div>
+
+                          {b.lastOrderAt ? (
+                              <div className="text-[10px] text-slate-400">Last used: {new Date(b.lastOrderAt).toLocaleString()}</div>
+                          ) : null}
+
+                          <div className="flex gap-2 pt-1 border-t border-slate-100">
+                              <button
+                                  onClick={() => { applyBuyerToInvoice(b); setSelectedBuyerId(b.id); setView('invoice'); }}
+                                  className="flex-1 px-2.5 py-1.5 text-xs font-bold bg-blue-600 text-white rounded shadow hover:bg-blue-700 flex items-center justify-center gap-1.5"
+                                  title="Apply this buyer's info to a new Proforma Invoice"
+                                  disabled={!b.name && !b.company}
+                              >
+                                  <FileCheck className="w-3.5 h-3.5" /> Use in Invoice
+                              </button>
+                              {b.email && (
+                                  <a
+                                      href={`mailto:${b.email}`}
+                                      className="px-2 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 flex items-center gap-1"
+                                      title="Send email"
+                                  >
+                                      <Mail className="w-3 h-3" /> Email
+                                  </a>
+                              )}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      );
+  };
+
   const renderSuppliers = () => (
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden min-h-[500px]">
         {/* ... (existing suppliers content) ... */}
@@ -7451,6 +7734,7 @@ function AppInner() {
                         { id: 'pricelist', label: 'Price List', icon: List },
                         { id: 'catalog', label: 'Catalog Gen', icon: LayoutTemplate },
                         { id: 'suppliers', label: 'Suppliers', icon: Users },
+                        { id: 'buyers', label: 'Buyers', icon: Users },
                     ].map(item => (
                         <button
                             key={item.id}
@@ -7553,6 +7837,7 @@ function AppInner() {
                     { id: 'pricelist', label: 'Price List', icon: List },
                     { id: 'catalog', label: 'Catalog', icon: LayoutTemplate },
                     { id: 'suppliers', label: 'Suppliers', icon: Users },
+                    { id: 'buyers', label: 'Buyers', icon: Users },
                 ].map(item => (
                     <button
                         key={item.id}
@@ -7593,6 +7878,7 @@ function AppInner() {
           {view === 'pricelist' && renderPriceList()}
           {view === 'catalog' && renderCatalog()}
           {view === 'suppliers' && renderSuppliers()}
+          {view === 'buyers' && renderBuyers()}
       </main>
 
       {/* --- MODALS --- */}

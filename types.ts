@@ -235,6 +235,23 @@ export interface SupplierAttachment {
   size: number; // in bytes
 }
 
+// New Interface for Buyers (saved customers for repeat orders)
+export interface Buyer {
+  id: number;
+  name: string; // Contact full name
+  company: string;
+  email: string;
+  phone: string;
+  country: string;
+  destinationPort: string;
+  incoterm: string; // e.g. EXW / FOB / CIF / DDP
+  paymentTerms: string;
+  address: string; // Full billing address (multi-line)
+  notes: string;
+  vatId?: string; // Tax / VAT / EORI / Importer code
+  lastOrderAt?: number; // unix ms — last time used in an invoice
+}
+
 // New Interface for Suppliers
 export interface Supplier {
   id: number;
@@ -278,5 +295,7 @@ export interface SavedProject {
     priceListConfig?: PriceListConfig;
     // Suppliers Data
     suppliers?: Supplier[];
+    // Saved buyers / customers (repeat clients)
+    buyers?: Buyer[];
   };
 }
