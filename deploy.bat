@@ -1,6 +1,6 @@
 @echo off
 echo ==========================================
-echo   CloudExport Pro - Deploy to Firebase
+echo   Tohid Dayhami Export+ - Deploy to Firebase
 echo ==========================================
 echo.
 echo Step 1: Building project...
