@@ -1714,6 +1714,9 @@ function AppInner() {
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
   const [isInvoiceEditable, setIsInvoiceEditable] = useState(false);
   const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, { qty?: number, unitPrices?: Record<string, number>, packPrices?: Record<string, number> }>>({});
+  // When set, the invoice only renders these product IDs (used after "Create Invoice" from an inquiry).
+  // null means "show all active products" (default behavior).
+  const [invoiceIncludedIds, setInvoiceIncludedIds] = useState<number[] | null>(null);
   
   // Price List Config
   const [priceListConfig, setPriceListConfig] = useState<PriceListConfig>({
@@ -2096,6 +2099,7 @@ function AppInner() {
       }
 
       const overrides: Record<number, { qty?: number; unitPrices?: Record<string, number>; packPrices?: Record<string, number> }> = {};
+      const matchedIds: number[] = [];
       const matchedSkus: string[] = [];
       const unmatched: string[] = [];
       items.forEach((it) => {
@@ -2108,6 +2112,7 @@ function AppInner() {
           const product = products.find((p) => (p.sku || '').trim().toLowerCase() === sku.toLowerCase());
           if (product) {
               overrides[product.id] = { ...(invoiceOverrides[product.id] || {}), qty: totalUnits };
+              matchedIds.push(product.id);
               matchedSkus.push(sku);
           } else {
               unmatched.push(`${sku} - ${it.name || ''} (${totalUnits})`);
@@ -2117,6 +2122,8 @@ function AppInner() {
           setIsInvoiceEditable(true);
           setInvoiceOverrides((prev) => ({ ...prev, ...overrides }));
       }
+      // Restrict invoice to only the products the customer requested.
+      setInvoiceIncludedIds(matchedIds.length > 0 ? matchedIds : null);
 
       setInvoiceRef(`INV-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
 
@@ -6188,6 +6195,25 @@ function AppInner() {
                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-600"/> Invoice Settings</h3>
                
                <div className="space-y-4">
+                   {invoiceIncludedIds && invoiceIncludedIds.length > 0 && (
+                       <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                           <div className="flex items-start gap-2">
+                               <Inbox className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                               <div className="flex-1">
+                                   <p className="text-xs font-bold text-amber-800">Filtered to customer&apos;s request</p>
+                                   <p className="text-[10px] text-amber-700 mt-0.5">
+                                       Only showing the {invoiceIncludedIds.length} item(s) the customer asked for. Other products in this project are hidden.
+                                   </p>
+                               </div>
+                           </div>
+                           <button
+                               onClick={() => setInvoiceIncludedIds(null)}
+                               className="w-full text-[11px] font-semibold text-amber-800 bg-white hover:bg-amber-100 border border-amber-300 rounded px-2 py-1 transition-colors"
+                           >
+                               Show all products instead
+                           </button>
+                       </div>
+                   )}
                    <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
                        <label className="flex items-center gap-2 cursor-pointer">
                            <input 
@@ -6347,7 +6373,9 @@ function AppInner() {
                            </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-200">
-                           {calculations.processedProducts.filter(p => p.isActive).map(p => {
+                           {calculations.processedProducts
+                             .filter(p => p.isActive && (invoiceIncludedIds === null || invoiceIncludedIds.includes(p.id)))
+                             .map(p => {
                                const override = invoiceOverrides[p.id] || {};
                                const displayQty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
                                const displayPacks = (p.itemsPerPack && p.itemsPerPack > 0) ? displayQty / p.itemsPerPack : 0;
@@ -6468,12 +6496,14 @@ function AppInner() {
                                }>TOTALS:</td>
                                
                                {invoiceTerms.map(term => {
-                                   const totalForTerm = calculations.processedProducts.filter(p => p.isActive).reduce((sum, p) => {
-                                       const override = invoiceOverrides[p.id] || {};
-                                       const qty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
-                                       const price = isInvoiceEditable ? (override.unitPrices?.[term] ?? (p.scenarioPrices?.[term] || 0)) : (p.scenarioPrices?.[term] || 0);
-                                       return sum + (price * qty);
-                                   }, 0);
+                                   const totalForTerm = calculations.processedProducts
+                                       .filter(p => p.isActive && (invoiceIncludedIds === null || invoiceIncludedIds.includes(p.id)))
+                                       .reduce((sum, p) => {
+                                           const override = invoiceOverrides[p.id] || {};
+                                           const qty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
+                                           const price = isInvoiceEditable ? (override.unitPrices?.[term] ?? (p.scenarioPrices?.[term] || 0)) : (p.scenarioPrices?.[term] || 0);
+                                           return sum + (price * qty);
+                                       }, 0);
 
                                    return (
                                    <td key={term} className="pt-4 text-right font-bold text-lg" colSpan={invoiceBasis === 'both' ? 3 : 2}>
