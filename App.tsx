@@ -19,7 +19,10 @@ import {
   onSnapshot, 
   getDocs,
   serverTimestamp,
-  updateDoc 
+  updateDoc,
+  query,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -39,7 +42,7 @@ import {
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
-  AlignJustify, ArrowLeft, Pencil
+  AlignJustify, ArrowLeft, Pencil, Inbox, Mail, ShoppingCart
 } from 'lucide-react';
 
 // Types
@@ -295,9 +298,10 @@ interface BuildCatalogHtmlArgs {
     catalogConfig: any;
     qrDataUrl: string;
     tCombined: (key: string) => string;
+    inquiryEndpoint?: { firebaseConfig: any; appId: string; ownerId: string } | null;
 }
 
-const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombined }: BuildCatalogHtmlArgs): string => {
+const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombined, inquiryEndpoint }: BuildCatalogHtmlArgs): string => {
     const cc = catalogConfig || {};
     const primary = cc.primaryColor || '#0f172a';
     const heading = cc.headingColor || primary;
@@ -846,6 +850,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         (function(){
             var ORDER_EMAIL = ${JSON.stringify(orderEmail)};
             var SUBJECT_PREFIX = ${JSON.stringify(catalogConfig.title || 'Catalog Inquiry')};
+            var INQ_BACKEND = ${JSON.stringify(inquiryEndpoint && inquiryEndpoint.firebaseConfig && inquiryEndpoint.ownerId ? { appId: inquiryEndpoint.appId || 'export-pro-default', ownerId: inquiryEndpoint.ownerId } : null)};
             var STORAGE_KEY = 'cat_cart_v2';
             var cart = {};
             try { cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch(e){ cart = {}; }
@@ -1024,73 +1029,110 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
             function showThanks(){ thanks.classList.add('open'); cart = {}; save(); refresh(); form.reset(); closeDrawer(); }
 
+            function showError(msg){
+                statusEl.className = 'submit-status error';
+                statusEl.innerHTML = '';
+                var p = document.createElement('div');
+                p.textContent = msg;
+                statusEl.appendChild(p);
+                if (ORDER_EMAIL) {
+                    var hint = document.createElement('div');
+                    hint.style.marginTop = '8px';
+                    hint.style.fontSize = '12px';
+                    hint.style.color = '#475569';
+                    hint.textContent = 'As a backup, you can email us directly:';
+                    statusEl.appendChild(hint);
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'submit-btn';
+                    btn.style.marginTop = '6px';
+                    btn.style.background = '#475569';
+                    btn.textContent = 'Open my mail app';
+                    btn.addEventListener('click', tryMailto);
+                    statusEl.appendChild(btn);
+                }
+            }
+
             function tryMailto(){
                 var subject = encodeURIComponent('[Inquiry] ' + SUBJECT_PREFIX + ' - ' + (form.querySelector('[name="customer_name"]').value || ''));
                 var body = encodeURIComponent(buildPlainOrder());
                 window.location.href = 'mailto:' + encodeURIComponent(ORDER_EMAIL) + '?subject=' + subject + '&body=' + body;
-                setTimeout(showThanks, 800);
             }
 
-            if (form) form.addEventListener('submit', function(e){
-                e.preventDefault();
-                if (Object.keys(cart).length === 0) { statusEl.textContent = 'Please add at least one product first.'; statusEl.className = 'submit-status error'; return; }
-                if (!form.checkValidity()) { statusEl.textContent = 'Please fill all required fields.'; statusEl.className = 'submit-status error'; form.reportValidity(); return; }
-                if (!ORDER_EMAIL) { statusEl.textContent = 'Order email is not configured. Please contact the seller.'; statusEl.className = 'submit-status error'; return; }
-                statusEl.textContent = 'Sending your inquiry...'; statusEl.className = 'submit-status'; submitBtn.disabled = true;
+            function buildItemsArray(){
+                return Object.keys(cart).map(function(k){
+                    var it = cart[k];
+                    var totalU = (it.mode === 'pack' && it.pack) ? (it.qty || 0) * it.pack : (it.qty || 0);
+                    return {
+                        sku: it.sku || '',
+                        name: it.name || '',
+                        unit: it.unit || '',
+                        pack: it.pack || 0,
+                        qty: it.qty || 0,
+                        mode: it.mode || 'unit',
+                        totalUnits: totalU
+                    };
+                });
+            }
 
-                // Build a JSON payload (FormSubmit recommends JSON for AJAX submissions)
+            // Wait briefly for the embedded Firebase module to attach window.__submitInquiry
+            function waitForBackend(timeoutMs){
+                return new Promise(function(resolve){
+                    if (typeof window.__submitInquiry === 'function') return resolve(true);
+                    if (!INQ_BACKEND) return resolve(false);
+                    var start = Date.now();
+                    var t = setInterval(function(){
+                        if (typeof window.__submitInquiry === 'function') { clearInterval(t); resolve(true); }
+                        else if (Date.now() - start > timeoutMs) { clearInterval(t); resolve(false); }
+                    }, 100);
+                });
+            }
+
+            if (form) form.addEventListener('submit', async function(e){
+                e.preventDefault();
+                if (Object.keys(cart).length === 0) { showError('Please add at least one product first.'); return; }
+                if (!form.checkValidity()) { statusEl.className = 'submit-status error'; statusEl.textContent = 'Please fill all required fields.'; form.reportValidity(); return; }
+
+                statusEl.className = 'submit-status';
+                statusEl.textContent = 'Sending your inquiry...';
+                submitBtn.disabled = true;
+
                 var payload = {
-                    _subject: '[Inquiry] ' + SUBJECT_PREFIX + ' - ' + (form.querySelector('[name="customer_name"]').value || ''),
-                    _template: 'table',
-                    _captcha: 'false',
                     catalog: SUBJECT_PREFIX,
-                    submitted_at: new Date().toISOString()
+                    submittedAt: new Date().toISOString(),
+                    customer: {},
+                    items: buildItemsArray(),
+                    summary: buildPlainOrder()
                 };
                 ['customer_name','company','email','phone','country','destination_port','incoterm','payment_terms','notes'].forEach(function(f){
                     var el = form.querySelector('[name="' + f + '"]');
-                    if (el) payload[f] = el.value || '';
-                });
-                payload.items_summary = buildPlainOrder();
-                Object.keys(cart).forEach(function(k, i){
-                    var it = cart[k];
-                    var totalU = (it.mode === 'pack' && it.pack) ? (it.qty || 0) * it.pack : (it.qty || 0);
-                    var qtyStr = (it.mode === 'pack' && it.pack)
-                        ? (it.qty || 0) + ' pack(s) = ' + totalU + ' ' + (it.unit || 'units')
-                        : (it.qty || 0) + ' ' + (it.unit || 'units');
-                    payload['item_' + (i + 1)] = (it.name || '') + ' | SKU:' + (it.sku || '-') + ' | ' + qtyStr;
+                    if (el) payload.customer[f] = el.value || '';
                 });
 
-                var endpoint = 'https://formsubmit.co/ajax/' + encodeURIComponent(ORDER_EMAIL);
-                fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                })
-                    .then(function(r){
-                        return r.json().then(function(j){ return { ok: r.ok, j: j }; }).catch(function(){ return { ok: r.ok, j: null }; });
-                    })
-                    .then(function(res){
-                        submitBtn.disabled = false;
-                        var success = res && res.j && (res.j.success === 'true' || res.j.success === true);
-                        if (success) {
-                            statusEl.textContent = '';
-                            showThanks();
-                            return;
-                        }
-                        // If response says we need email confirmation, also fall through to mailto so the order isn't lost
-                        statusEl.textContent = 'Opening your mail app as a backup so the seller still receives your order...';
-                        statusEl.className = 'submit-status';
-                        setTimeout(tryMailto, 400);
-                    })
-                    .catch(function(){
-                        submitBtn.disabled = false;
-                        statusEl.textContent = 'Opening your mail app to deliver your order...';
-                        statusEl.className = 'submit-status';
-                        setTimeout(tryMailto, 200);
-                    });
+                if (!INQ_BACKEND) {
+                    submitBtn.disabled = false;
+                    showError('The seller has not enabled online inquiries yet.');
+                    return;
+                }
+
+                var ready = await waitForBackend(8000);
+                if (!ready) {
+                    submitBtn.disabled = false;
+                    showError('Cannot connect to the seller right now. Please try again in a moment.');
+                    return;
+                }
+
+                try {
+                    await window.__submitInquiry(payload);
+                    submitBtn.disabled = false;
+                    statusEl.textContent = '';
+                    statusEl.className = 'submit-status';
+                    showThanks();
+                } catch (err) {
+                    submitBtn.disabled = false;
+                    var msg = (err && err.message) ? err.message : 'Failed to send the inquiry to the seller.';
+                    showError(msg);
+                }
             });
 
             refresh();
@@ -1100,6 +1142,28 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
     const lang = (cc.languages && cc.languages[0]) === 'fa' ? 'fa' : (cc.languages && cc.languages[0]) === 'ar' ? 'ar' : 'en';
     const dir = (lang === 'fa' || lang === 'ar') ? 'rtl' : 'ltr';
+
+    // Firebase backend script (embedded as ES module). Only included when an inquiry endpoint is provided.
+    const inq = (inquiryEndpoint && inquiryEndpoint.firebaseConfig && inquiryEndpoint.ownerId) ? inquiryEndpoint : null;
+    const firebaseInquiryScript = (inq && cartEnabled) ? `
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+  import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+
+  try {
+    const FB_CONFIG = ${JSON.stringify(inq.firebaseConfig)};
+    const APP_ID = ${JSON.stringify(inq.appId || 'export-pro-default')};
+    const OWNER_ID = ${JSON.stringify(inq.ownerId)};
+    const fbApp = initializeApp(FB_CONFIG, 'inquiry-' + Date.now());
+    const fbDb = getFirestore(fbApp);
+    window.__submitInquiry = async function(payload) {
+      const colRef = collection(fbDb, 'artifacts', APP_ID, 'users', OWNER_ID, 'inquiries');
+      await addDoc(colRef, Object.assign({}, payload, { createdAt: serverTimestamp(), status: 'new' }));
+    };
+  } catch (e) {
+    console.error('Inquiry backend init failed:', e);
+  }
+</script>` : '';
 
     return `<!DOCTYPE html>
 <html lang="${lang}" dir="${dir}">
@@ -1149,6 +1213,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
 ${cartHtml}
 
+${firebaseInquiryScript}
 <script>${js}</script>
 </body>
 </html>`;
@@ -1569,7 +1634,10 @@ function AppInner() {
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [shareLinkInfo, setShareLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string } | null>(null);
-  const [formActivation, setFormActivation] = useState<{ status: 'idle' | 'sending' | 'sent' | 'error'; message: string }>({ status: 'idle', message: '' });
+  const [inquiries, setInquiries] = useState<any[]>([]);
+  const [showInquiries, setShowInquiries] = useState(false);
+  const [selectedInquiry, setSelectedInquiry] = useState<any | null>(null);
+  const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
@@ -1842,6 +1910,37 @@ function AppInner() {
     }
   }, [user, authLoading, isDemoMode, dataAppId]);
 
+  // Customer inquiries listener (live updates from the public HTML catalog)
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) {
+        setInquiries([]);
+        return;
+    }
+    setInquiriesLoading(true);
+    const inqRef = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'inquiries');
+    let q;
+    try {
+        q = query(inqRef, orderBy('createdAt', 'desc'), limit(200));
+    } catch {
+        q = inqRef;
+    }
+    const unsub = onSnapshot(
+        q,
+        (snap: any) => {
+            const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+            setInquiries(list);
+            setInquiriesLoading(false);
+        },
+        (err: any) => {
+            console.error('Inquiries listener failed:', err);
+            setInquiriesLoading(false);
+        }
+    );
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId]);
+
   const loadLocalProjects = async () => {
       let mergedProjects: SavedProject[] = [];
 
@@ -1940,6 +2039,49 @@ function AppInner() {
           console.error("Logout failed", error);
       }
   };
+
+  const handleDeleteInquiry = async (id: string) => {
+      if (!user || !db) return;
+      if (!window.confirm('Delete this inquiry permanently?')) return;
+      try {
+          await withTimeout(
+              deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'inquiries', id)),
+              10000,
+              'Delete inquiry timed out'
+          );
+          if (selectedInquiry?.id === id) setSelectedInquiry(null);
+      } catch (err: any) {
+          alert('Failed to delete inquiry: ' + (err?.message || err));
+      }
+  };
+
+  const handleMarkInquiry = async (id: string, status: 'new' | 'read' | 'archived') => {
+      if (!user || !db) return;
+      try {
+          await withTimeout(
+              updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'inquiries', id), { status }),
+              10000,
+              'Update inquiry timed out'
+          );
+      } catch (err: any) {
+          alert('Failed to update inquiry: ' + (err?.message || err));
+      }
+  };
+
+  const formatInquiryDate = (val: any): string => {
+      try {
+          if (!val) return '';
+          if (typeof val === 'object' && typeof val.seconds === 'number') {
+              return new Date(val.seconds * 1000).toLocaleString();
+          }
+          if (typeof val === 'string') return new Date(val).toLocaleString();
+          return '';
+      } catch {
+          return '';
+      }
+  };
+
+  const inquiryNewCount = inquiries.filter((i) => !i.status || i.status === 'new').length;
 
   const handleEmailAuth = async () => {
       setAuthError('');
@@ -3985,12 +4127,16 @@ function AppInner() {
 
     const handleExportCatalogHtml = async () => {
         try {
+            const inquiryEndpoint = (user && firebaseConfig && firebaseConfig.apiKey)
+                ? { firebaseConfig, appId, ownerId: user.uid }
+                : null;
             const html = buildCatalogHtml({
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
                 config,
                 catalogConfig,
                 qrDataUrl,
-                tCombined
+                tCombined,
+                inquiryEndpoint
             });
             const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
             const fileName = `${safeTitle}.html`;
@@ -4049,12 +4195,16 @@ function AppInner() {
 
     const handleDownloadCatalogHtmlFile = async () => {
         try {
+            const inquiryEndpoint = (user && firebaseConfig && firebaseConfig.apiKey)
+                ? { firebaseConfig, appId, ownerId: user.uid }
+                : null;
             const html = buildCatalogHtml({
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
                 config,
                 catalogConfig,
                 qrDataUrl,
-                tCombined
+                tCombined,
+                inquiryEndpoint
             });
             const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
             const fileName = `${safeTitle}.html`;
@@ -4108,48 +4258,6 @@ function AppInner() {
             }
         }
         await handleCopyShareLink();
-    };
-
-    const handleSendActivationEmail = async () => {
-        const orderEmail = (catalogConfig.orderEmail || '').trim();
-        if (!orderEmail) {
-            setFormActivation({ status: 'error', message: 'Please enter an order email above first.' });
-            return;
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(orderEmail)) {
-            setFormActivation({ status: 'error', message: 'Email format looks invalid.' });
-            return;
-        }
-        setFormActivation({ status: 'sending', message: 'Sending activation request to FormSubmit.co...' });
-        try {
-            const endpoint = `https://formsubmit.co/ajax/${encodeURIComponent(orderEmail)}`;
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    _subject: '[Activation] Catalog Inquiry Cart',
-                    _captcha: 'false',
-                    _template: 'table',
-                    name: 'Activation Test',
-                    email: orderEmail,
-                    message: 'This is a one-time activation test from your Catalog app. Please check your inbox for a confirmation email from FormSubmit.co and click the link to enable receiving customer inquiries.'
-                })
-            });
-            let data: any = null;
-            try { data = await res.json(); } catch { /* ignore */ }
-            if (data && (data.success === 'true' || data.success === true)) {
-                setFormActivation({
-                    status: 'sent',
-                    message: `Done. Now check the inbox of "${orderEmail}" for an email from FormSubmit.co and click the confirmation link. After that, all customer inquiries will arrive automatically.`
-                });
-            } else if (data && data.message) {
-                setFormActivation({ status: 'sent', message: `Server response: ${data.message}. If this is your first time, check your inbox for a FormSubmit.co confirmation email.` });
-            } else {
-                setFormActivation({ status: 'sent', message: 'Request sent. Check your inbox for a FormSubmit.co confirmation email and click the link.' });
-            }
-        } catch (err: any) {
-            setFormActivation({ status: 'error', message: `Could not reach FormSubmit.co: ${err?.message || 'network error'}.` });
-        }
     };
 
     return (
@@ -4761,7 +4869,7 @@ function AppInner() {
                                   {catalogConfig.cartEnabled !== false && (
                                       <div className="space-y-2 bg-emerald-50/40 border border-emerald-100 rounded-md p-2">
                                           <div className="space-y-1">
-                                              <label className="text-[10px] text-slate-500 font-semibold">Receive orders at (email)</label>
+                                              <label className="text-[10px] text-slate-500 font-semibold">Reply-to email (shown to customer as backup)</label>
                                               <input
                                                   type="email"
                                                   value={catalogConfig.orderEmail || ''}
@@ -4769,7 +4877,7 @@ function AppInner() {
                                                   className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
                                                   placeholder="info@yourdomain.com"
                                               />
-                                              <p className="text-[10px] text-slate-400">Inquiries from customers are emailed here. (First-time use of FormSubmit.co requires email confirmation — see below.)</p>
+                                              <p className="text-[10px] text-slate-400">Inquiries arrive directly into the <b>Inquiries Inbox</b> (top-right icon). Email is only used as a fallback if the customer hits an error.</p>
                                           </div>
                                           <div className="space-y-1">
                                               <label className="text-[10px] text-slate-500 font-semibold">Cart button text</label>
@@ -4821,32 +4929,21 @@ function AppInner() {
                                                   placeholder="We will get back to you shortly"
                                               />
                                           </div>
-                                          <div className="rounded-md border border-amber-200 bg-amber-50 p-2 space-y-2">
-                                              <p className="text-[10px] text-amber-800 leading-snug">
-                                                  <b>Important — first-time setup:</b> The free <a className="underline" target="_blank" rel="noopener" href="https://formsubmit.co">FormSubmit.co</a> service requires a <b>one-time email confirmation</b>. Without it, customer inquiries fail with &quot;send failed&quot;.
+                                          <div className="rounded-md border border-emerald-200 bg-white p-2 space-y-1.5">
+                                              <p className="text-[10px] text-emerald-800 leading-snug">
+                                                  <b>How it works:</b> Customer orders from your HTML catalog are saved <b>directly to your Firebase database</b> (no third-party services, works in every country). You see new inquiries in real time inside the app — click the <Inbox className="w-3 h-3 inline-block -mt-0.5" /> <b>Inquiries</b> icon at the top of the page.
                                               </p>
-                                              <ol className="text-[10px] text-amber-800 list-decimal list-inside space-y-0.5">
-                                                  <li>Click the button below to send an activation request.</li>
-                                                  <li>Open the inbox of the email above and click the confirmation link from <b>FormSubmit.co</b>.</li>
-                                                  <li>Done — customers&apos; orders will start arriving.</li>
-                                              </ol>
-                                              <button
-                                                  type="button"
-                                                  onClick={handleSendActivationEmail}
-                                                  disabled={formActivation.status === 'sending'}
-                                                  className="w-full text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold rounded px-2 py-1.5 transition"
-                                              >
-                                                  {formActivation.status === 'sending' ? 'Sending...' : 'Send Activation Email Now'}
-                                              </button>
-                                              {formActivation.status !== 'idle' && (
-                                                  <p className={`text-[10px] leading-snug ${formActivation.status === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>
-                                                      {formActivation.message}
+                                              <ul className="text-[10px] text-slate-600 list-disc list-inside space-y-0.5">
+                                                  <li>You must be <b>signed in</b> when generating the HTML (so it knows where to deliver orders).</li>
+                                                  <li>Customers don&apos;t need an account — they just fill the cart form and tap Send.</li>
+                                                  <li>If sending fails, the customer gets a clear error and an option to email you instead.</li>
+                                              </ul>
+                                              {!user && (
+                                                  <p className="text-[10px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 mt-1">
+                                                      You are not signed in. Sign in first, otherwise the exported catalog will not be able to receive online inquiries.
                                                   </p>
                                               )}
                                           </div>
-                                          <p className="text-[10px] text-slate-500 leading-snug">
-                                              If FormSubmit fails for any reason, the customer&apos;s order falls back to opening their default mail app with the order pre-filled — so no inquiry is ever lost.
-                                          </p>
                                       </div>
                                   )}
                               </div>
@@ -6916,6 +7013,19 @@ function AppInner() {
                     <Printer className="w-5 h-5" />
                 </button>
 
+                <button
+                    onClick={() => setShowInquiries(true)}
+                    className="relative p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                    title="Customer Inquiries"
+                >
+                    <Inbox className="w-5 h-5" />
+                    {inquiryNewCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                            {inquiryNewCount > 99 ? '99+' : inquiryNewCount}
+                        </span>
+                    )}
+                </button>
+
                 <div className="flex items-center gap-3 ml-2 pl-3 border-l border-slate-200">
                     {user.photoURL ? (
                         <img src={user.photoURL} className="w-8 h-8 rounded-full border border-slate-200" alt="User" />
@@ -7073,6 +7183,179 @@ function AppInner() {
                               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                               Save New
                           </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Inquiries Modal */}
+      {showInquiries && (
+          <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col border border-slate-200 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-amber-50 to-white">
+                      <div className="flex items-center gap-3">
+                          <Inbox className="w-5 h-5 text-amber-600" />
+                          <h3 className="font-bold text-slate-800">Customer Inquiries</h3>
+                          <span className="text-xs px-2 py-0.5 bg-slate-100 rounded-full font-medium text-slate-600">{inquiries.length} total</span>
+                          {inquiryNewCount > 0 && (
+                              <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-bold">{inquiryNewCount} new</span>
+                          )}
+                      </div>
+                      <button onClick={() => { setShowInquiries(false); setSelectedInquiry(null); }} className="text-slate-400 hover:text-slate-600">
+                          <X className="w-5 h-5" />
+                      </button>
+                  </div>
+
+                  <div className="flex-1 flex overflow-hidden">
+                      <div className="w-72 border-r border-slate-200 overflow-y-auto bg-slate-50/40">
+                          {inquiriesLoading && (
+                              <div className="p-6 text-center text-sm text-slate-500 flex items-center justify-center gap-2">
+                                  <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+                              </div>
+                          )}
+                          {!inquiriesLoading && inquiries.length === 0 && (
+                              <div className="p-6 text-center text-sm text-slate-500">
+                                  <Inbox className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                                  <p className="font-medium">No inquiries yet.</p>
+                                  <p className="text-xs text-slate-400 mt-1">Customer orders sent from your HTML catalog will appear here in real time.</p>
+                              </div>
+                          )}
+                          {inquiries.map((inq) => {
+                              const cust = inq.customer || {};
+                              const isNew = !inq.status || inq.status === 'new';
+                              const isSelected = selectedInquiry?.id === inq.id;
+                              return (
+                                  <button
+                                      key={inq.id}
+                                      onClick={() => { setSelectedInquiry(inq); if (isNew) handleMarkInquiry(inq.id, 'read'); }}
+                                      className={`w-full text-left px-3 py-2.5 border-b border-slate-100 hover:bg-amber-50/50 transition-colors ${isSelected ? 'bg-amber-50' : ''}`}
+                                  >
+                                      <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-1.5">
+                                                  {isNew && <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />}
+                                                  <span className="text-sm font-semibold text-slate-800 truncate">{cust.customer_name || 'Unnamed customer'}</span>
+                                              </div>
+                                              <div className="text-[11px] text-slate-500 truncate">{cust.company || cust.email || ''}</div>
+                                              <div className="text-[10px] text-slate-400 mt-0.5">{formatInquiryDate(inq.createdAt)}</div>
+                                          </div>
+                                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-mono flex-shrink-0">
+                                              {(inq.items || []).length} item{(inq.items || []).length !== 1 ? 's' : ''}
+                                          </span>
+                                      </div>
+                                  </button>
+                              );
+                          })}
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-6 bg-white">
+                          {!selectedInquiry && (
+                              <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                                  <div className="text-center">
+                                      <ShoppingCart className="w-12 h-12 mx-auto text-slate-200 mb-3" />
+                                      <p>Select an inquiry from the list to view details.</p>
+                                  </div>
+                              </div>
+                          )}
+                          {selectedInquiry && (() => {
+                              const inq = selectedInquiry;
+                              const cust = inq.customer || {};
+                              const items = inq.items || [];
+                              return (
+                                  <div className="space-y-5">
+                                      <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+                                          <div>
+                                              <h4 className="text-lg font-bold text-slate-900">{cust.customer_name || 'Unnamed customer'}</h4>
+                                              <p className="text-xs text-slate-500">{formatInquiryDate(inq.createdAt)} · Catalog: {inq.catalog || '-'}</p>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                              {cust.email && (
+                                                  <a
+                                                      href={`mailto:${cust.email}?subject=${encodeURIComponent('Re: Your inquiry - ' + (inq.catalog || ''))}`}
+                                                      className="px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 flex items-center gap-1"
+                                                  >
+                                                      <Mail className="w-3 h-3" /> Reply
+                                                  </a>
+                                              )}
+                                              <button
+                                                  onClick={() => handleMarkInquiry(inq.id, 'archived')}
+                                                  className="px-2.5 py-1 text-xs font-medium bg-slate-50 text-slate-700 border border-slate-200 rounded hover:bg-slate-100"
+                                              >
+                                                  Archive
+                                              </button>
+                                              <button
+                                                  onClick={() => handleDeleteInquiry(inq.id)}
+                                                  className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 flex items-center gap-1"
+                                              >
+                                                  <Trash2 className="w-3 h-3" /> Delete
+                                              </button>
+                                          </div>
+                                      </div>
+
+                                      <div>
+                                          <h5 className="text-xs font-semibold text-slate-500 uppercase mb-2">Customer Info</h5>
+                                          <div className="grid grid-cols-2 gap-3 text-sm">
+                                              {[
+                                                  ['Company', cust.company],
+                                                  ['Email', cust.email],
+                                                  ['Phone', cust.phone],
+                                                  ['Country', cust.country],
+                                                  ['Destination Port', cust.destination_port],
+                                                  ['Incoterm', cust.incoterm],
+                                                  ['Payment Terms', cust.payment_terms]
+                                              ].map(([k, v]) => v ? (
+                                                  <div key={k} className="bg-slate-50 rounded px-3 py-2">
+                                                      <div className="text-[10px] font-semibold text-slate-400 uppercase">{k}</div>
+                                                      <div className="text-slate-800">{v}</div>
+                                                  </div>
+                                              ) : null)}
+                                          </div>
+                                          {cust.notes && (
+                                              <div className="mt-3 bg-amber-50 border border-amber-200 rounded p-3">
+                                                  <div className="text-[10px] font-semibold text-amber-700 uppercase mb-1">Notes</div>
+                                                  <div className="text-sm text-slate-800 whitespace-pre-wrap">{cust.notes}</div>
+                                              </div>
+                                          )}
+                                      </div>
+
+                                      <div>
+                                          <h5 className="text-xs font-semibold text-slate-500 uppercase mb-2">Requested Items ({items.length})</h5>
+                                          <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                              <table className="w-full text-sm">
+                                                  <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                                                      <tr>
+                                                          <th className="text-left px-3 py-2">SKU</th>
+                                                          <th className="text-left px-3 py-2">Product</th>
+                                                          <th className="text-right px-3 py-2">Qty</th>
+                                                          <th className="text-left px-3 py-2">Mode</th>
+                                                          <th className="text-right px-3 py-2">Total Units</th>
+                                                      </tr>
+                                                  </thead>
+                                                  <tbody className="divide-y divide-slate-100">
+                                                      {items.map((it: any, i: number) => (
+                                                          <tr key={i} className="hover:bg-slate-50">
+                                                              <td className="px-3 py-2 font-mono text-xs text-slate-600">{it.sku || '-'}</td>
+                                                              <td className="px-3 py-2 text-slate-800">{it.name}</td>
+                                                              <td className="px-3 py-2 text-right font-semibold">{it.qty}</td>
+                                                              <td className="px-3 py-2 text-xs text-slate-500">{it.mode === 'pack' ? `Packs (${it.pack}/pack)` : 'Unit'}</td>
+                                                              <td className="px-3 py-2 text-right font-mono text-slate-700">{it.totalUnits} {it.unit || ''}</td>
+                                                          </tr>
+                                                      ))}
+                                                  </tbody>
+                                              </table>
+                                          </div>
+                                      </div>
+
+                                      {inq.summary && (
+                                          <details className="text-sm">
+                                              <summary className="cursor-pointer text-xs font-semibold text-slate-500 uppercase mb-2">Plain-text Summary</summary>
+                                              <pre className="bg-slate-900 text-slate-100 text-xs p-3 rounded mt-2 whitespace-pre-wrap font-mono">{inq.summary}</pre>
+                                          </details>
+                                      )}
+                                  </div>
+                              );
+                          })()}
                       </div>
                   </div>
               </div>
