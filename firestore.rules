@@ -28,6 +28,16 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Saved seller / business profiles — owner only
+    match /artifacts/{appId}/users/{userId}/sellerProfiles/{profileId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Archived (issued) invoices + their payments — owner only
+    match /artifacts/{appId}/users/{userId}/invoiceArchive/{invoiceId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Customer inquiries (from the public HTML catalog)
     match /artifacts/{appId}/users/{userId}/inquiries/{inquiryId} {
       allow create: if request.resource.data.keys().hasAny(['customer', 'items'])

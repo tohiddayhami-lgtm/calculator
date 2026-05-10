@@ -263,6 +263,104 @@ export interface Supplier {
   attachments?: SupplierAttachment[]; // New: List of PDF/Video files
 }
 
+// Reusable seller / business identity used to pre-fill new proforma invoices.
+export interface SellerProfile {
+  id: string;
+  name: string; // friendly label (e.g. "Tohid Dayhami Co. — Export Dept")
+  billedFrom: string;
+  billedFromDetails: string;
+  invoiceLogo?: string;
+  invoiceSellerEmail?: string;
+  invoiceSellerPhone?: string;
+  invoiceSellerWebsite?: string;
+  invoiceSellerTaxId?: string;
+  bankDetails?: string;
+  paymentTerms?: string;
+  createdAt?: number; // ms epoch (set client-side)
+  updatedAt?: number;
+}
+
+export interface InvoicePayment {
+  id: string;
+  date: number; // ms epoch
+  amount: number;
+  currency: string;
+  method: string; // T/T, Cash, Cheque, Online, Other
+  reference?: string; // bank ref / cheque number
+  notes?: string;
+}
+
+export type ArchivedInvoiceStatus =
+  | 'draft'
+  | 'issued'
+  | 'partial'
+  | 'paid'
+  | 'overdue'
+  | 'cancelled';
+
+export interface ArchivedInvoiceLineSnapshot {
+  productId: number;
+  name: string;
+  sku?: string;
+  hsCode?: string;
+  image?: string;
+  qty: number;
+  itemsPerPack: number;
+  unitPrices: Record<string, number>; // per Incoterm
+  packPrices: Record<string, number>;
+  discountPercent?: number;
+  discountAmount?: number;
+}
+
+export interface ArchivedInvoice {
+  id: string; // Firestore doc id
+  invoiceRef: string;
+  invoiceTitle: string;
+  issueDate: number; // ms epoch
+  dueDate?: number;
+  status: ArchivedInvoiceStatus;
+  customerName: string;
+  customerAddress: string;
+  selectedTerm: string; // primary Incoterm used for "totalDue"
+  invoiceTerms: string[];
+  invoiceBasis: 'unit' | 'pack' | 'both';
+  showImages: boolean;
+  outputCurrency: string;
+
+  // seller identity at the time of issue
+  billedFrom: string;
+  billedFromDetails: string;
+  invoiceLogo?: string;
+  invoiceSellerEmail?: string;
+  invoiceSellerPhone?: string;
+  invoiceSellerWebsite?: string;
+  invoiceSellerTaxId?: string;
+  paymentTerms?: string;
+  bankDetails?: string;
+  notes?: string;
+
+  // computed / discount info for re-render
+  invoiceDiscountBaseTerm: string;
+  invoiceGlobalDiscountMode: 'none' | 'percent' | 'amount';
+  invoiceGlobalDiscountValue: number;
+  invoiceVatEnabled: boolean;
+  invoiceVatPercent: number;
+
+  items: ArchivedInvoiceLineSnapshot[];
+  subtotalByTerm: Record<string, number>;
+  netAfterGlobalByTerm: Record<string, number>;
+  vatByTerm: Record<string, number>;
+  grandByTerm: Record<string, number>;
+
+  // money tracking
+  totalDue: number; // grandByTerm[selectedTerm]
+  payments: InvoicePayment[];
+
+  projectId?: string; // origin project, for breadcrumbs
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface SavedProject {
   id: string;
   name: string;
