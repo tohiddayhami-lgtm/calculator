@@ -236,6 +236,452 @@ const triggerPrint = (): void => {
     }
 };
 
+const SKU_PREFIX = 'SKU';
+
+const formatSku = (n: number): string => `${SKU_PREFIX}-${String(n).padStart(4, '0')}`;
+
+const nextSkuNumber = (products: { sku?: string }[]): number => {
+    let max = 0;
+    products.forEach(p => {
+        if (!p.sku) return;
+        const m = p.sku.match(/(\d+)\s*$/);
+        if (m) {
+            const n = parseInt(m[1], 10);
+            if (!isNaN(n) && n > max) max = n;
+        }
+    });
+    return max + 1;
+};
+
+const ensureSkus = <T extends { sku?: string }>(products: T[]): T[] => {
+    let nextNum = nextSkuNumber(products);
+    return products.map(p => {
+        if (p.sku && p.sku.trim().length > 0) return p;
+        const sku = formatSku(nextNum);
+        nextNum += 1;
+        return { ...p, sku };
+    });
+};
+
+// --- HTML CATALOG EXPORT ---
+const escapeHtml = (s: any): string => {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+const escapeAttr = escapeHtml;
+
+const formatMoneyHtml = (val: number, currency: string): string => {
+    if (val === undefined || val === null || isNaN(val)) return '-';
+    const isFractionCurrency = ['BTC', 'ETH'].includes(currency);
+    const opts: Intl.NumberFormatOptions = isFractionCurrency
+        ? { minimumFractionDigits: 2, maximumFractionDigits: 8 }
+        : { minimumFractionDigits: 0, maximumFractionDigits: 2 };
+    try {
+        return `${new Intl.NumberFormat('en-US', opts).format(val)} ${currency}`;
+    } catch {
+        return `${val} ${currency}`;
+    }
+};
+
+interface BuildCatalogHtmlArgs {
+    products: any[];
+    config: any;
+    catalogConfig: any;
+    qrDataUrl: string;
+    tCombined: (key: string) => string;
+}
+
+const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombined }: BuildCatalogHtmlArgs): string => {
+    const cc = catalogConfig || {};
+    const primary = cc.primaryColor || '#0f172a';
+    const heading = cc.headingColor || primary;
+    const text = cc.textColor || '#334155';
+    const bg = cc.backgroundColor || '#ffffff';
+    const cover = cc.coverColor || '#0f172a';
+    const coverText = cc.coverTextColor || '#ffffff';
+    const baseUnit = cc.baseUnit || tCombined('pcs') || 'pcs';
+    const showPrices = cc.showPrices !== false;
+    const priceBasis = cc.priceBasis || 'unit';
+    const priceTerms: string[] = cc.priceTerms || ['FOB'];
+    const showMOQ = cc.showMOQ !== false;
+    const moqLabel = cc.moqLabel || tCombined('moq') || 'MOQ';
+    const showTargetPrice = cc.showTargetPrice;
+    const targetPriceLabel = cc.targetPriceLabel || 'Target';
+    const showTargetProfit = cc.showTargetProfit;
+    const targetProfitLabel = cc.targetProfitLabel || 'Your profit on this deal';
+    const formUrl = (cc.googleFormUrl || '').trim();
+    const formButton = cc.googleFormButtonText || 'Send Purchase Request';
+    const formHelper = cc.googleFormHelperText || '';
+
+    // Convert target prices using rates from app — passed via products that already have toOutput-applied targetUnitOutput? No, we need to compute here.
+    // We'll add helper that uses rates inline. Pass conversion via product's already-computed scenarioPrices for sell, and the raw targetPrice we convert via simple ratio that we don't have here.
+    // To avoid passing rates, we precompute targetUnitOutput on the product objects before calling this function would be cleaner. For now: we trust the targetPrice is in any currency stored on product, but we won't convert here — we'll just display in its own currency if different, or in output currency if same.
+    // Instead we will rely on the fact that scenarioPrices are already in outputCurrency. If targetPriceCurrency matches outputCurrency, use directly. Else, show in target currency.
+    const outCurr = config.outputCurrency || 'USD';
+
+    const productCards = products.map((p, idx) => {
+        const allImages: string[] = [
+            ...(p.image ? [p.image] : []),
+            ...((p.gallery || []) as string[])
+        ];
+        const slidesHtml = allImages.length
+            ? allImages.map((img, i) => `
+                <div class="slide${i === 0 ? ' active' : ''}">
+                    <img src="${escapeAttr(img)}" alt="${escapeAttr(p.catalogName || p.name)} ${i + 1}" loading="lazy" />
+                </div>`).join('')
+            : `<div class="slide active no-img"><div class="no-img-inner">No image</div></div>`;
+        const dotsHtml = allImages.length > 1
+            ? `<div class="dots">${allImages.map((_, i) => `<span class="dot${i === 0 ? ' active' : ''}" data-idx="${i}"></span>`).join('')}</div>`
+            : '';
+        const arrowsHtml = allImages.length > 1
+            ? `<button class="nav prev" aria-label="Previous">&#8249;</button><button class="nav next" aria-label="Next">&#8250;</button>`
+            : '';
+
+        const moqHtml = showMOQ
+            ? `<div class="meta-row"><span class="meta-label">${escapeHtml(moqLabel)}</span><span class="meta-value">${escapeHtml(p.catalogMOQ || (p.qty || ''))}</span></div>`
+            : '';
+        const packHtml = (p.itemsPerPack && p.itemsPerPack > 0)
+            ? `<div class="meta-row"><span class="meta-label">${escapeHtml(tCombined('pack'))}</span><span class="meta-value">${escapeHtml(p.itemsPerPack)} ${escapeHtml(p.measurementUnit || baseUnit)}</span></div>`
+            : '';
+
+        const priceRows = showPrices
+            ? priceTerms.map(term => {
+                const uPrice = (p.scenarioPrices && p.scenarioPrices[term]) || 0;
+                const pPrice = (p.scenarioPackPrices && p.scenarioPackPrices[term]) || 0;
+                const unitDisplay = (priceBasis === 'unit' || priceBasis === 'both')
+                    ? `<span class="price-amount">${formatMoneyHtml(uPrice, outCurr)} <span class="price-unit">/${escapeHtml(p.measurementUnit || baseUnit)}</span></span>`
+                    : '';
+                const packDisplay = (priceBasis === 'pack' || priceBasis === 'both') && (p.itemsPerPack || 0) > 0
+                    ? `<span class="price-amount">${formatMoneyHtml(pPrice, outCurr)} <span class="price-unit">/pack</span></span>`
+                    : '';
+                return `
+                    <div class="price-row">
+                        <span class="term-badge" style="background:${primary}">${escapeHtml(term)}</span>
+                        <div class="price-values">${unitDisplay}${packDisplay}</div>
+                    </div>
+                `;
+            }).join('')
+            : '';
+
+        let targetRowHtml = '';
+        if (showTargetPrice && p.targetPrice && p.targetPrice > 0) {
+            const tCurr = p.targetPriceCurrency || outCurr;
+            const tDisplayCurr = tCurr;
+            const tUnit = p.targetPrice;
+            const tPack = tUnit * (p.itemsPerPack || 0);
+            const unitDisplay = (priceBasis === 'unit' || priceBasis === 'both')
+                ? `<span class="price-amount target-amount">${formatMoneyHtml(tUnit, tDisplayCurr)} <span class="price-unit">/${escapeHtml(p.measurementUnit || baseUnit)}</span></span>`
+                : '';
+            const packDisplay = (priceBasis === 'pack' || priceBasis === 'both') && (p.itemsPerPack || 0) > 0
+                ? `<span class="price-amount target-amount">${formatMoneyHtml(tPack, tDisplayCurr)} <span class="price-unit">/pack</span></span>`
+                : '';
+            // profit % vs first term sell (in outputCurrency); only if currencies match for fair compare
+            let profitHtml = '';
+            if (showTargetProfit && tCurr === outCurr) {
+                const refTerm = priceTerms[0];
+                const refSell = refTerm && p.scenarioPrices ? (p.scenarioPrices[refTerm] || 0) : (p.unitSellPrice || 0);
+                if (refSell > 0 && tUnit > 0) {
+                    const diff = ((refSell - tUnit) / tUnit) * 100;
+                    profitHtml = `<div class="profit-badge"><span class="profit-dot"></span>${escapeHtml(targetProfitLabel)}: +${Math.abs(diff).toFixed(1)}%</div>`;
+                }
+            }
+            targetRowHtml = `
+                <div class="price-row target-row">
+                    <span class="term-badge target-badge">${escapeHtml(targetPriceLabel)}</span>
+                    <div class="price-values">${unitDisplay}${packDisplay}</div>
+                </div>
+                ${profitHtml}
+            `;
+        }
+
+        const descHtml = p.catalogDescription
+            ? `<p class="description">${escapeHtml(p.catalogDescription)}</p>`
+            : '';
+
+        const groupBadge = p.group
+            ? `<span class="group-badge">${escapeHtml(p.group)}</span>`
+            : '';
+
+        const skuBadge = p.sku
+            ? `<span class="sku-badge">${escapeHtml(p.sku)}</span>`
+            : '';
+        const hsBadge = p.hsCode
+            ? `<span class="hs-badge">HS: ${escapeHtml(p.hsCode)}</span>`
+            : '';
+
+        return `
+            <article class="card" data-idx="${idx}">
+                <div class="carousel" data-images="${allImages.length}">
+                    ${slidesHtml}
+                    ${arrowsHtml}
+                    ${dotsHtml}
+                    ${groupBadge}
+                </div>
+                <div class="card-body">
+                    <h3 class="product-name">${escapeHtml(p.catalogName || p.name)}</h3>
+                    <div class="badges">${skuBadge}${hsBadge}</div>
+                    ${descHtml}
+                    <div class="meta-grid">${packHtml}${moqHtml}</div>
+                    ${(showPrices || targetRowHtml) ? `<div class="prices">${priceRows}${targetRowHtml}</div>` : ''}
+                    ${formUrl ? `<a class="card-cta" href="${escapeAttr(formUrl)}?utm_sku=${encodeURIComponent(p.sku || '')}" target="_blank" rel="noopener">Inquire about this item</a>` : ''}
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    const aboutUsHtml = cc.showAboutUs && cc.aboutUsText
+        ? `
+            <section class="about">
+                <h2 class="section-title">About Us</h2>
+                <div class="about-grid">
+                    <div class="about-text">${escapeHtml(cc.aboutUsText).replace(/\n/g, '<br>')}</div>
+                    ${(cc.aboutUsImages || []).length ? `<div class="about-images">${(cc.aboutUsImages || []).slice(0, 6).map((img: string) => `<img src="${escapeAttr(img)}" alt="About us" loading="lazy" />`).join('')}</div>` : ''}
+                </div>
+            </section>
+        `
+        : '';
+
+    const ctaHtml = formUrl
+        ? `
+            <section class="cta-section">
+                <h2 class="cta-title">${escapeHtml(formHelper || 'Ready to order?')}</h2>
+                <a class="cta-button" href="${escapeAttr(formUrl)}" target="_blank" rel="noopener">
+                    ${escapeHtml(formButton)}
+                    <span class="cta-arrow">&rarr;</span>
+                </a>
+                <p class="cta-hint">Opens your order form in a new tab</p>
+            </section>
+        `
+        : '';
+
+    const qrHtml = cc.showQrCode && qrDataUrl
+        ? `
+            <div class="qr-block">
+                <div class="qr-card"><img src="${escapeAttr(qrDataUrl)}" alt="QR" /></div>
+                <p class="qr-label">${escapeHtml(cc.qrCodeLabel || 'Scan to visit')}</p>
+            </div>
+        `
+        : '';
+
+    const logoHtml = cc.logoImage
+        ? `<img class="logo" src="${escapeAttr(cc.logoImage)}" alt="Logo" />`
+        : '';
+
+    const socialsHtml = (cc.socialLinks || []).filter((s: any) => s.handle).map((s: any) =>
+        `<span class="social-chip">${escapeHtml(s.platform)}: ${escapeHtml(s.handle)}</span>`
+    ).join('');
+
+    const css = `
+        :root {
+            --primary: ${primary};
+            --heading: ${heading};
+            --text: ${text};
+            --bg: ${bg};
+            --cover: ${cover};
+            --cover-text: ${coverText};
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        html, body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.5; }
+        img { max-width: 100%; height: auto; display: block; }
+        a { color: inherit; text-decoration: none; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+
+        /* Cover */
+        .cover { background: var(--cover); color: var(--cover-text); padding: 64px 24px; text-align: center; position: relative; overflow: hidden; }
+        .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: cover; background-position: center;` : ''} opacity: 1; z-index: 0; }
+        .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.65)); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
+        .cover-inner { position: relative; z-index: 2; max-width: 720px; margin: 0 auto; }
+        .logo { max-height: 80px; margin: 0 auto 24px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
+        .cover h1 { font-size: clamp(28px, 6vw, 56px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 12px; }
+        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 0.9; font-weight: 300; letter-spacing: 0.05em; }
+        .cover .collection { font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; opacity: 0.7; margin-bottom: 16px; }
+
+        /* Section title */
+        .section-title { font-size: clamp(20px, 4vw, 32px); font-weight: 800; color: var(--heading); margin: 48px 0 24px; padding-bottom: 12px; border-bottom: 3px solid var(--primary); display: inline-block; }
+
+        /* About */
+        .about { padding: 24px 16px; }
+        .about-grid { display: grid; gap: 24px; grid-template-columns: 1fr; }
+        @media (min-width: 768px) { .about-grid { grid-template-columns: 1fr 1fr; } }
+        .about-text { font-size: 15px; line-height: 1.7; color: var(--text); }
+        .about-images { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+        .about-images img { aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+
+        /* Product grid */
+        .products-section { padding: 24px 16px 48px; }
+        .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+        @media (min-width: 600px) { .grid { grid-template-columns: 1fr 1fr; gap: 20px; } }
+        @media (min-width: 1000px) { .grid { grid-template-columns: 1fr 1fr 1fr; } }
+
+        .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; }
+        .card:active, .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+
+        /* Carousel */
+        .carousel { position: relative; width: 100%; aspect-ratio: 4/3; background: #f8fafc; overflow: hidden; }
+        .slide { position: absolute; inset: 0; opacity: 0; transition: opacity 0.35s ease; display: flex; align-items: center; justify-content: center; }
+        .slide.active { opacity: 1; }
+        .slide img { width: 100%; height: 100%; object-fit: contain; padding: 16px; }
+        .slide.no-img { background: #f1f5f9; opacity: 1; }
+        .no-img-inner { color: #94a3b8; font-size: 14px; }
+        .nav { position: absolute; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; background: rgba(255,255,255,0.85); backdrop-filter: blur(8px); border: 1px solid rgba(0,0,0,0.06); border-radius: 50%; font-size: 22px; color: #334155; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2; transition: opacity 0.2s; opacity: 0; line-height: 1; padding: 0; }
+        .carousel:hover .nav, .carousel:focus-within .nav, .nav:active { opacity: 1; }
+        @media (max-width: 600px) { .nav { opacity: 1; width: 32px; height: 32px; font-size: 18px; } }
+        .nav.prev { left: 8px; }
+        .nav.next { right: 8px; }
+        .dots { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 2; }
+        .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(0,0,0,0.25); transition: background 0.2s, width 0.2s; cursor: pointer; }
+        .dot.active { background: var(--primary); width: 18px; border-radius: 4px; }
+        .group-badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; padding: 4px 8px; border-radius: 4px; font-weight: 600; letter-spacing: 0.05em; z-index: 2; }
+
+        /* Card body */
+        .card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+        .product-name { font-size: 17px; font-weight: 700; color: var(--heading); line-height: 1.25; }
+        .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+        .sku-badge { font-size: 11px; font-family: ui-monospace, 'SF Mono', monospace; font-weight: 700; padding: 3px 8px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; }
+        .hs-badge { font-size: 11px; font-family: ui-monospace, 'SF Mono', monospace; padding: 3px 8px; color: #64748b; }
+        .description { font-size: 13px; color: #64748b; line-height: 1.5; white-space: pre-line; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid #f1f5f9; }
+        .meta-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        .meta-label { color: #94a3b8; }
+        .meta-value { color: #334155; font-weight: 600; }
+
+        .prices { border-top: 2px solid #f1f5f9; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .price-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }
+        .term-badge { display: inline-block; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .target-row { padding-top: 8px; border-top: 1px dashed #fde68a; }
+        .target-badge { background: #fef3c7 !important; color: #92400e !important; border: 1px solid #fde68a; box-shadow: none; }
+        .price-values { text-align: right; display: flex; flex-direction: column; gap: 2px; }
+        .price-amount { display: block; font-weight: 700; font-size: 14px; color: #0f172a; }
+        .target-amount { color: #b45309; }
+        .price-unit { font-size: 10px; font-weight: 400; color: #94a3b8; text-transform: uppercase; }
+        .profit-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; padding: 4px 10px; border-radius: 6px; align-self: flex-end; margin-top: 2px; }
+        .profit-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+
+        .card-cta { display: block; text-align: center; margin-top: 10px; padding: 10px 12px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 600; border-radius: 10px; transition: transform 0.15s, opacity 0.15s; }
+        .card-cta:active { transform: scale(0.98); opacity: 0.9; }
+
+        /* CTA Section */
+        .cta-section { background: linear-gradient(135deg, var(--primary), #0f172a); color: #fff; padding: 56px 24px; text-align: center; margin-top: 32px; border-radius: 24px 24px 0 0; }
+        .cta-title { font-size: clamp(20px, 4vw, 32px); font-weight: 800; margin-bottom: 24px; }
+        .cta-button { display: inline-flex; align-items: center; gap: 12px; background: #fff; color: var(--primary); font-size: 16px; font-weight: 700; padding: 16px 32px; border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); transition: transform 0.15s; }
+        .cta-button:active { transform: scale(0.97); }
+        .cta-arrow { font-size: 22px; line-height: 1; }
+        .cta-hint { font-size: 12px; opacity: 0.7; margin-top: 14px; }
+
+        /* Footer */
+        footer { background: var(--primary); color: #fff; padding: 48px 24px; text-align: center; }
+        footer h3 { font-size: 14px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px; }
+        footer .contact-grid { display: grid; gap: 12px; max-width: 480px; margin: 0 auto 32px; }
+        footer .row { font-size: 14px; }
+        .qr-block { margin: 24px auto; }
+        .qr-card { display: inline-block; background: #fff; padding: 12px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+        .qr-card img { width: 140px; height: 140px; }
+        .qr-label { margin-top: 10px; font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.8; }
+        .socials { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+        .social-chip { background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 999px; font-size: 12px; }
+        .footer-text { font-size: 11px; opacity: 0.5; margin-top: 24px; }
+
+        @media print {
+            .nav, .card-cta { display: none !important; }
+            .card { break-inside: avoid; }
+        }
+    `;
+
+    const js = `
+        (function(){
+            var carousels = document.querySelectorAll('.carousel');
+            carousels.forEach(function(car){
+                var slides = car.querySelectorAll('.slide');
+                if (slides.length < 2) return;
+                var dots = car.querySelectorAll('.dot');
+                var prev = car.querySelector('.nav.prev');
+                var next = car.querySelector('.nav.next');
+                var idx = 0;
+                function show(i){
+                    idx = (i + slides.length) % slides.length;
+                    slides.forEach(function(s,k){ s.classList.toggle('active', k === idx); });
+                    dots.forEach(function(d,k){ d.classList.toggle('active', k === idx); });
+                }
+                if (prev) prev.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); show(idx - 1); });
+                if (next) next.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); show(idx + 1); });
+                dots.forEach(function(d){
+                    d.addEventListener('click', function(){ show(parseInt(d.getAttribute('data-idx'), 10) || 0); });
+                });
+                // Touch swipe
+                var startX = 0, isTouch = false;
+                car.addEventListener('touchstart', function(e){ startX = e.touches[0].clientX; isTouch = true; }, {passive:true});
+                car.addEventListener('touchend', function(e){
+                    if (!isTouch) return;
+                    isTouch = false;
+                    var dx = e.changedTouches[0].clientX - startX;
+                    if (Math.abs(dx) < 30) return;
+                    show(idx + (dx < 0 ? 1 : -1));
+                });
+            });
+        })();
+    `;
+
+    const lang = (cc.languages && cc.languages[0]) === 'fa' ? 'fa' : (cc.languages && cc.languages[0]) === 'ar' ? 'ar' : 'en';
+    const dir = (lang === 'fa' || lang === 'ar') ? 'rtl' : 'ltr';
+
+    return `<!DOCTYPE html>
+<html lang="${lang}" dir="${dir}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="${primary}">
+<title>${escapeHtml(cc.title || 'Catalog')}</title>
+<style>${css}</style>
+</head>
+<body>
+<header class="cover">
+    <div class="cover-inner">
+        ${logoHtml}
+        ${cc.collectionText ? `<p class="collection">${escapeHtml(cc.collectionText)}</p>` : ''}
+        <h1>${escapeHtml(cc.title || 'CATALOG')}</h1>
+        ${cc.subtitle ? `<p class="subtitle">${escapeHtml(cc.subtitle)}</p>` : ''}
+    </div>
+</header>
+
+<main class="container">
+    ${aboutUsHtml}
+    <section class="products-section">
+        <h2 class="section-title">${escapeHtml(tCombined('productList') || 'Products')}</h2>
+        <div class="grid">
+            ${productCards || '<p style="color:#94a3b8;padding:24px 0;">No products to display.</p>'}
+        </div>
+    </section>
+
+    ${ctaHtml}
+</main>
+
+<footer>
+    <h3>${escapeHtml(tCombined('contact') || 'Contact')}</h3>
+    <div class="contact-grid">
+        ${cc.contactPhone ? `<div class="row"><strong>${escapeHtml(tCombined('phone') || 'Phone')}:</strong> ${escapeHtml(cc.contactPhone)}</div>` : ''}
+        ${cc.contactEmail ? `<div class="row"><strong>${escapeHtml(tCombined('email') || 'Email')}:</strong> ${escapeHtml(cc.contactEmail)}</div>` : ''}
+        ${cc.website ? `<div class="row"><strong>${escapeHtml(tCombined('website') || 'Web')}:</strong> ${escapeHtml(cc.website)}</div>` : ''}
+        ${cc.contactAddress ? `<div class="row">${escapeHtml(cc.contactAddress).replace(/\n/g, '<br>')}</div>` : ''}
+    </div>
+    ${qrHtml}
+    ${socialsHtml ? `<div class="socials">${socialsHtml}</div>` : ''}
+    ${cc.footerText ? `<p class="footer-text">${escapeHtml(cc.footerText)}</p>` : ''}
+</footer>
+
+<script>${js}</script>
+</body>
+</html>`;
+};
+
+
+
 const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promise<string> => {
     return new Promise((resolve) => {
         const preserveTransparency = /^data:image\/(png|webp|gif|svg\+xml)/i.test(base64Str);
@@ -792,6 +1238,9 @@ function AppInner() {
       showQrCode: false,
       qrCodeValue: '',
       qrCodeLabel: 'Scan to visit',
+      googleFormUrl: '',
+      googleFormButtonText: 'Send Purchase Request',
+      googleFormHelperText: 'Tap below to fill out the order form',
       showCompanyPhotos: false,
       companyPhotos: [],
       sections: []
@@ -830,6 +1279,15 @@ function AppInner() {
         setAuthLoading(false);
     }
   }, []);
+
+  // Auto-assign SKU to any product missing one (e.g., legacy data, JSON import)
+  useEffect(() => {
+    const missing = products.some(p => !p.sku || p.sku.trim().length === 0);
+    if (missing) {
+        setProducts(prev => ensureSkus(prev));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products.length]);
 
   // Generate QR Code data URL whenever value changes
   useEffect(() => {
@@ -1174,7 +1632,7 @@ function AppInner() {
     setConfig(loadedConfig);
     
     setRates(project.data.rates || rates);
-    const loadedProducts = (project.data.products || []).map(p => ({ 
+    const rawLoaded = (project.data.products || []).map(p => ({ 
         ...p, 
         active: p.active !== undefined ? p.active : true,
         priceInputMode: p.priceInputMode || 'unit',
@@ -1186,8 +1644,11 @@ function AppInner() {
         supplierId: p.supplierId,
         measurementUnit: p.measurementUnit,
         targetPrice: p.targetPrice,
-        targetPriceCurrency: p.targetPriceCurrency
+        targetPriceCurrency: p.targetPriceCurrency,
+        sku: p.sku,
+        gallery: p.gallery || []
     }));
+    const loadedProducts = ensureSkus(rawLoaded);
     setProducts(loadedProducts);
     setLogistics({ 
         ...logistics, 
@@ -1285,6 +1746,9 @@ function AppInner() {
             showQrCode: project.data.catalogConfig.showQrCode || false,
             qrCodeValue: project.data.catalogConfig.qrCodeValue || '',
             qrCodeLabel: project.data.catalogConfig.qrCodeLabel || 'Scan to visit',
+            googleFormUrl: project.data.catalogConfig.googleFormUrl || '',
+            googleFormButtonText: project.data.catalogConfig.googleFormButtonText || 'Send Purchase Request',
+            googleFormHelperText: project.data.catalogConfig.googleFormHelperText || 'Tap below to fill out the order form',
             showTargetPrice: project.data.catalogConfig.showTargetPrice || false,
             targetPriceLabel: project.data.catalogConfig.targetPriceLabel || 'Target',
             showTargetProfit: project.data.catalogConfig.showTargetProfit || false,
@@ -1477,6 +1941,27 @@ function AppInner() {
              reader.readAsDataURL(file);
         });
     }
+  };
+
+  const handleGalleryUpload = async (productId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const compressed: string[] = [];
+    for (const file of files) {
+        const raw = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+        const small = await compressImage(raw, 1200, 0.78);
+        compressed.push(small);
+    }
+    setProducts(prev => prev.map(p => p.id === productId
+        ? { ...p, gallery: [...(p.gallery || []), ...compressed] }
+        : p
+    ));
+    e.target.value = '';
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2138,7 +2623,10 @@ function AppInner() {
                     <FolderOpen className="w-4 h-4" /> Import from Project
                 </button>
                 <button 
-                    onClick={() => setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }])} 
+                    onClick={() => {
+                        const sku = formatSku(nextSkuNumber(products));
+                        setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [] }]);
+                    }} 
                     className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm"
                 >
                     <Plus className="w-4 h-4" /> Add Product
@@ -2153,6 +2641,7 @@ function AppInner() {
                         <th className="px-4 py-2 bg-slate-50 w-24">Group</th>
                         <th className="px-4 py-2 bg-slate-50 w-32">Supplier</th>
                         <th className="px-4 py-2 bg-slate-50">Item</th>
+                        <th className="px-4 py-2 w-24 bg-slate-50" title="Auto-generated unique product code">SKU</th>
                         <th className="px-4 py-2 w-24 bg-slate-50">HS Code</th>
                         <th className="px-4 py-2 w-12 text-center bg-slate-50">Img</th>
                         <th className="px-4 py-2 w-24 bg-slate-50">Qty</th>
@@ -2236,6 +2725,15 @@ function AppInner() {
                                             <FileText className="w-3 h-3" />
                                         </button>
                                     </div>
+                                </td>
+                                <td className="px-4 py-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Auto"
+                                        value={p.sku || ''}
+                                        onChange={(e) => updateProduct(p.id, 'sku', e.target.value)}
+                                        className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-600 font-mono w-20 outline-none"
+                                    />
                                 </td>
                                 <td className="px-4 py-2">
                                     <input 
@@ -2408,7 +2906,7 @@ function AppInner() {
                     })}
                     {products.length === 0 && (
                         <tr>
-                            <td colSpan={showPackInfo ? 20 : 18} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
+                            <td colSpan={showPackInfo ? 21 : 19} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
                         </tr>
                     )}
                 </tbody>
@@ -2993,6 +3491,31 @@ function AppInner() {
         if (n <= 2) return "grid-cols-1 grid-rows-2";
         if (n <= 4) return "grid-cols-2 grid-rows-2";
         return "grid-cols-2 grid-rows-3";
+    };
+
+    const handleExportCatalogHtml = () => {
+        try {
+            const html = buildCatalogHtml({
+                products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
+                config,
+                catalogConfig,
+                qrDataUrl,
+                tCombined
+            });
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
+            a.download = `${safeTitle}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (err: any) {
+            console.error('HTML export failed', err);
+            alert('Failed to export HTML: ' + (err?.message || err));
+        }
     };
 
     return (
@@ -3590,6 +4113,35 @@ function AppInner() {
                                   )}
                               </div>
 
+                              {/* GOOGLE FORM / ORDER LINK */}
+                              <div className="pt-4 border-t border-slate-100 space-y-2">
+                                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block flex items-center gap-1">
+                                      <Smartphone className="w-3 h-3" /> Order Form Link (HTML export)
+                                  </label>
+                                  <p className="text-[10px] text-slate-400">Paste your Google Form / WhatsApp / Typeform URL. Customers tap a button at the end of the HTML catalog to send their order.</p>
+                                  <input
+                                      type="url"
+                                      value={catalogConfig.googleFormUrl || ''}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, googleFormUrl: e.target.value})}
+                                      className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none"
+                                      placeholder="https://forms.gle/..."
+                                  />
+                                  <input
+                                      type="text"
+                                      value={catalogConfig.googleFormButtonText || ''}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, googleFormButtonText: e.target.value})}
+                                      className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none"
+                                      placeholder="Button text (default: Send Purchase Request)"
+                                  />
+                                  <input
+                                      type="text"
+                                      value={catalogConfig.googleFormHelperText || ''}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, googleFormHelperText: e.target.value})}
+                                      className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none"
+                                      placeholder="Helper text above the button"
+                                  />
+                              </div>
+
                               {/* QR CODE (Back Cover) */}
                               <div className="pt-4 border-t border-slate-100 space-y-2">
                                   <label className="flex items-center gap-2 cursor-pointer">
@@ -3726,7 +4278,7 @@ function AppInner() {
                   </div>
               </div>
 
-              <div className="pt-6 border-t border-slate-200 print:hidden">
+              <div className="pt-6 border-t border-slate-200 print:hidden space-y-2">
                   <button 
                       onClick={triggerPrint} 
                       className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center justify-center gap-2"
@@ -3734,6 +4286,14 @@ function AppInner() {
                       <Printer className="w-4 h-4" />
                       Print / Save as PDF
                   </button>
+                  <button
+                      onClick={handleExportCatalogHtml}
+                      className="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center justify-center gap-2"
+                  >
+                      <Download className="w-4 h-4" />
+                      Export HTML (Mobile-Friendly)
+                  </button>
+                  <p className="text-[10px] text-slate-400 text-center">Self-contained HTML — works on any phone/desktop offline.</p>
               </div>
           </div>
 
@@ -4025,6 +4585,18 @@ function AppInner() {
                                                         <ImageIcon className="w-12 h-12" />
                                                     </div>
                                                 )}
+                                                {(p.gallery || []).length > 0 && (
+                                                    <div className="absolute bottom-2 left-2 right-2 flex gap-1 justify-center pointer-events-none">
+                                                        {(p.gallery || []).slice(0, 4).map((img, gi) => (
+                                                            <div key={gi} className="w-8 h-8 rounded border border-white shadow bg-white overflow-hidden">
+                                                                <img src={img} className="w-full h-full object-cover" alt={`Angle ${gi+1}`} />
+                                                            </div>
+                                                        ))}
+                                                        {(p.gallery || []).length > 4 && (
+                                                            <div className="w-8 h-8 rounded border border-white shadow bg-black/70 text-white text-[10px] flex items-center justify-center font-bold">+{(p.gallery || []).length - 4}</div>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {p.group && !catalogConfig.showGroupCovers && !group.name && (
                                                     <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm shadow-sm">
                                                         {p.group}
@@ -4043,7 +4615,10 @@ function AppInner() {
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div className="w-full pr-6">
                                                         <h3 className={`font-bold leading-tight ${catalogConfig.itemsPerPage === 6 ? 'text-xs md:text-sm' : 'text-sm md:text-lg'}`} style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>{p.catalogName || p.name}</h3>
-                                                        {p.hsCode && <p className="text-[10px] opacity-60 font-mono mt-1 text-slate-500">HS: {p.hsCode}</p>}
+                                                        <div className="flex flex-wrap gap-2 mt-1">
+                                                            {p.sku && <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{p.sku}</span>}
+                                                            {p.hsCode && <span className="text-[10px] opacity-60 font-mono text-slate-500">HS: {p.hsCode}</span>}
+                                                        </div>
                                                     </div>
                                                     {/* Quick Edit Icon */}
                                                     <button 
@@ -4263,27 +4838,90 @@ function AppInner() {
           {/* CATALOG DETAILS EDIT MODAL */}
           {editingCatalogDetailsId !== null && (
               <div className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95">
-                      <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                          <h3 className="font-bold text-slate-800">Edit Catalog Details</h3>
-                          <button onClick={() => setEditingCatalogDetailsId(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-                      </div>
-                      <div className="p-4 space-y-4">
-                          {(() => {
-                              const p = products.find(prod => prod.id === editingCatalogDetailsId);
-                              if (!p) return null;
-                              return (
-                                  <>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0">
+                      <h3 className="font-bold text-slate-800">Edit Catalog Details</h3>
+                      <button onClick={() => setEditingCatalogDetailsId(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="p-4 space-y-4 overflow-y-auto">
+                      {(() => {
+                          const p = products.find(prod => prod.id === editingCatalogDetailsId);
+                          if (!p) return null;
+                          return (
+                              <>
+                                  <div className="grid grid-cols-2 gap-3">
                                       <div>
-                                          <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Catalog Display Name (Optional)</label>
-                                          <input 
-                                              type="text" 
-                                              value={p.catalogName || p.name} 
-                                              onChange={(e) => updateProduct(p.id, 'catalogName', e.target.value)} 
-                                              className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500"
-                                              placeholder="Overrides standard name"
+                                          <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Product Code (SKU)</label>
+                                          <input
+                                              type="text"
+                                              value={p.sku || ''}
+                                              onChange={(e) => updateProduct(p.id, 'sku', e.target.value)}
+                                              className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500 font-mono"
+                                              placeholder="Auto-generated"
                                           />
                                       </div>
+                                      <div>
+                                          <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">HS Code</label>
+                                          <input
+                                              type="text"
+                                              value={p.hsCode || ''}
+                                              onChange={(e) => updateProduct(p.id, 'hsCode', e.target.value)}
+                                              className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500 font-mono"
+                                              placeholder="Optional"
+                                          />
+                                      </div>
+                                  </div>
+                                  <div>
+                                      <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Catalog Display Name (Optional)</label>
+                                      <input 
+                                          type="text" 
+                                          value={p.catalogName || p.name} 
+                                          onChange={(e) => updateProduct(p.id, 'catalogName', e.target.value)} 
+                                          className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500"
+                                          placeholder="Overrides standard name"
+                                      />
+                                  </div>
+                                  {/* Gallery (multiple angles) */}
+                                  <div>
+                                      <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Product Gallery (different angles)</label>
+                                      <p className="text-[10px] text-slate-400 mb-2">Main image (left) is the cover; gallery images appear in catalog & HTML carousel.</p>
+                                      <div className="flex flex-wrap gap-2">
+                                          <div className="w-20 h-20 rounded-lg border-2 border-blue-300 bg-slate-50 overflow-hidden flex items-center justify-center relative group">
+                                              {p.image ? (
+                                                  <img src={p.image} className="w-full h-full object-cover" alt="Main" />
+                                              ) : (
+                                                  <span className="text-[9px] text-slate-400 text-center px-1">Main image</span>
+                                              )}
+                                              <span className="absolute bottom-0 left-0 right-0 bg-blue-600 text-white text-[9px] text-center py-0.5 font-medium">MAIN</span>
+                                          </div>
+                                          {(p.gallery || []).map((img, i) => (
+                                              <div key={i} className="w-20 h-20 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden relative group">
+                                                  <img src={img} className="w-full h-full object-cover" alt={`Angle ${i+1}`} />
+                                                  <button
+                                                      onClick={() => {
+                                                          const next = (p.gallery || []).filter((_, idx) => idx !== i);
+                                                          updateProduct(p.id, 'gallery', next);
+                                                      }}
+                                                      className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                      title="Remove"
+                                                  >
+                                                      <X className="w-2.5 h-2.5" />
+                                                  </button>
+                                              </div>
+                                          ))}
+                                          <label className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 cursor-pointer flex flex-col items-center justify-center text-slate-400 hover:text-blue-600 transition-colors">
+                                              <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  multiple
+                                                  className="hidden"
+                                                  onChange={(e) => handleGalleryUpload(p.id, e)}
+                                              />
+                                              <Upload className="w-4 h-4 mb-1" />
+                                              <span className="text-[9px] font-medium">Add</span>
+                                          </label>
+                                      </div>
+                                  </div>
                                       <div>
                                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Key Features / Description</label>
                                           <textarea 

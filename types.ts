@@ -13,7 +13,9 @@ export interface Product {
   packPrice: number; // Kept for legacy compatibility or specific overrides if needed
   active: boolean;
   hsCode?: string; // HS Code for customs
-  image?: string; // Base64 data string for product image
+  sku?: string; // Auto-generated unique product code (used in catalog/HTML export)
+  image?: string; // Base64 data string for product image (main thumbnail)
+  gallery?: string[]; // Additional images (different angles) shown in catalog/HTML export
   priceInputMode?: 'unit' | 'pack'; // New: Defines if unitPrice input is per unit or per pack
   customProfit?: number; // New: Optional override for profit percentage
   measurementUnit?: string; // New: e.g. "kg", "m", "box" (replaces default "pcs")
@@ -186,6 +188,11 @@ export interface CatalogConfig {
   showQrCode?: boolean;
   qrCodeValue?: string;
   qrCodeLabel?: string;
+
+  // Google Form / Order Form CTA on HTML export & back page
+  googleFormUrl?: string;
+  googleFormButtonText?: string;
+  googleFormHelperText?: string;
   showCustomization?: boolean;
   customizationText?: string;
   showPartners?: boolean;
