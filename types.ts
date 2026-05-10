@@ -161,6 +161,24 @@ export interface CatalogConfig {
   aboutUsText?: string;
   aboutUsImages?: string[];
   aboutUsImageLayout?: 'top' | 'bottom' | 'side-right' | 'side-left' | 'grid';
+
+  // Brand Logo (cover)
+  logoImage?: string;
+  logoSize?: 'sm' | 'md' | 'lg';
+  logoPosition?: 'top-left' | 'top-right' | 'top-center' | 'bottom-left' | 'bottom-right' | 'bottom-center';
+  logoStyle?: 'plain' | 'badge' | 'circle';
+
+  // Cover typography color (text on the cover)
+  coverTextColor?: string;
+
+  // Back Cover background image + overlay
+  backCoverImage?: string;
+  backCoverOverlayOpacity?: number; // 0-100
+
+  // QR Code on back cover
+  showQrCode?: boolean;
+  qrCodeValue?: string;
+  qrCodeLabel?: string;
   showCustomization?: boolean;
   customizationText?: string;
   showPartners?: boolean;

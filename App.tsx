@@ -27,6 +27,7 @@ import {
   uploadString,
   getDownloadURL
 } from 'firebase/storage';
+import QRCode from 'qrcode';
 
 // Icons
 import { 
@@ -639,6 +640,7 @@ function AppInner() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
@@ -765,6 +767,16 @@ function AppInner() {
       aboutUsText: '',
       aboutUsImages: [],
       aboutUsImageLayout: 'side-right',
+      logoImage: '',
+      logoSize: 'md',
+      logoPosition: 'top-left',
+      logoStyle: 'plain',
+      coverTextColor: '#ffffff',
+      backCoverImage: '',
+      backCoverOverlayOpacity: 60,
+      showQrCode: false,
+      qrCodeValue: '',
+      qrCodeLabel: 'Scan to visit',
       showCompanyPhotos: false,
       companyPhotos: [],
       sections: []
@@ -803,6 +815,41 @@ function AppInner() {
         setAuthLoading(false);
     }
   }, []);
+
+  // Generate QR Code data URL whenever value changes
+  useEffect(() => {
+    let cancelled = false;
+    const value = (catalogConfig.qrCodeValue || catalogConfig.website || '').trim();
+    if (!catalogConfig.showQrCode || !value) {
+        setQrDataUrl('');
+        return;
+    }
+    QRCode.toDataURL(value, {
+        margin: 1,
+        width: 320,
+        errorCorrectionLevel: 'H',
+        color: {
+            dark: catalogConfig.headingColor || catalogConfig.primaryColor || '#0f172a',
+            light: '#ffffff'
+        }
+    })
+        .then((url) => {
+            if (!cancelled) setQrDataUrl(url);
+        })
+        .catch((err) => {
+            console.error('QR generation failed', err);
+            if (!cancelled) setQrDataUrl('');
+        });
+    return () => {
+        cancelled = true;
+    };
+  }, [
+      catalogConfig.showQrCode,
+      catalogConfig.qrCodeValue,
+      catalogConfig.website,
+      catalogConfig.headingColor,
+      catalogConfig.primaryColor
+  ]);
 
   // Project Loading (Cloud vs Local)
   useEffect(() => {
@@ -1201,6 +1248,16 @@ function AppInner() {
             aboutUsText: project.data.catalogConfig.aboutUsText || '',
             aboutUsImages: project.data.catalogConfig.aboutUsImages || [],
             aboutUsImageLayout: project.data.catalogConfig.aboutUsImageLayout || 'side-right',
+            logoImage: project.data.catalogConfig.logoImage || '',
+            logoSize: project.data.catalogConfig.logoSize || 'md',
+            logoPosition: project.data.catalogConfig.logoPosition || 'top-left',
+            logoStyle: project.data.catalogConfig.logoStyle || 'plain',
+            coverTextColor: project.data.catalogConfig.coverTextColor || '#ffffff',
+            backCoverImage: project.data.catalogConfig.backCoverImage || '',
+            backCoverOverlayOpacity: project.data.catalogConfig.backCoverOverlayOpacity !== undefined ? project.data.catalogConfig.backCoverOverlayOpacity : 60,
+            showQrCode: project.data.catalogConfig.showQrCode || false,
+            qrCodeValue: project.data.catalogConfig.qrCodeValue || '',
+            qrCodeLabel: project.data.catalogConfig.qrCodeLabel || 'Scan to visit',
             showCompanyPhotos: project.data.catalogConfig.showCompanyPhotos || false,
             companyPhotos: project.data.catalogConfig.companyPhotos || [],
             website: project.data.catalogConfig.website || '',
@@ -1389,6 +1446,32 @@ function AppInner() {
              reader.readAsDataURL(file);
         });
     }
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+        const raw = reader.result as string;
+        const compressed = await compressImage(raw, 600, 0.85);
+        setCatalogConfig(prev => ({ ...prev, logoImage: compressed }));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleBackCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+        const raw = reader.result as string;
+        const compressed = await compressImage(raw, 1600, 0.82);
+        setCatalogConfig(prev => ({ ...prev, backCoverImage: compressed }));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleAboutUsImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3138,7 +3221,87 @@ function AppInner() {
                                      className="w-full h-8 rounded cursor-pointer border-0 p-0"
                                  />
                              </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 mb-1 block">Cover Text</label>
+                                 <input
+                                     type="color"
+                                     value={catalogConfig.coverTextColor || '#ffffff'}
+                                     onChange={(e) => setCatalogConfig({...catalogConfig, coverTextColor: e.target.value})}
+                                     className="w-full h-8 rounded cursor-pointer border-0 p-0"
+                                 />
+                             </div>
                           </div>
+                          <p className="text-[10px] text-slate-400 mt-1">Cover Text controls all typography on the front and back covers.</p>
+                      </div>
+
+                      {/* Brand Logo */}
+                      <div className="pt-2">
+                          <label className="text-xs font-semibold text-slate-500 uppercase mb-2 block flex items-center gap-1">
+                              <Sparkles className="w-3 h-3" /> Brand Logo (Cover)
+                          </label>
+                          {catalogConfig.logoImage ? (
+                              <div className="relative border border-slate-200 rounded-lg overflow-hidden bg-slate-50 group">
+                                  <img src={catalogConfig.logoImage} className="w-full h-20 object-contain p-2" alt="Logo Preview" />
+                                  <button
+                                      onClick={() => setCatalogConfig({...catalogConfig, logoImage: ''})}
+                                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      title="Remove Logo"
+                                  >
+                                      <X className="w-3 h-3" />
+                                  </button>
+                              </div>
+                          ) : (
+                              <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-3 text-center hover:bg-slate-50 transition-colors cursor-pointer">
+                                  <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                  <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
+                                      <Upload className="w-3.5 h-3.5" /> Upload logo (PNG with transparent background recommended)
+                                  </p>
+                              </div>
+                          )}
+
+                          {catalogConfig.logoImage && (
+                              <div className="grid grid-cols-3 gap-2 mt-2">
+                                  <div>
+                                      <label className="text-[10px] text-slate-400 mb-1 block">Position</label>
+                                      <select
+                                          value={catalogConfig.logoPosition || 'top-left'}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, logoPosition: e.target.value as any})}
+                                          className="w-full text-xs border border-slate-200 rounded px-1 py-1.5 bg-white"
+                                      >
+                                          <option value="top-left">Top Left</option>
+                                          <option value="top-center">Top Center</option>
+                                          <option value="top-right">Top Right</option>
+                                          <option value="bottom-left">Bottom Left</option>
+                                          <option value="bottom-center">Bottom Center</option>
+                                          <option value="bottom-right">Bottom Right</option>
+                                      </select>
+                                  </div>
+                                  <div>
+                                      <label className="text-[10px] text-slate-400 mb-1 block">Size</label>
+                                      <select
+                                          value={catalogConfig.logoSize || 'md'}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, logoSize: e.target.value as any})}
+                                          className="w-full text-xs border border-slate-200 rounded px-1 py-1.5 bg-white"
+                                      >
+                                          <option value="sm">Small</option>
+                                          <option value="md">Medium</option>
+                                          <option value="lg">Large</option>
+                                      </select>
+                                  </div>
+                                  <div>
+                                      <label className="text-[10px] text-slate-400 mb-1 block">Style</label>
+                                      <select
+                                          value={catalogConfig.logoStyle || 'plain'}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, logoStyle: e.target.value as any})}
+                                          className="w-full text-xs border border-slate-200 rounded px-1 py-1.5 bg-white"
+                                      >
+                                          <option value="plain">Plain</option>
+                                          <option value="badge">Glass Badge</option>
+                                          <option value="circle">Circle</option>
+                                      </select>
+                                  </div>
+                              </div>
+                          )}
                       </div>
 
                       {/* Cover Image Upload */}
@@ -3174,7 +3337,57 @@ function AppInner() {
                               </div>
                           )}
                       </div>
-                      
+
+                      {/* Back Cover Image */}
+                      <div>
+                          <label className="text-xs font-semibold text-slate-500 uppercase mb-2 block flex items-center gap-1">
+                              <ImageIcon className="w-3 h-3" /> Back Cover Image
+                          </label>
+                          {catalogConfig.backCoverImage ? (
+                              <div className="relative border border-slate-200 rounded-lg overflow-hidden group">
+                                  <img src={catalogConfig.backCoverImage} className="w-full h-32 object-cover opacity-90" alt="Back Cover Preview" />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                          onClick={() => setCatalogConfig({...catalogConfig, backCoverImage: ''})}
+                                          className="text-white bg-red-600 p-2 rounded-full hover:bg-red-700 shadow-lg"
+                                          title="Remove Back Cover Image"
+                                      >
+                                          <Trash2 className="w-4 h-4" />
+                                      </button>
+                                  </div>
+                              </div>
+                          ) : (
+                              <div className="group relative border-2 border-dashed border-slate-300 rounded-lg p-4 text-center hover:bg-slate-50 transition-colors cursor-pointer">
+                                  <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={handleBackCoverUpload}
+                                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                  />
+                                  <p className="text-xs font-medium text-slate-600 flex flex-col items-center justify-center gap-2">
+                                      <Upload className="w-5 h-5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                      <span>Upload back cover image</span>
+                                  </p>
+                              </div>
+                          )}
+                          {catalogConfig.backCoverImage && (
+                              <div className="mt-2">
+                                  <label className="text-[10px] text-slate-400 mb-1 block flex items-center justify-between">
+                                      <span>Dark Overlay Opacity</span>
+                                      <span>{catalogConfig.backCoverOverlayOpacity ?? 60}%</span>
+                                  </label>
+                                  <input
+                                      type="range"
+                                      min={0}
+                                      max={90}
+                                      value={catalogConfig.backCoverOverlayOpacity ?? 60}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, backCoverOverlayOpacity: Number(e.target.value)})}
+                                      className="w-full"
+                                  />
+                              </div>
+                          )}
+                      </div>
+
                       {/* --- EXTRA PAGES SECTION --- */}
                       <div className="pt-6 border-t border-slate-200">
                           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
@@ -3259,6 +3472,38 @@ function AppInner() {
                                               <Plus className="w-3 h-3"/> Add Photos
                                               <input type="file" multiple accept="image/*" className="hidden" onChange={handleCompanyPhotosUpload} />
                                           </label>
+                                      </div>
+                                  )}
+                              </div>
+
+                              {/* QR CODE (Back Cover) */}
+                              <div className="pt-4 border-t border-slate-100 space-y-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                      <input type="checkbox" checked={catalogConfig.showQrCode || false} onChange={(e) => setCatalogConfig({...catalogConfig, showQrCode: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500"/>
+                                      <span className="text-xs font-semibold text-slate-700">QR Code on back cover</span>
+                                  </label>
+                                  {catalogConfig.showQrCode && (
+                                      <div className="space-y-2">
+                                          <input
+                                              type="text"
+                                              value={catalogConfig.qrCodeValue || ''}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, qrCodeValue: e.target.value})}
+                                              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none"
+                                              placeholder={`URL or text (default: ${catalogConfig.website || 'website'})`}
+                                          />
+                                          <input
+                                              type="text"
+                                              value={catalogConfig.qrCodeLabel || ''}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, qrCodeLabel: e.target.value})}
+                                              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none"
+                                              placeholder="Caption (e.g. Scan to visit)"
+                                          />
+                                          {qrDataUrl && (
+                                              <div className="border border-slate-200 rounded p-2 flex items-center gap-2 bg-slate-50">
+                                                  <img src={qrDataUrl} alt="QR Preview" className="w-16 h-16 bg-white rounded" />
+                                                  <span className="text-[10px] text-slate-500">Preview of QR code that appears on back cover.</span>
+                                              </div>
+                                          )}
                                       </div>
                                   )}
                               </div>
@@ -3406,7 +3651,32 @@ function AppInner() {
                           </div>
                       )}
                       
-                      <div className="relative z-10 h-full flex flex-col justify-between p-16 text-white">
+                      {catalogConfig.logoImage && (() => {
+                          const sizeMap: Record<string, string> = { sm: 'h-12', md: 'h-16', lg: 'h-24' };
+                          const posMap: Record<string, string> = {
+                              'top-left': 'top-6 left-6',
+                              'top-right': 'top-6 right-6',
+                              'top-center': 'top-6 left-1/2 -translate-x-1/2',
+                              'bottom-left': 'bottom-6 left-6',
+                              'bottom-right': 'bottom-6 right-6',
+                              'bottom-center': 'bottom-6 left-1/2 -translate-x-1/2'
+                          };
+                          const sizeClass = sizeMap[catalogConfig.logoSize || 'md'];
+                          const posClass = posMap[catalogConfig.logoPosition || 'top-left'];
+                          const styleClass =
+                              catalogConfig.logoStyle === 'badge'
+                                  ? 'bg-white/15 backdrop-blur-md border border-white/25 rounded-xl p-2 shadow-lg'
+                                  : catalogConfig.logoStyle === 'circle'
+                                  ? 'bg-white rounded-full p-2 shadow-lg ring-1 ring-white/40'
+                                  : '';
+                          return (
+                              <div className={`absolute z-20 ${posClass} ${styleClass}`}>
+                                  <img src={catalogConfig.logoImage} alt="Logo" className={`${sizeClass} w-auto object-contain`} />
+                              </div>
+                          );
+                      })()}
+
+                      <div className="relative z-10 h-full flex flex-col justify-between p-16" style={{ color: catalogConfig.coverTextColor || '#ffffff' }}>
                            {/* Top Brand Mark */}
                            <div className="flex justify-between items-start pt-8" style={{ 
                                borderTopWidth: catalogConfig.showCoverLines !== false ? '4px' : '0',
@@ -3775,11 +4045,23 @@ function AppInner() {
                   )}
 
                   {/* --- BACK COVER --- */}
-                  <div 
-                      className="w-full h-[297mm] relative flex flex-col justify-center items-center text-center p-16 print-page text-white overflow-hidden"
-                      style={{ backgroundColor: catalogConfig.primaryColor }}
+                  <div
+                      className="w-full h-[297mm] relative flex flex-col justify-center items-center text-center p-16 print-page overflow-hidden"
+                      style={{
+                          backgroundColor: catalogConfig.primaryColor,
+                          color: catalogConfig.coverTextColor || '#ffffff'
+                      }}
                   >
-                      {/* ... (existing back cover content) ... */}
+                      {catalogConfig.backCoverImage && (
+                          <div className="absolute inset-0 z-0">
+                              <img src={catalogConfig.backCoverImage} className="w-full h-full object-cover" alt="Back Cover" />
+                              <div
+                                  className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70"
+                                  style={{ opacity: (catalogConfig.backCoverOverlayOpacity ?? 60) / 100 }}
+                              ></div>
+                          </div>
+                      )}
+                      <div className="relative z-10 w-full flex flex-col items-center">
                       <h2 className="text-4xl font-bold mb-8">{tCombined('contact')}</h2>
                       
                       <div className="space-y-6 text-lg">
@@ -3816,7 +4098,19 @@ function AppInner() {
                           ))}
                       </div>
 
-                      <div className="absolute bottom-12 text-xs opacity-40">
+                      {catalogConfig.showQrCode && qrDataUrl && (
+                          <div className="mt-10 flex flex-col items-center gap-2">
+                              <div className="bg-white p-3 rounded-2xl shadow-xl ring-1 ring-white/20">
+                                  <img src={qrDataUrl} alt="QR Code" className="w-32 h-32 block" />
+                              </div>
+                              <p className="text-xs uppercase tracking-[0.25em] opacity-80">
+                                  {catalogConfig.qrCodeLabel || 'Scan to visit'}
+                              </p>
+                          </div>
+                      )}
+                      </div>
+
+                      <div className="absolute bottom-12 text-xs opacity-40 z-10">
                           {catalogConfig.footerText}
                       </div>
                   </div>
