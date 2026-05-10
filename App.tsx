@@ -449,6 +449,15 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         const cartName = p.catalogName || p.name || 'Item';
         const cartUnit = p.measurementUnit || baseUnit;
         const cartThumb = (p.image || allImages[0] || '');
+        // Per-Incoterm unit & pack prices (in the seller's outputCurrency) so
+        // the cart can compute the customer's total live based on the chosen
+        // Incoterm — exactly how the proforma invoice does.
+        const cartUnitPrices: Record<string, number> = {};
+        const cartPackPrices: Record<string, number> = {};
+        incoterms.forEach((t) => {
+            cartUnitPrices[t] = (p.scenarioPrices && p.scenarioPrices[t]) || 0;
+            cartPackPrices[t] = (p.scenarioPackPrices && p.scenarioPackPrices[t]) || 0;
+        });
         const cartDataAttrs = cartEnabled ? `
             data-cart-sku="${escapeAttr(p.sku || '')}"
             data-cart-name="${escapeAttr(cartName)}"
@@ -456,6 +465,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             data-cart-pack="${escapeAttr(String(p.itemsPerPack || 0))}"
             data-cart-moq="${escapeAttr(String(p.catalogMOQ || p.qty || 0))}"
             data-cart-img="${escapeAttr(cartThumb)}"
+            data-cart-unit-prices='${escapeAttr(JSON.stringify(cartUnitPrices))}'
+            data-cart-pack-prices='${escapeAttr(JSON.stringify(cartPackPrices))}'
+            data-cart-currency="${escapeAttr(outCurr)}"
         ` : '';
         const addToCartBtn = cartEnabled
             ? `<button type="button" class="card-cta cart-add-btn" data-add-to-cart>Add to Inquiry</button>`
@@ -735,6 +747,27 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .mode-toggle button.active { background: var(--primary); color: #fff; }
         .cart-item .total-line { font-size: 11px; color: #64748b; margin-top: 6px; font-weight: 600; }
         .cart-item .total-line strong { color: #0f172a; }
+        .cart-item .line-price { font-size: 12px; font-weight: 700; color: #0f172a; margin-top: 4px; display: flex; justify-content: space-between; gap: 6px; }
+        .cart-item .line-price .unit-rate { font-size: 10px; font-weight: 500; color: #94a3b8; }
+        .cart-item .line-price .no-price { font-size: 10px; color: #94a3b8; font-weight: 500; }
+
+        .cart-summary { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 16px; flex-shrink: 0; }
+        .cart-summary-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: #475569; padding: 3px 0; }
+        .cart-summary-row.total { font-size: 16px; font-weight: 800; color: #0f172a; border-top: 1px solid #e2e8f0; padding-top: 10px; margin-top: 6px; }
+        .cart-summary-row.total .amount { font-size: 18px; }
+        .cart-summary-row .label { display: flex; align-items: center; gap: 6px; }
+        .cart-summary-row .term-pill { background: var(--primary); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; }
+        .cart-summary-hint { font-size: 11px; color: #64748b; padding: 6px 0 0; line-height: 1.4; }
+        .cart-incoterm-quick {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
+            background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 8px;
+        }
+        .cart-incoterm-quick .label { font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; width: 100%; }
+        .cart-incoterm-quick button {
+            border: 1px solid #cbd5e1; background: #fff; color: #334155;
+            padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer;
+        }
+        .cart-incoterm-quick button.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
         .cart-form { padding: 16px; border-top: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0; max-height: 55vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .cart-form h3 { font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -778,7 +811,26 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             </header>
             <div class="cart-body" id="cart-body">
                 <div class="cart-empty" id="cart-empty">No items yet. Tap "Add to Inquiry" on a product to start.</div>
+                <div class="cart-incoterm-quick" id="cart-incoterm-quick" style="display:none;">
+                    <span class="label">Pricing for</span>
+                    ${incoterms.map((t, i) => `<button type="button" data-quick-term="${escapeAttr(t)}"${i === 0 ? ' class="active"' : ''}>${escapeHtml(t)}</button>`).join('')}
+                </div>
                 <div id="cart-list"></div>
+            </div>
+            <div class="cart-summary" id="cart-summary" style="display:none;">
+                <div class="cart-summary-row">
+                    <span class="label">Items</span>
+                    <span id="cart-sum-lines">0</span>
+                </div>
+                <div class="cart-summary-row">
+                    <span class="label">Total quantity</span>
+                    <span id="cart-sum-qty">0</span>
+                </div>
+                <div class="cart-summary-row total">
+                    <span class="label">Estimated total <span class="term-pill" id="cart-sum-term">${escapeHtml(incoterms[0] || '')}</span></span>
+                    <span class="amount" id="cart-sum-total">—</span>
+                </div>
+                <div class="cart-summary-hint" id="cart-sum-hint">Indicative price based on the Incoterm above. Final quote will be confirmed by the seller.</div>
             </div>
             <form class="cart-form" id="cart-form" autocomplete="on" novalidate>
                 <h3>Your Information</h3>
@@ -887,6 +939,30 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             var statusEl = document.getElementById('cart-status');
             var thanks = document.getElementById('thanks-overlay');
             var thanksClose = document.getElementById('thanks-close');
+            var summaryEl = document.getElementById('cart-summary');
+            var summaryLinesEl = document.getElementById('cart-sum-lines');
+            var summaryQtyEl = document.getElementById('cart-sum-qty');
+            var summaryTotalEl = document.getElementById('cart-sum-total');
+            var summaryTermEl = document.getElementById('cart-sum-term');
+            var summaryHintEl = document.getElementById('cart-sum-hint');
+            var quickEl = document.getElementById('cart-incoterm-quick');
+            var incotermSelect = form ? form.querySelector('[name="incoterm"]') : null;
+            var INCOTERMS = ${JSON.stringify(incoterms)};
+            var DEFAULT_TERM = INCOTERMS[0] || '';
+            var SELLER_CURRENCY = ${JSON.stringify(outCurr)};
+            var TERM_KEY = 'cat_cart_term_v1';
+            var selectedTerm = '';
+            try { selectedTerm = localStorage.getItem(TERM_KEY) || ''; } catch(e){}
+            if (!selectedTerm || INCOTERMS.indexOf(selectedTerm) < 0) selectedTerm = DEFAULT_TERM;
+
+            function fmtMoney(n, ccy){
+                ccy = ccy || SELLER_CURRENCY || 'USD';
+                try {
+                    return new Intl.NumberFormat(undefined, { style: 'currency', currency: ccy, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+                } catch(e){
+                    return (Number(n) || 0).toFixed(2) + ' ' + ccy;
+                }
+            }
 
             function escapeText(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
             function save(){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cart)); } catch(e){} }
@@ -900,6 +976,19 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 return n;
             }
             function totalLines(){ return Object.keys(cart).length; }
+
+            function lineRate(it){
+                var prices = (it.mode === 'pack' && it.pack > 0) ? (it.packPrices || {}) : (it.unitPrices || {});
+                return Number(prices[selectedTerm]) || 0;
+            }
+            function lineTotal(it){
+                return lineRate(it) * (it.qty || 0);
+            }
+            function lineHasPrice(it){
+                if (!it.unitPrices && !it.packPrices) return false;
+                var prices = (it.mode === 'pack' && it.pack > 0) ? (it.packPrices || {}) : (it.unitPrices || {});
+                return Number(prices[selectedTerm]) > 0;
+            }
 
             function renderRow(key){
                 var it = cart[key];
@@ -916,6 +1005,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 var totalLine = (mode === 'pack' && hasPack)
                     ? '<div class="total-line">= <strong>' + totalUnitsForItem + '</strong> ' + escapeText(it.unit || 'units') + ' (' + (it.qty || 0) + ' × ' + it.pack + ')</div>'
                     : '';
+                var rate = lineRate(it);
+                var total = lineTotal(it);
+                var unitLabel = (mode === 'pack' && hasPack) ? 'pack' : (it.unit || 'unit');
+                var priceHtml = lineHasPrice(it)
+                    ? '<div class="line-price"><span>' + fmtMoney(total, it.currency || SELLER_CURRENCY) + '</span><span class="unit-rate">' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + ' / ' + escapeText(unitLabel) + '</span></div>'
+                    : '<div class="line-price"><span class="no-price">Price on request for ' + escapeText(selectedTerm || '—') + '</span></div>';
                 var row = document.createElement('div');
                 row.className = 'cart-item';
                 row.setAttribute('data-key', key);
@@ -934,6 +1029,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                             '<button type="button" class="remove" data-act="rm">Remove</button>' +
                         '</div>' +
                         totalLine +
+                        priceHtml +
                     '</div>';
                 var qInput = row.querySelector('input[type="number"]');
                 var inc = row.querySelector('[data-act="inc"]');
@@ -970,6 +1066,77 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 }
             }
 
+            function totalsForTerm(){
+                var grand = 0;
+                var anyPriced = false;
+                var allPriced = true;
+                var anyItem = false;
+                Object.keys(cart).forEach(function(k){
+                    var it = cart[k];
+                    anyItem = true;
+                    if (lineHasPrice(it)) {
+                        anyPriced = true;
+                        grand += lineTotal(it);
+                    } else {
+                        allPriced = false;
+                    }
+                });
+                return { grand: grand, anyPriced: anyPriced, allPriced: allPriced, anyItem: anyItem };
+            }
+
+            function refreshSummary(){
+                var keys = Object.keys(cart);
+                if (!summaryEl) return;
+                if (keys.length === 0) {
+                    summaryEl.style.display = 'none';
+                    if (quickEl) quickEl.style.display = 'none';
+                    return;
+                }
+                if (quickEl) quickEl.style.display = INCOTERMS.length > 1 ? 'flex' : 'none';
+                summaryEl.style.display = 'block';
+                if (summaryLinesEl) summaryLinesEl.textContent = String(totalLines());
+                if (summaryQtyEl) summaryQtyEl.textContent = String(totalUnits());
+                if (summaryTermEl) summaryTermEl.textContent = selectedTerm || '—';
+                var t = totalsForTerm();
+                if (summaryTotalEl) {
+                    if (!selectedTerm) {
+                        summaryTotalEl.textContent = '—';
+                    } else if (t.anyPriced) {
+                        summaryTotalEl.textContent = fmtMoney(t.grand, SELLER_CURRENCY) + (t.allPriced ? '' : '*');
+                    } else {
+                        summaryTotalEl.textContent = 'On request';
+                    }
+                }
+                if (summaryHintEl) {
+                    if (!selectedTerm) {
+                        summaryHintEl.textContent = 'Select an Incoterm above to see the indicative total.';
+                    } else if (!t.anyPriced) {
+                        summaryHintEl.textContent = 'No public prices were published for ' + selectedTerm + '. The seller will respond with a quote.';
+                    } else if (!t.allPriced) {
+                        summaryHintEl.textContent = '* Some items had no public price for ' + selectedTerm + ' and are excluded from the estimate. The final quote will be confirmed by the seller.';
+                    } else {
+                        summaryHintEl.textContent = 'Indicative price based on the Incoterm above. Final quote will be confirmed by the seller.';
+                    }
+                }
+            }
+
+            function setTerm(t, opts){
+                opts = opts || {};
+                if (INCOTERMS.indexOf(t) < 0) return;
+                selectedTerm = t;
+                try { localStorage.setItem(TERM_KEY, t); } catch(e){}
+                if (quickEl) {
+                    quickEl.querySelectorAll('button[data-quick-term]').forEach(function(b){
+                        if (b.getAttribute('data-quick-term') === t) b.classList.add('active');
+                        else b.classList.remove('active');
+                    });
+                }
+                if (incotermSelect && !opts.fromForm && incotermSelect.value !== t) {
+                    incotermSelect.value = t;
+                }
+                refresh();
+            }
+
             function refresh(){
                 if (!listEl) return;
                 listEl.innerHTML = '';
@@ -980,10 +1147,52 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     if (keys.length > 0) fab.classList.add('show'); else fab.classList.remove('show');
                 }
                 updateBadge();
+                refreshSummary();
+            }
+
+            if (quickEl) {
+                quickEl.querySelectorAll('button[data-quick-term]').forEach(function(b){
+                    b.addEventListener('click', function(){ setTerm(b.getAttribute('data-quick-term') || ''); });
+                    if (b.getAttribute('data-quick-term') === selectedTerm) b.classList.add('active');
+                    else b.classList.remove('active');
+                });
+            }
+            if (incotermSelect) {
+                incotermSelect.addEventListener('change', function(){
+                    if (incotermSelect.value && INCOTERMS.indexOf(incotermSelect.value) >= 0) {
+                        setTerm(incotermSelect.value, { fromForm: true });
+                    }
+                });
+                if (selectedTerm && !incotermSelect.value) incotermSelect.value = selectedTerm;
             }
 
             function openDrawer(){ overlay.classList.add('open'); drawer.classList.add('open'); document.body.style.overflow = 'hidden'; }
             function closeDrawer(){ overlay.classList.remove('open'); drawer.classList.remove('open'); document.body.style.overflow = ''; if (statusEl) { statusEl.textContent = ''; statusEl.className = 'submit-status'; } }
+
+            function parseJsonAttr(card, attr){
+                try { return JSON.parse(card.getAttribute(attr) || '{}') || {}; }
+                catch(e){ return {}; }
+            }
+
+            // Refresh the price snapshot stored on every cart line from the
+            // current page so cached carts always reflect the latest catalog
+            // prices when prices change between visits.
+            function syncCartPrices(){
+                var cards = {};
+                document.querySelectorAll('.card[data-cart-sku], .card[data-cart-name]').forEach(function(card){
+                    var sku = card.getAttribute('data-cart-sku') || '';
+                    var key = sku || ('p_' + (card.getAttribute('data-idx') || ''));
+                    cards[key] = card;
+                });
+                Object.keys(cart).forEach(function(k){
+                    var card = cards[k];
+                    if (!card) return;
+                    cart[k].unitPrices = parseJsonAttr(card, 'data-cart-unit-prices');
+                    cart[k].packPrices = parseJsonAttr(card, 'data-cart-pack-prices');
+                    cart[k].currency = card.getAttribute('data-cart-currency') || SELLER_CURRENCY;
+                });
+            }
+            syncCartPrices();
 
             // Add to cart buttons
             document.querySelectorAll('[data-add-to-cart]').forEach(function(btn){
@@ -1003,7 +1212,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                         pack: pack,
                         img: card.getAttribute('data-cart-img') || '',
                         qty: existing ? (existing.qty || 0) + 1 : 1,
-                        mode: existing ? existing.mode : (pack > 0 ? 'pack' : 'unit')
+                        mode: existing ? existing.mode : (pack > 0 ? 'pack' : 'unit'),
+                        unitPrices: parseJsonAttr(card, 'data-cart-unit-prices'),
+                        packPrices: parseJsonAttr(card, 'data-cart-pack-prices'),
+                        currency: card.getAttribute('data-cart-currency') || SELLER_CURRENCY
                     };
                     save();
                     refresh();
@@ -1033,14 +1245,34 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 });
                 lines.push('');
                 lines.push('=== ITEMS ===');
+                var grand = 0;
+                var anyPriced = false;
+                var allPriced = true;
                 Object.keys(cart).forEach(function(k, i){
                     var it = cart[k];
                     var totalU = (it.mode === 'pack' && it.pack) ? (it.qty || 0) * it.pack : (it.qty || 0);
                     var qtyStr = (it.mode === 'pack' && it.pack)
                         ? (it.qty || 0) + ' pack(s) (' + totalU + ' ' + (it.unit || 'units') + ')'
                         : (it.qty || 0) + ' ' + (it.unit || 'units');
-                    lines.push((i+1) + '. ' + it.name + ' [' + (it.sku || '-') + ']  Qty: ' + qtyStr);
+                    var rate = lineRate(it);
+                    var lTotal = lineTotal(it);
+                    var hasPrice = lineHasPrice(it);
+                    if (hasPrice) { anyPriced = true; grand += lTotal; }
+                    else { allPriced = false; }
+                    var unitLabel = (it.mode === 'pack' && it.pack) ? 'pack' : (it.unit || 'unit');
+                    var priceStr = hasPrice
+                        ? '  @ ' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + '/' + unitLabel + ' = ' + fmtMoney(lTotal, it.currency || SELLER_CURRENCY)
+                        : '  (price on request for ' + (selectedTerm || '—') + ')';
+                    lines.push((i+1) + '. ' + it.name + ' [' + (it.sku || '-') + ']  Qty: ' + qtyStr + priceStr);
                 });
+                lines.push('');
+                lines.push('=== TOTAL ===');
+                lines.push('Incoterm: ' + (selectedTerm || '—'));
+                if (anyPriced) {
+                    lines.push('Estimated total: ' + fmtMoney(grand, SELLER_CURRENCY) + (allPriced ? '' : ' (partial — some items priced on request)'));
+                } else {
+                    lines.push('Estimated total: on request');
+                }
                 var notes = form.querySelector('[name="notes"]');
                 if (notes && notes.value) { lines.push(''); lines.push('=== NOTES ==='); lines.push(notes.value); }
                 return lines.join('\\n');
@@ -1082,6 +1314,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 return Object.keys(cart).map(function(k){
                     var it = cart[k];
                     var totalU = (it.mode === 'pack' && it.pack) ? (it.qty || 0) * it.pack : (it.qty || 0);
+                    var rate = lineRate(it);
+                    var lTotal = lineTotal(it);
+                    var hasPrice = lineHasPrice(it);
                     return {
                         sku: it.sku || '',
                         name: it.name || '',
@@ -1089,9 +1324,26 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                         pack: it.pack || 0,
                         qty: it.qty || 0,
                         mode: it.mode || 'unit',
-                        totalUnits: totalU
+                        totalUnits: totalU,
+                        unitPrice: hasPrice ? rate : 0,
+                        lineTotal: hasPrice ? lTotal : 0,
+                        currency: it.currency || SELLER_CURRENCY,
+                        priced: hasPrice
                     };
                 });
+            }
+
+            function buildSummaryTotals(){
+                var t = totalsForTerm();
+                return {
+                    incoterm: selectedTerm || '',
+                    currency: SELLER_CURRENCY,
+                    estimatedTotal: t.anyPriced ? t.grand : 0,
+                    allItemsPriced: t.allPriced,
+                    anyItemPriced: t.anyPriced,
+                    lines: totalLines(),
+                    totalUnits: totalUnits()
+                };
             }
 
             // Wait briefly for the embedded Firebase module to attach window.__submitInquiry
@@ -1121,6 +1373,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     submittedAt: new Date().toISOString(),
                     customer: {},
                     items: buildItemsArray(),
+                    totals: buildSummaryTotals(),
                     summary: buildPlainOrder()
                 };
                 ['customer_name','company','email','phone','country','destination_port','incoterm','payment_terms','notes'].forEach(function(f){
@@ -9808,30 +10061,80 @@ function AppInner() {
 
                                       <div>
                                           <h5 className="text-xs font-semibold text-slate-500 uppercase mb-2">Requested Items ({items.length})</h5>
-                                          <div className="border border-slate-200 rounded-lg overflow-hidden">
-                                              <table className="w-full text-sm">
-                                                  <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
-                                                      <tr>
-                                                          <th className="text-left px-3 py-2">SKU</th>
-                                                          <th className="text-left px-3 py-2">Product</th>
-                                                          <th className="text-right px-3 py-2">Qty</th>
-                                                          <th className="text-left px-3 py-2">Mode</th>
-                                                          <th className="text-right px-3 py-2">Total Units</th>
-                                                      </tr>
-                                                  </thead>
-                                                  <tbody className="divide-y divide-slate-100">
-                                                      {items.map((it: any, i: number) => (
-                                                          <tr key={i} className="hover:bg-slate-50">
-                                                              <td className="px-3 py-2 font-mono text-xs text-slate-600">{it.sku || '-'}</td>
-                                                              <td className="px-3 py-2 text-slate-800">{it.name}</td>
-                                                              <td className="px-3 py-2 text-right font-semibold">{it.qty}</td>
-                                                              <td className="px-3 py-2 text-xs text-slate-500">{it.mode === 'pack' ? `Packs (${it.pack}/pack)` : 'Unit'}</td>
-                                                              <td className="px-3 py-2 text-right font-mono text-slate-700">{it.totalUnits} {it.unit || ''}</td>
-                                                          </tr>
-                                                      ))}
-                                                  </tbody>
-                                              </table>
-                                          </div>
+                                          {(() => {
+                                              const totals = inq.totals || {};
+                                              const totalCurrency = totals.currency || items.find((it: any) => it.currency)?.currency || config?.outputCurrency || 'USD';
+                                              const grandTotal = Number(totals.estimatedTotal) || items.reduce((s: number, it: any) => s + (Number(it.lineTotal) || 0), 0);
+                                              const anyPriced = items.some((it: any) => Number(it.lineTotal) > 0 || Number(it.unitPrice) > 0);
+                                              const allPriced = items.length > 0 && items.every((it: any) => Number(it.lineTotal) > 0 || it.priced === true);
+                                              const incoterm = totals.incoterm || cust.incoterm || '';
+                                              return (
+                                                  <>
+                                                      {(incoterm || anyPriced) && (
+                                                          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                                                              {incoterm && (
+                                                                  <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white font-bold uppercase tracking-wide">{incoterm}</span>
+                                                              )}
+                                                              {anyPriced && (
+                                                                  <span className="text-slate-700">
+                                                                      Customer-side estimate: <strong className="text-emerald-700">{formatMoney(grandTotal, totalCurrency)}</strong>
+                                                                      {!allPriced && <span className="text-amber-600 ml-1">(partial — some items priced on request)</span>}
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                      )}
+                                                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                                          <table className="w-full text-sm">
+                                                              <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                                                                  <tr>
+                                                                      <th className="text-left px-3 py-2">SKU</th>
+                                                                      <th className="text-left px-3 py-2">Product</th>
+                                                                      <th className="text-right px-3 py-2">Qty</th>
+                                                                      <th className="text-left px-3 py-2">Mode</th>
+                                                                      <th className="text-right px-3 py-2">Total Units</th>
+                                                                      <th className="text-right px-3 py-2">Unit Price</th>
+                                                                      <th className="text-right px-3 py-2">Line Total</th>
+                                                                  </tr>
+                                                              </thead>
+                                                              <tbody className="divide-y divide-slate-100">
+                                                                  {items.map((it: any, i: number) => {
+                                                                      const ccy = it.currency || totalCurrency;
+                                                                      const lt = Number(it.lineTotal) || 0;
+                                                                      const up = Number(it.unitPrice) || 0;
+                                                                      return (
+                                                                          <tr key={i} className="hover:bg-slate-50">
+                                                                              <td className="px-3 py-2 font-mono text-xs text-slate-600">{it.sku || '-'}</td>
+                                                                              <td className="px-3 py-2 text-slate-800">{it.name}</td>
+                                                                              <td className="px-3 py-2 text-right font-semibold">{it.qty}</td>
+                                                                              <td className="px-3 py-2 text-xs text-slate-500">{it.mode === 'pack' ? `Packs (${it.pack}/pack)` : 'Unit'}</td>
+                                                                              <td className="px-3 py-2 text-right font-mono text-slate-700">{it.totalUnits} {it.unit || ''}</td>
+                                                                              <td className="px-3 py-2 text-right font-mono text-slate-700">
+                                                                                  {up > 0
+                                                                                      ? <>{formatMoney(up, ccy)}<span className="text-slate-400 text-[10px]"> /{it.mode === 'pack' && it.pack ? 'pack' : (it.unit || 'unit')}</span></>
+                                                                                      : <span className="text-slate-400">on request</span>}
+                                                                              </td>
+                                                                              <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800">
+                                                                                  {lt > 0 ? formatMoney(lt, ccy) : <span className="text-slate-400 font-normal">—</span>}
+                                                                              </td>
+                                                                          </tr>
+                                                                      );
+                                                                  })}
+                                                              </tbody>
+                                                              {anyPriced && (
+                                                                  <tfoot>
+                                                                      <tr className="bg-slate-900 text-white">
+                                                                          <td colSpan={6} className="px-3 py-2 text-right text-xs font-semibold uppercase">
+                                                                              Estimated total {incoterm ? `(${incoterm})` : ''}
+                                                                          </td>
+                                                                          <td className="px-3 py-2 text-right font-mono font-bold">{formatMoney(grandTotal, totalCurrency)}</td>
+                                                                      </tr>
+                                                                  </tfoot>
+                                                              )}
+                                                          </table>
+                                                      </div>
+                                                  </>
+                                              );
+                                          })()}
                                       </div>
 
                                       {inq.summary && (
