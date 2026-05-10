@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -109,6 +109,8 @@ const DEMO_USER_ID = 'demo-user-123';
 const DB_NAME = 'CloudExportProDB';
 const STORE_NAME = 'projects';
 const DB_VERSION = 1;
+/** Restored after refresh until the browser tab is closed (sessionStorage). */
+const SESSION_WORKSPACE_DRAFT_KEY = 'cep_workspace_draft_v3';
 
 // --- UTILITY FUNCTIONS ---
 const normalizeDigits = (str: string | number): string => {
@@ -2091,6 +2093,11 @@ function AppInner() {
   // --- AUTH HANDLERS ---
   const handleLogout = async () => {
       setAuthError('');
+      try {
+        sessionStorage.removeItem(SESSION_WORKSPACE_DRAFT_KEY);
+      } catch {
+        /* ignore */
+      }
       if (isDemoMode) {
           setUser(null);
           setIsDemoMode(false);
@@ -2390,6 +2397,11 @@ function AppInner() {
       if (savedId) setLoadedProjectId(savedId);
 
       setShowSaveModal(false);
+      try {
+        sessionStorage.removeItem(SESSION_WORKSPACE_DRAFT_KEY);
+      } catch {
+        /* ignore */
+      }
     } catch (error: any) { 
         console.error("Save Error:", error);
         setUploadProgress(null);
@@ -2452,6 +2464,7 @@ function AppInner() {
     });
     setVisibleScenarioTerms(project.data.visibleScenarioTerms || ['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
     setInvoiceTerms(project.data.invoiceTerms || ['FOB', 'DDP']);
+    setSelectedTerms(project.data.selectedTerms || ['FOB', 'DDP']);
     setNotes(project.data.notes || '');
     
     setCustomerName(project.data.customerName || '');
@@ -3302,6 +3315,138 @@ function AppInner() {
     
     return groups;
   }, [calculations.processedProducts, catalogConfig.itemsPerPage, catalogConfig.includedProductIds]);
+
+  const [sessionDraftHydrated, setSessionDraftHydrated] = useState(false);
+
+  // Restore unsaved workspace from sessionStorage before first paint (same tab refresh).
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      setSessionDraftHydrated(true);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(SESSION_WORKSPACE_DRAFT_KEY);
+      if (!raw) {
+        setSessionDraftHydrated(true);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed.v !== 3 || !parsed.data) {
+        setSessionDraftHydrated(true);
+        return;
+      }
+      const d = parsed.data;
+      const cloudId = parsed.loadedProjectId || null;
+      const synthetic: SavedProject = {
+        id: cloudId || 'local-unsaved-session',
+        name: parsed.projectName || 'Unsaved',
+        folder: parsed.folderName || '',
+        createdAt: { seconds: Math.floor(((parsed.savedAt as number) || Date.now()) / 1000) },
+        data: d
+      };
+      handleLoadProject(synthetic);
+      setLoadedProjectId(cloudId);
+      setProjectName(parsed.projectName ?? synthetic.name);
+      setFolderName(parsed.folderName ?? '');
+      const allowedViews = ['dashboard', 'invoice', 'pricelist', 'catalog', 'suppliers'] as const;
+      const v = allowedViews.includes(parsed.view) ? parsed.view : 'dashboard';
+      setView(v);
+      setInvoiceIncludedIds(parsed.invoiceIncludedIds === undefined ? null : parsed.invoiceIncludedIds);
+      setBasis(parsed.basis === 'pack' ? 'pack' : 'unit');
+      setSelectedTerms(d.selectedTerms || ['FOB', 'DDP']);
+    } catch (e) {
+      console.warn('Session workspace draft restore failed:', e);
+    }
+    setSessionDraftHydrated(true);
+    // Intentionally run only once on mount — restore uses the initial handleLoadProject implementation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!sessionDraftHydrated || typeof window === 'undefined') return;
+    const t = window.setTimeout(() => {
+      try {
+        const snapshot = {
+          v: 3,
+          savedAt: Date.now(),
+          view,
+          invoiceIncludedIds,
+          projectName,
+          folderName,
+          loadedProjectId,
+          basis,
+          data: {
+            config,
+            rates,
+            products,
+            logistics,
+            selectedTerms,
+            notes,
+            visibleScenarioTerms,
+            invoiceTerms,
+            customerName,
+            customerAddress,
+            invoiceRef,
+            billedFrom,
+            billedFromDetails,
+            paymentTerms,
+            showImages,
+            showPackInfo,
+            invoiceTitle,
+            bankDetails,
+            catalogConfig,
+            invoiceBasis,
+            priceListConfig,
+            suppliers,
+            isInvoiceEditable,
+            invoiceOverrides,
+            containerCapacity,
+            containerType
+          }
+        };
+        sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
+      } catch (e: any) {
+        if (e?.name === 'QuotaExceededError' || /QuotaExceeded/i.test(String(e?.message || e))) {
+          console.warn('Workspace draft too large for session storage. Save your project to the cloud to keep it safe.');
+        }
+      }
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [
+    sessionDraftHydrated,
+    view,
+    invoiceIncludedIds,
+    projectName,
+    folderName,
+    loadedProjectId,
+    basis,
+    config,
+    rates,
+    products,
+    logistics,
+    selectedTerms,
+    notes,
+    visibleScenarioTerms,
+    invoiceTerms,
+    customerName,
+    customerAddress,
+    invoiceRef,
+    billedFrom,
+    billedFromDetails,
+    paymentTerms,
+    showImages,
+    showPackInfo,
+    invoiceTitle,
+    bankDetails,
+    catalogConfig,
+    invoiceBasis,
+    priceListConfig,
+    suppliers,
+    isInvoiceEditable,
+    invoiceOverrides,
+    containerCapacity,
+    containerType
+  ]);
 
 
   // --- RENDER FUNCTIONS ---
