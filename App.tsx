@@ -1787,6 +1787,7 @@ function AppInner() {
   const [invoiceDiscountBaseTerm, setInvoiceDiscountBaseTerm] = useState<string>('FOB');
   const [invoiceVatEnabled, setInvoiceVatEnabled] = useState(false);
   const [invoiceVatPercent, setInvoiceVatPercent] = useState(9);
+  const [invoiceOrientation, setInvoiceOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [priceListConfig, setPriceListConfig] = useState<PriceListConfig>({
       title: 'EXPORT PRICE LIST',
       subtitle: `${new Date().getFullYear()} COLLECTION`,
@@ -2999,6 +3000,7 @@ function AppInner() {
         paymentTerms, showImages, showPackInfo,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
+        invoiceOrientation,
         containerCapacity, containerType
     };
 
@@ -3171,6 +3173,9 @@ function AppInner() {
       (project.data as any).invoiceVatPercent !== undefined && (project.data as any).invoiceVatPercent !== null
         ? Number((project.data as any).invoiceVatPercent)
         : 9
+    );
+    setInvoiceOrientation(
+      (project.data as any).invoiceOrientation === 'landscape' ? 'landscape' : 'portrait'
     );
     if ((project.data as any).containerCapacity) setContainerCapacity((project.data as any).containerCapacity);
     if ((project.data as any).containerType) setContainerType((project.data as any).containerType);
@@ -4121,6 +4126,7 @@ function AppInner() {
             invoiceDiscountBaseTerm,
             invoiceVatEnabled,
             invoiceVatPercent,
+            invoiceOrientation,
             containerCapacity,
             containerType
           }
@@ -4176,6 +4182,7 @@ function AppInner() {
     invoiceDiscountBaseTerm,
     invoiceVatEnabled,
     invoiceVatPercent,
+    invoiceOrientation,
     containerCapacity,
     containerType
   ]);
@@ -7616,6 +7623,42 @@ function AppInner() {
                         </div>
                    </div>
 
+                   <div>
+                       <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Page Orientation</label>
+                       <div className="grid grid-cols-2 gap-2">
+                           {[
+                               { id: 'portrait', label: 'Portrait', hint: '210 × 297 mm' },
+                               { id: 'landscape', label: 'Landscape', hint: '297 × 210 mm' }
+                           ].map((opt) => (
+                               <button
+                                   key={opt.id}
+                                   type="button"
+                                   onClick={() => setInvoiceOrientation(opt.id as 'portrait' | 'landscape')}
+                                   className={`flex flex-col items-center gap-1 px-2 py-2 text-xs font-semibold rounded-lg border transition-all ${
+                                       invoiceOrientation === opt.id
+                                           ? 'border-blue-400 bg-blue-50 text-blue-700 shadow-sm'
+                                           : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                   }`}
+                                   title={`A4 ${opt.label} — ${opt.hint}`}
+                               >
+                                   <div
+                                       className={`border ${invoiceOrientation === opt.id ? 'border-blue-400' : 'border-slate-300'} rounded-sm bg-white`}
+                                       style={
+                                           opt.id === 'portrait'
+                                               ? { width: 18, height: 24 }
+                                               : { width: 24, height: 18 }
+                                       }
+                                   />
+                                   <span>{opt.label}</span>
+                                   <span className="text-[9px] font-normal text-slate-400">{opt.hint}</span>
+                               </button>
+                           ))}
+                       </div>
+                       <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                           Landscape is great when you show many Incoterm columns or both unit + pack pricing — more horizontal room, no cramped totals.
+                       </p>
+                   </div>
+
                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                        <p className="text-xs font-bold text-slate-700 uppercase">Discounts</p>
                        <div>
@@ -7730,12 +7773,18 @@ function AppInner() {
 
           {/* Invoice Preview */}
           <div className="flex-1 bg-gray-50 overflow-y-auto p-8 rounded-lg border border-slate-200 print:p-0 print:border-0 print:bg-white print:overflow-visible" id="invoice-preview">
-               <div className="max-w-[210mm] mx-auto bg-white p-12 shadow-sm min-h-[297mm] print:shadow-none print:w-full print:max-w-none">
+               <div
+                   className={`mx-auto bg-white shadow-sm print:shadow-none print:w-full print:max-w-none ${
+                       invoiceOrientation === 'landscape'
+                           ? 'invoice-landscape-page max-w-[297mm] p-10 min-h-[210mm]'
+                           : 'max-w-[210mm] p-12 min-h-[297mm]'
+                   }`}
+               >
                    
                    {/* Header */}
-                   <div className="flex justify-between items-start gap-6 mb-12">
+                   <div className="flex justify-between items-start gap-6 mb-10 pb-6 border-b border-slate-200">
                        <div className="min-w-0 flex-1">
-                           <h1 className="text-4xl font-bold text-slate-900 mb-2">{invoiceTitle}</h1>
+                           <h1 className={`font-bold text-slate-900 mb-2 ${invoiceOrientation === 'landscape' ? 'text-3xl' : 'text-4xl'}`}>{invoiceTitle}</h1>
                            <p className="text-slate-500 text-sm">#{invoiceRef}</p>
                            <p className="text-slate-500 text-sm">Date: {new Date().toLocaleDateString()}</p>
                        </div>
@@ -7781,33 +7830,58 @@ function AppInner() {
                        </div>
                    </div>
 
-                   {/* Bill To */}
-                   <div className="mb-12 p-6 bg-slate-50 rounded-lg border border-slate-100 print:border print:bg-transparent">
-                       <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Bill To</h3>
-                       <h2 className="text-xl font-bold text-slate-800">{customerName || 'Customer Name'}</h2>
-                       <p className="text-slate-600 whitespace-pre-line mt-1">{customerAddress || 'Customer Address...'}</p>
+                   {/* Meta strip + Bill To */}
+                   <div className={`mb-8 grid gap-4 ${invoiceOrientation === 'landscape' ? 'grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
+                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 print:border print:bg-transparent">
+                           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Bill To</h3>
+                           <h2 className="text-lg font-bold text-slate-800 leading-tight">{customerName || 'Customer Name'}</h2>
+                           <p className="text-sm text-slate-600 whitespace-pre-line mt-1 leading-snug">{customerAddress || 'Customer Address...'}</p>
+                       </div>
+                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 print:border print:bg-transparent">
+                           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Terms</h3>
+                           <p className="text-sm text-slate-700 font-medium leading-snug">{paymentTerms || '—'}</p>
+                           {invoiceTerms.length > 0 && (
+                               <p className="text-[11px] text-slate-500 mt-2">
+                                   <span className="font-semibold">Incoterms:</span> {invoiceTerms.join(' / ')}
+                               </p>
+                           )}
+                           {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
+                               <p className="text-[11px] text-slate-500 mt-1">
+                                   <span className="font-semibold">VAT:</span> {Number(invoiceVatPercent)}% applied
+                               </p>
+                           )}
+                       </div>
+                       {invoiceOrientation === 'landscape' && (
+                           <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 print:border print:bg-transparent">
+                               <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Currency</h3>
+                               <p className="text-2xl font-bold text-slate-800 leading-none">{config.outputCurrency}</p>
+                               <p className="text-[11px] text-slate-500 mt-2">
+                                   All totals shown in <span className="font-semibold">{config.outputCurrency}</span>{(invoiceTerms[0] && invoiceDiscountBaseTerm) ? ` · primary scenario ${invoiceDiscountBaseTerm}` : ''}.
+                               </p>
+                           </div>
+                       )}
                    </div>
 
                    {/* Table */}
-                   <table className="w-full mb-8">
+                   <table className={`w-full mb-8 border-collapse ${invoiceOrientation === 'landscape' ? 'text-sm' : ''}`}>
                        <thead>
-                           <tr className="border-b-2 border-slate-800">
-                               <th className="py-3 text-left font-bold text-slate-800">Item</th>
-                               {showImages && <th className="py-3 text-center font-bold text-slate-800 w-16">Image</th>}
+                           <tr className="bg-slate-900 text-white print:bg-slate-900">
+                               <th className="px-3 py-2.5 text-left font-semibold text-[11px] uppercase tracking-wider">Item</th>
+                               {showImages && <th className="px-3 py-2.5 text-center font-semibold text-[11px] uppercase tracking-wider w-16">Image</th>}
                                
                                {/* QTY & PACKS based on Basis */}
-                               <th className="py-3 text-center font-bold text-slate-800 w-16">Qty</th>
+                               <th className="px-3 py-2.5 text-center font-semibold text-[11px] uppercase tracking-wider w-16">Qty</th>
                                {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                   <th className="py-3 text-center font-bold text-slate-800 w-16">Packs</th>
+                                   <th className="px-3 py-2.5 text-center font-semibold text-[11px] uppercase tracking-wider w-16">Packs</th>
                                )}
                                <th
-                                   className="py-3 text-center font-bold text-slate-700 w-14 text-[10px] uppercase tracking-wide"
+                                   className="px-3 py-2.5 text-center font-semibold text-[10px] uppercase tracking-wide w-14"
                                    title="Line discount percent on each scenario gross"
                                >
                                    Disc %
                                </th>
                                <th
-                                   className="py-3 text-center font-bold text-slate-700 w-20 text-[10px] uppercase tracking-wide"
+                                   className="px-3 py-2.5 text-center font-semibold text-[10px] uppercase tracking-wide w-24"
                                    title={`Flat line discount subtracts only from ${invoiceDiscountBaseTerm} column`}
                                >
                                    Flat ({invoiceDiscountBaseTerm})
@@ -7818,40 +7892,41 @@ function AppInner() {
                                    <React.Fragment key={term}>
                                        {/* Optional Unit Price Column */}
                                        {(invoiceBasis === 'unit' || invoiceBasis === 'both') && (
-                                           <th className="py-3 text-right font-bold text-slate-800 w-24 hidden md:table-cell">{term} Unit</th>
+                                           <th className="px-3 py-2.5 text-right font-semibold text-[11px] uppercase tracking-wider w-24 hidden md:table-cell">{term} Unit</th>
                                        )}
                                        {/* Optional Pack Price Column */}
                                        {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                           <th className="py-3 text-right font-bold text-slate-800 w-24 hidden md:table-cell">{term} Pack</th>
+                                           <th className="px-3 py-2.5 text-right font-semibold text-[11px] uppercase tracking-wider w-24 hidden md:table-cell">{term} Pack</th>
                                        )}
                                        {/* Total Column */}
-                                       <th className="py-3 text-right font-bold text-slate-800 w-32">{term} Total</th>
+                                       <th className="px-3 py-2.5 text-right font-bold text-xs uppercase tracking-wider w-32 bg-slate-800">{term} Total</th>
                                    </React.Fragment>
                                ))}
                            </tr>
                        </thead>
-                       <tbody className="divide-y divide-slate-200">
+                       <tbody>
                            {calculations.processedProducts
                              .filter(p => p.isActive && (invoiceIncludedIds === null || invoiceIncludedIds.includes(p.id)))
-                             .map(p => {
+                             .map((p, rowIdx) => {
                                const override = invoiceOverrides[p.id] || {};
                                const displayQty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
                                const displayPacks = (p.itemsPerPack && p.itemsPerPack > 0) ? displayQty / p.itemsPerPack : 0;
+                               const rowBg = rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60 print:bg-slate-50';
 
                                return (
-                               <tr key={p.id}>
-                                   <td className="py-4">
-                                       <p className="font-bold text-slate-800">{p.name}</p>
-                                       {p.sku ? <p className="text-xs text-slate-600 font-mono mt-0.5">SKU: {p.sku}</p> : null}
-                                       {p.hsCode && <p className="text-xs text-slate-500">HS: {p.hsCode}</p>}
+                               <tr key={p.id} className={`${rowBg} border-b border-slate-200 break-inside-avoid`}>
+                                   <td className="px-3 py-3 align-top">
+                                       <p className="font-semibold text-slate-800 leading-tight">{p.name}</p>
+                                       {p.sku ? <p className="text-[10px] text-slate-500 font-mono mt-0.5">SKU: {p.sku}</p> : null}
+                                       {p.hsCode && <p className="text-[10px] text-slate-500">HS: {p.hsCode}</p>}
                                    </td>
                                    {showImages && (
-                                       <td className="py-4 text-center">
-                                           {p.image ? <img src={p.image} className="w-10 h-10 object-cover rounded mx-auto" alt="" /> : <div className="w-10 h-10 bg-slate-100 rounded mx-auto" />}
+                                       <td className="px-3 py-3 text-center align-top">
+                                           {p.image ? <img src={p.image} className="w-10 h-10 object-cover rounded mx-auto border border-slate-200" alt="" /> : <div className="w-10 h-10 bg-slate-100 rounded mx-auto border border-slate-200" />}
                                        </td>
                                    )}
                                    
-                                   <td className="py-4 text-center font-medium">
+                                   <td className="px-3 py-3 text-center align-middle font-medium text-slate-800">
                                        {isInvoiceEditable ? (
                                            <input 
                                               type="number" 
@@ -7865,7 +7940,7 @@ function AppInner() {
                                        ) : formatNumber(p.qty)}
                                    </td>
                                    {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                       <td className="py-4 text-center text-slate-600">
+                                       <td className="px-3 py-3 text-center align-middle text-slate-600">
                                            {isInvoiceEditable && p.itemsPerPack > 0 ? (
                                                <input 
                                                   type="number" 
@@ -7882,7 +7957,7 @@ function AppInner() {
                                            ) : formatNumber(displayPacks)}
                                        </td>
                                    )}
-                                   <td className="py-4 text-center align-middle">
+                                   <td className="px-3 py-3 text-center align-middle">
                                        {isInvoiceEditable ? (
                                            <input
                                                type="number"
@@ -7908,7 +7983,7 @@ function AppInner() {
                                            </span>
                                        )}
                                    </td>
-                                   <td className="py-4 text-center align-middle">
+                                   <td className="px-3 py-3 text-center align-middle">
                                        {isInvoiceEditable ? (
                                            <input
                                                type="number"
@@ -7947,7 +8022,7 @@ function AppInner() {
                                        return (
                                            <React.Fragment key={term}>
                                                {(invoiceBasis === 'unit' || invoiceBasis === 'both') && (
-                                                   <td className="py-4 text-right text-slate-600 hidden md:table-cell">
+                                                   <td className="px-3 py-3 text-right text-slate-600 hidden md:table-cell align-middle tabular-nums">
                                                        {isInvoiceEditable ? (
                                                            <input 
                                                               type="number" 
@@ -7967,7 +8042,7 @@ function AppInner() {
                                                    </td>
                                                )}
                                                {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                                   <td className="py-4 text-right text-slate-600 hidden md:table-cell">
+                                                   <td className="px-3 py-3 text-right text-slate-600 hidden md:table-cell align-middle tabular-nums">
                                                        {isInvoiceEditable ? (
                                                            <input 
                                                               type="number" 
@@ -7986,7 +8061,7 @@ function AppInner() {
                                                        ) : formatMoney(displayPackPrice, config.outputCurrency)}
                                                    </td>
                                                )}
-                                               <td className="py-4 text-right font-medium">
+                                               <td className="px-3 py-3 text-right font-semibold text-slate-900 align-middle tabular-nums bg-slate-50/40 print:bg-slate-50">
                                                    {formatMoney(lineNet, config.outputCurrency)}
                                                </td>
                                            </React.Fragment>
@@ -7996,20 +8071,20 @@ function AppInner() {
                                );
                            })}
                        </tbody>
-                       <tfoot>
-                           <tr className="border-t-2 border-slate-800 text-sm">
-                               <td className="pt-3 pb-1 font-semibold text-right text-slate-700" colSpan={fixedLeadCols}>
+                       <tfoot className="break-inside-avoid">
+                           <tr className="text-sm bg-slate-50/70 print:bg-slate-50">
+                               <td className="px-3 pt-3 pb-1.5 font-semibold text-right text-slate-700" colSpan={fixedLeadCols}>
                                    Subtotal (after line discounts)
                                </td>
                                {invoiceTerms.map((term) => (
-                                   <td key={`sub-${term}`} className="pt-3 pb-1 text-right font-semibold" colSpan={colsPerTermFooter}>
+                                   <td key={`sub-${term}`} className="px-3 pt-3 pb-1.5 text-right font-semibold tabular-nums" colSpan={colsPerTermFooter}>
                                        {formatMoney(subtotalByTerm[term] || 0, config.outputCurrency)}
                                    </td>
                                ))}
                            </tr>
                            {invoiceGlobalDiscountMode !== 'none' && invoiceGlobalDiscountValue > 0 && (
-                               <tr className="text-sm text-amber-900">
-                                   <td className="py-1 font-semibold text-right" colSpan={fixedLeadCols}>
+                               <tr className="text-sm text-amber-900 bg-amber-50/40 print:bg-amber-50">
+                                   <td className="px-3 py-1.5 font-semibold text-right" colSpan={fixedLeadCols}>
                                        {invoiceGlobalDiscountMode === 'percent'
                                            ? `Invoice discount (${Math.min(100, invoiceGlobalDiscountValue)}%)`
                                            : `Invoice discount (fixed · ${invoiceDiscountBaseTerm})`}
@@ -8019,41 +8094,41 @@ function AppInner() {
                                        const net = netAfterGlobalByTerm[term] || 0;
                                        const delta = sub - net;
                                        return (
-                                           <td key={`gd-${term}`} className="py-1 text-right font-medium" colSpan={colsPerTermFooter}>
+                                           <td key={`gd-${term}`} className="px-3 py-1.5 text-right font-medium tabular-nums" colSpan={colsPerTermFooter}>
                                                {delta > 0 ? `−${formatMoney(delta, config.outputCurrency)}` : formatMoney(0, config.outputCurrency)}
                                            </td>
                                        );
                                    })}
                                </tr>
                            )}
-                           <tr className="text-sm border-b border-slate-200">
-                               <td className="py-1 pb-2 font-semibold text-right text-slate-800" colSpan={fixedLeadCols}>
+                           <tr className="text-sm border-y border-slate-300 bg-slate-50 print:bg-slate-50">
+                               <td className="px-3 py-1.5 font-semibold text-right text-slate-800" colSpan={fixedLeadCols}>
                                    Net {invoiceVatEnabled ? '(before VAT)' : ''}
                                </td>
                                {invoiceTerms.map((term) => (
-                                   <td key={`net-${term}`} className="py-1 pb-2 text-right font-semibold" colSpan={colsPerTermFooter}>
+                                   <td key={`net-${term}`} className="px-3 py-1.5 text-right font-semibold tabular-nums" colSpan={colsPerTermFooter}>
                                        {formatMoney(netAfterGlobalByTerm[term] || 0, config.outputCurrency)}
                                    </td>
                                ))}
                            </tr>
                            {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
                                <tr className="text-sm text-slate-700">
-                                   <td className="py-1 font-semibold text-right" colSpan={fixedLeadCols}>
+                                   <td className="px-3 py-1.5 font-semibold text-right" colSpan={fixedLeadCols}>
                                        VAT ({Number(invoiceVatPercent)}%)
                                    </td>
                                    {invoiceTerms.map((term) => (
-                                       <td key={`vat-${term}`} className="py-1 text-right font-medium" colSpan={colsPerTermFooter}>
+                                       <td key={`vat-${term}`} className="px-3 py-1.5 text-right font-medium tabular-nums" colSpan={colsPerTermFooter}>
                                            {formatMoney(vatByTerm[term] || 0, config.outputCurrency)}
                                        </td>
                                    ))}
                                </tr>
                            )}
-                           <tr className="border-t-2 border-slate-800">
-                               <td className="pt-3 font-bold text-right text-slate-900" colSpan={fixedLeadCols}>
+                           <tr className="bg-slate-900 text-white print:bg-slate-900">
+                               <td className="px-3 py-3 font-bold text-right uppercase tracking-wider text-sm" colSpan={fixedLeadCols}>
                                    Total due
                                </td>
                                {invoiceTerms.map((term) => (
-                                   <td key={`tot-${term}`} className="pt-3 text-right font-bold text-lg text-slate-900" colSpan={colsPerTermFooter}>
+                                   <td key={`tot-${term}`} className="px-3 py-3 text-right font-bold text-lg tabular-nums" colSpan={colsPerTermFooter}>
                                        {formatMoney(grandByTerm[term] || 0, config.outputCurrency)}
                                    </td>
                                ))}
@@ -8061,25 +8136,37 @@ function AppInner() {
                        </tfoot>
                    </table>
 
-                   <div className="grid grid-cols-2 gap-12 mt-12 page-break-inside-avoid">
-                       <div>
-                           <h4 className="font-bold text-slate-800 mb-2 border-b border-slate-200 pb-1">Payment Details</h4>
-                           <p className="text-sm text-slate-600 whitespace-pre-line">{bankDetails}</p>
-                           <p className="text-sm text-slate-600 mt-2"><span className="font-semibold">Terms:</span> {paymentTerms}</p>
+                   <div className={`grid gap-6 mt-10 break-inside-avoid ${invoiceOrientation === 'landscape' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                       <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/40 print:bg-transparent">
+                           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Details</h4>
+                           <p className="text-sm text-slate-700 whitespace-pre-line leading-snug">{bankDetails || '—'}</p>
+                           <p className="text-xs text-slate-600 mt-2"><span className="font-semibold">Terms:</span> {paymentTerms}</p>
                        </div>
-                       <div>
-                           <h4 className="font-bold text-slate-800 mb-2 border-b border-slate-200 pb-1">Notes</h4>
-                           <p className="text-sm text-slate-600 whitespace-pre-line">{notes}</p>
+                       <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/40 print:bg-transparent">
+                           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Notes</h4>
+                           <p className="text-sm text-slate-700 whitespace-pre-line leading-snug">{notes || '—'}</p>
                        </div>
+                       {invoiceOrientation === 'landscape' && (
+                           <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/40 print:bg-transparent">
+                               <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Authorized Signature</h4>
+                               <div className="border-b border-slate-400 h-14 mt-4"></div>
+                               <p className="text-[10px] text-slate-500 uppercase tracking-wider mt-2">{billedFrom || 'Seller'}</p>
+                           </div>
+                       )}
                    </div>
 
-                   <div className="mt-24 pt-8 border-t border-slate-200 flex justify-between items-end page-break-inside-avoid">
-                       <div className="text-center w-48">
-                           <div className="border-b border-slate-300 h-12 mb-2"></div>
-                           <p className="text-xs text-slate-500 uppercase">Authorized Signature</p>
+                   {invoiceOrientation !== 'landscape' && (
+                       <div className="mt-16 pt-6 border-t border-slate-200 flex justify-between items-end break-inside-avoid">
+                           <div className="text-center w-48">
+                               <div className="border-b border-slate-300 h-12 mb-2"></div>
+                               <p className="text-xs text-slate-500 uppercase">Authorized Signature</p>
+                           </div>
+                           <p className="text-xs text-slate-400">Generated by Tohid Dayhami Export⁺</p>
                        </div>
-                       <p className="text-xs text-slate-400">Generated by Tohid Dayhami Export⁺</p>
-                   </div>
+                   )}
+                   {invoiceOrientation === 'landscape' && (
+                       <p className="mt-6 text-center text-[10px] text-slate-400">Generated by Tohid Dayhami Export⁺</p>
+                   )}
                </div>
           </div>
       </div>
@@ -8668,8 +8755,13 @@ function AppInner() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <style>{`
+        /* Named A4 page rules so the proforma invoice can opt into landscape
+           independently of the catalog/price-list (which stay portrait). */
+        @page { size: A4 portrait; margin: 0; }
+        @page invoiceLandscapeA4 { size: A4 landscape; margin: 0; }
+        .invoice-landscape-page { page: invoiceLandscapeA4; }
+
         @media print {
-            @page { size: A4; margin: 0; }
             body { margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             
             /* RESET MAIN CONTAINERS FOR PRINT */

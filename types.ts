@@ -420,6 +420,8 @@ export interface SavedProject {
     invoiceDiscountBaseTerm?: string;
     invoiceVatEnabled?: boolean;
     invoiceVatPercent?: number;
+    /** Page orientation for the printed proforma invoice. */
+    invoiceOrientation?: 'portrait' | 'landscape';
     containerCapacity?: number;
     containerType?: string;
   };
