@@ -298,6 +298,14 @@ export type ArchivedInvoiceStatus =
   | 'overdue'
   | 'cancelled';
 
+/** Optional fixed invoice lines (shipping, insurance, documentation fees, etc.) in invoice currency. */
+export interface InvoiceExtraCharge {
+  id: string;
+  label: string;
+  amount: number;
+  enabled: boolean;
+}
+
 export interface ArchivedInvoiceLineSnapshot {
   productId: number;
   name: string;
@@ -345,6 +353,9 @@ export interface ArchivedInvoice {
   invoiceGlobalDiscountValue: number;
   invoiceVatEnabled: boolean;
   invoiceVatPercent: number;
+  /** Fixed extras (shipping, etc.) — same amount added to every scenario column total. */
+  invoiceExtraCharges?: InvoiceExtraCharge[];
+  extrasTotal?: number;
 
   items: ArchivedInvoiceLineSnapshot[];
   subtotalByTerm: Record<string, number>;
@@ -420,6 +431,8 @@ export interface SavedProject {
     invoiceDiscountBaseTerm?: string;
     invoiceVatEnabled?: boolean;
     invoiceVatPercent?: number;
+    /** Optional fixed costs (shipping, insurance, …) added after VAT in invoice currency. */
+    invoiceExtraCharges?: InvoiceExtraCharge[];
     /** Page orientation for the printed proforma invoice. */
     invoiceOrientation?: 'portrait' | 'landscape';
     containerCapacity?: number;

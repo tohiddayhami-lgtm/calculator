@@ -66,8 +66,27 @@ import {
   ArchivedInvoice,
   ArchivedInvoiceLineSnapshot,
   ArchivedInvoiceStatus,
-  InvoicePayment
+  InvoicePayment,
+  InvoiceExtraCharge
 } from './types';
+
+function normalizeInvoiceExtraCharges(raw: unknown): InvoiceExtraCharge[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object')
+    .map((x, i) => ({
+      id: String(x.id ?? `ec-${i}-${Date.now()}`),
+      label: typeof x.label === 'string' ? x.label : '',
+      amount: Math.max(0, Number(x.amount) || 0),
+      enabled: Boolean(x.enabled)
+    }));
+}
+
+function sumEnabledInvoiceExtras(charges: InvoiceExtraCharge[]): number {
+  return charges
+    .filter((c) => c.enabled && (c.label || '').trim() && (Number(c.amount) || 0) > 0)
+    .reduce((s, c) => s + Math.max(0, Number(c.amount) || 0), 0);
+}
 
 // --- GLOBAL DECLARATIONS ---
 declare global {
@@ -2120,6 +2139,8 @@ function AppInner() {
   const [invoiceDiscountBaseTerm, setInvoiceDiscountBaseTerm] = useState<string>('FOB');
   const [invoiceVatEnabled, setInvoiceVatEnabled] = useState(false);
   const [invoiceVatPercent, setInvoiceVatPercent] = useState(9);
+  /** Optional fixed lines (shipping, insurance, documentation fees, …) after VAT. */
+  const [invoiceExtraCharges, setInvoiceExtraCharges] = useState<InvoiceExtraCharge[]>([]);
   const [invoiceOrientation, setInvoiceOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [priceListConfig, setPriceListConfig] = useState<PriceListConfig>({
       title: 'EXPORT PRICE LIST',
@@ -2939,6 +2960,7 @@ function AppInner() {
       });
     }
 
+    const extrasSum = sumEnabledInvoiceExtras(invoiceExtraCharges);
     const vatByTerm: Record<string, number> = {};
     const grandByTerm: Record<string, number> = {};
     invoiceTerms.forEach((t) => {
@@ -2948,7 +2970,7 @@ function AppInner() {
           ? net * (Math.max(0, Number(invoiceVatPercent) || 0) / 100)
           : 0;
       vatByTerm[t] = vat;
-      grandByTerm[t] = net + vat;
+      grandByTerm[t] = net + vat + extrasSum;
     });
 
     const selectedTerm = invoiceDiscountBaseTerm && invoiceTerms.includes(invoiceDiscountBaseTerm)
@@ -2984,6 +3006,8 @@ function AppInner() {
       invoiceGlobalDiscountValue,
       invoiceVatEnabled,
       invoiceVatPercent,
+      invoiceExtraCharges: normalizeInvoiceExtraCharges(invoiceExtraCharges),
+      extrasTotal: extrasSum,
 
       items,
       subtotalByTerm,
@@ -3333,6 +3357,7 @@ function AppInner() {
         paymentTerms, showImages, showPackInfo,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
+        invoiceExtraCharges,
         invoiceOrientation,
         containerCapacity, containerType
     };
@@ -3507,6 +3532,7 @@ function AppInner() {
         ? Number((project.data as any).invoiceVatPercent)
         : 9
     );
+    setInvoiceExtraCharges(normalizeInvoiceExtraCharges((project.data as any).invoiceExtraCharges));
     setInvoiceOrientation(
       (project.data as any).invoiceOrientation === 'landscape' ? 'landscape' : 'portrait'
     );
@@ -4459,6 +4485,7 @@ function AppInner() {
             invoiceDiscountBaseTerm,
             invoiceVatEnabled,
             invoiceVatPercent,
+            invoiceExtraCharges,
             invoiceOrientation,
             containerCapacity,
             containerType
@@ -4515,6 +4542,7 @@ function AppInner() {
     invoiceDiscountBaseTerm,
     invoiceVatEnabled,
     invoiceVatPercent,
+    invoiceExtraCharges,
     invoiceOrientation,
     containerCapacity,
     containerType
@@ -7686,6 +7714,11 @@ function AppInner() {
       });
     }
 
+    const extrasSum = sumEnabledInvoiceExtras(invoiceExtraCharges);
+    const activeInvoiceExtras = invoiceExtraCharges.filter(
+      (c) => c.enabled && (c.label || '').trim() && (Number(c.amount) || 0) > 0
+    );
+
     const vatByTerm: Record<string, number> = {};
     const grandByTerm: Record<string, number> = {};
     invoiceTerms.forEach((t) => {
@@ -7695,7 +7728,7 @@ function AppInner() {
           ? net * (Math.max(0, Number(invoiceVatPercent) || 0) / 100)
           : 0;
       vatByTerm[t] = vat;
-      grandByTerm[t] = net + vat;
+      grandByTerm[t] = net + vat + extrasSum;
     });
 
     return (
@@ -8058,6 +8091,84 @@ function AppInner() {
                                />
                            </div>
                        )}
+                   </div>
+
+                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                       <div className="flex items-center justify-between gap-2">
+                           <span className="text-xs font-bold text-slate-700 uppercase">Other charges</span>
+                           <button
+                               type="button"
+                               onClick={() =>
+                                   setInvoiceExtraCharges((prev) => [
+                                       ...prev,
+                                       { id: `ec-${Date.now()}`, label: '', amount: 0, enabled: true }
+                                   ])
+                               }
+                               className="text-[10px] font-semibold text-blue-600 hover:underline"
+                           >
+                               + Add
+                           </button>
+                       </div>
+                       <p className="text-[9px] text-slate-500 leading-tight">
+                           Optional fixed amounts in {config.outputCurrency} (e.g. shipping, documentation). Added{' '}
+                           <strong>after VAT</strong> to each scenario column total.
+                       </p>
+                       <div className="space-y-1.5">
+                           {(invoiceExtraCharges || []).map((row) => (
+                               <div key={row.id} className="flex flex-wrap items-center gap-1 bg-white border border-slate-100 rounded px-1.5 py-1">
+                                   <input
+                                       type="checkbox"
+                                       checked={row.enabled}
+                                       onChange={(e) =>
+                                           setInvoiceExtraCharges((prev) =>
+                                               prev.map((x) => (x.id === row.id ? { ...x, enabled: e.target.checked } : x))
+                                           )
+                                       }
+                                       className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                                       title="Include in total"
+                                   />
+                                   <input
+                                       type="text"
+                                       value={row.label}
+                                       onChange={(e) =>
+                                           setInvoiceExtraCharges((prev) =>
+                                               prev.map((x) => (x.id === row.id ? { ...x, label: e.target.value } : x))
+                                           )
+                                       }
+                                       placeholder="Label (e.g. Shipping)"
+                                       className="flex-1 min-w-[96px] text-[11px] border border-slate-200 rounded px-2 py-1"
+                                   />
+                                   <input
+                                       type="number"
+                                       min={0}
+                                       step={0.01}
+                                       value={row.amount === 0 ? '' : row.amount}
+                                       onChange={(e) =>
+                                           setInvoiceExtraCharges((prev) =>
+                                               prev.map((x) =>
+                                                   x.id === row.id ? { ...x, amount: parseFloat(e.target.value) || 0 } : x
+                                               )
+                                           )
+                                       }
+                                       placeholder="0"
+                                       className="w-[88px] text-[11px] border border-slate-200 rounded px-2 py-1 text-right"
+                                   />
+                                   <button
+                                       type="button"
+                                       onClick={() =>
+                                           setInvoiceExtraCharges((prev) => prev.filter((x) => x.id !== row.id))
+                                       }
+                                       className="p-1 text-slate-400 hover:text-red-600 shrink-0"
+                                       title="Remove"
+                                   >
+                                       <Trash2 className="w-3.5 h-3.5" />
+                                   </button>
+                               </div>
+                           ))}
+                           {(!invoiceExtraCharges || invoiceExtraCharges.length === 0) && (
+                               <p className="text-[10px] text-slate-400 italic">No extra lines yet. Use + Add for shipping or other fees.</p>
+                           )}
+                       </div>
                    </div>
 
                    <div>
@@ -8429,6 +8540,18 @@ function AppInner() {
                                    ))}
                                </tr>
                            )}
+                           {activeInvoiceExtras.map((row) => (
+                               <tr key={row.id} className="extra">
+                                   <td colSpan={fixedLeadCols} className="num">
+                                       {row.label.trim()}
+                                   </td>
+                                   {invoiceTerms.map((term) => (
+                                       <td key={`ex-${row.id}-${term}`} className="num" colSpan={colsPerTermFooter}>
+                                           {formatMoney(Number(row.amount) || 0, config.outputCurrency)}
+                                       </td>
+                                   ))}
+                               </tr>
+                           ))}
                            <tr className="total">
                                <td colSpan={fixedLeadCols} className="num">TOTAL DUE</td>
                                {invoiceTerms.map((term) => (
@@ -9134,6 +9257,7 @@ function AppInner() {
         .invoice-doc table.items tfoot tr.discount td { background: #fffbeb; color: #92400e; }
         .invoice-doc table.items tfoot tr.net td { background: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; font-weight: 600; }
         .invoice-doc table.items tfoot tr.vat td { color: #334155; }
+        .invoice-doc table.items tfoot tr.extra td { background: #fafafa; color: #334155; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
         .invoice-doc table.items tfoot tr.total td {
             background: #0f172a;
             color: #ffffff;
