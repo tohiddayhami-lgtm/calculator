@@ -576,9 +576,71 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         ? `<img class="logo" src="${escapeAttr(cc.logoImage)}" alt="Logo" />`
         : '';
 
-    const socialsHtml = (cc.socialLinks || []).filter((s: any) => s.handle).map((s: any) =>
-        `<span class="social-chip">${escapeHtml(s.platform)}: ${escapeHtml(s.handle)}</span>`
-    ).join('');
+    // Build a clickable URL + branded SVG icon for each social link.
+    // Accepts either a full URL ("https://instagram.com/foo"), a "@handle"
+    // or a bare username/phone number — and normalises it per-platform.
+    const socialPlatformMeta: Record<string, { label: string; color: string; icon: string; build: (h: string) => string }> = {
+        instagram: {
+            label: 'Instagram', color: '#E4405F',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2.2c3.2 0 3.6 0 4.85.07 1.17.06 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.35 1.06.41 2.23.06 1.25.07 1.65.07 4.85s0 3.6-.07 4.85c-.06 1.17-.25 1.8-.41 2.23a3.7 3.7 0 0 1-.9 1.38c-.42.42-.82.68-1.38.9-.42.16-1.06.35-2.23.41-1.25.06-1.65.07-4.85.07s-3.6 0-4.85-.07c-1.17-.06-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.35-1.06-.41-2.23C2.21 15.6 2.2 15.2 2.2 12s0-3.6.07-4.85c.06-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.35 2.23-.41C8.4 2.21 8.8 2.2 12 2.2zm0 1.8c-3.15 0-3.52.01-4.76.07-1.07.05-1.65.23-2.04.38-.51.2-.88.44-1.27.83-.39.39-.63.76-.83 1.27-.15.39-.33.97-.38 2.04C2.66 8.48 2.65 8.85 2.65 12s.01 3.52.07 4.76c.05 1.07.23 1.65.38 2.04.2.51.44.88.83 1.27.39.39.76.63 1.27.83.39.15.97.33 2.04.38 1.24.06 1.61.07 4.76.07s3.52-.01 4.76-.07c1.07-.05 1.65-.23 2.04-.38.51-.2.88-.44 1.27-.83.39-.39.63-.76.83-1.27.15-.39.33-.97.38-2.04.06-1.24.07-1.61.07-4.76s-.01-3.52-.07-4.76c-.05-1.07-.23-1.65-.38-2.04a3.4 3.4 0 0 0-.83-1.27 3.4 3.4 0 0 0-1.27-.83c-.39-.15-.97-.33-2.04-.38C15.52 4.01 15.15 4 12 4zm0 3.05a4.95 4.95 0 1 1 0 9.9 4.95 4.95 0 0 1 0-9.9zm0 1.8a3.15 3.15 0 1 0 0 6.3 3.15 3.15 0 0 0 0-6.3zm5.15-2.13a1.16 1.16 0 1 1 0 2.32 1.16 1.16 0 0 1 0-2.32z"/></svg>',
+            build: (h) => /^https?:\/\//i.test(h) ? h : `https://instagram.com/${h.replace(/^@/, '').replace(/^\//, '')}`,
+        },
+        whatsapp: {
+            label: 'WhatsApp', color: '#25D366',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19.07 4.92A10.05 10.05 0 0 0 12 2.05a9.95 9.95 0 0 0-8.59 14.91L2 22l5.21-1.36A9.96 9.96 0 0 0 12 21.95h.01a9.94 9.94 0 0 0 9.94-9.93c0-2.66-1.04-5.16-2.88-7.1zM12 20.18h-.01a8.18 8.18 0 0 1-4.17-1.14l-.3-.18-3.09.81.83-3.01-.2-.31a8.16 8.16 0 1 1 6.94 3.83zm4.51-6.16c-.25-.13-1.46-.72-1.69-.8-.23-.08-.39-.13-.56.13-.17.25-.65.8-.8.97-.15.17-.29.19-.54.06-.25-.13-1.04-.38-1.99-1.22-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.39.11-.51.11-.11.25-.29.38-.43.13-.15.17-.25.25-.42.08-.17.04-.32-.02-.45-.06-.13-.56-1.36-.77-1.86-.2-.49-.41-.42-.56-.43h-.48c-.17 0-.45.06-.68.32-.23.25-.89.87-.89 2.13s.91 2.47 1.04 2.64c.13.17 1.79 2.74 4.34 3.84.61.26 1.08.42 1.45.54.61.19 1.16.16 1.6.1.49-.07 1.46-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.17-.48-.3z"/></svg>',
+            build: (h) => /^https?:\/\//i.test(h) ? h : `https://wa.me/${h.replace(/[^\d]/g, '')}`,
+        },
+        linkedin: {
+            label: 'LinkedIn', color: '#0A66C2',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.95v5.66H9.36V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zm1.78 13.02H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"/></svg>',
+            build: (h) => {
+                if (/^https?:\/\//i.test(h)) return h;
+                const cleaned = h.replace(/^@/, '').replace(/^\//, '');
+                if (cleaned.startsWith('in/') || cleaned.startsWith('company/')) return `https://www.linkedin.com/${cleaned}`;
+                return `https://www.linkedin.com/in/${cleaned}`;
+            },
+        },
+        facebook: {
+            label: 'Facebook', color: '#1877F2',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>',
+            build: (h) => /^https?:\/\//i.test(h) ? h : `https://facebook.com/${h.replace(/^@/, '').replace(/^\//, '')}`,
+        },
+        youtube: {
+            label: 'YouTube', color: '#FF0000',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M23.5 6.2a3.02 3.02 0 0 0-2.12-2.13C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.52A3.02 3.02 0 0 0 .5 6.2C0 8.08 0 12 0 12s0 3.92.5 5.8a3.02 3.02 0 0 0 2.12 2.13c1.88.52 9.38.52 9.38.52s7.5 0 9.38-.52a3.02 3.02 0 0 0 2.12-2.13c.5-1.88.5-5.8.5-5.8s0-3.92-.5-5.8zM9.6 15.57V8.43L15.82 12 9.6 15.57z"/></svg>',
+            build: (h) => {
+                if (/^https?:\/\//i.test(h)) return h;
+                const cleaned = h.replace(/^\//, '');
+                if (cleaned.startsWith('@') || cleaned.startsWith('c/') || cleaned.startsWith('channel/') || cleaned.startsWith('user/')) {
+                    return `https://www.youtube.com/${cleaned.startsWith('@') ? cleaned : cleaned}`;
+                }
+                return `https://www.youtube.com/@${cleaned}`;
+            },
+        },
+        twitter: {
+            label: 'X', color: '#000000',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.503 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/></svg>',
+            build: (h) => /^https?:\/\//i.test(h) ? h : `https://x.com/${h.replace(/^@/, '').replace(/^\//, '')}`,
+        },
+        telegram: {
+            label: 'Telegram', color: '#229ED9',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M21.95 4.4 18.74 19.6c-.24 1.07-.88 1.34-1.78.83l-4.92-3.62-2.37 2.28c-.26.26-.49.49-1 .49l.36-5.07 9.23-8.34c.4-.36-.09-.55-.62-.2L6.21 13.13l-4.91-1.54c-1.07-.33-1.09-1.07.22-1.58L20.55 2.84c.89-.33 1.66.2 1.4 1.56z"/></svg>',
+            build: (h) => /^https?:\/\//i.test(h) ? h : `https://t.me/${h.replace(/^@/, '').replace(/^\//, '')}`,
+        },
+        website: {
+            label: 'Website', color: '#0EA5E9',
+            icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+            build: (h) => /^https?:\/\//i.test(h) ? h : `https://${h.replace(/^\/+/, '')}`,
+        },
+    };
+
+    const socialsHtml = (cc.socialLinks || []).filter((s: any) => s && s.handle && String(s.handle).trim()).map((s: any) => {
+        const key = String(s.platform || 'website').toLowerCase();
+        const meta = socialPlatformMeta[key] || socialPlatformMeta.website;
+        const handle = String(s.handle).trim();
+        const url = meta.build(handle);
+        return `<a class="social-icon" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeAttr(meta.label)}" title="${escapeAttr(meta.label)}" style="--social-color:${meta.color}">${meta.icon}</a>`;
+    }).join('');
 
     const css = `
         :root {
@@ -702,8 +764,26 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .qr-card { display: inline-block; background: #fff; padding: 12px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
         .qr-card img { width: 140px; height: 140px; }
         .qr-label { margin-top: 10px; font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.8; }
-        .socials { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
-        .social-chip { background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 999px; font-size: 12px; }
+        .socials { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 18px; }
+        .social-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 40px; height: 40px; border-radius: 50%;
+            background: rgba(255,255,255,0.12); color: #fff;
+            transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+            text-decoration: none;
+        }
+        .social-icon svg { display: block; }
+        .social-icon:hover, .social-icon:focus-visible {
+            background: var(--social-color, #fff);
+            color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+            outline: none;
+        }
+        .social-icon:active { transform: translateY(0); }
+        @media print {
+            .socials { display: none !important; }
+        }
         .footer-text { font-size: 11px; opacity: 0.5; margin-top: 24px; }
 
         /* ============ INQUIRY CART ============ */
