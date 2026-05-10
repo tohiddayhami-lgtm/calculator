@@ -111,7 +111,7 @@ const DB_NAME = 'CloudExportProDB';
 const STORE_NAME = 'projects';
 const DB_VERSION = 1;
 /** Restored after refresh until the browser tab is closed (sessionStorage). */
-const SESSION_WORKSPACE_DRAFT_KEY = 'cep_workspace_draft_v3';
+const SESSION_WORKSPACE_DRAFT_KEY = 'cep_workspace_draft_v4';
 
 // --- UTILITY FUNCTIONS ---
 const normalizeDigits = (str: string | number): string => {
@@ -1730,12 +1730,25 @@ function AppInner() {
   const [invoiceBasis, setInvoiceBasis] = useState<'unit' | 'pack' | 'both'>('both');
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
   const [isInvoiceEditable, setIsInvoiceEditable] = useState(false);
-  const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, { qty?: number, unitPrices?: Record<string, number>, packPrices?: Record<string, number> }>>({});
+  const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, {
+    qty?: number;
+    unitPrices?: Record<string, number>;
+    packPrices?: Record<string, number>;
+    /** Line discount: if discountPercent > 0 it applies to all scenario columns; else discountAmount applies only to `invoiceDiscountBaseTerm` column. */
+    discountPercent?: number;
+    discountAmount?: number;
+  }>>({});
   // When set, the invoice only renders these product IDs (used after "Create Invoice" from an inquiry).
   // null means "show all active products" (default behavior).
   const [invoiceIncludedIds, setInvoiceIncludedIds] = useState<number[] | null>(null);
-  
-  // Price List Config
+
+  /** Whole-invoice discount (after line discounts). */
+  const [invoiceGlobalDiscountMode, setInvoiceGlobalDiscountMode] = useState<'none' | 'percent' | 'amount'>('none');
+  const [invoiceGlobalDiscountValue, setInvoiceGlobalDiscountValue] = useState(0);
+  /** Flat line discount & flat global discount apply to this Incoterm column (same as one price scenario). */
+  const [invoiceDiscountBaseTerm, setInvoiceDiscountBaseTerm] = useState<string>('FOB');
+  const [invoiceVatEnabled, setInvoiceVatEnabled] = useState(false);
+  const [invoiceVatPercent, setInvoiceVatPercent] = useState(9);
   const [priceListConfig, setPriceListConfig] = useState<PriceListConfig>({
       title: 'EXPORT PRICE LIST',
       subtitle: `${new Date().getFullYear()} COLLECTION`,
@@ -1929,6 +1942,13 @@ function AppInner() {
         setSavedProjects([]);
     }
   }, [user, authLoading, isDemoMode, dataAppId]);
+
+  // Keep discount/VAT "base scenario" aligned with visible invoice terms
+  useEffect(() => {
+    if (invoiceTerms.length > 0 && !invoiceTerms.includes(invoiceDiscountBaseTerm)) {
+      setInvoiceDiscountBaseTerm(invoiceTerms[0]);
+    }
+  }, [invoiceTerms, invoiceDiscountBaseTerm]);
 
   // Customer inquiries listener (live updates from the public HTML catalog)
   useEffect(() => {
@@ -2199,7 +2219,13 @@ function AppInner() {
           }
       }
 
-      const overrides: Record<number, { qty?: number; unitPrices?: Record<string, number>; packPrices?: Record<string, number> }> = {};
+      const overrides: Record<number, {
+        qty?: number;
+        unitPrices?: Record<string, number>;
+        packPrices?: Record<string, number>;
+        discountPercent?: number;
+        discountAmount?: number;
+      }> = {};
       const matchedIds: number[] = [];
       const matchedSkus: string[] = [];
       const unmatched: string[] = [];
@@ -2423,6 +2449,7 @@ function AppInner() {
         config, rates, products, logistics, selectedTerms, notes, visibleScenarioTerms, invoiceTerms,
         customerName, customerAddress, invoiceRef, billedFrom, billedFromDetails, paymentTerms, showImages, showPackInfo,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
+        invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
         containerCapacity, containerType
     };
 
@@ -2578,6 +2605,19 @@ function AppInner() {
     setBankDetails(project.data.bankDetails || 'Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
     setIsInvoiceEditable((project.data as any).isInvoiceEditable || false);
     setInvoiceOverrides((project.data as any).invoiceOverrides || {});
+    setInvoiceGlobalDiscountMode((project.data as any).invoiceGlobalDiscountMode || 'none');
+    setInvoiceGlobalDiscountValue(Number((project.data as any).invoiceGlobalDiscountValue) || 0);
+    const loadedTerms = project.data.invoiceTerms || ['FOB', 'DDP'];
+    const loadedBase = (project.data as any).invoiceDiscountBaseTerm as string | undefined;
+    setInvoiceDiscountBaseTerm(
+      loadedBase && loadedTerms.includes(loadedBase) ? loadedBase : (loadedTerms[0] || 'FOB')
+    );
+    setInvoiceVatEnabled(!!(project.data as any).invoiceVatEnabled);
+    setInvoiceVatPercent(
+      (project.data as any).invoiceVatPercent !== undefined && (project.data as any).invoiceVatPercent !== null
+        ? Number((project.data as any).invoiceVatPercent)
+        : 9
+    );
     if ((project.data as any).containerCapacity) setContainerCapacity((project.data as any).containerCapacity);
     if ((project.data as any).containerType) setContainerType((project.data as any).containerType);
 
@@ -3431,7 +3471,7 @@ function AppInner() {
         return;
       }
       const parsed = JSON.parse(raw);
-      if (parsed.v !== 3 || !parsed.data) {
+      if ((parsed.v !== 3 && parsed.v !== 4) || !parsed.data) {
         setSessionDraftHydrated(true);
         return;
       }
@@ -3467,7 +3507,7 @@ function AppInner() {
     const t = window.setTimeout(() => {
       try {
         const snapshot = {
-          v: 3,
+          v: 4,
           savedAt: Date.now(),
           view,
           invoiceIncludedIds,
@@ -3501,6 +3541,11 @@ function AppInner() {
             buyers,
             isInvoiceEditable,
             invoiceOverrides,
+            invoiceGlobalDiscountMode,
+            invoiceGlobalDiscountValue,
+            invoiceDiscountBaseTerm,
+            invoiceVatEnabled,
+            invoiceVatPercent,
             containerCapacity,
             containerType
           }
@@ -3546,6 +3591,11 @@ function AppInner() {
     buyers,
     isInvoiceEditable,
     invoiceOverrides,
+    invoiceGlobalDiscountMode,
+    invoiceGlobalDiscountValue,
+    invoiceDiscountBaseTerm,
+    invoiceVatEnabled,
+    invoiceVatPercent,
     containerCapacity,
     containerType
   ]);
@@ -6665,7 +6715,70 @@ function AppInner() {
     );
   };
 
-  const renderInvoice = () => (
+  const renderInvoice = () => {
+    const showPackCol = invoiceBasis === 'pack' || invoiceBasis === 'both';
+    const colsPerTermFooter = invoiceBasis === 'both' ? 3 : 2;
+    const fixedLeadCols = 1 + (showImages ? 1 : 0) + 1 + (showPackCol ? 1 : 0) + 2;
+
+    type ProcP = (typeof calculations.processedProducts)[number];
+    const activeProducts = calculations.processedProducts.filter(
+      (p) => p.isActive && (invoiceIncludedIds === null || invoiceIncludedIds.includes(p.id))
+    );
+
+    const lineGrossForTerm = (p: ProcP, term: string) => {
+      const override = invoiceOverrides[p.id] || {};
+      const displayQty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
+      const displayPacks = p.itemsPerPack && p.itemsPerPack > 0 ? displayQty / p.itemsPerPack : 0;
+      const baseUnitPrice = p.scenarioPrices?.[term] || 0;
+      const basePackPrice = p.scenarioPackPrices?.[term] || 0;
+      const displayUnitPrice = isInvoiceEditable ? (override.unitPrices?.[term] ?? baseUnitPrice) : baseUnitPrice;
+      const displayPackPrice = isInvoiceEditable ? (override.packPrices?.[term] ?? basePackPrice) : basePackPrice;
+      if (invoiceBasis === 'pack') return displayPackPrice * displayPacks;
+      return displayUnitPrice * displayQty;
+    };
+
+    const lineNetAfterLineDisc = (p: ProcP, term: string) => {
+      const override = invoiceOverrides[p.id] || {};
+      const g = lineGrossForTerm(p, term);
+      const pct = Math.min(100, Math.max(0, Number(override.discountPercent) || 0));
+      const flat = Math.max(0, Number(override.discountAmount) || 0);
+      let net = g * (1 - pct / 100);
+      if (term === invoiceDiscountBaseTerm) net -= flat;
+      return Math.max(0, net);
+    };
+
+    const subtotalByTerm: Record<string, number> = {};
+    invoiceTerms.forEach((term) => {
+      subtotalByTerm[term] = activeProducts.reduce((sum, p) => sum + lineNetAfterLineDisc(p, term), 0);
+    });
+
+    const netAfterGlobalByTerm: Record<string, number> = { ...subtotalByTerm };
+    if (invoiceGlobalDiscountMode === 'percent' && invoiceGlobalDiscountValue > 0) {
+      const r = 1 - Math.min(100, Math.max(0, invoiceGlobalDiscountValue)) / 100;
+      invoiceTerms.forEach((t) => {
+        netAfterGlobalByTerm[t] = Math.max(0, (netAfterGlobalByTerm[t] || 0) * r);
+      });
+    } else if (invoiceGlobalDiscountMode === 'amount' && invoiceGlobalDiscountValue > 0) {
+      invoiceTerms.forEach((t) => {
+        if (t === invoiceDiscountBaseTerm) {
+          netAfterGlobalByTerm[t] = Math.max(0, (netAfterGlobalByTerm[t] || 0) - invoiceGlobalDiscountValue);
+        }
+      });
+    }
+
+    const vatByTerm: Record<string, number> = {};
+    const grandByTerm: Record<string, number> = {};
+    invoiceTerms.forEach((t) => {
+      const net = netAfterGlobalByTerm[t] || 0;
+      const vat =
+        invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0
+          ? net * (Math.max(0, Number(invoiceVatPercent) || 0) / 100)
+          : 0;
+      vatByTerm[t] = vat;
+      grandByTerm[t] = net + vat;
+    });
+
+    return (
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
           {/* Controls */}
           <div className="w-full lg:w-80 bg-white border border-slate-200 rounded-lg p-4 overflow-y-auto print:hidden">
@@ -6808,6 +6921,74 @@ function AppInner() {
                         </div>
                    </div>
 
+                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                       <p className="text-xs font-bold text-slate-700 uppercase">Discounts</p>
+                       <div>
+                           <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">Whole invoice</label>
+                           <select
+                               value={invoiceGlobalDiscountMode}
+                               onChange={(e) => setInvoiceGlobalDiscountMode(e.target.value as 'none' | 'percent' | 'amount')}
+                               className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 mb-1"
+                           >
+                               <option value="none">No invoice-level discount</option>
+                               <option value="percent">Percent (all scenarios)</option>
+                               <option value="amount">Fixed amount (one scenario)</option>
+                           </select>
+                           {invoiceGlobalDiscountMode !== 'none' && (
+                               <input
+                                   type="number"
+                                   min={0}
+                                   step={invoiceGlobalDiscountMode === 'percent' ? 0.1 : 0.01}
+                                   value={invoiceGlobalDiscountValue || ''}
+                                   onChange={(e) => setInvoiceGlobalDiscountValue(parseFloat(e.target.value) || 0)}
+                                   className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                                   placeholder={invoiceGlobalDiscountMode === 'percent' ? '%' : `Amount (${config.outputCurrency})`}
+                               />
+                           )}
+                       </div>
+                       <div>
+                           <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">Flat discounts apply to scenario</label>
+                           <select
+                               value={invoiceDiscountBaseTerm}
+                               onChange={(e) => setInvoiceDiscountBaseTerm(e.target.value)}
+                               className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                               title="Line fixed discount and invoice fixed amount subtract from this column only"
+                           >
+                               {invoiceTerms.map((t) => (
+                                   <option key={t} value={t}>{t}</option>
+                               ))}
+                           </select>
+                           <p className="text-[9px] text-slate-500 mt-1 leading-tight">
+                               Percent discounts apply to every scenario column. Fixed amounts apply only to the scenario selected above (so totals stay consistent).
+                           </p>
+                       </div>
+                   </div>
+
+                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                       <label className="flex items-center gap-2 cursor-pointer">
+                           <input
+                               type="checkbox"
+                               checked={invoiceVatEnabled}
+                               onChange={(e) => setInvoiceVatEnabled(e.target.checked)}
+                               className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                           />
+                           <span className="text-xs font-bold text-slate-700 uppercase">VAT / sales tax</span>
+                       </label>
+                       {invoiceVatEnabled && (
+                           <div className="flex items-center gap-2">
+                               <label className="text-[10px] text-slate-500">Rate %</label>
+                               <input
+                                   type="number"
+                                   min={0}
+                                   step={0.1}
+                                   value={invoiceVatPercent}
+                                   onChange={(e) => setInvoiceVatPercent(parseFloat(e.target.value) || 0)}
+                                   className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+                               />
+                           </div>
+                       )}
+                   </div>
+
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Payment Terms</label>
                        <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
@@ -6873,6 +7054,18 @@ function AppInner() {
                                {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
                                    <th className="py-3 text-center font-bold text-slate-800 w-16">Packs</th>
                                )}
+                               <th
+                                   className="py-3 text-center font-bold text-slate-700 w-14 text-[10px] uppercase tracking-wide"
+                                   title="Line discount percent on each scenario gross"
+                               >
+                                   Disc %
+                               </th>
+                               <th
+                                   className="py-3 text-center font-bold text-slate-700 w-20 text-[10px] uppercase tracking-wide"
+                                   title={`Flat line discount subtracts only from ${invoiceDiscountBaseTerm} column`}
+                               >
+                                   Flat ({invoiceDiscountBaseTerm})
+                               </th>
 
                                {/* PRICING TERMS */}
                                {invoiceTerms.map(term => (
@@ -6943,6 +7136,59 @@ function AppInner() {
                                            ) : formatNumber(displayPacks)}
                                        </td>
                                    )}
+                                   <td className="py-4 text-center align-middle">
+                                       {isInvoiceEditable ? (
+                                           <input
+                                               type="number"
+                                               min={0}
+                                               max={100}
+                                               step={0.1}
+                                               value={override.discountPercent ?? ''}
+                                               onChange={(e) =>
+                                                   setInvoiceOverrides((prev) => ({
+                                                       ...prev,
+                                                       [p.id]: {
+                                                           ...prev[p.id],
+                                                           discountPercent: parseFloat(e.target.value) || 0
+                                                       }
+                                                   }))
+                                               }
+                                               className="w-14 text-center border border-slate-200 rounded py-1 text-xs"
+                                               placeholder="0"
+                                           />
+                                       ) : (
+                                           <span className="text-xs text-slate-600">
+                                               {(override.discountPercent || 0) > 0 ? `${override.discountPercent}%` : '—'}
+                                           </span>
+                                       )}
+                                   </td>
+                                   <td className="py-4 text-center align-middle">
+                                       {isInvoiceEditable ? (
+                                           <input
+                                               type="number"
+                                               min={0}
+                                               step={0.01}
+                                               value={override.discountAmount ?? ''}
+                                               onChange={(e) =>
+                                                   setInvoiceOverrides((prev) => ({
+                                                       ...prev,
+                                                       [p.id]: {
+                                                           ...prev[p.id],
+                                                           discountAmount: parseFloat(e.target.value) || 0
+                                                       }
+                                                   }))
+                                               }
+                                               className="w-[4.5rem] text-center border border-slate-200 rounded py-1 text-xs"
+                                               placeholder="0"
+                                           />
+                                       ) : (
+                                           <span className="text-xs text-slate-600">
+                                               {(override.discountAmount || 0) > 0
+                                                   ? formatMoney(override.discountAmount || 0, config.outputCurrency)
+                                                   : '—'}
+                                           </span>
+                                       )}
+                                   </td>
                                    
                                    {invoiceTerms.map(term => {
                                        const baseUnitPrice = p.scenarioPrices?.[term] || 0;
@@ -6950,7 +7196,7 @@ function AppInner() {
                                        
                                        const displayUnitPrice = isInvoiceEditable ? (override.unitPrices?.[term] ?? baseUnitPrice) : baseUnitPrice;
                                        const displayPackPrice = isInvoiceEditable ? (override.packPrices?.[term] ?? basePackPrice) : basePackPrice;
-                                       const total = displayUnitPrice * displayQty;
+                                       const lineNet = lineNetAfterLineDisc(p, term);
 
                                        return (
                                            <React.Fragment key={term}>
@@ -6995,7 +7241,7 @@ function AppInner() {
                                                    </td>
                                                )}
                                                <td className="py-4 text-right font-medium">
-                                                   {formatMoney(total, config.outputCurrency)}
+                                                   {formatMoney(lineNet, config.outputCurrency)}
                                                </td>
                                            </React.Fragment>
                                        );
@@ -7005,32 +7251,66 @@ function AppInner() {
                            })}
                        </tbody>
                        <tfoot>
-                           <tr className="border-t-2 border-slate-800">
-                               <td className="pt-4 font-bold text-right" colSpan={
-                                   1 // Item col
-                                   + (showImages ? 1 : 0)
-                                   + 1 // Qty col
-                                   + ((invoiceBasis === 'pack' || invoiceBasis === 'both') ? 1 : 0) // Packs col
-                                   + (invoiceTerms.length * ((invoiceBasis === 'both' ? 2 : 1))) // Pricing cols 
-                                   - 1 // Adjust to align with last column
-                               }>TOTALS:</td>
-                               
-                               {invoiceTerms.map(term => {
-                                   const totalForTerm = calculations.processedProducts
-                                       .filter(p => p.isActive && (invoiceIncludedIds === null || invoiceIncludedIds.includes(p.id)))
-                                       .reduce((sum, p) => {
-                                           const override = invoiceOverrides[p.id] || {};
-                                           const qty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
-                                           const price = isInvoiceEditable ? (override.unitPrices?.[term] ?? (p.scenarioPrices?.[term] || 0)) : (p.scenarioPrices?.[term] || 0);
-                                           return sum + (price * qty);
-                                       }, 0);
-
-                                   return (
-                                   <td key={term} className="pt-4 text-right font-bold text-lg" colSpan={invoiceBasis === 'both' ? 3 : 2}>
-                                       {formatMoney(totalForTerm, config.outputCurrency)}
+                           <tr className="border-t-2 border-slate-800 text-sm">
+                               <td className="pt-3 pb-1 font-semibold text-right text-slate-700" colSpan={fixedLeadCols}>
+                                   Subtotal (after line discounts)
+                               </td>
+                               {invoiceTerms.map((term) => (
+                                   <td key={`sub-${term}`} className="pt-3 pb-1 text-right font-semibold" colSpan={colsPerTermFooter}>
+                                       {formatMoney(subtotalByTerm[term] || 0, config.outputCurrency)}
                                    </td>
-                                   );
-                               })}
+                               ))}
+                           </tr>
+                           {invoiceGlobalDiscountMode !== 'none' && invoiceGlobalDiscountValue > 0 && (
+                               <tr className="text-sm text-amber-900">
+                                   <td className="py-1 font-semibold text-right" colSpan={fixedLeadCols}>
+                                       {invoiceGlobalDiscountMode === 'percent'
+                                           ? `Invoice discount (${Math.min(100, invoiceGlobalDiscountValue)}%)`
+                                           : `Invoice discount (fixed · ${invoiceDiscountBaseTerm})`}
+                                   </td>
+                                   {invoiceTerms.map((term) => {
+                                       const sub = subtotalByTerm[term] || 0;
+                                       const net = netAfterGlobalByTerm[term] || 0;
+                                       const delta = sub - net;
+                                       return (
+                                           <td key={`gd-${term}`} className="py-1 text-right font-medium" colSpan={colsPerTermFooter}>
+                                               {delta > 0 ? `−${formatMoney(delta, config.outputCurrency)}` : formatMoney(0, config.outputCurrency)}
+                                           </td>
+                                       );
+                                   })}
+                               </tr>
+                           )}
+                           <tr className="text-sm border-b border-slate-200">
+                               <td className="py-1 pb-2 font-semibold text-right text-slate-800" colSpan={fixedLeadCols}>
+                                   Net {invoiceVatEnabled ? '(before VAT)' : ''}
+                               </td>
+                               {invoiceTerms.map((term) => (
+                                   <td key={`net-${term}`} className="py-1 pb-2 text-right font-semibold" colSpan={colsPerTermFooter}>
+                                       {formatMoney(netAfterGlobalByTerm[term] || 0, config.outputCurrency)}
+                                   </td>
+                               ))}
+                           </tr>
+                           {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
+                               <tr className="text-sm text-slate-700">
+                                   <td className="py-1 font-semibold text-right" colSpan={fixedLeadCols}>
+                                       VAT ({Number(invoiceVatPercent)}%)
+                                   </td>
+                                   {invoiceTerms.map((term) => (
+                                       <td key={`vat-${term}`} className="py-1 text-right font-medium" colSpan={colsPerTermFooter}>
+                                           {formatMoney(vatByTerm[term] || 0, config.outputCurrency)}
+                                       </td>
+                                   ))}
+                               </tr>
+                           )}
+                           <tr className="border-t-2 border-slate-800">
+                               <td className="pt-3 font-bold text-right text-slate-900" colSpan={fixedLeadCols}>
+                                   Total due
+                               </td>
+                               {invoiceTerms.map((term) => (
+                                   <td key={`tot-${term}`} className="pt-3 text-right font-bold text-lg text-slate-900" colSpan={colsPerTermFooter}>
+                                       {formatMoney(grandByTerm[term] || 0, config.outputCurrency)}
+                                   </td>
+                               ))}
                            </tr>
                        </tfoot>
                    </table>
@@ -7058,6 +7338,7 @@ function AppInner() {
           </div>
       </div>
   );
+  };
 
   const renderPriceList = () => (
       <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">

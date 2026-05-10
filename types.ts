@@ -297,5 +297,25 @@ export interface SavedProject {
     suppliers?: Supplier[];
     // Saved buyers / customers (repeat clients)
     buyers?: Buyer[];
+    isInvoiceEditable?: boolean;
+    invoiceOverrides?: Record<
+      number,
+      {
+        qty?: number;
+        unitPrices?: Record<string, number>;
+        packPrices?: Record<string, number>;
+        discountPercent?: number;
+        discountAmount?: number;
+      }
+    >;
+    /** Whole-invoice discount (after line discounts). */
+    invoiceGlobalDiscountMode?: 'none' | 'percent' | 'amount';
+    invoiceGlobalDiscountValue?: number;
+    /** Flat line/global discounts apply to this Incoterm column. */
+    invoiceDiscountBaseTerm?: string;
+    invoiceVatEnabled?: boolean;
+    invoiceVatPercent?: number;
+    containerCapacity?: number;
+    containerType?: string;
   };
 }
