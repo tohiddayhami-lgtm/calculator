@@ -7772,192 +7772,184 @@ function AppInner() {
           </div>
 
           {/* Invoice Preview */}
-          <div className="flex-1 bg-gray-50 overflow-y-auto p-8 rounded-lg border border-slate-200 print:p-0 print:border-0 print:bg-white print:overflow-visible" id="invoice-preview">
+          <div className="flex-1 bg-slate-200/60 overflow-y-auto p-4 md:p-6 rounded-lg border border-slate-200 print:p-0 print:border-0 print:bg-white print:overflow-visible" id="invoice-preview">
                <div
-                   className={`mx-auto bg-white shadow-sm print:shadow-none print:w-full print:max-w-none ${
+                   className={`invoice-doc shadow-md mx-auto print:shadow-none ${
                        invoiceOrientation === 'landscape'
-                           ? 'invoice-landscape-page max-w-[297mm] p-10 min-h-[210mm]'
-                           : 'max-w-[210mm] p-12 min-h-[297mm]'
+                           ? 'invoice-landscape-page invoice-doc--landscape'
+                           : 'invoice-doc--portrait'
                    }`}
+                   style={{ display: 'flex', flexDirection: 'column' }}
                >
-                   
-                   {/* Header */}
-                   <div className="flex justify-between items-start gap-6 mb-10 pb-6 border-b border-slate-200">
-                       <div className="min-w-0 flex-1">
-                           <h1 className={`font-bold text-slate-900 mb-2 ${invoiceOrientation === 'landscape' ? 'text-3xl' : 'text-4xl'}`}>{invoiceTitle}</h1>
-                           <p className="text-slate-500 text-sm">#{invoiceRef}</p>
-                           <p className="text-slate-500 text-sm">Date: {new Date().toLocaleDateString()}</p>
+                   {/* ── HEADER ────────────────────────────────────────────── */}
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24 }}>
+                       <div style={{ minWidth: 0, flex: 1 }}>
+                           <h1>{invoiceTitle}</h1>
+                           <div className="invoice-meta" style={{ marginTop: 8 }}>
+                               <div><b>Invoice no.</b> {invoiceRef || '—'}</div>
+                               <div><b>Date</b> {new Date().toLocaleDateString()}</div>
+                               {invoiceTerms.length > 0 && (
+                                   <div><b>Incoterms</b> {invoiceTerms.join(' · ')}</div>
+                               )}
+                           </div>
                        </div>
-                       <div className="text-right shrink-0 max-w-[min(100%,280px)] flex flex-col items-end gap-3">
+                       <div className="seller-block" style={{ maxWidth: 280, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                            {invoiceLogo ? (
                                <img
                                    src={invoiceLogo}
                                    alt=""
-                                   className="max-h-[72px] max-w-[200px] w-auto object-contain object-right print:max-h-[64px]"
+                                   style={{ maxHeight: 56, maxWidth: 200, objectFit: 'contain', objectPosition: 'right' }}
                                />
                            ) : null}
-                           <div className="w-full">
-                               <h2 className="text-lg font-bold text-slate-800">{billedFrom || 'Your Company Name'}</h2>
-                               {billedFromDetails ? (
-                                   <div className="text-sm text-slate-600 whitespace-pre-line font-medium mt-1">{billedFromDetails}</div>
-                               ) : (
-                                   <div className="text-sm text-slate-400 whitespace-pre-line font-medium mt-1">Address line…</div>
-                               )}
-                               {(invoiceSellerPhone || invoiceSellerEmail || invoiceSellerWebsite || invoiceSellerTaxId) && (
-                                   <div className="text-xs text-slate-500 mt-2 space-y-0.5 text-right">
-                                       {invoiceSellerPhone ? <div>{invoiceSellerPhone}</div> : null}
-                                       {invoiceSellerEmail ? <div>{invoiceSellerEmail}</div> : null}
-                                       {invoiceSellerWebsite ? (
-                                           <div>
-                                               <a
-                                                   href={
-                                                       /^https?:\/\//i.test(invoiceSellerWebsite.trim())
-                                                           ? invoiceSellerWebsite.trim()
-                                                           : `https://${invoiceSellerWebsite.trim()}`
-                                                   }
-                                                   target="_blank"
-                                                   rel="noopener noreferrer"
-                                                   className="text-blue-600 underline break-all"
-                                               >
-                                                   {invoiceSellerWebsite.trim()}
-                                               </a>
-                                           </div>
-                                       ) : null}
-                                       {invoiceSellerTaxId ? <div className="text-slate-600 font-medium">Tax / VAT: {invoiceSellerTaxId}</div> : null}
-                                   </div>
-                               )}
-                           </div>
+                           <div className="name">{billedFrom || 'Your Company Name'}</div>
+                           {billedFromDetails && (
+                               <div style={{ whiteSpace: 'pre-line' }}>{billedFromDetails}</div>
+                           )}
+                           {(invoiceSellerPhone || invoiceSellerEmail || invoiceSellerWebsite) && (
+                               <div style={{ marginTop: 2 }}>
+                                   {invoiceSellerPhone ? <div>{invoiceSellerPhone}</div> : null}
+                                   {invoiceSellerEmail ? <div>{invoiceSellerEmail}</div> : null}
+                                   {invoiceSellerWebsite ? <div>{invoiceSellerWebsite}</div> : null}
+                               </div>
+                           )}
+                           {invoiceSellerTaxId ? (
+                               <div style={{ marginTop: 2, color: '#0f172a', fontWeight: 600 }}>
+                                   Tax / VAT: {invoiceSellerTaxId}
+                               </div>
+                           ) : null}
                        </div>
                    </div>
 
-                   {/* Meta strip + Bill To */}
-                   <div className={`mb-8 grid gap-4 ${invoiceOrientation === 'landscape' ? 'grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
-                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 print:border print:bg-transparent">
-                           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Bill To</h3>
-                           <h2 className="text-lg font-bold text-slate-800 leading-tight">{customerName || 'Customer Name'}</h2>
-                           <p className="text-sm text-slate-600 whitespace-pre-line mt-1 leading-snug">{customerAddress || 'Customer Address...'}</p>
+                   <div className="accent-bar" style={{ marginTop: 10, marginBottom: 14 }}></div>
+
+                   {/* ── INFO ROW ──────────────────────────────────────────── */}
+                   <div
+                       style={{
+                           display: 'grid',
+                           gridTemplateColumns: invoiceOrientation === 'landscape' ? '2fr 1.4fr 1fr' : '1.4fr 1fr',
+                           gap: 10,
+                           marginBottom: 14
+                       }}
+                   >
+                       <div className="info-card">
+                           <h3>Bill To</h3>
+                           <div style={{ fontSize: '10pt', fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>
+                               {customerName || 'Customer Name'}
+                           </div>
+                           <div className="small" style={{ whiteSpace: 'pre-line', marginTop: 2 }}>
+                               {customerAddress || '—'}
+                           </div>
                        </div>
-                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 print:border print:bg-transparent">
-                           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Terms</h3>
-                           <p className="text-sm text-slate-700 font-medium leading-snug">{paymentTerms || '—'}</p>
-                           {invoiceTerms.length > 0 && (
-                               <p className="text-[11px] text-slate-500 mt-2">
-                                   <span className="font-semibold">Incoterms:</span> {invoiceTerms.join(' / ')}
-                               </p>
-                           )}
+                       <div className="info-card">
+                           <h3>Payment Terms</h3>
+                           <div style={{ fontSize: '9.5pt', fontWeight: 600, color: '#0f172a', lineHeight: 1.3 }}>
+                               {paymentTerms || '—'}
+                           </div>
                            {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
-                               <p className="text-[11px] text-slate-500 mt-1">
-                                   <span className="font-semibold">VAT:</span> {Number(invoiceVatPercent)}% applied
-                               </p>
+                               <div className="small" style={{ marginTop: 4 }}>
+                                   VAT {Number(invoiceVatPercent)}% applied to net
+                               </div>
                            )}
                        </div>
                        {invoiceOrientation === 'landscape' && (
-                           <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 print:border print:bg-transparent">
-                               <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Currency</h3>
-                               <p className="text-2xl font-bold text-slate-800 leading-none">{config.outputCurrency}</p>
-                               <p className="text-[11px] text-slate-500 mt-2">
-                                   All totals shown in <span className="font-semibold">{config.outputCurrency}</span>{(invoiceTerms[0] && invoiceDiscountBaseTerm) ? ` · primary scenario ${invoiceDiscountBaseTerm}` : ''}.
-                               </p>
+                           <div className="info-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', textAlign: 'right' }}>
+                               <h3>Currency</h3>
+                               <div style={{ fontSize: '14pt', fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>
+                                   {config.outputCurrency}
+                               </div>
+                               <div className="small" style={{ marginTop: 4 }}>
+                                   Primary scenario: <b>{invoiceDiscountBaseTerm}</b>
+                               </div>
                            </div>
                        )}
                    </div>
 
-                   {/* Table */}
-                   <table className={`w-full mb-8 border-collapse ${invoiceOrientation === 'landscape' ? 'text-sm' : ''}`}>
+                   {/* ── ITEMS TABLE ───────────────────────────────────────── */}
+                   <table className="items">
                        <thead>
-                           <tr className="bg-slate-900 text-white print:bg-slate-900">
-                               <th className="px-3 py-2.5 text-left font-semibold text-[11px] uppercase tracking-wider">Item</th>
-                               {showImages && <th className="px-3 py-2.5 text-center font-semibold text-[11px] uppercase tracking-wider w-16">Image</th>}
-                               
-                               {/* QTY & PACKS based on Basis */}
-                               <th className="px-3 py-2.5 text-center font-semibold text-[11px] uppercase tracking-wider w-16">Qty</th>
+                           <tr>
+                               <th>Item</th>
+                               {showImages && <th className="center" style={{ width: 44 }}>Image</th>}
+                               <th className="center" style={{ width: 50 }}>Qty</th>
                                {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                   <th className="px-3 py-2.5 text-center font-semibold text-[11px] uppercase tracking-wider w-16">Packs</th>
+                                   <th className="center" style={{ width: 50 }}>Packs</th>
                                )}
-                               <th
-                                   className="px-3 py-2.5 text-center font-semibold text-[10px] uppercase tracking-wide w-14"
-                                   title="Line discount percent on each scenario gross"
-                               >
-                                   Disc %
+                               <th className="center" style={{ width: 50 }} title="Line discount %">Disc %</th>
+                               <th className="num" style={{ width: 70 }} title={`Flat discount applied to ${invoiceDiscountBaseTerm}`}>
+                                   Flat
                                </th>
-                               <th
-                                   className="px-3 py-2.5 text-center font-semibold text-[10px] uppercase tracking-wide w-24"
-                                   title={`Flat line discount subtracts only from ${invoiceDiscountBaseTerm} column`}
-                               >
-                                   Flat ({invoiceDiscountBaseTerm})
-                               </th>
-
-                               {/* PRICING TERMS */}
                                {invoiceTerms.map(term => (
                                    <React.Fragment key={term}>
-                                       {/* Optional Unit Price Column */}
                                        {(invoiceBasis === 'unit' || invoiceBasis === 'both') && (
-                                           <th className="px-3 py-2.5 text-right font-semibold text-[11px] uppercase tracking-wider w-24 hidden md:table-cell">{term} Unit</th>
+                                           <th className="num" style={{ width: 70 }}>{term} Unit</th>
                                        )}
-                                       {/* Optional Pack Price Column */}
                                        {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                           <th className="px-3 py-2.5 text-right font-semibold text-[11px] uppercase tracking-wider w-24 hidden md:table-cell">{term} Pack</th>
+                                           <th className="num" style={{ width: 70 }}>{term} Pack</th>
                                        )}
-                                       {/* Total Column */}
-                                       <th className="px-3 py-2.5 text-right font-bold text-xs uppercase tracking-wider w-32 bg-slate-800">{term} Total</th>
+                                       <th className="num" style={{ width: 88 }}>{term} Total</th>
                                    </React.Fragment>
                                ))}
                            </tr>
                        </thead>
                        <tbody>
-                           {calculations.processedProducts
-                             .filter(p => p.isActive && (invoiceIncludedIds === null || invoiceIncludedIds.includes(p.id)))
-                             .map((p, rowIdx) => {
+                           {activeProducts.map((p) => {
                                const override = invoiceOverrides[p.id] || {};
                                const displayQty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
                                const displayPacks = (p.itemsPerPack && p.itemsPerPack > 0) ? displayQty / p.itemsPerPack : 0;
-                               const rowBg = rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60 print:bg-slate-50';
 
                                return (
-                               <tr key={p.id} className={`${rowBg} border-b border-slate-200 break-inside-avoid`}>
-                                   <td className="px-3 py-3 align-top">
-                                       <p className="font-semibold text-slate-800 leading-tight">{p.name}</p>
-                                       {p.sku ? <p className="text-[10px] text-slate-500 font-mono mt-0.5">SKU: {p.sku}</p> : null}
-                                       {p.hsCode && <p className="text-[10px] text-slate-500">HS: {p.hsCode}</p>}
+                               <tr key={p.id}>
+                                   <td className="item-cell">
+                                       <div className="name">{p.name}</div>
+                                       {(p.sku || p.hsCode) && (
+                                           <div className="meta">
+                                               {p.sku ? <>SKU {p.sku}</> : null}
+                                               {p.sku && p.hsCode ? ' · ' : ''}
+                                               {p.hsCode ? <>HS {p.hsCode}</> : null}
+                                           </div>
+                                       )}
                                    </td>
                                    {showImages && (
-                                       <td className="px-3 py-3 text-center align-top">
-                                           {p.image ? <img src={p.image} className="w-10 h-10 object-cover rounded mx-auto border border-slate-200" alt="" /> : <div className="w-10 h-10 bg-slate-100 rounded mx-auto border border-slate-200" />}
+                                       <td className="center">
+                                           {p.image ? (
+                                               <img src={p.image} alt="" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 3, border: '1px solid #e2e8f0', display: 'inline-block' }} />
+                                           ) : (
+                                               <div style={{ width: 28, height: 28, background: '#f1f5f9', borderRadius: 3, border: '1px solid #e2e8f0', display: 'inline-block' }} />
+                                           )}
                                        </td>
                                    )}
-                                   
-                                   <td className="px-3 py-3 text-center align-middle font-medium text-slate-800">
+                                   <td className="center">
                                        {isInvoiceEditable ? (
-                                           <input 
-                                              type="number" 
-                                              value={displayQty} 
-                                              onChange={(e) => setInvoiceOverrides(prev => ({
-                                                  ...prev, 
-                                                  [p.id]: { ...prev[p.id], qty: parseFloat(e.target.value) || 0 }
-                                              }))}
-                                              className="w-16 text-center border border-blue-200 bg-blue-50/30 rounded py-1 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                                           <input
+                                               type="number"
+                                               value={displayQty}
+                                               onChange={(e) => setInvoiceOverrides(prev => ({
+                                                   ...prev,
+                                                   [p.id]: { ...prev[p.id], qty: parseFloat(e.target.value) || 0 }
+                                               }))}
+                                               style={{ width: 48, textAlign: 'center', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 2px', fontSize: '9pt' }}
                                            />
-                                       ) : formatNumber(p.qty)}
+                                       ) : formatNumber(displayQty)}
                                    </td>
                                    {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                       <td className="px-3 py-3 text-center align-middle text-slate-600">
+                                       <td className="center">
                                            {isInvoiceEditable && p.itemsPerPack > 0 ? (
-                                               <input 
-                                                  type="number" 
-                                                  value={displayPacks} 
-                                                  onChange={(e) => {
-                                                      const newPacks = parseFloat(e.target.value) || 0;
-                                                      setInvoiceOverrides(prev => ({
-                                                          ...prev, 
-                                                          [p.id]: { ...prev[p.id], qty: newPacks * p.itemsPerPack }
-                                                      }))
-                                                  }}
-                                                  className="w-16 text-center border border-blue-200 bg-blue-50/30 rounded py-1 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                                               <input
+                                                   type="number"
+                                                   value={displayPacks}
+                                                   onChange={(e) => {
+                                                       const newPacks = parseFloat(e.target.value) || 0;
+                                                       setInvoiceOverrides(prev => ({
+                                                           ...prev,
+                                                           [p.id]: { ...prev[p.id], qty: newPacks * p.itemsPerPack }
+                                                       }));
+                                                   }}
+                                                   style={{ width: 48, textAlign: 'center', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 2px', fontSize: '9pt' }}
                                                />
                                            ) : formatNumber(displayPacks)}
                                        </td>
                                    )}
-                                   <td className="px-3 py-3 text-center align-middle">
+                                   <td className="center">
                                        {isInvoiceEditable ? (
                                            <input
                                                type="number"
@@ -7968,22 +7960,19 @@ function AppInner() {
                                                onChange={(e) =>
                                                    setInvoiceOverrides((prev) => ({
                                                        ...prev,
-                                                       [p.id]: {
-                                                           ...prev[p.id],
-                                                           discountPercent: parseFloat(e.target.value) || 0
-                                                       }
+                                                       [p.id]: { ...prev[p.id], discountPercent: parseFloat(e.target.value) || 0 }
                                                    }))
                                                }
-                                               className="w-14 text-center border border-slate-200 rounded py-1 text-xs"
+                                               style={{ width: 44, textAlign: 'center', border: '1px solid #e2e8f0', borderRadius: 3, padding: '2px 2px', fontSize: '8.5pt' }}
                                                placeholder="0"
                                            />
                                        ) : (
-                                           <span className="text-xs text-slate-600">
+                                           <span className="muted" style={{ fontSize: '8.5pt' }}>
                                                {(override.discountPercent || 0) > 0 ? `${override.discountPercent}%` : '—'}
                                            </span>
                                        )}
                                    </td>
-                                   <td className="px-3 py-3 text-center align-middle">
+                                   <td className="num">
                                        {isInvoiceEditable ? (
                                            <input
                                                type="number"
@@ -7993,75 +7982,63 @@ function AppInner() {
                                                onChange={(e) =>
                                                    setInvoiceOverrides((prev) => ({
                                                        ...prev,
-                                                       [p.id]: {
-                                                           ...prev[p.id],
-                                                           discountAmount: parseFloat(e.target.value) || 0
-                                                       }
+                                                       [p.id]: { ...prev[p.id], discountAmount: parseFloat(e.target.value) || 0 }
                                                    }))
                                                }
-                                               className="w-[4.5rem] text-center border border-slate-200 rounded py-1 text-xs"
+                                               style={{ width: 64, textAlign: 'right', border: '1px solid #e2e8f0', borderRadius: 3, padding: '2px 4px', fontSize: '8.5pt' }}
                                                placeholder="0"
                                            />
                                        ) : (
-                                           <span className="text-xs text-slate-600">
+                                           <span className="muted" style={{ fontSize: '8.5pt' }}>
                                                {(override.discountAmount || 0) > 0
                                                    ? formatMoney(override.discountAmount || 0, config.outputCurrency)
                                                    : '—'}
                                            </span>
                                        )}
                                    </td>
-                                   
                                    {invoiceTerms.map(term => {
                                        const baseUnitPrice = p.scenarioPrices?.[term] || 0;
                                        const basePackPrice = p.scenarioPackPrices?.[term] || 0;
-                                       
                                        const displayUnitPrice = isInvoiceEditable ? (override.unitPrices?.[term] ?? baseUnitPrice) : baseUnitPrice;
                                        const displayPackPrice = isInvoiceEditable ? (override.packPrices?.[term] ?? basePackPrice) : basePackPrice;
                                        const lineNet = lineNetAfterLineDisc(p, term);
-
                                        return (
                                            <React.Fragment key={term}>
                                                {(invoiceBasis === 'unit' || invoiceBasis === 'both') && (
-                                                   <td className="px-3 py-3 text-right text-slate-600 hidden md:table-cell align-middle tabular-nums">
+                                                   <td className="num">
                                                        {isInvoiceEditable ? (
-                                                           <input 
-                                                              type="number" 
-                                                              value={displayUnitPrice}
-                                                              step="0.01"
-                                                              onChange={(e) => setInvoiceOverrides(prev => {
-                                                                  const curr = prev[p.id] || {};
-                                                                  const prices = curr.unitPrices || {};
-                                                                  return {
-                                                                      ...prev,
-                                                                      [p.id]: { ...curr, unitPrices: { ...prices, [term]: parseFloat(e.target.value) || 0 } }
-                                                                  };
-                                                              })}
-                                                              className="w-20 text-right border border-blue-200 bg-blue-50/30 rounded py-1 px-1 text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                                                           <input
+                                                               type="number"
+                                                               value={displayUnitPrice}
+                                                               step="0.01"
+                                                               onChange={(e) => setInvoiceOverrides(prev => {
+                                                                   const curr = prev[p.id] || {};
+                                                                   const prices = curr.unitPrices || {};
+                                                                   return { ...prev, [p.id]: { ...curr, unitPrices: { ...prices, [term]: parseFloat(e.target.value) || 0 } } };
+                                                               })}
+                                                               style={{ width: 60, textAlign: 'right', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 4px', fontSize: '8.5pt' }}
                                                            />
                                                        ) : formatMoney(displayUnitPrice, config.outputCurrency)}
                                                    </td>
                                                )}
                                                {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
-                                                   <td className="px-3 py-3 text-right text-slate-600 hidden md:table-cell align-middle tabular-nums">
+                                                   <td className="num">
                                                        {isInvoiceEditable ? (
-                                                           <input 
-                                                              type="number" 
-                                                              value={displayPackPrice}
-                                                              step="0.01"
-                                                              onChange={(e) => setInvoiceOverrides(prev => {
-                                                                  const curr = prev[p.id] || {};
-                                                                  const prices = curr.packPrices || {};
-                                                                  return {
-                                                                      ...prev,
-                                                                      [p.id]: { ...curr, packPrices: { ...prices, [term]: parseFloat(e.target.value) || 0 } }
-                                                                  };
-                                                              })}
-                                                              className="w-20 text-right border border-blue-200 bg-blue-50/30 rounded py-1 px-1 text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                                                           <input
+                                                               type="number"
+                                                               value={displayPackPrice}
+                                                               step="0.01"
+                                                               onChange={(e) => setInvoiceOverrides(prev => {
+                                                                   const curr = prev[p.id] || {};
+                                                                   const prices = curr.packPrices || {};
+                                                                   return { ...prev, [p.id]: { ...curr, packPrices: { ...prices, [term]: parseFloat(e.target.value) || 0 } } };
+                                                               })}
+                                                               style={{ width: 60, textAlign: 'right', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 4px', fontSize: '8.5pt' }}
                                                            />
                                                        ) : formatMoney(displayPackPrice, config.outputCurrency)}
                                                    </td>
                                                )}
-                                               <td className="px-3 py-3 text-right font-semibold text-slate-900 align-middle tabular-nums bg-slate-50/40 print:bg-slate-50">
+                                               <td className="num line-total">
                                                    {formatMoney(lineNet, config.outputCurrency)}
                                                </td>
                                            </React.Fragment>
@@ -8071,20 +8048,18 @@ function AppInner() {
                                );
                            })}
                        </tbody>
-                       <tfoot className="break-inside-avoid">
-                           <tr className="text-sm bg-slate-50/70 print:bg-slate-50">
-                               <td className="px-3 pt-3 pb-1.5 font-semibold text-right text-slate-700" colSpan={fixedLeadCols}>
-                                   Subtotal (after line discounts)
-                               </td>
+                       <tfoot>
+                           <tr className="subtotal">
+                               <td colSpan={fixedLeadCols} className="num">Subtotal</td>
                                {invoiceTerms.map((term) => (
-                                   <td key={`sub-${term}`} className="px-3 pt-3 pb-1.5 text-right font-semibold tabular-nums" colSpan={colsPerTermFooter}>
+                                   <td key={`sub-${term}`} className="num" colSpan={colsPerTermFooter}>
                                        {formatMoney(subtotalByTerm[term] || 0, config.outputCurrency)}
                                    </td>
                                ))}
                            </tr>
                            {invoiceGlobalDiscountMode !== 'none' && invoiceGlobalDiscountValue > 0 && (
-                               <tr className="text-sm text-amber-900 bg-amber-50/40 print:bg-amber-50">
-                                   <td className="px-3 py-1.5 font-semibold text-right" colSpan={fixedLeadCols}>
+                               <tr className="discount">
+                                   <td colSpan={fixedLeadCols} className="num">
                                        {invoiceGlobalDiscountMode === 'percent'
                                            ? `Invoice discount (${Math.min(100, invoiceGlobalDiscountValue)}%)`
                                            : `Invoice discount (fixed · ${invoiceDiscountBaseTerm})`}
@@ -8094,41 +8069,37 @@ function AppInner() {
                                        const net = netAfterGlobalByTerm[term] || 0;
                                        const delta = sub - net;
                                        return (
-                                           <td key={`gd-${term}`} className="px-3 py-1.5 text-right font-medium tabular-nums" colSpan={colsPerTermFooter}>
+                                           <td key={`gd-${term}`} className="num" colSpan={colsPerTermFooter}>
                                                {delta > 0 ? `−${formatMoney(delta, config.outputCurrency)}` : formatMoney(0, config.outputCurrency)}
                                            </td>
                                        );
                                    })}
                                </tr>
                            )}
-                           <tr className="text-sm border-y border-slate-300 bg-slate-50 print:bg-slate-50">
-                               <td className="px-3 py-1.5 font-semibold text-right text-slate-800" colSpan={fixedLeadCols}>
-                                   Net {invoiceVatEnabled ? '(before VAT)' : ''}
+                           <tr className="net">
+                               <td colSpan={fixedLeadCols} className="num">
+                                   Net{invoiceVatEnabled ? ' (before VAT)' : ''}
                                </td>
                                {invoiceTerms.map((term) => (
-                                   <td key={`net-${term}`} className="px-3 py-1.5 text-right font-semibold tabular-nums" colSpan={colsPerTermFooter}>
+                                   <td key={`net-${term}`} className="num" colSpan={colsPerTermFooter}>
                                        {formatMoney(netAfterGlobalByTerm[term] || 0, config.outputCurrency)}
                                    </td>
                                ))}
                            </tr>
                            {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
-                               <tr className="text-sm text-slate-700">
-                                   <td className="px-3 py-1.5 font-semibold text-right" colSpan={fixedLeadCols}>
-                                       VAT ({Number(invoiceVatPercent)}%)
-                                   </td>
+                               <tr className="vat">
+                                   <td colSpan={fixedLeadCols} className="num">VAT ({Number(invoiceVatPercent)}%)</td>
                                    {invoiceTerms.map((term) => (
-                                       <td key={`vat-${term}`} className="px-3 py-1.5 text-right font-medium tabular-nums" colSpan={colsPerTermFooter}>
+                                       <td key={`vat-${term}`} className="num" colSpan={colsPerTermFooter}>
                                            {formatMoney(vatByTerm[term] || 0, config.outputCurrency)}
                                        </td>
                                    ))}
                                </tr>
                            )}
-                           <tr className="bg-slate-900 text-white print:bg-slate-900">
-                               <td className="px-3 py-3 font-bold text-right uppercase tracking-wider text-sm" colSpan={fixedLeadCols}>
-                                   Total due
-                               </td>
+                           <tr className="total">
+                               <td colSpan={fixedLeadCols} className="num">TOTAL DUE</td>
                                {invoiceTerms.map((term) => (
-                                   <td key={`tot-${term}`} className="px-3 py-3 text-right font-bold text-lg tabular-nums" colSpan={colsPerTermFooter}>
+                                   <td key={`tot-${term}`} className="num" colSpan={colsPerTermFooter}>
                                        {formatMoney(grandByTerm[term] || 0, config.outputCurrency)}
                                    </td>
                                ))}
@@ -8136,37 +8107,42 @@ function AppInner() {
                        </tfoot>
                    </table>
 
-                   <div className={`grid gap-6 mt-10 break-inside-avoid ${invoiceOrientation === 'landscape' ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                       <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/40 print:bg-transparent">
-                           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Details</h4>
-                           <p className="text-sm text-slate-700 whitespace-pre-line leading-snug">{bankDetails || '—'}</p>
-                           <p className="text-xs text-slate-600 mt-2"><span className="font-semibold">Terms:</span> {paymentTerms}</p>
-                       </div>
-                       <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/40 print:bg-transparent">
-                           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Notes</h4>
-                           <p className="text-sm text-slate-700 whitespace-pre-line leading-snug">{notes || '—'}</p>
-                       </div>
-                       {invoiceOrientation === 'landscape' && (
-                           <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/40 print:bg-transparent">
-                               <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Authorized Signature</h4>
-                               <div className="border-b border-slate-400 h-14 mt-4"></div>
-                               <p className="text-[10px] text-slate-500 uppercase tracking-wider mt-2">{billedFrom || 'Seller'}</p>
+                   {/* ── BOTTOM PANELS ─────────────────────────────────────── */}
+                   <div
+                       style={{
+                           display: 'grid',
+                           gridTemplateColumns: invoiceOrientation === 'landscape' ? '1.2fr 1.2fr 0.9fr' : '1fr 1fr',
+                           gap: 12,
+                           marginTop: 14
+                       }}
+                   >
+                       <div className="info-card">
+                           <h3>Payment Details</h3>
+                           <div className="small" style={{ whiteSpace: 'pre-line', color: '#1e293b', lineHeight: 1.5 }}>
+                               {bankDetails || '—'}
                            </div>
-                       )}
+                           <div className="small" style={{ marginTop: 4 }}>
+                               <b style={{ color: '#0f172a' }}>Terms:</b> {paymentTerms || '—'}
+                           </div>
+                       </div>
+                       <div className="info-card">
+                           <h3>Notes / Terms</h3>
+                           <div className="small" style={{ whiteSpace: 'pre-line', color: '#1e293b', lineHeight: 1.5 }}>
+                               {notes || '—'}
+                           </div>
+                       </div>
+                       <div className="info-card" style={{ display: 'flex', flexDirection: 'column' }}>
+                           <h3>Authorized Signature</h3>
+                           <div className="signature-line" style={{ marginTop: 'auto' }}></div>
+                           <div className="small" style={{ marginTop: 4, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '.06em', fontSize: '7pt' }}>
+                               {billedFrom || 'Seller'}
+                           </div>
+                       </div>
                    </div>
 
-                   {invoiceOrientation !== 'landscape' && (
-                       <div className="mt-16 pt-6 border-t border-slate-200 flex justify-between items-end break-inside-avoid">
-                           <div className="text-center w-48">
-                               <div className="border-b border-slate-300 h-12 mb-2"></div>
-                               <p className="text-xs text-slate-500 uppercase">Authorized Signature</p>
-                           </div>
-                           <p className="text-xs text-slate-400">Generated by Tohid Dayhami Export⁺</p>
-                       </div>
-                   )}
-                   {invoiceOrientation === 'landscape' && (
-                       <p className="mt-6 text-center text-[10px] text-slate-400">Generated by Tohid Dayhami Export⁺</p>
-                   )}
+                   <div className="doc-footer">
+                       Generated by Tohid Dayhami Export⁺ — {new Date().toLocaleDateString()}
+                   </div>
                </div>
           </div>
       </div>
@@ -8761,8 +8737,121 @@ function AppInner() {
         @page invoiceLandscapeA4 { size: A4 landscape; margin: 0; }
         .invoice-landscape-page { page: invoiceLandscapeA4; }
 
+        /* ─────────────────────────────────────────────────────────────────
+           Professional A4 invoice document (screen + print). All sizes are
+           expressed so the printed page is identical to the screen preview.
+           ───────────────────────────────────────────────────────────────── */
+        .invoice-doc {
+            color: #0f172a;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 9.5pt;
+            line-height: 1.4;
+            background: #ffffff;
+            box-sizing: border-box;
+        }
+        .invoice-doc * { box-sizing: border-box; }
+        .invoice-doc--portrait  { width: 210mm; min-height: 297mm; padding: 14mm 14mm 12mm; }
+        .invoice-doc--landscape { width: 297mm; min-height: 210mm; padding: 12mm 14mm 10mm; }
+        .invoice-doc h1 { font-size: 20pt; font-weight: 700; letter-spacing: -.01em; margin: 0; color: #0f172a; }
+        .invoice-doc--landscape h1 { font-size: 17pt; }
+        .invoice-doc h2 { font-size: 10.5pt; font-weight: 700; margin: 0; color: #0f172a; }
+        .invoice-doc h3 { font-size: 7.5pt; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #64748b; margin: 0 0 4px; }
+        .invoice-doc .small { font-size: 8.5pt; color: #64748b; }
+        .invoice-doc .muted { color: #64748b; }
+        .invoice-doc .accent-bar { height: 3px; background: linear-gradient(90deg, #0f172a 0%, #334155 100%); border-radius: 2px; }
+        .invoice-doc table.items {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9pt;
+        }
+        .invoice-doc table.items thead th {
+            font-size: 7.5pt;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: #475569;
+            background: #f1f5f9;
+            border-top: 1px solid #cbd5e1;
+            border-bottom: 1px solid #cbd5e1;
+            padding: 7px 8px;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .invoice-doc table.items thead th.num { text-align: right; }
+        .invoice-doc table.items thead th.center { text-align: center; }
+        .invoice-doc table.items tbody td {
+            padding: 7px 8px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: middle;
+            color: #1e293b;
+        }
+        .invoice-doc table.items tbody td.num,
+        .invoice-doc table.items tfoot td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .invoice-doc table.items tbody td.center { text-align: center; }
+        .invoice-doc table.items tbody td.item-cell { line-height: 1.3; }
+        .invoice-doc table.items tbody td.item-cell .name { font-weight: 600; color: #0f172a; }
+        .invoice-doc table.items tbody td.item-cell .meta { font-size: 7.5pt; color: #64748b; margin-top: 1px; }
+        .invoice-doc table.items tbody tr:nth-child(even) td { background: #fafafa; }
+        .invoice-doc table.items tbody td.line-total { background: #f8fafc; font-weight: 600; color: #0f172a; }
+        .invoice-doc table.items tfoot td {
+            padding: 6px 8px;
+            font-size: 9pt;
+        }
+        .invoice-doc table.items tfoot tr.subtotal td { background: #f8fafc; }
+        .invoice-doc table.items tfoot tr.discount td { background: #fffbeb; color: #92400e; }
+        .invoice-doc table.items tfoot tr.net td { background: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; font-weight: 600; }
+        .invoice-doc table.items tfoot tr.vat td { color: #334155; }
+        .invoice-doc table.items tfoot tr.total td {
+            background: #0f172a;
+            color: #ffffff;
+            font-weight: 700;
+            padding: 10px 8px;
+            font-size: 10.5pt;
+            letter-spacing: .02em;
+        }
+        .invoice-doc .info-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 9px 11px;
+            background: #fafafa;
+        }
+        .invoice-doc .info-card h3 { margin-bottom: 3px; }
+        .invoice-doc .seller-block {
+            text-align: right;
+            font-size: 8.5pt;
+            line-height: 1.5;
+            color: #334155;
+        }
+        .invoice-doc .seller-block .name { font-size: 11pt; font-weight: 700; color: #0f172a; }
+        .invoice-doc .invoice-meta { font-size: 8.5pt; color: #475569; line-height: 1.6; }
+        .invoice-doc .invoice-meta b { color: #0f172a; font-weight: 600; }
+        .invoice-doc .doc-footer {
+            margin-top: auto;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 7.5pt;
+            color: #94a3b8;
+            text-align: center;
+        }
+        .invoice-doc .signature-line {
+            border-bottom: 1px solid #94a3b8;
+            height: 36px;
+        }
+        .invoice-doc input[type="number"],
+        .invoice-doc input[type="text"] {
+            font: inherit;
+            color: inherit;
+        }
+
         @media print {
             body { margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+            /* Invoice prints exactly as previewed: no shadow, no extra margin */
+            .invoice-doc { box-shadow: none !important; margin: 0 auto !important; }
+            .invoice-doc input { background: transparent !important; border: none !important; padding: 0 !important; }
+            .invoice-doc table.items thead { display: table-header-group; }
+            .invoice-doc table.items tfoot { display: table-row-group; }
+            .invoice-doc table.items tbody tr { page-break-inside: avoid; break-inside: avoid; }
             
             /* RESET MAIN CONTAINERS FOR PRINT */
             header, nav, aside, .print\\:hidden { display: none !important; }
