@@ -353,6 +353,44 @@ export interface InvoiceExtraCharge {
   enabled: boolean;
 }
 
+/** Trade / shipping fields for the Welte-style proforma (matches classic Iranian export proforma blocks). */
+export interface InvoiceWelteTradeBlock {
+  buyersCommercialCardNo?: string;
+  sellersReference?: string;
+  freightForwarder?: string;
+  countryOfBeneficiary?: string;
+  transportMode?: string;
+  portOfLoading?: string;
+  countryOfOriginDefault?: string;
+  destination?: string;
+  portOfDischarge?: string;
+  placeOfDelivery?: string;
+  termsOfDelivery?: string;
+  shippingMarksLine?: string;
+  packagesDescription?: string;
+  commoditySummary?: string;
+  totalGrossWeightKg?: string;
+  totalVolumeM3?: string;
+  packageKindsStd?: string;
+  certificationNote?: string;
+  signatoryName?: string;
+  issuePlace?: string;
+}
+
+/** Per-line overrides on the Proforma (persisted on the project). */
+export interface InvoiceLineOverride {
+  qty?: number;
+  unitPrices?: Record<string, number>;
+  packPrices?: Record<string, number>;
+  /** Line discount: if discountPercent > 0 it applies to all scenario columns; else discountAmount applies only to `invoiceDiscountBaseTerm` column. */
+  discountPercent?: number;
+  discountAmount?: number;
+  /** Welte layout: origin country column */
+  origin?: string;
+  /** Welte layout: line net weight (kg) */
+  netWeightKg?: number;
+}
+
 export interface ArchivedInvoiceLineSnapshot {
   productId: number;
   name: string;
@@ -483,16 +521,7 @@ export interface SavedProject {
     // Saved buyers / customers (repeat clients)
     buyers?: Buyer[];
     isInvoiceEditable?: boolean;
-    invoiceOverrides?: Record<
-      number,
-      {
-        qty?: number;
-        unitPrices?: Record<string, number>;
-        packPrices?: Record<string, number>;
-        discountPercent?: number;
-        discountAmount?: number;
-      }
-    >;
+    invoiceOverrides?: Record<number, InvoiceLineOverride>;
     /** Whole-invoice discount (after line discounts). */
     invoiceGlobalDiscountMode?: 'none' | 'percent' | 'amount';
     invoiceGlobalDiscountValue?: number;
@@ -504,6 +533,10 @@ export interface SavedProject {
     invoiceExtraCharges?: InvoiceExtraCharge[];
     /** Page orientation for the printed proforma invoice. */
     invoiceOrientation?: 'portrait' | 'landscape';
+    /** Proforma document layout: default app layout vs. Welte-style trade table. */
+    invoiceLayout?: 'standard' | 'welte';
+    /** Free-text trade / logistics fields used when `invoiceLayout` is `welte`. */
+    invoiceWelteTrade?: InvoiceWelteTradeBlock;
     containerCapacity?: number;
     containerType?: string;
     /** Issue date on proforma + archive (ms epoch). */

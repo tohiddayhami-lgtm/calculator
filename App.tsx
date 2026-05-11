@@ -74,8 +74,32 @@ import {
   InvoicePayment,
   InvoiceExtraCharge,
   DashboardResearchEntry,
-  DashboardResearchAttachment
+  DashboardResearchAttachment,
+  InvoiceWelteTradeBlock,
+  InvoiceLineOverride
 } from './types';
+
+function createDefaultInvoiceWelteTrade(): InvoiceWelteTradeBlock {
+  return {
+    certificationNote:
+      'It is hereby certified that this proforma invoice shows the actual price of the goods described, that no other proforma invoice has been or will be issued, and that all particulars are true and correct.',
+    termsOfDelivery: 'EX WORK',
+  };
+}
+
+function mergeInvoiceWelteTrade(raw: Partial<InvoiceWelteTradeBlock> | undefined): InvoiceWelteTradeBlock {
+  return { ...createDefaultInvoiceWelteTrade(), ...(raw || {}) };
+}
+
+/** dd/mm/yyyy — matches the Welte Word template date style. */
+function formatWelteDate(ms: number | undefined): string {
+  if (ms === undefined || ms === null || !Number.isFinite(ms) || ms <= 0) return '';
+  const d = new Date(ms);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
 
 function normalizeInvoiceExtraCharges(raw: unknown): InvoiceExtraCharge[] {
   if (!Array.isArray(raw)) return [];
@@ -2614,14 +2638,7 @@ function AppInner() {
   };
 
   const [isInvoiceEditable, setIsInvoiceEditable] = useState(false);
-  const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, {
-    qty?: number;
-    unitPrices?: Record<string, number>;
-    packPrices?: Record<string, number>;
-    /** Line discount: if discountPercent > 0 it applies to all scenario columns; else discountAmount applies only to `invoiceDiscountBaseTerm` column. */
-    discountPercent?: number;
-    discountAmount?: number;
-  }>>({});
+  const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, InvoiceLineOverride>>({});
   // When set, the invoice only renders these product IDs (used after "Create Invoice" from an inquiry).
   // null means "show all active products" (default behavior).
   const [invoiceIncludedIds, setInvoiceIncludedIds] = useState<number[] | null>(null);
@@ -2636,7 +2653,15 @@ function AppInner() {
   /** Optional fixed lines (shipping, insurance, documentation fees, …) after VAT. */
   const [invoiceExtraCharges, setInvoiceExtraCharges] = useState<InvoiceExtraCharge[]>([]);
   const [invoiceOrientation, setInvoiceOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [invoiceLayout, setInvoiceLayout] = useState<'standard' | 'welte'>('standard');
+  const [invoiceWelteTrade, setInvoiceWelteTrade] = useState<InvoiceWelteTradeBlock>(() => createDefaultInvoiceWelteTrade());
   const [packingListConfig, setPackingListConfig] = useState<PackingListConfig>(() => createDefaultPackingListConfig());
+
+  useEffect(() => {
+    if (invoiceLayout === 'welte' && invoiceOrientation === 'landscape') {
+      setInvoiceOrientation('portrait');
+    }
+  }, [invoiceLayout, invoiceOrientation]);
 
   // Catalog Config
   const [catalogConfig, setCatalogConfig] = useState<CatalogConfig>(() => createDefaultCatalogConfig());
@@ -3897,6 +3922,8 @@ function AppInner() {
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
         invoiceExtraCharges,
         invoiceOrientation,
+        invoiceLayout,
+        invoiceWelteTrade,
         containerCapacity, containerType,
         invoiceIssueDateMs,
         invoiceDueDateMs,
@@ -4084,6 +4111,8 @@ function AppInner() {
     setInvoiceOrientation(
       (project.data as any).invoiceOrientation === 'landscape' ? 'landscape' : 'portrait'
     );
+    setInvoiceLayout((project.data as any).invoiceLayout === 'welte' ? 'welte' : 'standard');
+    setInvoiceWelteTrade(mergeInvoiceWelteTrade((project.data as any).invoiceWelteTrade));
     if ((project.data as any).containerCapacity) setContainerCapacity((project.data as any).containerCapacity);
     if ((project.data as any).containerType) setContainerType((project.data as any).containerType);
 
@@ -5097,6 +5126,8 @@ function AppInner() {
             invoiceVatPercent,
             invoiceExtraCharges,
             invoiceOrientation,
+            invoiceLayout,
+            invoiceWelteTrade,
             containerCapacity,
             containerType,
             invoiceIssueDateMs,
@@ -5158,6 +5189,8 @@ function AppInner() {
     invoiceVatPercent,
     invoiceExtraCharges,
     invoiceOrientation,
+    invoiceLayout,
+    invoiceWelteTrade,
     containerCapacity,
     containerType,
     invoiceIssueDateMs,
@@ -5339,6 +5372,8 @@ function AppInner() {
     setInvoiceVatPercent(9);
     setInvoiceExtraCharges([]);
     setInvoiceOrientation('portrait');
+    setInvoiceLayout('standard');
+    setInvoiceWelteTrade(createDefaultInvoiceWelteTrade());
     setPackingListConfig(createDefaultPackingListConfig());
     setCatalogConfig(createDefaultCatalogConfig());
     setImportCandidateProject(null);
@@ -9060,6 +9095,406 @@ function AppInner() {
       grandByTerm[t] = net + vat + extrasSum;
     });
 
+    const welteTerm =
+      invoiceDiscountBaseTerm && invoiceTerms.includes(invoiceDiscountBaseTerm)
+        ? invoiceDiscountBaseTerm
+        : invoiceTerms[0] || 'FOB';
+    const wt = mergeInvoiceWelteTrade(invoiceWelteTrade);
+
+    const welteDisplayUnitPrice = (p: (typeof activeProducts)[number]) => {
+      const override = invoiceOverrides[p.id] || {};
+      const ipp = p.itemsPerPack || 0;
+      const baseUnit = p.scenarioPrices?.[welteTerm] || 0;
+      const basePack = p.scenarioPackPrices?.[welteTerm] || 0;
+      const u = isInvoiceEditable ? (override.unitPrices?.[welteTerm] ?? baseUnit) : baseUnit;
+      const pk = isInvoiceEditable ? (override.packPrices?.[welteTerm] ?? basePack) : basePack;
+      if (invoiceBasis === 'pack') {
+        return ipp > 0 ? pk / ipp : pk;
+      }
+      return u;
+    };
+
+    const welteSubtotal = subtotalByTerm[welteTerm] || 0;
+    const welteNet = netAfterGlobalByTerm[welteTerm] || 0;
+    const welteGlobalDiscountAmt = Math.max(0, welteSubtotal - welteNet);
+    const welteVat = vatByTerm[welteTerm] || 0;
+    const welteGrand = grandByTerm[welteTerm] || 0;
+
+    let welteNetWtSum = 0;
+    let welteNetWtAny = false;
+    activeProducts.forEach((p) => {
+      const nw = invoiceOverrides[p.id]?.netWeightKg;
+      if (typeof nw === 'number' && Number.isFinite(nw) && nw > 0) {
+        welteNetWtSum += nw;
+        welteNetWtAny = true;
+      }
+    });
+    const welteQtySum = activeProducts.reduce((s, p) => {
+      const override = invoiceOverrides[p.id] || {};
+      const q = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
+      return s + (Number(q) || 0);
+    }, 0);
+
+    const welteBody = (
+      <>
+        <p style={{ margin: '0 0 6px', textAlign: 'right', fontSize: '10pt' }}>PROFORMA INVOICE</p>
+        <table className="invoice-welte-t">
+          <tbody>
+            <tr>
+              <td rowSpan={3} style={{ verticalAlign: 'top', width: '46%' }}>
+                {invoiceLogo ? (
+                  <img
+                    src={invoiceLogo}
+                    alt=""
+                    style={{ maxHeight: 48, maxWidth: 180, objectFit: 'contain', display: 'block', marginBottom: 4 }}
+                  />
+                ) : null}
+                <div>Seller(name, address)</div>
+                <div style={{ fontWeight: 700, marginTop: 4 }}>{billedFrom || 'Your Company'}</div>
+                {billedFromDetails ? (
+                  <div style={{ whiteSpace: 'pre-line', marginTop: 2 }}>{billedFromDetails}</div>
+                ) : null}
+                {(invoiceSellerPhone || invoiceSellerEmail) && (
+                  <div style={{ marginTop: 4, fontSize: '9pt' }}>
+                    {invoiceSellerPhone ? <div>{invoiceSellerPhone}</div> : null}
+                    {invoiceSellerEmail ? <div>{invoiceSellerEmail}</div> : null}
+                  </div>
+                )}
+              </td>
+              <td style={{ width: '27%' }}>PROFORMA Invoice No.</td>
+              <td style={{ width: '27%', fontWeight: 700 }}>{invoiceRef || '—'}</td>
+            </tr>
+            <tr>
+              <td>Proforma Invoice Date: {formatWelteDate(invoiceIssueDateMs) || '—'}</td>
+              <td>Proforma Invoice Validity: {invoiceDueDateMs ? formatWelteDate(invoiceDueDateMs) : '—'}</td>
+            </tr>
+            <tr>
+              <td>
+                Buyer&apos;s Commercial Card No.:
+                {wt.buyersCommercialCardNo ? <div style={{ fontWeight: 600 }}>{wt.buyersCommercialCardNo}</div> : null}
+              </td>
+              <td>
+                Seller&apos;s Reference:
+                {wt.sellersReference ? <div style={{ fontWeight: 600 }}>{wt.sellersReference}</div> : null}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={3}>
+                <div>Buyer:</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{customerName || '—'}</div>
+                <div style={{ whiteSpace: 'pre-line', marginTop: 2 }}>{customerAddress || ''}</div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2}>
+                <div>Freight Forwarder:</div>
+                <div style={{ fontWeight: 700, marginTop: 2, whiteSpace: 'pre-line' }}>{wt.freightForwarder || '—'}</div>
+              </td>
+              <td>
+                <span>Country of Beneficiary: </span>
+                <span style={{ fontWeight: 700 }}>{wt.countryOfBeneficiary || '—'}</span>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div>Transportation mode and means:</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.transportMode || '—'}</div>
+              </td>
+              <td>
+                <div>Port of loading:</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.portOfLoading || '—'}</div>
+              </td>
+              <td>
+                <div>
+                  Country of Origin: <span style={{ fontWeight: 700 }}>{wt.countryOfOriginDefault || '—'}</span>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  Destination: <span style={{ fontWeight: 700 }}>{wt.destination || '—'}</span>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div>Port of Discharge:</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.portOfDischarge || '—'}</div>
+              </td>
+              <td>
+                <div>Place of delivery:</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.placeOfDelivery || '—'}</div>
+              </td>
+              <td>
+                <span>Terms of delivery: </span>
+                <span style={{ fontWeight: 700 }}>{wt.termsOfDelivery || '—'}</span>
+              </td>
+            </tr>
+            <tr>
+              <td>Transaction Currency</td>
+              <td colSpan={2} style={{ fontWeight: 700 }}>
+                {config.outputCurrency}
+              </td>
+            </tr>
+            <tr>
+              <td>Terms of payment:</td>
+              <td colSpan={2}>
+                {paymentTerms || '—'}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={3}>
+                <div>Shipping marks, Transportation unit ID</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.shippingMarksLine || '—'}</div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={3}>
+                <div>No. and kinds of packages/shipping description of goods</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.packagesDescription || '—'}</div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={3}>
+                <div>Commodity</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.commoditySummary || '—'}</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div>Total Gross Weight (kg)</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.totalGrossWeightKg || '—'}</div>
+              </td>
+              <td>
+                <div>Total Volume (m3)</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.totalVolumeM3 || '—'}</div>
+              </td>
+              <td>
+                <div>No. and Kind of Standard:</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.packageKindsStd || '—'}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="invoice-welte-t invoice-welte-items" style={{ marginTop: 8 }}>
+          <thead>
+            <tr>
+              <th style={{ width: '5%' }}>Item</th>
+              <th style={{ width: '28%' }}>Item Description</th>
+              <th style={{ width: '12%' }}>Origin</th>
+              <th style={{ width: '12%' }}>Commodity Code</th>
+              <th style={{ width: '11%' }}>Net Wt. (Kg)</th>
+              <th style={{ width: '14%' }}>Quantity</th>
+              <th style={{ width: '9%' }}>Unit Price</th>
+              <th style={{ width: '11%' }}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activeProducts.map((p, idx) => {
+              const override = invoiceOverrides[p.id] || {};
+              const displayQty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
+              const lineNet = lineNetAfterLineDisc(p, welteTerm);
+              const uPrice = welteDisplayUnitPrice(p);
+              const originDisp = (override.origin ?? wt.countryOfOriginDefault ?? '').trim() || '—';
+              const nw = override.netWeightKg;
+              return (
+                <tr key={p.id}>
+                  <td className="center">{idx + 1}</td>
+                  <td>{p.name}</td>
+                  <td>
+                    {isInvoiceEditable ? (
+                      <input
+                        type="text"
+                        value={override.origin ?? ''}
+                        onChange={(e) =>
+                          setInvoiceOverrides((prev) => ({
+                            ...prev,
+                            [p.id]: { ...prev[p.id], origin: e.target.value },
+                          }))
+                        }
+                        className="welte-inline-inp"
+                      />
+                    ) : (
+                      originDisp
+                    )}
+                  </td>
+                  <td>{p.hsCode || '—'}</td>
+                  <td className="num">
+                    {isInvoiceEditable ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={nw === undefined || nw === null ? '' : nw}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setInvoiceOverrides((prev) => ({
+                            ...prev,
+                            [p.id]: {
+                              ...prev[p.id],
+                              netWeightKg: raw === '' ? undefined : parseFloat(raw) || 0,
+                            },
+                          }));
+                        }}
+                        className="welte-inline-inp welte-inline-inp-num"
+                      />
+                    ) : typeof nw === 'number' && Number.isFinite(nw) && nw > 0 ? (
+                      formatNumber(nw)
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="num">
+                    {isInvoiceEditable ? (
+                      <input
+                        type="number"
+                        value={displayQty}
+                        onChange={(e) =>
+                          setInvoiceOverrides((prev) => ({
+                            ...prev,
+                            [p.id]: { ...prev[p.id], qty: parseFloat(e.target.value) || 0 },
+                          }))
+                        }
+                        className="welte-inline-inp welte-inline-inp-num"
+                      />
+                    ) : (
+                      formatNumber(displayQty)
+                    )}{' '}
+                    {p.measurementUnit || 'pieces'}
+                  </td>
+                  <td className="num">
+                    {isInvoiceEditable ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={uPrice}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          setInvoiceOverrides((prev) => {
+                            const curr = prev[p.id] || {};
+                            const up = { ...(curr.unitPrices || {}) };
+                            const pp = { ...(curr.packPrices || {}) };
+                            if (invoiceBasis === 'pack' && (p.itemsPerPack || 0) > 0) {
+                              pp[welteTerm] = v * (p.itemsPerPack || 1);
+                            } else {
+                              up[welteTerm] = v;
+                            }
+                            return { ...prev, [p.id]: { ...curr, unitPrices: up, packPrices: pp } };
+                          });
+                        }}
+                        className="welte-inline-inp welte-inline-inp-num"
+                      />
+                    ) : (
+                      formatMoney(uPrice, config.outputCurrency)
+                    )}
+                  </td>
+                  <td className="num">{formatMoney(lineNet, config.outputCurrency)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <table className="invoice-welte-t" style={{ marginTop: 8 }}>
+          <tbody>
+            <tr>
+              <td style={{ width: '55%' }}>Discount</td>
+              <td className="num" style={{ width: '22%' }}>
+                {formatMoney(welteGlobalDiscountAmt, config.outputCurrency)}
+              </td>
+              <td className="num" style={{ width: '23%', fontWeight: 700 }}>
+                {config.outputCurrency}
+              </td>
+            </tr>
+            {activeInvoiceExtras.map((row) => (
+              <tr key={row.id}>
+                <td>{row.label.trim()}</td>
+                <td className="num">{formatMoney(Number(row.amount) || 0, config.outputCurrency)}</td>
+                <td className="num" style={{ fontWeight: 700 }}>
+                  {config.outputCurrency}
+                </td>
+              </tr>
+            ))}
+            {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
+              <tr>
+                <td>VAT ({Number(invoiceVatPercent)}%)</td>
+                <td className="num">{formatMoney(welteVat, config.outputCurrency)}</td>
+                <td className="num" style={{ fontWeight: 700 }}>
+                  {config.outputCurrency}
+                </td>
+              </tr>
+            )}
+            <tr>
+              <td style={{ fontWeight: 700 }}>Total Amount</td>
+              <td className="num" style={{ fontWeight: 700 }}>
+                {formatMoney(welteGrand, config.outputCurrency)}
+              </td>
+              <td className="num" style={{ fontWeight: 700 }}>
+                {config.outputCurrency}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={3}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Note:</div>
+                <div style={{ whiteSpace: 'pre-line' }}>{wt.certificationNote || '—'}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {bankDetails ? (
+          <table className="invoice-welte-t" style={{ marginTop: 8 }}>
+            <tbody>
+              <tr>
+                <td>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Payment / Bank Details</div>
+                  <div style={{ whiteSpace: 'pre-line' }}>{bankDetails}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        ) : null}
+
+        <table className="invoice-welte-t" style={{ marginTop: 8 }}>
+          <tbody>
+            <tr>
+              <td style={{ width: '50%' }}>
+                <div>Name of Signatory</div>
+                <div style={{ fontWeight: 700, marginTop: 8, minHeight: 28 }}>{wt.signatoryName || '—'}</div>
+              </td>
+              <td style={{ width: '50%' }}>
+                <div>Place and date of issue</div>
+                <div style={{ fontWeight: 700, marginTop: 8 }}>
+                  {[(wt.issuePlace || '').trim(), formatWelteDate(invoiceIssueDateMs) || ''].filter(Boolean).join(' · ') ||
+                    '—'}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span style={{ fontWeight: 700 }}>TOTAL KG</span>
+                <div style={{ marginTop: 4 }}>{welteNetWtAny ? formatNumber(welteNetWtSum) : '—'}</div>
+              </td>
+              <td>
+                <span style={{ fontWeight: 700 }}>TOTAL PIECES</span>
+                <div style={{ marginTop: 4 }}>{formatNumber(welteQtySum)}</div>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={2} className="num" style={{ fontWeight: 700, fontSize: '11pt' }}>
+                {formatMoney(welteGrand, config.outputCurrency)} {config.outputCurrency}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {notes ? (
+          <div style={{ marginTop: 8, fontSize: '9pt', whiteSpace: 'pre-line' }}>
+            <span style={{ fontWeight: 700 }}>Remarks: </span>
+            {notes}
+          </div>
+        ) : null}
+      </>
+    );
+
     return (
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
           {/* Controls */}
@@ -9120,6 +9555,20 @@ function AppInner() {
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Document Title</label>
                        <input type="text" value={invoiceTitle} onChange={(e) => setInvoiceTitle(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
+                   </div>
+                   <div>
+                       <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Proforma layout</label>
+                       <select
+                           value={invoiceLayout}
+                           onChange={(e) => setInvoiceLayout(e.target.value === 'welte' ? 'welte' : 'standard')}
+                           className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
+                       >
+                           <option value="standard">Standard (multi-column)</option>
+                           <option value="welte">Welte-style trade proforma</option>
+                       </select>
+                       <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                           Welte matches the bordered export proforma: seller header, shipment blocks, single-price goods table, discount / charges / total, certification note, and signatory lines (A4 portrait).
+                       </p>
                    </div>
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Invoice #</label>
@@ -9391,12 +9840,16 @@ function AppInner() {
                                <button
                                    key={opt.id}
                                    type="button"
-                                   onClick={() => setInvoiceOrientation(opt.id as 'portrait' | 'landscape')}
+                                   onClick={() => {
+                                       if (invoiceLayout === 'welte' && opt.id === 'landscape') return;
+                                       setInvoiceOrientation(opt.id as 'portrait' | 'landscape');
+                                   }}
+                                   disabled={invoiceLayout === 'welte' && opt.id === 'landscape'}
                                    className={`flex flex-col items-center gap-1 px-2 py-2 text-xs font-semibold rounded-lg border transition-all ${
                                        invoiceOrientation === opt.id
                                            ? 'border-blue-400 bg-blue-50 text-blue-700 shadow-sm'
                                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                                   }`}
+                                   } ${invoiceLayout === 'welte' && opt.id === 'landscape' ? 'opacity-40 cursor-not-allowed' : ''}`}
                                    title={`A4 ${opt.label} — ${opt.hint}`}
                                >
                                    <div
@@ -9414,8 +9867,66 @@ function AppInner() {
                        </div>
                        <p className="text-[10px] text-slate-500 mt-1 leading-tight">
                            Landscape is great when you show many Incoterm columns or both unit + pack pricing — more horizontal room, no cramped totals.
+                           {invoiceLayout === 'welte' ? ' Welte layout always prints portrait.' : ''}
                        </p>
                    </div>
+
+                   {invoiceLayout === 'welte' && (
+                       <details open className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
+                           <summary className="text-xs font-bold text-slate-700 cursor-pointer">Trade / shipment fields (Welte)</summary>
+                           <p className="text-[10px] text-slate-500">
+                               Unit price column uses the scenario selected under &quot;Flat discounts apply to scenario&quot; ({invoiceDiscountBaseTerm}).
+                           </p>
+                           <div className="grid grid-cols-1 gap-2 max-h-[min(22rem,45vh)] overflow-y-auto pr-1">
+                               {(
+                                   [
+                                       ['buyersCommercialCardNo', "Buyer's commercial card no."],
+                                       ['sellersReference', "Seller's reference"],
+                                       ['freightForwarder', 'Freight forwarder (name & address)'],
+                                       ['countryOfBeneficiary', 'Country of beneficiary'],
+                                       ['transportMode', 'Transportation mode and means'],
+                                       ['portOfLoading', 'Port of loading'],
+                                       ['countryOfOriginDefault', 'Default country of origin (line override wins)'],
+                                       ['destination', 'Destination'],
+                                       ['portOfDischarge', 'Port of discharge'],
+                                       ['placeOfDelivery', 'Place of delivery'],
+                                       ['termsOfDelivery', 'Terms of delivery (e.g. EX WORK)'],
+                                       ['shippingMarksLine', 'Shipping marks / transportation unit ID'],
+                                       ['packagesDescription', 'No. and kinds of packages / shipping description'],
+                                       ['commoditySummary', 'Commodity summary heading'],
+                                       ['totalGrossWeightKg', 'Total gross weight (kg) — display text'],
+                                       ['totalVolumeM3', 'Total volume (m³) — display text'],
+                                       ['packageKindsStd', 'No. and kind of standard (e.g. DIN 7715)'],
+                                       ['signatoryName', 'Name of signatory'],
+                                       ['issuePlace', 'Place of issue (printed next to date)'],
+                                   ] as const
+                               ).map(([key, lab]) => (
+                                   <label key={key} className="block">
+                                       <span className="text-[10px] font-semibold text-slate-500 uppercase">{lab}</span>
+                                       <textarea
+                                           rows={key === 'freightForwarder' ? 3 : 2}
+                                           value={(invoiceWelteTrade as any)[key] || ''}
+                                           onChange={(e) =>
+                                               setInvoiceWelteTrade((prev) => ({ ...prev, [key]: e.target.value }))
+                                           }
+                                           className="w-full mt-0.5 text-xs border border-slate-200 rounded px-2 py-1 resize-y"
+                                       />
+                                   </label>
+                               ))}
+                               <label className="block">
+                                   <span className="text-[10px] font-semibold text-slate-500 uppercase">Certification note</span>
+                                   <textarea
+                                       rows={4}
+                                       value={invoiceWelteTrade.certificationNote || ''}
+                                       onChange={(e) =>
+                                           setInvoiceWelteTrade((prev) => ({ ...prev, certificationNote: e.target.value }))
+                                       }
+                                       className="w-full mt-0.5 text-xs border border-slate-200 rounded px-2 py-1 resize-y"
+                                   />
+                               </label>
+                           </div>
+                       </details>
+                   )}
 
                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                        <p className="text-xs font-bold text-slate-700 uppercase">Discounts</p>
@@ -9614,12 +10125,18 @@ function AppInner() {
           <div className="flex-1 bg-slate-200/60 overflow-y-auto p-4 md:p-6 rounded-lg border border-slate-200 print:p-0 print:border-0 print:bg-white print:overflow-visible" id="invoice-preview">
                <div
                    className={`invoice-doc shadow-md mx-auto print:shadow-none ${
-                       invoiceOrientation === 'landscape'
-                           ? 'invoice-landscape-page invoice-doc--landscape'
-                           : 'invoice-doc--portrait'
+                       invoiceLayout === 'welte'
+                           ? 'invoice-doc--portrait invoice-doc--welte'
+                           : invoiceOrientation === 'landscape'
+                               ? 'invoice-landscape-page invoice-doc--landscape'
+                               : 'invoice-doc--portrait'
                    }`}
                    style={{ display: 'flex', flexDirection: 'column' }}
                >
+                   {invoiceLayout === 'welte' ? (
+                       welteBody
+                   ) : (
+                   <>
                    {/* ── HEADER ────────────────────────────────────────────── */}
                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24 }}>
                        <div style={{ minWidth: 0, flex: 1 }}>
@@ -9997,6 +10514,8 @@ function AppInner() {
                    <div className="doc-footer">
                        Generated by Tohid Dayhami Export⁺ — issued {new Date(invoiceIssueDateMs || Date.now()).toLocaleString()}
                    </div>
+                   </>
+                   )}
                </div>
           </div>
       </div>
@@ -10866,6 +11385,43 @@ function AppInner() {
             border-bottom: 1px solid #94a3b8;
             height: 36px;
         }
+        .invoice-doc--welte {
+            font-family: 'Times New Roman', 'B Nazanin', 'Tahoma', Georgia, serif;
+            font-size: 10pt;
+            line-height: 1.35;
+            color: #000000;
+        }
+        .invoice-doc--welte .invoice-welte-t {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .invoice-doc--welte .invoice-welte-t th,
+        .invoice-doc--welte .invoice-welte-t td {
+            border: 1px solid #000000;
+            padding: 4px 6px;
+            vertical-align: top;
+            word-wrap: break-word;
+        }
+        .invoice-doc--welte .invoice-welte-t th {
+            font-weight: 700;
+            text-align: center;
+            background: #f5f5f5;
+        }
+        .invoice-doc--welte .invoice-welte-t td.center,
+        .invoice-doc--welte .invoice-welte-t th { text-align: center; }
+        .invoice-doc--welte .invoice-welte-t td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .invoice-doc--welte .invoice-welte-items th { font-size: 9pt; }
+        .invoice-doc--welte .welte-inline-inp {
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid #93c5fd;
+            border-radius: 2px;
+            padding: 2px 4px;
+            font: inherit;
+            background: rgba(239, 246, 255, 0.35);
+        }
+        .invoice-doc--welte .welte-inline-inp-num { text-align: right; }
         .invoice-doc input[type="number"],
         .invoice-doc input[type="text"] {
             font: inherit;
@@ -10878,6 +11434,11 @@ function AppInner() {
             /* Invoice prints exactly as previewed: no shadow, no extra margin */
             .invoice-doc { box-shadow: none !important; margin: 0 auto !important; }
             .invoice-doc input { background: transparent !important; border: none !important; padding: 0 !important; }
+            .invoice-doc--welte .welte-inline-inp {
+                border: none !important;
+                background: transparent !important;
+                padding: 0 !important;
+            }
             .invoice-doc table.items thead { display: table-header-group; }
             .invoice-doc table.items tfoot { display: table-row-group; }
             .invoice-doc table.items tbody tr { page-break-inside: avoid; break-inside: avoid; }
