@@ -460,5 +460,11 @@ export interface SavedProject {
     invoiceOrientation?: 'portrait' | 'landscape';
     containerCapacity?: number;
     containerType?: string;
+    /** Issue date on proforma + archive (ms epoch). */
+    invoiceIssueDateMs?: number;
+    /** Optional due / validity date (ms epoch). */
+    invoiceDueDateMs?: number;
+    /** When set, editor can overwrite this `invoiceArchive` document. */
+    editingArchiveInvoiceId?: string | null;
   };
 }

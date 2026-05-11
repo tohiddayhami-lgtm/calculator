@@ -179,6 +179,19 @@ function cloneLogisticsDeep(l: Logistics): Logistics {
   return normalizeLogisticsSnapshot(JSON.parse(JSON.stringify(l)));
 }
 
+function formatMsForDatetimeLocal(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function parseDatetimeLocalToMs(s: string): number | undefined {
+  if (!s || !s.trim()) return undefined;
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : undefined;
+}
+
 // --- GLOBAL DECLARATIONS ---
 declare global {
   interface Window {
@@ -2232,6 +2245,9 @@ function AppInner() {
   const [paymentTerms, setPaymentTerms] = useState('T/T 50% Advance');
   const [invoiceRef, setInvoiceRef] = useState(String(Math.floor(Math.random() * 10000)));
   const [invoiceTitle, setInvoiceTitle] = useState('Proforma Invoice');
+  const [invoiceIssueDateMs, setInvoiceIssueDateMs] = useState<number>(() => Date.now());
+  const [invoiceDueDateMs, setInvoiceDueDateMs] = useState<number | undefined>(undefined);
+  const [editingArchiveInvoiceId, setEditingArchiveInvoiceId] = useState<string | null>(null);
   const [invoiceBasis, setInvoiceBasis] = useState<'unit' | 'pack' | 'both'>('both');
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
   const [isInvoiceEditable, setIsInvoiceEditable] = useState(false);
@@ -3095,7 +3111,8 @@ function AppInner() {
     return {
       invoiceRef: invoiceRef || `INV-${Date.now()}`,
       invoiceTitle: invoiceTitle || 'Proforma Invoice',
-      issueDate: Date.now(),
+      issueDate: Number.isFinite(invoiceIssueDateMs) && invoiceIssueDateMs > 0 ? invoiceIssueDateMs : Date.now(),
+      dueDate: invoiceDueDateMs,
       status,
       customerName,
       customerAddress,
@@ -3159,6 +3176,7 @@ function AppInner() {
         15000,
         'Archive invoice'
       );
+      setEditingArchiveInvoiceId(null);
       setSelectedArchiveId(docRef.id);
       setShowArchiveModal(true);
       if (notice) alert(notice);
@@ -3194,8 +3212,126 @@ function AppInner() {
         'Delete archived invoice'
       );
       if (selectedArchiveId === id) setSelectedArchiveId(null);
+      if (editingArchiveInvoiceId === id) setEditingArchiveInvoiceId(null);
     } catch (e: any) {
       alert('Could not delete invoice: ' + (e?.message || e));
+    }
+  };
+
+  const recallArchivedInvoiceForEditing = (inv: ArchivedInvoice) => {
+    setCustomerName(inv.customerName || '');
+    setCustomerAddress(inv.customerAddress || '');
+    setInvoiceRef(inv.invoiceRef || '');
+    setInvoiceTitle(inv.invoiceTitle || 'Proforma Invoice');
+    setBilledFrom(inv.billedFrom || '');
+    setBilledFromDetails(inv.billedFromDetails || '');
+    setInvoiceLogo(inv.invoiceLogo || '');
+    setInvoiceSellerEmail(inv.invoiceSellerEmail || '');
+    setInvoiceSellerPhone(inv.invoiceSellerPhone || '');
+    setInvoiceSellerWebsite(inv.invoiceSellerWebsite || '');
+    setInvoiceSellerTaxId(inv.invoiceSellerTaxId || '');
+    setPaymentTerms(inv.paymentTerms || 'T/T 50% Advance');
+    setBankDetails(inv.bankDetails || '');
+    setNotes(inv.notes || '');
+    const terms = inv.invoiceTerms?.length ? [...inv.invoiceTerms] : ['FOB', 'DDP'];
+    setInvoiceTerms(terms);
+    setInvoiceBasis(inv.invoiceBasis || 'both');
+    setShowImages(!!inv.showImages);
+    setConfig((c) => ({ ...c, outputCurrency: inv.outputCurrency || c.outputCurrency }));
+    const baseTerm =
+      inv.invoiceDiscountBaseTerm && terms.includes(inv.invoiceDiscountBaseTerm)
+        ? inv.invoiceDiscountBaseTerm
+        : terms[0] || 'FOB';
+    setInvoiceDiscountBaseTerm(baseTerm);
+    setInvoiceGlobalDiscountMode(inv.invoiceGlobalDiscountMode || 'none');
+    setInvoiceGlobalDiscountValue(Number(inv.invoiceGlobalDiscountValue) || 0);
+    setInvoiceVatEnabled(!!inv.invoiceVatEnabled);
+    setInvoiceVatPercent(
+      inv.invoiceVatPercent !== undefined && inv.invoiceVatPercent !== null ? Number(inv.invoiceVatPercent) : 9
+    );
+    setInvoiceExtraCharges(normalizeInvoiceExtraCharges(inv.invoiceExtraCharges));
+    setInvoiceIssueDateMs(inv.issueDate && Number.isFinite(inv.issueDate) ? inv.issueDate : Date.now());
+    setInvoiceDueDateMs(
+      inv.dueDate !== undefined && inv.dueDate !== null && Number.isFinite(inv.dueDate) ? inv.dueDate : undefined
+    );
+    setEditingArchiveInvoiceId(inv.id);
+
+    const productIds = new Set(products.map((p) => p.id));
+    const missing: number[] = [];
+    const overrides: Record<
+      number,
+      {
+        qty?: number;
+        unitPrices?: Record<string, number>;
+        packPrices?: Record<string, number>;
+        discountPercent?: number;
+        discountAmount?: number;
+      }
+    > = {};
+    const included: number[] = [];
+    (inv.items || []).forEach((line) => {
+      if (!productIds.has(line.productId)) {
+        missing.push(line.productId);
+        return;
+      }
+      included.push(line.productId);
+      overrides[line.productId] = {
+        qty: line.qty,
+        unitPrices: { ...line.unitPrices },
+        packPrices: { ...line.packPrices },
+        discountPercent: line.discountPercent || 0,
+        discountAmount: line.discountAmount || 0,
+      };
+    });
+    setInvoiceOverrides(overrides);
+    setInvoiceIncludedIds(included.length > 0 ? included : null);
+    setIsInvoiceEditable(true);
+    if (missing.length) {
+      alert(
+        `بازیابی انجام شد؛ ${included.length} ردیف با کالاهای همین پروژه هم‌خوان شد.\nشناسهٔ کالاهایی که در پروژه نیستند و حذف شدند: ${missing.join(', ')}`
+      );
+    }
+    setShowArchiveModal(false);
+    setShowPaymentForm(false);
+    setView('invoice');
+  };
+
+  const handleUpdateArchivedInvoiceFromEditor = async () => {
+    const id = editingArchiveInvoiceId;
+    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!id || !isRealCloudUser) {
+      alert('برای به‌روزرسانی آرشیو، ابتدا وارد حساب ابری شوید و از آرشیو «بازخوانی برای ویرایش» را بزنید.');
+      return;
+    }
+    const existing = archivedInvoices.find((x) => x.id === id);
+    if (!existing) {
+      alert('این فاکتور در آرشیو پیدا نشد؛ لیست را رفرش کنید.');
+      return;
+    }
+    const snap = buildArchiveSnapshot(existing.status || 'issued');
+    if (!snap) return;
+    const merged = {
+      ...snap,
+      issueDate: Number.isFinite(invoiceIssueDateMs) && invoiceIssueDateMs > 0 ? invoiceIssueDateMs : snap.issueDate,
+      dueDate: invoiceDueDateMs,
+      payments: existing.payments || [],
+    };
+    try {
+      const { data: prepared, notice } = await prepareCloudProjectData(merged, user.uid, setUploadProgress);
+      await withTimeout(
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive', id), {
+          ...prepared,
+          updatedAt: serverTimestamp(),
+        }),
+        20000,
+        'Update archived invoice'
+      );
+      setUploadProgress(null);
+      if (notice) alert(notice);
+      alert('فاکتور آرشیو با تغییرات شما به‌روز شد (پرداخت‌ها حفظ شدند).');
+    } catch (e: any) {
+      setUploadProgress(null);
+      alert('به‌روزرسانی آرشیو ناموفق: ' + (e?.message || e));
     }
   };
 
@@ -3474,7 +3610,10 @@ function AppInner() {
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
         invoiceExtraCharges,
         invoiceOrientation,
-        containerCapacity, containerType
+        containerCapacity, containerType,
+        invoiceIssueDateMs,
+        invoiceDueDateMs,
+        editingArchiveInvoiceId
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -3630,6 +3769,12 @@ function AppInner() {
     setShowImages(project.data.showImages || false);
     setShowPackInfo(project.data.showPackInfo !== undefined ? project.data.showPackInfo : true);
     setInvoiceTitle(project.data.invoiceTitle || 'Proforma Invoice');
+    const iss = (project.data as any).invoiceIssueDateMs;
+    setInvoiceIssueDateMs(typeof iss === 'number' && Number.isFinite(iss) && iss > 0 ? iss : Date.now());
+    const due = (project.data as any).invoiceDueDateMs;
+    setInvoiceDueDateMs(typeof due === 'number' && Number.isFinite(due) && due > 0 ? due : undefined);
+    const eid = (project.data as any).editingArchiveInvoiceId;
+    setEditingArchiveInvoiceId(typeof eid === 'string' && eid.length > 0 ? eid : null);
     setInvoiceBasis(project.data.invoiceBasis || 'both');
     setBankDetails(project.data.bankDetails || 'Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
     setIsInvoiceEditable((project.data as any).isInvoiceEditable || false);
@@ -4695,7 +4840,10 @@ function AppInner() {
             invoiceExtraCharges,
             invoiceOrientation,
             containerCapacity,
-            containerType
+            containerType,
+            invoiceIssueDateMs,
+            invoiceDueDateMs,
+            editingArchiveInvoiceId
           }
         };
         sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
@@ -4752,7 +4900,10 @@ function AppInner() {
     invoiceExtraCharges,
     invoiceOrientation,
     containerCapacity,
-    containerType
+    containerType,
+    invoiceIssueDateMs,
+    invoiceDueDateMs,
+    editingArchiveInvoiceId
   ]);
 
 
@@ -8285,6 +8436,69 @@ function AppInner() {
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Invoice #</label>
                        <input type="text" value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
                    </div>
+                   <div className="grid grid-cols-1 gap-2">
+                       <div>
+                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Issue date &amp; time</label>
+                           <input
+                               type="datetime-local"
+                               value={formatMsForDatetimeLocal(Number.isFinite(invoiceIssueDateMs) && invoiceIssueDateMs > 0 ? invoiceIssueDateMs : Date.now())}
+                               onChange={(e) => {
+                                   const ms = parseDatetimeLocalToMs(e.target.value);
+                                   if (ms !== undefined) setInvoiceIssueDateMs(ms);
+                               }}
+                               className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
+                           />
+                       </div>
+                       <div>
+                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Due date (optional)</label>
+                           <input
+                               type="datetime-local"
+                               value={invoiceDueDateMs ? formatMsForDatetimeLocal(invoiceDueDateMs) : ''}
+                               onChange={(e) => {
+                                   const ms = parseDatetimeLocalToMs(e.target.value);
+                                   setInvoiceDueDateMs(ms);
+                               }}
+                               className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
+                           />
+                           {invoiceDueDateMs ? (
+                               <button
+                                   type="button"
+                                   className="text-[10px] text-slate-500 hover:text-slate-700 mt-0.5"
+                                   onClick={() => setInvoiceDueDateMs(undefined)}
+                               >
+                                   Clear due date
+                               </button>
+                           ) : null}
+                       </div>
+                   </div>
+
+                   {editingArchiveInvoiceId && (
+                       <div className="p-3 rounded-lg border border-amber-200 bg-amber-50/90 space-y-2">
+                           <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                               <Pencil className="w-3.5 h-3.5" />
+                               ویرایش فاکتور آرشیو
+                           </p>
+                           <p className="text-[10px] text-amber-900/90 leading-snug">
+                               تغییرات آدرس، تاریخ، مبالغ و … را بزنید؛ سپس ذخیره روی آرشیو را بزنید. ردیف‌های پرداخت قبلی حذف نمی‌شوند.
+                           </p>
+                           <div className="flex flex-col gap-1.5">
+                               <button
+                                   type="button"
+                                   onClick={() => void handleUpdateArchivedInvoiceFromEditor()}
+                                   className="w-full text-xs font-bold bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700"
+                               >
+                                   ذخیره روی همان فاکتور آرشیو
+                               </button>
+                               <button
+                                   type="button"
+                                   onClick={() => setEditingArchiveInvoiceId(null)}
+                                   className="w-full text-[11px] font-medium text-amber-900/80 py-1.5 rounded border border-amber-200 bg-white hover:bg-amber-100/50"
+                               >
+                                   قطع حالت ویرایش آرشیو
+                               </button>
+                           </div>
+                       </div>
+                   )}
                    
                    <hr className="border-slate-100"/>
 
@@ -8720,7 +8934,10 @@ function AppInner() {
                            <h1>{invoiceTitle}</h1>
                            <div className="invoice-meta" style={{ marginTop: 8 }}>
                                <div><b>Invoice no.</b> {invoiceRef || '—'}</div>
-                               <div><b>Date</b> {new Date().toLocaleDateString()}</div>
+                               <div><b>Date</b> {new Date(invoiceIssueDateMs || Date.now()).toLocaleString()}</div>
+                               {invoiceDueDateMs ? (
+                                   <div><b>Due</b> {new Date(invoiceDueDateMs).toLocaleString()}</div>
+                               ) : null}
                                {invoiceTerms.length > 0 && (
                                    <div><b>Incoterms</b> {invoiceTerms.join(' · ')}</div>
                                )}
@@ -9086,7 +9303,7 @@ function AppInner() {
                    </div>
 
                    <div className="doc-footer">
-                       Generated by Tohid Dayhami Export⁺ — {new Date().toLocaleDateString()}
+                       Generated by Tohid Dayhami Export⁺ — issued {new Date(invoiceIssueDateMs || Date.now()).toLocaleString()}
                    </div>
                </div>
           </div>
@@ -10393,7 +10610,9 @@ function AppInner() {
                                                   <div className="min-w-0">
                                                       <h2 className="text-xl font-bold text-slate-900">{selected.invoiceTitle} #{selected.invoiceRef}</h2>
                                                       <p className="text-xs text-slate-500 mt-1">
-                                                          Issued {new Date(selected.issueDate).toLocaleString()} · {selected.selectedTerm} basis · {selected.outputCurrency}
+                                                          Issued {new Date(selected.issueDate).toLocaleString()}
+                                                          {selected.dueDate ? ` · Due ${new Date(selected.dueDate).toLocaleString()}` : ''}
+                                                          {' '}· {selected.selectedTerm} basis · {selected.outputCurrency}
                                                       </p>
                                                   </div>
                                                   <div className="flex flex-wrap items-center gap-2">
@@ -10409,6 +10628,14 @@ function AppInner() {
                                                           <option value="overdue">Overdue</option>
                                                           <option value="cancelled">Cancelled</option>
                                                       </select>
+                                                      <button
+                                                          type="button"
+                                                          onClick={() => recallArchivedInvoiceForEditing(selected)}
+                                                          className="text-[11px] font-semibold text-blue-700 hover:text-blue-800 px-2 py-1 rounded border border-blue-200 bg-blue-50 inline-flex items-center gap-1"
+                                                          title="Load this snapshot into Proforma Invoice to edit address, dates, lines, then save back to archive"
+                                                      >
+                                                          <Pencil className="w-3 h-3" /> Recall for edit
+                                                      </button>
                                                       <button
                                                           onClick={() => handleDeleteArchivedInvoice(selected.id)}
                                                           className="text-[11px] font-medium text-red-600 hover:text-red-700 px-2 py-1 rounded border border-red-100 bg-white inline-flex items-center gap-1"
