@@ -4316,6 +4316,7 @@ function AppInner() {
         const totalSell = data.sell;
         const totalProfit = totalSell - totalCost;
         
+        /** @deprecated for mixed SKUs — use productScenarioBreakdown per line; kept for charts that need a single blended figure */
         const unitSell = totalQty > 0 ? totalSell / totalQty : 0;
         const unitCost = totalQty > 0 ? totalCost / totalQty : 0;
         const unitProfit = totalQty > 0 ? totalProfit / totalQty : 0;
@@ -4339,13 +4340,76 @@ function AppInner() {
         };
     });
 
+    const allocatedUnitCostsAtTerms = (unitCostOutput: number) => {
+        const cEXW = unitCostOutput + uExwExtra;
+        const cFCA = cEXW + uInland;
+        const cFOB = cFCA + uPort;
+        const cCIF = cFOB + uFreight + uInsurance;
+        const uDuty = cCIF * (logistics.dutyPercent / 100);
+        const cDDP = cCIF + uDest + uDuty + uExtras;
+        return { EXW: cEXW, FCA: cFCA, FOB: cFOB, CIF: cCIF, DDP: cDDP } as Record<string, number>;
+    };
+
+    type ScenarioTermRow = {
+        term: string;
+        unitCost: number;
+        unitSell: number;
+        unitProfit: number;
+        lineCost: number;
+        lineSell: number;
+        lineProfit: number;
+        valueAdd: number;
+        markupPercent: number;
+        profitMargin: number;
+    };
+
+    const productScenarioBreakdown = processedProducts
+        .filter((p) => p.isActive)
+        .map((p) => {
+            const costsByTerm = allocatedUnitCostsAtTerms(p.unitCostOutput);
+            let prevUnitSell = 0;
+            const rows: ScenarioTermRow[] = terms.map((term, index) => {
+                const unitCost = costsByTerm[term] ?? 0;
+                const unitSell = (p.scenarioPrices && p.scenarioPrices[term]) || 0;
+                const unitProfit = unitSell - unitCost;
+                const q = p.qty || 0;
+                const lineCost = unitCost * q;
+                const lineSell = unitSell * q;
+                const lineProfit = unitProfit * q;
+                const valueAdd = index === 0 ? unitSell : unitSell - prevUnitSell;
+                prevUnitSell = unitSell;
+                const markupPercent = unitCost > 0 ? (unitProfit / unitCost) * 100 : 0;
+                const profitMargin = unitSell > 0 ? (unitProfit / unitSell) * 100 : 0;
+                return {
+                    term,
+                    unitCost,
+                    unitSell,
+                    unitProfit,
+                    lineCost,
+                    lineSell,
+                    lineProfit,
+                    valueAdd,
+                    markupPercent,
+                    profitMargin
+                };
+            });
+            return {
+                id: p.id,
+                name: p.name,
+                sku: p.sku,
+                qty: p.qty,
+                rows
+            };
+        });
+
     return { 
         processedProducts, 
         costs, 
         totalLogisticsCost, 
         breakdown, 
         scenarioData, 
-        totalQty
+        totalQty,
+        productScenarioBreakdown
     };
   }, [products, logistics, config, rates]);
 
@@ -5180,17 +5244,24 @@ function AppInner() {
           </div>
       </div>
 
-      {/* 4. SCENARIO ANALYSIS TABLE */}
+      {/* 4. SCENARIO ANALYSIS — per product + shipment totals */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-              <h2 className="font-semibold text-slate-700 flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-indigo-500" />
-                  Scenario Analysis (Aggregate)
-              </h2>
-              <div className="flex gap-1">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
+              <div>
+                  <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-indigo-500" />
+                      Scenario analysis
+                  </h2>
+                  <p className="text-[11px] text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                      Each <strong>active</strong> line shows its own unit cost (product + evenly spread logistics), scenario sell, and margin per Incoterm.
+                      The shipment summary is the sum of all lines (not a unit average across different SKUs).
+                  </p>
+              </div>
+              <div className="flex flex-wrap gap-1">
                    {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].map(term => (
                        <button 
                         key={term} 
+                        type="button"
                         onClick={() => toggleScenarioTerm(term)}
                         className={`text-xs px-2 py-1 rounded border ${visibleScenarioTerms.includes(term) ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-400'}`}
                        >
@@ -5199,47 +5270,100 @@ function AppInner() {
                    ))}
               </div>
           </div>
-          <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left min-w-[1000px]">
-                  <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
-                      <tr>
-                          <th className="px-4 py-2">Incoterm</th>
-                          <th className="px-4 py-2 text-right">Unit Cost</th>
-                          <th className="px-4 py-2 text-right text-green-600">Unit Profit</th>
-                          <th className="px-4 py-2 text-right bg-slate-100/50">Unit Price</th>
-                          <th className="px-4 py-2 text-right">Markup %</th>
-                          <th className="px-4 py-2 text-right">Margin %</th>
-                          <th className="px-4 py-2 text-right text-slate-400">Total Profit</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                      {calculations.breakdown.filter(b => visibleScenarioTerms.includes(b.term)).map((row) => {
-                          const mColor = row.profitMargin >= 20 ? 'text-emerald-600' : row.profitMargin >= 10 ? 'text-amber-600' : 'text-red-500';
-                          const mBorder = row.profitMargin >= 20 ? 'border-l-emerald-400' : row.profitMargin >= 10 ? 'border-l-amber-400' : 'border-l-red-400';
-                          const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
-                          return (
-                          <tr key={row.term} className={`hover:bg-slate-50/80 border-l-4 ${mBorder} transition-colors`}>
-                              <td className="px-4 py-3">
-                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold ${termBadge[row.term] || 'bg-slate-100 text-slate-700'}`}>{row.term}</span>
-                              </td>
-                              <td className="px-4 py-3 text-right text-slate-600 font-mono text-sm">{formatMoney(row.unitCost, config.outputCurrency)}</td>
-                              <td className="px-4 py-3 text-right font-semibold text-emerald-600 font-mono text-sm">{formatMoney(row.unitProfit, config.outputCurrency)}</td>
-                              <td className="px-4 py-3 text-right font-bold text-blue-600 bg-blue-50/30 font-mono">{formatMoney(row.unitSell, config.outputCurrency)}</td>
-                              <td className="px-4 py-3 text-right text-slate-600 text-sm">{row.markupPercent.toFixed(1)}%</td>
-                              <td className="px-4 py-3 text-right">
-                                  <div className="flex items-center justify-end gap-2">
-                                      <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(row.profitMargin * 3, 100)}%`, background: row.profitMargin >= 20 ? '#10b981' : row.profitMargin >= 10 ? '#f59e0b' : '#ef4444' }} />
-                                      </div>
-                                      <span className={`text-sm font-semibold w-10 text-right ${mColor}`}>{row.profitMargin.toFixed(1)}%</span>
-                                  </div>
-                              </td>
-                              <td className="px-4 py-3 text-right text-emerald-600 font-bold font-mono">{formatMoney(row.totalProfit, config.outputCurrency)}</td>
+
+          <div className="divide-y divide-slate-100">
+              {calculations.productScenarioBreakdown.length === 0 ? (
+                  <div className="px-4 py-10 text-center text-slate-400 text-sm italic">No active products — enable lines in the calculator table to see scenarios.</div>
+              ) : (
+                  calculations.productScenarioBreakdown.map((block) => (
+                      <div key={block.id} className="px-4 py-4 hover:bg-slate-50/40">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
+                              <span className="font-semibold text-slate-800">{block.name || 'Item'}</span>
+                              {block.sku ? <span className="text-xs font-mono text-slate-400">SKU {block.sku}</span> : null}
+                              <span className="text-xs text-slate-500">Qty <span className="font-mono font-semibold text-slate-700">{block.qty}</span></span>
+                          </div>
+                          <div className="overflow-x-auto rounded-lg border border-slate-200">
+                              <table className="w-full text-sm text-left min-w-[880px]">
+                                  <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 text-xs">
+                                      <tr>
+                                          <th className="px-3 py-2">Incoterm</th>
+                                          <th className="px-3 py-2 text-right">Unit cost</th>
+                                          <th className="px-3 py-2 text-right text-green-600">Unit profit</th>
+                                          <th className="px-3 py-2 text-right bg-slate-100/60">Unit price</th>
+                                          <th className="px-3 py-2 text-right text-slate-500">Δ vs prev term</th>
+                                          <th className="px-3 py-2 text-right">Markup %</th>
+                                          <th className="px-3 py-2 text-right">Margin %</th>
+                                          <th className="px-3 py-2 text-right text-slate-400">Line profit</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 bg-white">
+                                      {block.rows
+                                          .filter((r) => visibleScenarioTerms.includes(r.term))
+                                          .map((row) => {
+                                              const mColor = row.profitMargin >= 20 ? 'text-emerald-600' : row.profitMargin >= 10 ? 'text-amber-600' : 'text-red-500';
+                                              const mBorder = row.profitMargin >= 20 ? 'border-l-emerald-400' : row.profitMargin >= 10 ? 'border-l-amber-400' : 'border-l-red-400';
+                                              const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
+                                              return (
+                                                  <tr key={row.term} className={`border-l-4 ${mBorder} hover:bg-slate-50/80`}>
+                                                      <td className="px-3 py-2">
+                                                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${termBadge[row.term] || 'bg-slate-100 text-slate-700'}`}>{row.term}</span>
+                                                      </td>
+                                                      <td className="px-3 py-2 text-right text-slate-600 font-mono text-xs">{formatMoney(row.unitCost, config.outputCurrency)}</td>
+                                                      <td className="px-3 py-2 text-right font-semibold text-emerald-600 font-mono text-xs">{formatMoney(row.unitProfit, config.outputCurrency)}</td>
+                                                      <td className="px-3 py-2 text-right font-bold text-blue-600 bg-blue-50/25 font-mono text-xs">{formatMoney(row.unitSell, config.outputCurrency)}</td>
+                                                      <td className="px-3 py-2 text-right text-slate-500 font-mono text-xs">{formatMoney(row.valueAdd, config.outputCurrency)}</td>
+                                                      <td className="px-3 py-2 text-right text-slate-600 text-xs">{row.markupPercent.toFixed(1)}%</td>
+                                                      <td className="px-3 py-2 text-right">
+                                                          <span className={`text-xs font-semibold ${mColor}`}>{row.profitMargin.toFixed(1)}%</span>
+                                                      </td>
+                                                      <td className="px-3 py-2 text-right text-emerald-700 font-bold font-mono text-xs">{formatMoney(row.lineProfit, config.outputCurrency)}</td>
+                                                  </tr>
+                                              );
+                                          })}
+                                  </tbody>
+                              </table>
+                          </div>
+                      </div>
+                  ))
+              )}
+          </div>
+
+          <div className="px-4 py-3 bg-slate-50/80 border-t border-slate-200">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Shipment summary (all active lines)</h3>
+              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="w-full text-sm text-left min-w-[720px]">
+                      <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 text-xs">
+                          <tr>
+                              <th className="px-3 py-2">Incoterm</th>
+                              <th className="px-3 py-2 text-right">Total cost</th>
+                              <th className="px-3 py-2 text-right">Total sell</th>
+                              <th className="px-3 py-2 text-right text-emerald-700">Total profit</th>
+                              <th className="px-3 py-2 text-right">Markup %</th>
+                              <th className="px-3 py-2 text-right">Margin %</th>
                           </tr>
-                          );
-                      })}
-                  </tbody>
-              </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                          {calculations.breakdown.filter((b) => visibleScenarioTerms.includes(b.term)).map((row) => {
+                              const mColor = row.profitMargin >= 20 ? 'text-emerald-600' : row.profitMargin >= 10 ? 'text-amber-600' : 'text-red-500';
+                              const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
+                              return (
+                                  <tr key={`sum-${row.term}`} className="hover:bg-slate-50/80">
+                                      <td className="px-3 py-2">
+                                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${termBadge[row.term] || 'bg-slate-100 text-slate-700'}`}>{row.term}</span>
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-mono text-slate-700">{formatMoney(row.totalCost, config.outputCurrency)}</td>
+                                      <td className="px-3 py-2 text-right font-mono text-blue-700 font-semibold">{formatMoney(row.totalSell, config.outputCurrency)}</td>
+                                      <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">{formatMoney(row.totalProfit, config.outputCurrency)}</td>
+                                      <td className="px-3 py-2 text-right text-slate-600 text-xs">{row.markupPercent.toFixed(1)}%</td>
+                                      <td className="px-3 py-2 text-right text-xs font-semibold">
+                                          <span className={mColor}>{row.profitMargin.toFixed(1)}%</span>
+                                      </td>
+                                  </tr>
+                              );
+                          })}
+                      </tbody>
+                  </table>
+              </div>
           </div>
       </div>
 
