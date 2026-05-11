@@ -40,7 +40,7 @@ import QRCode from 'qrcode';
 import { 
   Settings, Plus, Trash2, Package, Truck, Anchor, Ship, MapPin, 
   FileText, Globe, PieChart, CheckCircle, Circle, BarChart3, Save, 
-  FolderOpen, X, Clock, Loader2, LayoutDashboard, Printer, 
+  FolderOpen, X, Clock, Loader2, LayoutDashboard, Printer, ClipboardList,
   FileCheck, Image as ImageIcon, Upload, List, Download, FileUp, Folder, BookOpen, ChevronRight,
   LayoutTemplate, Palette, Type, Smartphone, Globe2, Languages, Edit3, 
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
@@ -62,7 +62,7 @@ import {
   SavedProject,
   CatalogConfig,
   SocialLink,
-  PriceListConfig,
+  PackingListConfig,
   Supplier,
   SupplierAttachment,
   CatalogSection,
@@ -207,21 +207,70 @@ function createDefaultRates(): RateMap {
   return { IRR: 1, USD: 650000, EUR: 710000, AED: 179000, CNY: 90000, OMR: 1690000 };
 }
 
-function createDefaultPriceListConfig(): PriceListConfig {
-  const y = new Date().getFullYear();
+function createDefaultPackingListConfig(): PackingListConfig {
   return {
-    title: 'EXPORT PRICE LIST',
-    subtitle: `${y} COLLECTION`,
+    title: 'PACKING LIST',
+    subtitle: 'Commercial shipment — weights & dimensions',
     footerText:
-      'Prices are subject to change without prior notice.\nPayment Terms: T/T 50% Advance.\nValidity: 30 Days.',
-    showImages: false,
-    priceBasis: 'unit',
-    terms: ['FOB'],
-    showTargetPrice: false,
-    targetPriceLabel: 'Target',
-    showTargetProfit: false,
-    targetProfitLabel: 'Your profit on this deal',
+      'Weights and dimensions are furnished by the shipper for customs and carrier reference.\nLine net/gross = (cartons × per-carton) + (pallets × per-pallet). Final tally subject to port or vessel scales.',
+    showImages: true,
+    showHsCode: true,
+    weightUnitLabel: 'kg',
+    shipperNotes: '',
+    consigneeNotes: '',
   };
+}
+
+function migrateToPackingListConfig(raw: unknown): PackingListConfig {
+  const base = createDefaultPackingListConfig();
+  if (!raw || typeof raw !== 'object') return base;
+  const o = raw as Record<string, unknown>;
+  return {
+    ...base,
+    title: typeof o.title === 'string' && o.title.trim() ? o.title.trim() : base.title,
+    subtitle: typeof o.subtitle === 'string' ? o.subtitle : base.subtitle,
+    footerText: typeof o.footerText === 'string' ? o.footerText : base.footerText,
+    showImages: o.showImages !== undefined ? Boolean(o.showImages) : base.showImages,
+    showHsCode: o.showHsCode !== undefined ? Boolean(o.showHsCode) : base.showHsCode,
+    weightUnitLabel:
+      typeof o.weightUnitLabel === 'string' && o.weightUnitLabel.trim()
+        ? o.weightUnitLabel.trim()
+        : base.weightUnitLabel,
+    shipperNotes: typeof o.shipperNotes === 'string' ? o.shipperNotes : base.shipperNotes,
+    consigneeNotes: typeof o.consigneeNotes === 'string' ? o.consigneeNotes : base.consigneeNotes,
+  };
+}
+
+function packingLineNetKg(p: Product): number {
+  const c = Number(p.packingQtyCartons) || 0;
+  const cn = Number(p.packingCartonNetWeightKg) || 0;
+  const pl = Number(p.packingPalletCount) || 0;
+  const pn = Number(p.packingPalletNetWeightKg) || 0;
+  return c * cn + pl * pn;
+}
+
+function packingLineGrossKg(p: Product): number {
+  const c = Number(p.packingQtyCartons) || 0;
+  const cg = Number(p.packingCartonGrossWeightKg) || 0;
+  const pl = Number(p.packingPalletCount) || 0;
+  const pg = Number(p.packingPalletGrossWeightKg) || 0;
+  return c * cg + pl * pg;
+}
+
+function formatPackingDimsCm(p: Product): string {
+  const l = p.packingCartonLengthCm;
+  const w = p.packingCartonWidthCm;
+  const h = p.packingCartonHeightCm;
+  if (l === undefined && w === undefined && h === undefined) return '—';
+  const fmt = (x: number | undefined) =>
+    x !== undefined && Number.isFinite(x) ? String(x) : '—';
+  return `${fmt(l)}×${fmt(w)}×${fmt(h)}`;
+}
+
+function formatPackingKg(n: number | undefined | null): string {
+  if (n === undefined || n === null || !Number.isFinite(n)) return '—';
+  if (n === 0) return '0';
+  return n.toLocaleString(undefined, { maximumFractionDigits: 3, minimumFractionDigits: 0 });
 }
 
 function createDefaultCatalogConfig(): CatalogConfig {
@@ -2288,7 +2337,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 function AppInner() {
   
   // -- STATE: VIEW & UI --
-  const [view, setView] = useState<'dashboard' | 'invoice' | 'pricelist' | 'catalog' | 'suppliers' | 'buyers'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'invoice' | 'packinglist' | 'catalog' | 'suppliers' | 'buyers'>('dashboard');
   const [showRateSettings, setShowRateSettings] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   
@@ -2587,7 +2636,7 @@ function AppInner() {
   /** Optional fixed lines (shipping, insurance, documentation fees, …) after VAT. */
   const [invoiceExtraCharges, setInvoiceExtraCharges] = useState<InvoiceExtraCharge[]>([]);
   const [invoiceOrientation, setInvoiceOrientation] = useState<'portrait' | 'landscape'>('portrait');
-  const [priceListConfig, setPriceListConfig] = useState<PriceListConfig>(() => createDefaultPriceListConfig());
+  const [packingListConfig, setPackingListConfig] = useState<PackingListConfig>(() => createDefaultPackingListConfig());
 
   // Catalog Config
   const [catalogConfig, setCatalogConfig] = useState<CatalogConfig>(() => createDefaultCatalogConfig());
@@ -3844,7 +3893,7 @@ function AppInner() {
         customerName, customerAddress, invoiceRef,
         billedFrom, billedFromDetails, invoiceLogo, invoiceSellerEmail, invoiceSellerPhone, invoiceSellerWebsite, invoiceSellerTaxId,
         paymentTerms, showImages, showPackInfo,
-        invoiceTitle, bankDetails, catalogConfig, invoiceBasis, priceListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
+        invoiceTitle, bankDetails, catalogConfig, invoiceBasis, packingListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
         invoiceExtraCharges,
         invoiceOrientation,
@@ -4043,28 +4092,8 @@ function AppInner() {
     setResearchEntries(parseResearchEntriesFromProject((project.data as any).researchEntries));
     setSelectedBuyerId('');
 
-    if (project.data.priceListConfig) {
-        setPriceListConfig({
-            ...project.data.priceListConfig,
-            showTargetPrice: project.data.priceListConfig.showTargetPrice || false,
-            targetPriceLabel: project.data.priceListConfig.targetPriceLabel || 'Target',
-            showTargetProfit: project.data.priceListConfig.showTargetProfit || false,
-            targetProfitLabel: project.data.priceListConfig.targetProfitLabel || 'Your profit on this deal'
-        });
-    } else {
-        setPriceListConfig({
-             title: 'EXPORT PRICE LIST',
-             subtitle: `${new Date().getFullYear()} COLLECTION`,
-             footerText: 'Prices are subject to change without prior notice.\nPayment Terms: T/T 50% Advance.\nValidity: 30 Days.',
-             showImages: false,
-             priceBasis: 'unit',
-             terms: ['FOB'],
-             showTargetPrice: false,
-             targetPriceLabel: 'Target',
-             showTargetProfit: false,
-             targetProfitLabel: 'Your profit on this deal'
-        });
-    }
+    const packRaw = (project.data as any).packingListConfig ?? (project.data as any).priceListConfig;
+    setPackingListConfig(migrateToPackingListConfig(packRaw));
 
     if (project.data.catalogConfig) {
         const loadedLang = project.data.catalogConfig.languages || 
@@ -4600,18 +4629,6 @@ function AppInner() {
       } 
   };
 
-  const togglePriceListTerm = (term: string) => {
-      const current = priceListConfig.terms;
-      let newTerms = [];
-      if (current.includes(term)) {
-           newTerms = current.filter(t => t !== term);
-      } else {
-           const order = ['EXW', 'FCA', 'FOB', 'CIF', 'DDP'];
-           newTerms = [...current, term].sort((a,b) => order.indexOf(a) - order.indexOf(b));
-      }
-      setPriceListConfig({ ...priceListConfig, terms: newTerms });
-  };
-
   const toggleCatalogTerm = (term: string) => {
       const current = catalogConfig.priceTerms;
       let newTerms = [];
@@ -5014,8 +5031,9 @@ function AppInner() {
       setLoadedProjectId(cloudId);
       setProjectName(parsed.projectName ?? synthetic.name);
       setFolderName(parsed.folderName ?? '');
-      const allowedViews = ['dashboard', 'invoice', 'pricelist', 'catalog', 'suppliers'] as const;
-      const v = allowedViews.includes(parsed.view) ? parsed.view : 'dashboard';
+      const allowedViews = ['dashboard', 'invoice', 'packinglist', 'catalog', 'suppliers'] as const;
+      const rawView = parsed.view === 'pricelist' ? 'packinglist' : parsed.view;
+      const v = allowedViews.includes(rawView as any) ? rawView : 'dashboard';
       setView(v);
       setInvoiceIncludedIds(parsed.invoiceIncludedIds === undefined ? null : parsed.invoiceIncludedIds);
       setBasis(parsed.basis === 'pack' ? 'pack' : 'unit');
@@ -5067,7 +5085,7 @@ function AppInner() {
             bankDetails,
             catalogConfig,
             invoiceBasis,
-            priceListConfig,
+            packingListConfig,
             suppliers,
             buyers,
             isInvoiceEditable,
@@ -5128,7 +5146,7 @@ function AppInner() {
     bankDetails,
     catalogConfig,
     invoiceBasis,
-    priceListConfig,
+    packingListConfig,
     suppliers,
     buyers,
     isInvoiceEditable,
@@ -5250,7 +5268,7 @@ function AppInner() {
   const handleStartNewProject = () => {
     if (
       !window.confirm(
-        'Start a new blank project? The editor will reset (products, logistics, invoice, catalog, price list, buyers/suppliers in this workspace, and dashboard notes). Nothing is deleted from the cloud until you overwrite a project. Unsaved work here will be lost unless you export or save first.'
+        'Start a new blank project? The editor will reset (products, logistics, invoice, catalog, packing list, buyers/suppliers in this workspace, and dashboard notes). Nothing is deleted from the cloud until you overwrite a project. Unsaved work here will be lost unless you export or save first.'
       )
     ) {
       return;
@@ -5321,7 +5339,7 @@ function AppInner() {
     setInvoiceVatPercent(9);
     setInvoiceExtraCharges([]);
     setInvoiceOrientation('portrait');
-    setPriceListConfig(createDefaultPriceListConfig());
+    setPackingListConfig(createDefaultPackingListConfig());
     setCatalogConfig(createDefaultCatalogConfig());
     setImportCandidateProject(null);
     setImportSelectedProductIds([]);
@@ -9985,253 +10003,355 @@ function AppInner() {
   );
   };
 
-  const renderPriceList = () => (
+  const renderPackingList = () => {
+    const wu = (packingListConfig.weightUnitLabel || 'kg').trim() || 'kg';
+    const tfootColSpan =
+      12 + (packingListConfig.showImages ? 1 : 0) + (packingListConfig.showHsCode !== false ? 1 : 0);
+    const packingRows = calculations.processedProducts.filter((p) => p.isActive);
+    const totalNet = packingRows.reduce((s, p) => s + packingLineNetKg(p), 0);
+    const totalGross = packingRows.reduce((s, p) => s + packingLineGrossKg(p), 0);
+
+    const numField = (p: Product, field: keyof Product, e: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = e.target.value;
+      if (raw === '') {
+        updateProduct(p.id, field, undefined);
+        return;
+      }
+      const n = parseFloat(raw);
+      updateProduct(p.id, field, Number.isFinite(n) ? n : undefined);
+    };
+
+    return (
       <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
-          {/* PRICE LIST SETTINGS SIDEBAR */}
-          <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-6">
+        <div className="w-full lg:w-96 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-5">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
+              <ClipboardList className="w-4 h-4 text-blue-600" />
+              Packing list
+            </h3>
+            <div className="space-y-3">
               <div>
-                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
-                      <List className="w-4 h-4 text-blue-600" />
-                      Price List Settings
-                  </h3>
-                  
-                  <div className="space-y-4">
-                      {/* ... (price list sidebar content) ... */}
-                      <div>
-                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Titles</label>
-                           <input 
-                              type="text" 
-                              value={priceListConfig.title} 
-                              onChange={(e) => setPriceListConfig({...priceListConfig, title: e.target.value})} 
-                              className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 mb-2"
-                              placeholder="Main Title"
-                           />
-                           <input 
-                              type="text" 
-                              value={priceListConfig.subtitle} 
-                              onChange={(e) => setPriceListConfig({...priceListConfig, subtitle: e.target.value})} 
-                              className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
-                              placeholder="Subtitle"
-                           />
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Title</label>
+                <input
+                  type="text"
+                  value={packingListConfig.title}
+                  onChange={(e) => setPackingListConfig({ ...packingListConfig, title: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 mb-2"
+                />
+                <input
+                  type="text"
+                  value={packingListConfig.subtitle}
+                  onChange={(e) => setPackingListConfig({ ...packingListConfig, subtitle: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
+                  placeholder="Subtitle / vessel or reference"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Shipper</label>
+                <textarea
+                  rows={3}
+                  value={packingListConfig.shipperNotes || ''}
+                  onChange={(e) => setPackingListConfig({ ...packingListConfig, shipperNotes: e.target.value })}
+                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                  placeholder="Name, address, exporter reference…"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Consignee</label>
+                <textarea
+                  rows={3}
+                  value={packingListConfig.consigneeNotes || ''}
+                  onChange={(e) => setPackingListConfig({ ...packingListConfig, consigneeNotes: e.target.value })}
+                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                  placeholder="Buyer / notify party…"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={packingListConfig.showImages}
+                    onChange={(e) => setPackingListConfig({ ...packingListConfig, showImages: e.target.checked })}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-slate-600">Show product images</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={packingListConfig.showHsCode !== false}
+                    onChange={(e) => setPackingListConfig({ ...packingListConfig, showHsCode: e.target.checked })}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-slate-600">Show HS code column</span>
+                </label>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Weight unit label</label>
+                <input
+                  type="text"
+                  value={packingListConfig.weightUnitLabel || 'kg'}
+                  onChange={(e) => setPackingListConfig({ ...packingListConfig, weightUnitLabel: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
+                  placeholder="kg"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Footer / remarks</label>
+                <textarea
+                  rows={5}
+                  value={packingListConfig.footerText}
+                  onChange={(e) => setPackingListConfig({ ...packingListConfig, footerText: e.target.value })}
+                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-y"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-4">
+            <h4 className="text-xs font-bold text-slate-700 uppercase mb-2">Line packing data</h4>
+            <p className="text-[10px] text-slate-500 mb-2">
+              Per-carton and per-pallet weights; line totals = (cartons × per carton) + (pallets × per pallet).
+            </p>
+            <div className="space-y-3 max-h-[min(28rem,50vh)] overflow-y-auto pr-1">
+              {packingRows.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No active products.</p>
+              ) : (
+                packingRows.map((p) => (
+                  <div key={p.id} className="border border-slate-200 rounded-lg p-2 bg-slate-50/80 space-y-2">
+                    <div className="text-xs font-semibold text-slate-800 truncate">{p.name || `Product #${p.id}`}</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <label className="text-[10px] text-slate-500 col-span-2">Cartons (qty)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={p.packingQtyCartons ?? ''}
+                        onChange={(e) => numField(p, 'packingQtyCartons', e)}
+                        className="col-span-2 text-xs border rounded px-1 py-0.5 w-full"
+                      />
+                      <label className="text-[10px] text-slate-500">N.W./ctn ({wu})</label>
+                      <label className="text-[10px] text-slate-500">G.W./ctn ({wu})</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.001"
+                        value={p.packingCartonNetWeightKg ?? ''}
+                        onChange={(e) => numField(p, 'packingCartonNetWeightKg', e)}
+                        className="text-xs border rounded px-1 py-0.5 w-full"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.001"
+                        value={p.packingCartonGrossWeightKg ?? ''}
+                        onChange={(e) => numField(p, 'packingCartonGrossWeightKg', e)}
+                        className="text-xs border rounded px-1 py-0.5 w-full"
+                      />
+                      <label className="text-[10px] text-slate-500 col-span-2">Carton L × W × H (cm)</label>
+                      <div className="col-span-2 grid grid-cols-3 gap-1">
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="L"
+                          value={p.packingCartonLengthCm ?? ''}
+                          onChange={(e) => numField(p, 'packingCartonLengthCm', e)}
+                          className="text-xs border rounded px-1 py-0.5 w-full"
+                        />
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="W"
+                          value={p.packingCartonWidthCm ?? ''}
+                          onChange={(e) => numField(p, 'packingCartonWidthCm', e)}
+                          className="text-xs border rounded px-1 py-0.5 w-full"
+                        />
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="H"
+                          value={p.packingCartonHeightCm ?? ''}
+                          onChange={(e) => numField(p, 'packingCartonHeightCm', e)}
+                          className="text-xs border rounded px-1 py-0.5 w-full"
+                        />
                       </div>
+                      <label className="text-[10px] text-slate-500 col-span-2">Pallets (qty)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={p.packingPalletCount ?? ''}
+                        onChange={(e) => numField(p, 'packingPalletCount', e)}
+                        className="col-span-2 text-xs border rounded px-1 py-0.5 w-full"
+                      />
+                      <label className="text-[10px] text-slate-500">N.W./plt ({wu})</label>
+                      <label className="text-[10px] text-slate-500">G.W./plt ({wu})</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.001"
+                        value={p.packingPalletNetWeightKg ?? ''}
+                        onChange={(e) => numField(p, 'packingPalletNetWeightKg', e)}
+                        className="text-xs border rounded px-1 py-0.5 w-full"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.001"
+                        value={p.packingPalletGrossWeightKg ?? ''}
+                        onChange={(e) => numField(p, 'packingPalletGrossWeightKg', e)}
+                        className="text-xs border rounded px-1 py-0.5 w-full"
+                      />
+                      <label className="text-[10px] text-slate-500 col-span-2">Marks &amp; numbers</label>
+                      <input
+                        type="text"
+                        value={p.packingPackageNumbers || ''}
+                        onChange={(e) => updateProduct(p.id, 'packingPackageNumbers', e.target.value)}
+                        className="col-span-2 text-xs border rounded px-1 py-0.5 w-full"
+                        placeholder="e.g. 1–48 / PKG-A001…"
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
-                      <hr className="border-slate-100"/>
+          <div className="pt-4 border-t border-slate-200 print:hidden">
+            <button
+              type="button"
+              onClick={triggerPrint}
+              className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center justify-center gap-2"
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </button>
+          </div>
+        </div>
 
-                      <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Price Basis</label>
-                          <div className="flex bg-slate-100 p-1 rounded-lg">
-                            {['unit', 'pack', 'both'].map(m => (
-                                <button
-                                    key={m}
-                                    onClick={() => setPriceListConfig({...priceListConfig, priceBasis: m as any})}
-                                    className={`flex-1 py-1 text-xs capitalize font-medium rounded-md transition-all ${priceListConfig.priceBasis === m ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    {m}
-                                </button>
-                            ))}
-                          </div>
-                      </div>
+        <div className="flex-1 bg-white overflow-x-auto overflow-y-auto p-3 md:p-6 print:p-0 print:overflow-visible">
+          <div className="min-w-[900px] max-w-[297mm] mx-auto print:w-full">
+            {(packingListConfig.shipperNotes || packingListConfig.consigneeNotes) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-xs text-slate-700">
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 whitespace-pre-line">
+                  <div className="font-bold text-slate-800 mb-1 uppercase text-[10px] tracking-wide">Shipper</div>
+                  {packingListConfig.shipperNotes || '—'}
+                </div>
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 whitespace-pre-line">
+                  <div className="font-bold text-slate-800 mb-1 uppercase text-[10px] tracking-wide">Consignee</div>
+                  {packingListConfig.consigneeNotes || '—'}
+                </div>
+              </div>
+            )}
+            <div className="text-center mb-6">
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 uppercase tracking-wider mb-1">
+                {packingListConfig.title}
+              </h1>
+              <h2 className="text-lg text-slate-500 font-light">{packingListConfig.subtitle}</h2>
+              <p className="text-xs text-slate-400 mt-2">
+                Weights in <strong>{wu}</strong> unless stated otherwise · Carton dimensions in cm
+              </p>
+            </div>
 
-                      <div className="flex items-center gap-2">
-                           <input 
-                              type="checkbox" 
-                              checked={priceListConfig.showImages} 
-                              onChange={(e) => setPriceListConfig({...priceListConfig, showImages: e.target.checked})}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
-                           />
-                           <span className="text-sm text-slate-600">Show Images</span>
-                      </div>
-
-                      <hr className="border-slate-100"/>
-
-                      <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Terms to Show</label>
-                          <div className="flex flex-wrap gap-1">
-                              {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].map(t => (
-                                  <button
-                                    key={t}
-                                    onClick={() => togglePriceListTerm(t)}
-                                    className={`px-2 py-1 text-[10px] font-bold rounded border ${priceListConfig.terms.includes(t) ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-400'}`}
-                                  >
-                                      {t}
-                                  </button>
-                              ))}
-                          </div>
-                      </div>
-
-                      <div className="bg-amber-50/40 border border-amber-100 rounded-md p-2 space-y-2">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                  type="checkbox"
-                                  checked={priceListConfig.showTargetPrice || false}
-                                  onChange={(e) => setPriceListConfig({...priceListConfig, showTargetPrice: e.target.checked})}
-                                  className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                              />
-                              <span className="text-xs font-semibold text-amber-800">Show Target Price column (Optional)</span>
-                          </label>
-                          {priceListConfig.showTargetPrice && (
-                              <>
-                                  <input
-                                      type="text"
-                                      value={priceListConfig.targetPriceLabel || ''}
-                                      onChange={(e) => setPriceListConfig({...priceListConfig, targetPriceLabel: e.target.value})}
-                                      placeholder="Column label (default: Target)"
-                                      className="w-full text-xs border border-amber-200 rounded px-2 py-1 focus:border-amber-500 outline-none bg-white"
-                                  />
-                                  <label className="flex items-center gap-2 cursor-pointer pl-5">
-                                      <input
-                                          type="checkbox"
-                                          checked={priceListConfig.showTargetProfit || false}
-                                          onChange={(e) => setPriceListConfig({...priceListConfig, showTargetProfit: e.target.checked})}
-                                          className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
-                                      />
-                                      <span className="text-[11px] text-emerald-700">Show buyer&apos;s profit message (always green)</span>
-                                  </label>
-                                  {priceListConfig.showTargetProfit && (
-                                      <input
-                                          type="text"
-                                          value={priceListConfig.targetProfitLabel || ''}
-                                          onChange={(e) => setPriceListConfig({...priceListConfig, targetProfitLabel: e.target.value})}
-                                          placeholder="Default: Your profit on this deal"
-                                          className="w-full text-xs border border-emerald-200 rounded px-2 py-1 focus:border-emerald-500 outline-none bg-white"
-                                      />
-                                  )}
-                              </>
+            <table className="w-full text-[10px] md:text-xs border-collapse border border-slate-300">
+              <thead className="bg-slate-100 print:bg-slate-100">
+                <tr>
+                  <th className="border border-slate-300 px-1 py-1.5 text-left align-bottom">#</th>
+                  {packingListConfig.showImages && (
+                    <th className="border border-slate-300 px-1 py-1.5 text-center w-12">Img</th>
+                  )}
+                  <th className="border border-slate-300 px-1 py-1.5 text-left min-w-[7rem]">Description</th>
+                  {packingListConfig.showHsCode !== false && (
+                    <th className="border border-slate-300 px-1 py-1.5 text-left w-20">HS</th>
+                  )}
+                  <th className="border border-slate-300 px-1 py-1.5 text-center w-14">Qty (pcs)</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-center w-12">Ctns</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-right w-14">N.W./ctn</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-right w-14">G.W./ctn</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-center min-w-[5.5rem]">L×W×H cm</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-center w-11">Plts</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-right w-14">N.W./plt</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-right w-14">G.W./plt</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-left min-w-[5rem]">Marks &amp; nos.</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-right w-16">Line N.W.</th>
+                  <th className="border border-slate-300 px-1 py-1.5 text-right w-16">Line G.W.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {packingRows.map((p, idx) => {
+                  const ln = packingLineNetKg(p);
+                  const lg = packingLineGrossKg(p);
+                  return (
+                    <tr key={p.id} className="even:bg-slate-50/80">
+                      <td className="border border-slate-200 px-1 py-1 text-slate-600">{idx + 1}</td>
+                      {packingListConfig.showImages && (
+                        <td className="border border-slate-200 px-0.5 py-1 text-center">
+                          {p.image ? (
+                            <img src={p.image} className="w-7 h-7 object-cover mx-auto rounded" alt="" />
+                          ) : (
+                            <div className="w-7 h-7 bg-slate-100 rounded mx-auto" />
                           )}
-                      </div>
+                        </td>
+                      )}
+                      <td className="border border-slate-200 px-1 py-1 font-medium text-slate-800">{p.name}</td>
+                      {packingListConfig.showHsCode !== false && (
+                        <td className="border border-slate-200 px-1 py-1 text-slate-600">{p.hsCode || '—'}</td>
+                      )}
+                      <td className="border border-slate-200 px-1 py-1 text-center tabular-nums">{p.qty}</td>
+                      <td className="border border-slate-200 px-1 py-1 text-center tabular-nums">
+                        {p.packingQtyCartons ?? '—'}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-right tabular-nums">
+                        {formatPackingKg(p.packingCartonNetWeightKg)}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-right tabular-nums">
+                        {formatPackingKg(p.packingCartonGrossWeightKg)}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-center text-slate-700 whitespace-nowrap">
+                        {formatPackingDimsCm(p)}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-center tabular-nums">
+                        {p.packingPalletCount ?? '—'}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-right tabular-nums">
+                        {formatPackingKg(p.packingPalletNetWeightKg)}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-right tabular-nums">
+                        {formatPackingKg(p.packingPalletGrossWeightKg)}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-slate-700 break-words max-w-[6rem]">
+                        {p.packingPackageNumbers || '—'}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-right font-medium tabular-nums">
+                        {formatPackingKg(ln)}
+                      </td>
+                      <td className="border border-slate-200 px-1 py-1 text-right font-medium tabular-nums">
+                        {formatPackingKg(lg)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100 font-semibold text-slate-900">
+                  <td colSpan={tfootColSpan} className="border border-slate-300 px-2 py-2 text-right">
+                    Totals (Net / Gross) — {wu}
+                  </td>
+                  <td className="border border-slate-300 px-2 py-2 text-right tabular-nums">{formatPackingKg(totalNet)}</td>
+                  <td className="border border-slate-300 px-2 py-2 text-right tabular-nums">{formatPackingKg(totalGross)}</td>
+                </tr>
+              </tfoot>
+            </table>
 
-                      <div>
-                          <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Footer / Terms</label>
-                          <textarea 
-                              rows={6} 
-                              value={priceListConfig.footerText} 
-                              onChange={(e) => setPriceListConfig({...priceListConfig, footerText: e.target.value})} 
-                              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none"
-                              placeholder="Terms and Conditions..."
-                          />
-                      </div>
-                  </div>
-              </div>
-
-              <div className="pt-6 border-t border-slate-200 print:hidden">
-                  <button 
-                      onClick={triggerPrint} 
-                      className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center justify-center gap-2"
-                  >
-                      <Printer className="w-4 h-4" />
-                      Print
-                  </button>
-              </div>
+            <div className="mt-6 text-xs text-slate-500 border-t border-slate-200 pt-4 whitespace-pre-line leading-relaxed">
+              <p className="font-bold mb-1">Remarks:</p>
+              {packingListConfig.footerText}
+            </div>
           </div>
-          
-          {/* MAIN PREVIEW AREA */}
-          <div className="flex-1 bg-white overflow-y-auto p-3 md:p-8 print:p-0 print:overflow-visible">
-              <div className="max-w-[297mm] mx-auto print:w-full">
-                  <div className="text-center mb-8">
-                      <h1 className="text-3xl font-bold text-slate-900 uppercase tracking-wider mb-2">{priceListConfig.title}</h1>
-                      <h2 className="text-xl text-slate-500 font-light">{priceListConfig.subtitle}</h2>
-                      <p className="text-sm text-slate-400 mt-2">Currency: {config.outputCurrency}</p>
-                  </div>
-
-                  <table className="w-full text-sm border-collapse border border-slate-200">
-                      <thead className="bg-slate-100 print:bg-slate-100">
-                          <tr>
-                              <th className="border border-slate-300 px-4 py-2 text-left w-12">#</th>
-                              {priceListConfig.showImages && <th className="border border-slate-300 px-4 py-2 text-center w-16">Img</th>}
-                              <th className="border border-slate-300 px-4 py-2 text-left">Product</th>
-                              <th className="border border-slate-300 px-4 py-2 text-left w-24">HS Code</th>
-                              <th className="border border-slate-300 px-4 py-2 text-center w-24">Pack Qty</th>
-                              {priceListConfig.terms.map(term => (
-                                  <th key={term} className="border border-slate-300 px-4 py-2 text-right w-32 bg-slate-50">
-                                      {term} 
-                                      {priceListConfig.priceBasis === 'both' && <span className="block text-[9px] font-normal text-slate-500">(Unit / Pack)</span>}
-                                      {priceListConfig.priceBasis === 'unit' && <span className="block text-[9px] font-normal text-slate-500">(Unit)</span>}
-                                      {priceListConfig.priceBasis === 'pack' && <span className="block text-[9px] font-normal text-slate-500">(Pack)</span>}
-                                  </th>
-                              ))}
-                              {priceListConfig.showTargetPrice && (
-                                  <th className="border border-amber-200 px-4 py-2 text-right w-32 bg-amber-50 text-amber-800">
-                                      {priceListConfig.targetPriceLabel || 'Target'}
-                                      {priceListConfig.priceBasis === 'both' && <span className="block text-[9px] font-normal text-amber-600">(Unit / Pack)</span>}
-                                      {priceListConfig.priceBasis === 'unit' && <span className="block text-[9px] font-normal text-amber-600">(Unit)</span>}
-                                      {priceListConfig.priceBasis === 'pack' && <span className="block text-[9px] font-normal text-amber-600">(Pack)</span>}
-                                  </th>
-                              )}
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {calculations.processedProducts.filter(p => p.isActive).map((p, idx) => (
-                              <tr key={p.id} className="even:bg-slate-50">
-                                  <td className="border border-slate-200 px-4 py-2 text-slate-500">{idx + 1}</td>
-                                  {priceListConfig.showImages && (
-                                      <td className="border border-slate-200 px-2 py-2 text-center">
-                                          {p.image ? <img src={p.image} className="w-8 h-8 object-cover mx-auto rounded" alt="" /> : <div className="w-8 h-8 bg-slate-100 rounded mx-auto" />}
-                                      </td>
-                                  )}
-                                  <td className="border border-slate-200 px-4 py-2 font-medium">{p.name}</td>
-                                  <td className="border border-slate-200 px-4 py-2 text-slate-500">{p.hsCode}</td>
-                                  <td className="border border-slate-200 px-4 py-2 text-center">{p.itemsPerPack || '-'}</td>
-                                  {priceListConfig.terms.map(term => {
-                                      const uPrice = formatMoney(p.scenarioPrices?.[term] || 0, config.outputCurrency);
-                                      const pPrice = formatMoney(p.scenarioPackPrices?.[term] || 0, config.outputCurrency);
-                                      
-                                      return (
-                                          <td key={term} className="border border-slate-200 px-4 py-2 text-right font-mono font-medium">
-                                              {priceListConfig.priceBasis === 'unit' && uPrice}
-                                              {priceListConfig.priceBasis === 'pack' && pPrice}
-                                              {priceListConfig.priceBasis === 'both' && (
-                                                  <div className="flex flex-col">
-                                                      <span>{uPrice}</span>
-                                                      <span className="text-[10px] text-slate-400">{pPrice}</span>
-                                                  </div>
-                                              )}
-                                          </td>
-                                      );
-                                  })}
-                                  {priceListConfig.showTargetPrice && (() => {
-                                      const hasTarget = p.targetPrice !== undefined && p.targetPrice !== null && p.targetPrice > 0;
-                                      const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
-                                      const tUnit = hasTarget ? toOutput(toBase(p.targetPrice as number, tCurr)) : 0;
-                                      const tPack = tUnit * (p.itemsPerPack || 0);
-                                      const refTerm = priceListConfig.terms[0];
-                                      const refSell = refTerm ? (p.scenarioPrices?.[refTerm] || 0) : (p.unitSellPrice || 0);
-                                      const diff = hasTarget && tUnit > 0 && refSell > 0 ? ((refSell - tUnit) / tUnit) * 100 : null;
-                                      return (
-                                          <td className="border border-amber-200 px-4 py-2 text-right font-mono font-medium bg-amber-50/40 text-amber-800">
-                                              {!hasTarget ? <span className="text-amber-300">—</span> : (
-                                                  <>
-                                                      {priceListConfig.priceBasis === 'unit' && formatMoney(tUnit, config.outputCurrency)}
-                                                      {priceListConfig.priceBasis === 'pack' && formatMoney(tPack, config.outputCurrency)}
-                                                      {priceListConfig.priceBasis === 'both' && (
-                                                          <div className="flex flex-col">
-                                                              <span>{formatMoney(tUnit, config.outputCurrency)}</span>
-                                                              <span className="text-[10px] text-amber-500">{formatMoney(tPack, config.outputCurrency)}</span>
-                                                          </div>
-                                                      )}
-                                                      {priceListConfig.showTargetProfit && diff !== null && (
-                                                          <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5">
-                                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
-                                                              <span>{priceListConfig.targetProfitLabel || 'Your profit on this deal'}: +{Math.abs(diff).toFixed(1)}%</span>
-                                                          </div>
-                                                      )}
-                                                  </>
-                                              )}
-                                          </td>
-                                      );
-                                  })()}
-                              </tr>
-                          ))}
-                      </tbody>
-                  </table>
-                  
-                  <div className="mt-8 text-xs text-slate-500 border-t border-slate-200 pt-4 whitespace-pre-line leading-relaxed">
-                      <p className="font-bold mb-1">Terms & Conditions:</p>
-                      {priceListConfig.footerText}
-                  </div>
-              </div>
-          </div>
+        </div>
       </div>
-  );
+    );
+  };
 
   const renderBuyers = () => {
       const newBlankBuyer = (): Buyer => ({
@@ -10848,7 +10968,7 @@ function AppInner() {
                     {[
                         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                         { id: 'invoice', label: 'Proforma Invoice', icon: FileText },
-                        { id: 'pricelist', label: 'Price List', icon: List },
+                        { id: 'packinglist', label: 'Packing list', icon: ClipboardList },
                         { id: 'catalog', label: 'Catalog Gen', icon: LayoutTemplate },
                         { id: 'suppliers', label: 'Suppliers', icon: Users },
                         { id: 'buyers', label: 'Buyers', icon: Users },
@@ -10951,7 +11071,7 @@ function AppInner() {
                 {[
                     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                     { id: 'invoice', label: 'Invoice', icon: FileText },
-                    { id: 'pricelist', label: 'Price List', icon: List },
+                    { id: 'packinglist', label: 'Packing list', icon: ClipboardList },
                     { id: 'catalog', label: 'Catalog', icon: LayoutTemplate },
                     { id: 'suppliers', label: 'Suppliers', icon: Users },
                     { id: 'buyers', label: 'Buyers', icon: Users },
@@ -10992,7 +11112,7 @@ function AppInner() {
           )}
           {view === 'dashboard' && renderDashboard()}
           {view === 'invoice' && renderInvoice()}
-          {view === 'pricelist' && renderPriceList()}
+          {view === 'packinglist' && renderPackingList()}
           {view === 'catalog' && renderCatalog()}
           {view === 'suppliers' && renderSuppliers()}
           {view === 'buyers' && renderBuyers()}

@@ -35,6 +35,20 @@ export interface Product {
   // Optional: Target price (per unit) requested by buyer / target market
   targetPrice?: number;
   targetPriceCurrency?: string;
+
+  /** Packing list — cartons & pallets (weights in kg unless app packing doc states otherwise) */
+  packingQtyCartons?: number;
+  packingCartonNetWeightKg?: number;
+  packingCartonGrossWeightKg?: number;
+  packingCartonLengthCm?: number;
+  packingCartonWidthCm?: number;
+  packingCartonHeightCm?: number;
+  packingPalletCount?: number;
+  packingPalletNetWeightKg?: number;
+  packingPalletGrossWeightKg?: number;
+  /** Marks & numbers / package numbering (e.g. 1–48, PKG-A001–A048) */
+  packingPackageNumbers?: string;
+
   // Computed fields (optional as they are added during calculation)
   isActive?: boolean;
   unitCostOutput?: number;
@@ -241,18 +255,17 @@ export interface CatalogConfig {
   sections?: CatalogSection[]; // New: Unlimited custom sections
 }
 
-// New Interface for Price List Design
-export interface PriceListConfig {
+/** Formal packing list document (replaces legacy price list). */
+export interface PackingListConfig {
   title: string;
   subtitle: string;
   footerText: string;
   showImages: boolean;
-  priceBasis: 'unit' | 'pack' | 'both';
-  terms: string[];
-  showTargetPrice?: boolean; // New: Optional - show buyer Target Price column
-  targetPriceLabel?: string; // New: Custom label for Target Price column
-  showTargetProfit?: boolean; // New: Optional - show profit % vs Target Price
-  targetProfitLabel?: string; // New: Custom label for the profit-from-deal message
+  showHsCode?: boolean;
+  /** Shown in table headers, e.g. kg */
+  weightUnitLabel?: string;
+  shipperNotes?: string;
+  consigneeNotes?: string;
 }
 
 export interface SupplierAttachment {
@@ -463,8 +476,8 @@ export interface SavedProject {
     bankDetails?: string; // Editable bank details block
     // Catalog Settings
     catalogConfig?: CatalogConfig;
-    // Price List Settings
-    priceListConfig?: PriceListConfig;
+    /** Packing list document settings (legacy key `priceListConfig` may exist on old saves). */
+    packingListConfig?: PackingListConfig;
     // Suppliers Data
     suppliers?: Supplier[];
     // Saved buyers / customers (repeat clients)
