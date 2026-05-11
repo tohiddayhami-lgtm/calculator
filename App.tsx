@@ -46,7 +46,7 @@ import {
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
-  AlignJustify, ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2, Building2, Phone, Archive, Receipt, BadgeCheck
+  AlignJustify, ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus
 } from 'lucide-react';
 
 // Types
@@ -188,6 +188,118 @@ function parseResearchEntriesFromProject(raw: unknown): DashboardResearchEntry[]
         collapsed,
       };
     });
+}
+
+function createDefaultAppConfig(): AppConfig {
+  return {
+    outputCurrency: 'OMR',
+    profitType: 'markup',
+    profitPercent: 20,
+    profitFlags: { exw: true, fob: true, cif: true, ddp: true },
+    pricingMethod: 'cost_plus',
+    termMultipliers: { exw: 20, fob: 20, cif: 20, ddp: 20 },
+    enableTermSpecificProfit: false,
+    termProfits: { exw: 20, fob: 20, cif: 20, ddp: 20 },
+  };
+}
+
+function createDefaultRates(): RateMap {
+  return { IRR: 1, USD: 650000, EUR: 710000, AED: 179000, CNY: 90000, OMR: 1690000 };
+}
+
+function createDefaultPriceListConfig(): PriceListConfig {
+  const y = new Date().getFullYear();
+  return {
+    title: 'EXPORT PRICE LIST',
+    subtitle: `${y} COLLECTION`,
+    footerText:
+      'Prices are subject to change without prior notice.\nPayment Terms: T/T 50% Advance.\nValidity: 30 Days.',
+    showImages: false,
+    priceBasis: 'unit',
+    terms: ['FOB'],
+    showTargetPrice: false,
+    targetPriceLabel: 'Target',
+    showTargetProfit: false,
+    targetProfitLabel: 'Your profit on this deal',
+  };
+}
+
+function createDefaultCatalogConfig(): CatalogConfig {
+  const y = new Date().getFullYear();
+  return {
+    title: 'EXPORT COLLECTION',
+    subtitle: 'Premium Quality Products',
+    coverImage: '',
+    primaryColor: '#0f172a',
+    backgroundColor: '#ffffff',
+    textColor: '#334155',
+    headingColor: '#0f172a',
+    coverColor: '#0f172a',
+    layoutMode: 'grid',
+    showPrices: true,
+    priceBasis: 'both',
+    showMOQ: true,
+    moqLabel: '',
+    showGroupCovers: false,
+    showTargetPrice: false,
+    targetPriceLabel: 'Target',
+    showTargetProfit: false,
+    targetProfitLabel: 'Your profit on this deal',
+    priceTerms: ['FOB'],
+    contactEmail: 'sales@example.com',
+    contactPhone: '+1 234 567 890',
+    contactAddress: '',
+    socialLinks: [],
+    website: 'www.example.com',
+    languages: ['en'],
+    collectionText: `${y} COLLECTION`,
+    footerText: 'EXPORT COLLECTION | All Rights Reserved',
+    itemsPerPage: 4,
+    includedProductIds: [],
+    coverHeaderText: 'EXPORT COLLECTION',
+    coverYearText: String(y),
+    showCoverLines: true,
+    coverLineColor: '#ffffff',
+    showCoverContact: true,
+    coverContactTitle: '',
+    baseUnit: '',
+    coverOverlayOpacity: 60,
+    showAboutUs: false,
+    aboutUsText: '',
+    aboutUsImages: [],
+    aboutUsImageLayout: 'side-right',
+    logoImage: '',
+    logoSize: 'md',
+    logoPosition: 'top-left',
+    logoStyle: 'plain',
+    coverTextColor: '#ffffff',
+    backCoverImage: '',
+    backCoverOverlayOpacity: 60,
+    showQrCode: false,
+    qrCodeValue: '',
+    qrCodeLabel: 'Scan to visit',
+    googleFormUrl: '',
+    googleFormButtonText: 'Send Purchase Request',
+    googleFormHelperText: 'Tap below to fill out the order form',
+    cartEnabled: true,
+    orderEmail: 'info@tohiddayhami.com',
+    orderIncoterms: ['EXW', 'FOB', 'CIF', 'DDP'],
+    orderPorts: [
+      'Bandar Abbas (BND)',
+      'Jebel Ali (JEA)',
+      'Hamburg (HAM)',
+      'Rotterdam (RTM)',
+      'Shanghai (SHA)',
+      'Mumbai (BOM)',
+    ],
+    cartButtonText: 'Request Quote',
+    cartTitle: 'Your Inquiry Cart',
+    orderThankYouText:
+      'Thank you! Your inquiry has been received. We will prepare a proforma invoice and contact you shortly.',
+    showCompanyPhotos: false,
+    companyPhotos: [],
+    sections: [],
+  };
 }
 
 function defaultLogisticsSeed(): Logistics {
@@ -2250,21 +2362,10 @@ function AppInner() {
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
 
   // -- STATE: APP CONFIGURATION --
-  const [config, setConfig] = useState<AppConfig>({
-    outputCurrency: 'OMR', 
-    profitType: 'markup', 
-    profitPercent: 20,
-    profitFlags: { exw: true, fob: true, cif: true, ddp: true },
-    pricingMethod: 'cost_plus',
-    termMultipliers: { exw: 20, fob: 20, cif: 20, ddp: 20 },
-    enableTermSpecificProfit: false,
-    termProfits: { exw: 20, fob: 20, cif: 20, ddp: 20 }
-  });
+  const [config, setConfig] = useState<AppConfig>(() => createDefaultAppConfig());
 
   // -- STATE: DATA (PRODUCTS, RATES, LOGISTICS, SUPPLIERS) --
-  const [rates, setRates] = useState<RateMap>({
-    IRR: 1, USD: 650000, EUR: 710000, AED: 179000, CNY: 90000, OMR: 1690000
-  });
+  const [rates, setRates] = useState<RateMap>(() => createDefaultRates());
 
   const [products, setProducts] = useState<Product[]>([
     { id: 1, name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }
@@ -2486,86 +2587,10 @@ function AppInner() {
   /** Optional fixed lines (shipping, insurance, documentation fees, …) after VAT. */
   const [invoiceExtraCharges, setInvoiceExtraCharges] = useState<InvoiceExtraCharge[]>([]);
   const [invoiceOrientation, setInvoiceOrientation] = useState<'portrait' | 'landscape'>('portrait');
-  const [priceListConfig, setPriceListConfig] = useState<PriceListConfig>({
-      title: 'EXPORT PRICE LIST',
-      subtitle: `${new Date().getFullYear()} COLLECTION`,
-      footerText: 'Prices are subject to change without prior notice.\nPayment Terms: T/T 50% Advance.\nValidity: 30 Days.',
-      showImages: false,
-      priceBasis: 'unit',
-      terms: ['FOB'],
-      showTargetPrice: false,
-      targetPriceLabel: 'Target',
-      showTargetProfit: false,
-      targetProfitLabel: 'Your profit on this deal'
-  });
+  const [priceListConfig, setPriceListConfig] = useState<PriceListConfig>(() => createDefaultPriceListConfig());
 
   // Catalog Config
-  const [catalogConfig, setCatalogConfig] = useState<CatalogConfig>({
-      title: 'EXPORT COLLECTION',
-      subtitle: 'Premium Quality Products',
-      coverImage: '',
-      primaryColor: '#0f172a',
-      backgroundColor: '#ffffff',
-      textColor: '#334155',
-      headingColor: '#0f172a',
-      coverColor: '#0f172a',
-      layoutMode: 'grid',
-      showPrices: true,
-      priceBasis: 'both',
-      showMOQ: true,
-      moqLabel: '',
-      showGroupCovers: false,
-      showTargetPrice: false,
-      targetPriceLabel: 'Target',
-      showTargetProfit: false,
-      targetProfitLabel: 'Your profit on this deal',
-      priceTerms: ['FOB'],
-      contactEmail: 'sales@example.com',
-      contactPhone: '+1 234 567 890',
-      contactAddress: '',
-      socialLinks: [],
-      website: 'www.example.com',
-      languages: ['en'],
-      collectionText: `${new Date().getFullYear()} COLLECTION`,
-      footerText: 'EXPORT COLLECTION | All Rights Reserved',
-      itemsPerPage: 4,
-      includedProductIds: [],
-      coverHeaderText: 'EXPORT COLLECTION',
-      coverYearText: new Date().getFullYear().toString(),
-      showCoverLines: true,
-      coverLineColor: '#ffffff',
-      showCoverContact: true,
-      coverContactTitle: '',
-      baseUnit: '',
-      coverOverlayOpacity: 60,
-      showAboutUs: false,
-      aboutUsText: '',
-      aboutUsImages: [],
-      aboutUsImageLayout: 'side-right',
-      logoImage: '',
-      logoSize: 'md',
-      logoPosition: 'top-left',
-      logoStyle: 'plain',
-      coverTextColor: '#ffffff',
-      backCoverImage: '',
-      backCoverOverlayOpacity: 60,
-      showQrCode: false,
-      qrCodeValue: '',
-      qrCodeLabel: 'Scan to visit',
-      googleFormUrl: '',
-      googleFormButtonText: 'Send Purchase Request',
-      googleFormHelperText: 'Tap below to fill out the order form',
-      cartEnabled: true,
-      orderEmail: 'info@tohiddayhami.com',
-      orderIncoterms: ['EXW', 'FOB', 'CIF', 'DDP'],
-      orderPorts: ['Bandar Abbas (BND)', 'Jebel Ali (JEA)', 'Hamburg (HAM)', 'Rotterdam (RTM)', 'Shanghai (SHA)', 'Mumbai (BOM)'],
-      cartButtonText: 'Request Quote',
-      cartTitle: 'Your Inquiry Cart',
-      orderThankYouText: 'Thank you! Your inquiry has been received. We will prepare a proforma invoice and contact you shortly.',
-      showCompanyPhotos: false,
-      companyPhotos: [],
-      sections: []
-  });
+  const [catalogConfig, setCatalogConfig] = useState<CatalogConfig>(() => createDefaultCatalogConfig());
 
   // --- EFFECTS ---
 
@@ -5222,6 +5247,106 @@ function AppInner() {
     }
   };
 
+  const handleStartNewProject = () => {
+    if (
+      !window.confirm(
+        'Start a new blank project? The editor will reset (products, logistics, invoice, catalog, price list, buyers/suppliers in this workspace, and dashboard notes). Nothing is deleted from the cloud until you overwrite a project. Unsaved work here will be lost unless you export or save first.'
+      )
+    ) {
+      return;
+    }
+
+    setLoadedProjectId(null);
+    setProjectName('');
+    setFolderName('');
+    setConfig(createDefaultAppConfig());
+    setRates(createDefaultRates());
+    setProducts(
+      ensureSkus([
+        {
+          id: Date.now(),
+          name: '',
+          qty: 0,
+          unitPrice: 0,
+          currency: 'IRR',
+          itemsPerPack: 0,
+          packPrice: 0,
+          active: true,
+          priceInputMode: 'unit',
+          group: '',
+          measurementUnit: '',
+          gallery: [],
+        },
+      ])
+    );
+    setLogistics(defaultLogisticsSeed());
+    setSelectedTerms(['FOB', 'DDP']);
+    setVisibleScenarioTerms(['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
+    setInvoiceTerms(['FOB', 'DDP']);
+    setNotes('');
+    setShowImages(false);
+    setShowPackInfo(true);
+    setBasis('unit');
+    setContainerCapacity(1000);
+    setContainerType('20ft');
+    setCustomerName('');
+    setCustomerAddress('');
+    setBilledFrom('');
+    setBilledFromDetails('');
+    setInvoiceLogo('');
+    setInvoiceSellerEmail('');
+    setInvoiceSellerPhone('');
+    setInvoiceSellerWebsite('');
+    setInvoiceSellerTaxId('');
+    setPaymentTerms('T/T 50% Advance');
+    setInvoiceRef(String(Math.floor(Math.random() * 10000)));
+    setInvoiceTitle('Proforma Invoice');
+    setInvoiceIssueDateMs(Date.now());
+    setInvoiceDueDateMs(undefined);
+    setEditingArchiveInvoiceId(null);
+    setResearchEntries([]);
+    setResearchUploadingKey(null);
+    setInvoiceBasis('both');
+    setBankDetails('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
+    setSuppliers([]);
+    setBuyers([]);
+    setSelectedBuyerId('');
+    setIsInvoiceEditable(false);
+    setInvoiceOverrides({});
+    setInvoiceIncludedIds(null);
+    setInvoiceGlobalDiscountMode('none');
+    setInvoiceGlobalDiscountValue(0);
+    setInvoiceDiscountBaseTerm('FOB');
+    setInvoiceVatEnabled(false);
+    setInvoiceVatPercent(9);
+    setInvoiceExtraCharges([]);
+    setInvoiceOrientation('portrait');
+    setPriceListConfig(createDefaultPriceListConfig());
+    setCatalogConfig(createDefaultCatalogConfig());
+    setImportCandidateProject(null);
+    setImportSelectedProductIds([]);
+    setShowSaveModal(false);
+    setShowLoadModal(false);
+    setDeleteConfirmId(null);
+    setEditingCatalogDetailsId(null);
+    setShowRateSettings(false);
+    setPaymentDraft({
+      amount: 0,
+      currency: 'USD',
+      method: 'T/T',
+      date: new Date().toISOString().slice(0, 10),
+      reference: '',
+      notes: '',
+    });
+    setShowPaymentForm(false);
+    setView('dashboard');
+    try {
+      sessionStorage.removeItem(SESSION_WORKSPACE_DRAFT_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
   // --- RENDER FUNCTIONS ---
   // (Note: Kept inside component to access state closure)
   
@@ -5302,6 +5427,15 @@ function AppInner() {
                 >
                     <Settings className="w-4 h-4" />
                     Rates
+                </button>
+                 <button
+                    type="button"
+                    onClick={handleStartNewProject}
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto bg-white border-amber-200 text-amber-800 hover:bg-amber-50"
+                    title="Clear workspace and start entering a new project from scratch"
+                >
+                    <FolderPlus className="w-4 h-4" />
+                    New project
                 </button>
             </div>
         </div>
