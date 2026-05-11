@@ -54,6 +54,8 @@ import {
   Logistics,
   LogisticsItem,
   LogisticsPreset,
+  InvoiceTextPreset,
+  InvoiceTextPresetKind,
   AppConfig, 
   RateMap, 
   SavedProject,
@@ -101,6 +103,29 @@ function getSupplierDisplayName(s: Pick<Supplier, 'name' | 'firstName' | 'lastNa
 
 const LOGISTICS_PRESETS_STORAGE_KEY = 'exportcalc_logistics_presets_v1';
 const MAX_LOGISTICS_PRESETS = 30;
+
+const INVOICE_TEXT_PRESETS_STORAGE_KEY = 'exportcalc_invoice_text_presets_v1';
+const MAX_INVOICE_TEXT_PRESETS = 40;
+
+function parseInvoiceTextPresetsFromStorage(raw: string | null): InvoiceTextPreset[] {
+  try {
+    const a = JSON.parse(raw || '[]');
+    if (!Array.isArray(a)) return [];
+    const kinds = new Set<string>(['note', 'paymentTerms', 'bankDetails', 'paymentLogNote']);
+    return a
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .map((x, i) => ({
+        id: String(x.id || `itp-${Date.now()}-${i}`),
+        name: (typeof x.name === 'string' ? x.name : 'Untitled').trim().slice(0, 80) || 'Untitled',
+        kind: (kinds.has(String(x.kind)) ? String(x.kind) : 'note') as InvoiceTextPresetKind,
+        body: typeof x.body === 'string' ? x.body : '',
+        updatedAt: Number(x.updatedAt) || 0,
+      }))
+      .slice(0, MAX_INVOICE_TEXT_PRESETS);
+  } catch {
+    return [];
+  }
+}
 
 function defaultLogisticsSeed(): Logistics {
   return {
@@ -2217,6 +2242,30 @@ function AppInner() {
     }
   }, [logisticsPresets, logisticsPresetsReady]);
 
+  const [invoiceTextPresets, setInvoiceTextPresets] = useState<InvoiceTextPreset[]>([]);
+  const [invoiceTextPresetsReady, setInvoiceTextPresetsReady] = useState(false);
+  const [invoiceTextPresetPickerKey, setInvoiceTextPresetPickerKey] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(INVOICE_TEXT_PRESETS_STORAGE_KEY);
+      setInvoiceTextPresets(parseInvoiceTextPresetsFromStorage(raw));
+    } catch {
+      setInvoiceTextPresets([]);
+    }
+    setInvoiceTextPresetsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!invoiceTextPresetsReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(INVOICE_TEXT_PRESETS_STORAGE_KEY, JSON.stringify(invoiceTextPresets));
+    } catch {
+      /* ignore */
+    }
+  }, [invoiceTextPresets, invoiceTextPresetsReady]);
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
   const [selectedBuyerId, setSelectedBuyerId] = useState<number | ''>('');
@@ -2250,6 +2299,105 @@ function AppInner() {
   const [editingArchiveInvoiceId, setEditingArchiveInvoiceId] = useState<string | null>(null);
   const [invoiceBasis, setInvoiceBasis] = useState<'unit' | 'pack' | 'both'>('both');
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
+
+  const bumpInvoiceTextPresetPickers = () => setInvoiceTextPresetPickerKey((k) => k + 1);
+
+  const saveInvoiceTextPresetOfKind = (kind: InvoiceTextPresetKind) => {
+    const body =
+      kind === 'note'
+        ? notes
+        : kind === 'paymentTerms'
+          ? paymentTerms
+          : kind === 'bankDetails'
+            ? bankDetails
+            : paymentDraft.notes;
+    if (!body.trim()) {
+      alert('ابتدا متن را در فیلد بنویسید، بعد «ذخیره» را بزنید.');
+      return;
+    }
+    const name = window.prompt('نام الگو (برای پیدا کردن در لیست):', '')?.trim();
+    if (!name) return;
+    const entry: InvoiceTextPreset = {
+      id: `itp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      kind,
+      body,
+      updatedAt: Date.now(),
+    };
+    setInvoiceTextPresets((prev) => [entry, ...prev].slice(0, MAX_INVOICE_TEXT_PRESETS));
+    bumpInvoiceTextPresetPickers();
+  };
+
+  const applyInvoiceTextPresetById = (id: string) => {
+    const p = invoiceTextPresets.find((x) => x.id === id);
+    if (!p) return;
+    if (p.kind === 'note') setNotes(p.body);
+    else if (p.kind === 'paymentTerms') setPaymentTerms(p.body);
+    else if (p.kind === 'bankDetails') setBankDetails(p.body);
+    else setPaymentDraft((d) => ({ ...d, notes: p.body }));
+    bumpInvoiceTextPresetPickers();
+  };
+
+  const deleteInvoiceTextPresetById = (id: string) => {
+    const p = invoiceTextPresets.find((x) => x.id === id);
+    if (!p) return;
+    if (!window.confirm(`حذف الگوی «${p.name}»؟`)) return;
+    setInvoiceTextPresets((prev) => prev.filter((x) => x.id !== id));
+    bumpInvoiceTextPresetPickers();
+  };
+
+  const InvoiceTextPresetToolbar = ({ kind }: { kind: InvoiceTextPresetKind }) => {
+    const list = invoiceTextPresets.filter((p) => p.kind === kind);
+    const loadKey = `${kind}-l-${invoiceTextPresetPickerKey}`;
+    const delKey = `${kind}-d-${invoiceTextPresetPickerKey}`;
+    return (
+      <div
+        className="flex flex-wrap items-stretch gap-1 mt-1.5"
+        title="الگوها فقط در این مرورگر ذخیره می‌شوند و در چند فاکتور قابل استفاده‌اند."
+      >
+        <select
+          key={loadKey}
+          defaultValue=""
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id) applyInvoiceTextPresetById(id);
+          }}
+          className="text-[10px] border border-slate-200 rounded px-1.5 py-1 bg-white min-w-[6rem] flex-1"
+        >
+          <option value="">الگو…</option>
+          {list.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => saveInvoiceTextPresetOfKind(kind)}
+          className="text-[10px] font-semibold px-2 py-1 bg-slate-800 text-white rounded shrink-0 hover:bg-slate-900"
+        >
+          ذخیره
+        </button>
+        <select
+          key={delKey}
+          defaultValue=""
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id) deleteInvoiceTextPresetById(id);
+          }}
+          className="text-[10px] border border-rose-100 text-rose-800 rounded px-1 py-1 bg-rose-50/80 min-w-[4.5rem]"
+        >
+          <option value="">حذف…</option>
+          {list.map((p) => (
+            <option key={`d-${p.id}`} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  };
+
   const [isInvoiceEditable, setIsInvoiceEditable] = useState(false);
   const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, {
     qty?: number;
@@ -8877,16 +9025,19 @@ function AppInner() {
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Payment Terms</label>
                        <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
+                       <InvoiceTextPresetToolbar kind="paymentTerms" />
                    </div>
                    
                    <div>
                         <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Payment / Bank Details</label>
                         <textarea rows={4} value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none" placeholder="Bank Name..." />
+                        <InvoiceTextPresetToolbar kind="bankDetails" />
                    </div>
 
                    <div>
                         <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Notes / Terms</label>
                         <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none" placeholder="Additional Notes..." />
+                        <InvoiceTextPresetToolbar kind="note" />
                    </div>
 
                    <div className="flex items-center gap-2 pt-2">
@@ -10825,6 +10976,7 @@ function AppInner() {
                                                               </button>
                                                           </div>
                                                           <div className="md:col-span-6">
+                                                              <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Notes (optional)</label>
                                                               <input
                                                                   type="text"
                                                                   value={paymentDraft.notes}
@@ -10832,6 +10984,7 @@ function AppInner() {
                                                                   className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
                                                                   placeholder="Notes (optional)"
                                                               />
+                                                              <InvoiceTextPresetToolbar kind="paymentLogNote" />
                                                           </div>
                                                       </div>
                                                   )}

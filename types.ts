@@ -90,6 +90,17 @@ export interface LogisticsPreset {
   logistics: Logistics;
 }
 
+/** Reusable snippets for Proforma: notes, payment terms line, or bank block (browser localStorage). */
+export type InvoiceTextPresetKind = 'note' | 'paymentTerms' | 'bankDetails' | 'paymentLogNote';
+
+export interface InvoiceTextPreset {
+  id: string;
+  name: string;
+  kind: InvoiceTextPresetKind;
+  body: string;
+  updatedAt: number;
+}
+
 export interface ProfitFlags {
   [key: string]: boolean;
   exw: boolean;
