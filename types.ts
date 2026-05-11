@@ -16,6 +16,8 @@ export interface Product {
   sku?: string; // Auto-generated unique product code (used in catalog/HTML export)
   image?: string; // Base64 data string for product image (main thumbnail)
   gallery?: string[]; // Additional images (different angles) shown in catalog/HTML export
+  /** HTTPS URLs to product videos for catalog HTML carousel (YouTube/Vimeo page links or direct .mp4/.webm). */
+  galleryVideos?: string[];
   priceInputMode?: 'unit' | 'pack'; // New: Defines if unitPrice input is per unit or per pack
   customProfit?: number; // New: Optional override for profit percentage
   measurementUnit?: string; // New: e.g. "kg", "m", "box" (replaces default "pcs")

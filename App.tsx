@@ -823,6 +823,96 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+/** Allow only http(s) URLs for embedded catalog media (blocks javascript:, data:, etc.). */
+const safeCatalogMediaUrl = (raw: string): string | null => {
+    const s = raw.trim();
+    if (!s || /^(javascript|data|vbscript):/i.test(s)) return null;
+    try {
+        const u = new URL(s);
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+        return u.href;
+    } catch {
+        return null;
+    }
+};
+
+const youtubeEmbedFromPageUrl = (pageUrl: string): string | null => {
+    const safe = safeCatalogMediaUrl(pageUrl);
+    if (!safe) return null;
+    try {
+        const u = new URL(safe);
+        const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+        if (host === 'youtu.be') {
+            const id = u.pathname.replace(/^\//, '').split('/')[0];
+            return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}` : null;
+        }
+        if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+            const v = u.searchParams.get('v');
+            if (v) return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v)}`;
+            const em = u.pathname.match(/^\/embed\/([^/?#]+)/);
+            if (em) return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(em[1])}`;
+            const sh = u.pathname.match(/^\/shorts\/([^/?#]+)/);
+            if (sh) return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(sh[1])}`;
+        }
+    } catch {
+        /* ignore */
+    }
+    return null;
+};
+
+const vimeoEmbedFromPageUrl = (pageUrl: string): string | null => {
+    const safe = safeCatalogMediaUrl(pageUrl);
+    if (!safe) return null;
+    try {
+        const u = new URL(safe);
+        const host = u.hostname.replace(/^www\./, '');
+        if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+            const m = u.pathname.match(/\/(\d+)/);
+            if (m) return `https://player.vimeo.com/video/${encodeURIComponent(m[1])}`;
+        }
+    } catch {
+        /* ignore */
+    }
+    return null;
+};
+
+type CatalogCarouselSlide =
+    | { kind: 'image'; url: string }
+    | { kind: 'video'; url: string; embedUrl?: string };
+
+const buildCatalogCarouselSlides = (p: any): CatalogCarouselSlide[] => {
+    const images: string[] = [...(p.image ? [p.image] : []), ...((p.gallery || []) as string[])];
+    const imgSlides: CatalogCarouselSlide[] = images.map((url) => ({ kind: 'image', url }));
+    const videoSlides: CatalogCarouselSlide[] = [];
+    for (const raw of (p.galleryVideos || []) as string[]) {
+        const safe = safeCatalogMediaUrl(String(raw));
+        if (!safe) continue;
+        const yt = youtubeEmbedFromPageUrl(safe);
+        if (yt) {
+            videoSlides.push({ kind: 'video', url: safe, embedUrl: yt });
+            continue;
+        }
+        const vm = vimeoEmbedFromPageUrl(safe);
+        if (vm) {
+            videoSlides.push({ kind: 'video', url: safe, embedUrl: vm });
+            continue;
+        }
+        videoSlides.push({ kind: 'video', url: safe });
+    }
+    return [...imgSlides, ...videoSlides];
+};
+
+const catalogCarouselSlideHtml = (slide: CatalogCarouselSlide, index: number, altLabel: string): string => {
+    const active = index === 0 ? ' active' : '';
+    if (slide.kind === 'image') {
+        return `<div class="slide${active}"><img src="${escapeAttr(slide.url)}" alt="${escapeAttr(`${altLabel} ${index + 1}`)}" loading="lazy" /></div>`;
+    }
+    if (slide.embedUrl) {
+        return `<div class="slide slide-video slide-embed${active}"><iframe src="${escapeAttr(slide.embedUrl)}" title="${escapeAttr(`${altLabel} — video`)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+    }
+    return `<div class="slide slide-video${active}"><video controls playsinline preload="metadata" src="${escapeAttr(slide.url)}"></video></div>`;
+};
+
 const formatMoneyHtml = (val: number, currency: string): string => {
     if (val === undefined || val === null || isNaN(val)) return '-';
     const isFractionCurrency = ['BTC', 'ETH'].includes(currency);
@@ -882,22 +972,20 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const outCurr = config.outputCurrency || 'USD';
 
     const productCards = products.map((p, idx) => {
-        const allImages: string[] = [
-            ...(p.image ? [p.image] : []),
-            ...((p.gallery || []) as string[])
-        ];
-        const slidesHtml = allImages.length
-            ? allImages.map((img, i) => `
-                <div class="slide${i === 0 ? ' active' : ''}">
-                    <img src="${escapeAttr(img)}" alt="${escapeAttr(p.catalogName || p.name)} ${i + 1}" loading="lazy" />
-                </div>`).join('')
-            : `<div class="slide active no-img"><div class="no-img-inner">No image</div></div>`;
-        const dotsHtml = allImages.length > 1
-            ? `<div class="dots">${allImages.map((_, i) => `<span class="dot${i === 0 ? ' active' : ''}" data-idx="${i}"></span>`).join('')}</div>`
-            : '';
-        const arrowsHtml = allImages.length > 1
-            ? `<button class="nav prev" aria-label="Previous">&#8249;</button><button class="nav next" aria-label="Next">&#8250;</button>`
-            : '';
+        const slideList = buildCatalogCarouselSlides(p);
+        const altLabel = p.catalogName || p.name || 'Product';
+        const slidesHtml =
+            slideList.length > 0
+                ? slideList.map((s, i) => catalogCarouselSlideHtml(s, i, altLabel)).join('')
+                : `<div class="slide active no-img"><div class="no-img-inner">No image</div></div>`;
+        const dotsHtml =
+            slideList.length > 1
+                ? `<div class="dots">${slideList.map((_, i) => `<span class="dot${i === 0 ? ' active' : ''}" data-idx="${i}"></span>`).join('')}</div>`
+                : '';
+        const arrowsHtml =
+            slideList.length > 1
+                ? `<button class="nav prev" aria-label="Previous">&#8249;</button><button class="nav next" aria-label="Next">&#8250;</button>`
+                : '';
 
         const moqHtml = showMOQ
             ? `<div class="meta-row"><span class="meta-label">${escapeHtml(moqLabel)}</span><span class="meta-value">${escapeHtml(p.catalogMOQ || (p.qty || ''))}</span></div>`
@@ -973,7 +1061,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
         const cartName = p.catalogName || p.name || 'Item';
         const cartUnit = p.measurementUnit || baseUnit;
-        const cartThumb = (p.image || allImages[0] || '');
+        const cartThumb = (p.image || ((p.gallery || [])[0] as string) || '');
         // Per-Incoterm unit & pack prices (in the seller's outputCurrency) so
         // the cart can compute the customer's total live based on the chosen
         // Incoterm — exactly how the proforma invoice does.
@@ -1003,7 +1091,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
         return `
             <article class="card" data-idx="${idx}" ${cartDataAttrs}>
-                <div class="carousel" data-images="${allImages.length}">
+                <div class="carousel" data-slides="${slideList.length}">
                     ${slidesHtml}
                     ${arrowsHtml}
                     ${dotsHtml}
@@ -1233,6 +1321,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .slide { position: absolute; inset: 0; opacity: 0; transition: opacity 0.35s ease; display: flex; align-items: center; justify-content: center; }
         .slide.active { opacity: 1; }
         .slide img { width: 100%; height: 100%; object-fit: contain; padding: 16px; }
+        .slide.slide-video video { width: 100%; height: 100%; max-height: 100%; object-fit: contain; background: #0f172a; }
+        .slide.slide-embed iframe { width: 100%; height: 100%; border: 0; background: #000; }
         .slide.no-img { background: #f1f5f9; opacity: 1; }
         .no-img-inner { color: #94a3b8; font-size: 14px; }
         .nav { position: absolute; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; background: rgba(255,255,255,0.85); backdrop-filter: blur(8px); border: 1px solid rgba(0,0,0,0.06); border-radius: 50%; font-size: 22px; color: #334155; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2; transition: opacity 0.2s; opacity: 0; line-height: 1; padding: 0; }
@@ -1499,7 +1589,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 var prev = car.querySelector('.nav.prev');
                 var next = car.querySelector('.nav.next');
                 var idx = 0;
+                function pauseVideosInCarousel(root){
+                    root.querySelectorAll('video').forEach(function(v){ try { v.pause(); } catch(e){} });
+                }
                 function show(i){
+                    pauseVideosInCarousel(car);
                     idx = (i + slides.length) % slides.length;
                     slides.forEach(function(s,k){ s.classList.toggle('active', k === idx); });
                     dots.forEach(function(d,k){ d.classList.toggle('active', k === idx); });
@@ -2605,6 +2699,7 @@ function AppInner() {
   const [showImportProductsModal, setShowImportProductsModal] = useState(false); 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [editingCatalogDetailsId, setEditingCatalogDetailsId] = useState<number | null>(null);
+  const catalogVideoUrlInputRef = useRef<HTMLInputElement | null>(null);
   const [editingSection, setEditingSection] = useState<CatalogSection | null>(null); 
   
   // -- STATE: PROJECT IMPORT/EXPORT --
@@ -2928,6 +3023,12 @@ function AppInner() {
       catalogConfig.headingColor,
       catalogConfig.primaryColor
   ]);
+
+  useEffect(() => {
+    if (editingCatalogDetailsId !== null && catalogVideoUrlInputRef.current) {
+      catalogVideoUrlInputRef.current.value = '';
+    }
+  }, [editingCatalogDetailsId]);
 
   // Project Loading (Cloud vs Local)
   useEffect(() => {
@@ -4239,7 +4340,8 @@ function AppInner() {
         targetPrice: p.targetPrice,
         targetPriceCurrency: p.targetPriceCurrency,
         sku: p.sku,
-        gallery: p.gallery || []
+        gallery: p.gallery || [],
+        galleryVideos: p.galleryVideos || []
     }));
     const loadedProducts = ensureSkus(rawLoaded);
     setProducts(loadedProducts);
@@ -5619,6 +5721,7 @@ function AppInner() {
           group: '',
           measurementUnit: '',
           gallery: [],
+          galleryVideos: [],
         },
       ])
     );
@@ -6001,7 +6104,7 @@ function AppInner() {
                 <button 
                     onClick={() => {
                         const sku = formatSku(nextSkuNumber(products));
-                        setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [] }]);
+                        setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
                     }} 
                     className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm"
                 >
@@ -8804,6 +8907,12 @@ function AppInner() {
                                                         {p.group}
                                                     </span>
                                                 )}
+                                                {(p.galleryVideos || []).length > 0 && (
+                                                    <span className="absolute top-2 right-2 bg-violet-600/95 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold shadow-sm pointer-events-none inline-flex items-center gap-0.5 print:hidden">
+                                                        <Video className="w-3 h-3 shrink-0" aria-hidden />
+                                                        {(p.galleryVideos || []).length}
+                                                    </span>
+                                                )}
                                                 
                                                 {/* QUICK EDIT OVERLAY ON IMAGE HOVER */}
                                                 <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/img-wrapper:opacity-100 transition-opacity flex items-center justify-center print:hidden pointer-events-none">
@@ -9224,6 +9333,71 @@ function AppInner() {
                                           </label>
                                       </div>
                                   </div>
+                                  <div>
+                                      <label className="text-xs font-semibold text-slate-500 uppercase block mb-1 flex items-center gap-1">
+                                          <Video className="w-3.5 h-3.5" aria-hidden />
+                                          Product videos (catalog HTML)
+                                      </label>
+                                      <p className="text-[10px] text-slate-400 mb-2">
+                                          Add public links: YouTube / Vimeo page URL, or direct file URL (
+                                          <code className="text-[9px]">.mp4</code>, <code className="text-[9px]">.webm</code>
+                                          ). Videos appear in the same carousel as photos in the shared HTML link.
+                                      </p>
+                                      <ul className="space-y-1.5 mb-2">
+                                          {(p.galleryVideos || []).map((url, vi) => (
+                                              <li
+                                                  key={`${vi}-${url.slice(0, 24)}`}
+                                                  className="flex items-center gap-2 text-[11px] bg-slate-50 border border-slate-200 rounded px-2 py-1.5"
+                                              >
+                                                  <span className="flex-1 min-w-0 truncate font-mono text-slate-600" title={url}>
+                                                      {url}
+                                                  </span>
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                          const next = (p.galleryVideos || []).filter((_, idx) => idx !== vi);
+                                                          updateProduct(p.id, 'galleryVideos', next.length ? next : undefined);
+                                                      }}
+                                                      className="shrink-0 text-rose-600 hover:text-rose-800 p-0.5"
+                                                      title="Remove"
+                                                  >
+                                                      <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                              </li>
+                                          ))}
+                                      </ul>
+                                      <div className="flex gap-2">
+                                          <input
+                                              ref={catalogVideoUrlInputRef}
+                                              type="url"
+                                              inputMode="url"
+                                              placeholder="https://…"
+                                              className="flex-1 text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-violet-500 font-mono"
+                                              onKeyDown={(e) => {
+                                                  if (e.key !== 'Enter') return;
+                                                  e.preventDefault();
+                                                  const raw = catalogVideoUrlInputRef.current?.value?.trim() || '';
+                                                  const ok = safeCatalogMediaUrl(raw);
+                                                  if (!ok) return;
+                                                  updateProduct(p.id, 'galleryVideos', [...(p.galleryVideos || []), ok]);
+                                                  if (catalogVideoUrlInputRef.current) catalogVideoUrlInputRef.current.value = '';
+                                              }}
+                                          />
+                                          <button
+                                              type="button"
+                                              onClick={() => {
+                                                  const raw = catalogVideoUrlInputRef.current?.value?.trim() || '';
+                                                  const ok = safeCatalogMediaUrl(raw);
+                                                  if (!ok) return;
+                                                  updateProduct(p.id, 'galleryVideos', [...(p.galleryVideos || []), ok]);
+                                                  if (catalogVideoUrlInputRef.current) catalogVideoUrlInputRef.current.value = '';
+                                              }}
+                                              className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700"
+                                          >
+                                              Add
+                                          </button>
+                                      </div>
+                                  </div>
                                       <div>
                                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Key Features / Description</label>
                                           <textarea 
@@ -9259,7 +9433,15 @@ function AppInner() {
                                       </div>
 
                                       <div className="pt-2 flex justify-end">
-                                          <button onClick={() => setEditingCatalogDetailsId(null)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Done</button>
+                                          <button
+                                              onClick={() => {
+                                                  if (catalogVideoUrlInputRef.current) catalogVideoUrlInputRef.current.value = '';
+                                                  setEditingCatalogDetailsId(null);
+                                              }}
+                                              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
+                                          >
+                                              Done
+                                          </button>
                                       </div>
                                   </>
                               );
