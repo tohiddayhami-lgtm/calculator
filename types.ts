@@ -424,6 +424,8 @@ export interface DashboardResearchEntry {
   body: string;
   createdAtMs: number;
   attachments: DashboardResearchAttachment[];
+  /** When true, entry is shown as a compact row; click to expand and read/edit. */
+  collapsed?: boolean;
 }
 
 export interface SavedProject {

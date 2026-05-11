@@ -41,7 +41,7 @@ import {
   Settings, Plus, Trash2, Package, Truck, Anchor, Ship, MapPin, 
   FileText, Globe, PieChart, CheckCircle, Circle, BarChart3, Save, 
   FolderOpen, X, Clock, Loader2, LayoutDashboard, Printer, 
-  FileCheck, Image as ImageIcon, Upload, List, Download, FileUp, Folder, BookOpen,
+  FileCheck, Image as ImageIcon, Upload, List, Download, FileUp, Folder, BookOpen, ChevronRight,
   LayoutTemplate, Palette, Type, Smartphone, Globe2, Languages, Edit3, 
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
@@ -177,6 +177,7 @@ function parseResearchEntriesFromProject(raw: unknown): DashboardResearchEntry[]
             }))
             .filter((a) => a.storagePath && a.downloadURL)
         : [];
+      const collapsed = x.collapsed !== false;
       return {
         id: String(x.id || `dre-${Date.now()}-${i}`),
         title: typeof x.title === 'string' ? x.title.slice(0, 300) : '',
@@ -184,6 +185,7 @@ function parseResearchEntriesFromProject(raw: unknown): DashboardResearchEntry[]
         createdAtMs:
           typeof x.createdAtMs === 'number' && Number.isFinite(x.createdAtMs) ? x.createdAtMs : Date.now(),
         attachments,
+        collapsed,
       };
     });
 }
@@ -5128,7 +5130,7 @@ function AppInner() {
   const addResearchEntry = () => {
     const id = `dre_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     setResearchEntries((prev) => [
-      { id, title: '', body: '', createdAtMs: Date.now(), attachments: [] },
+      { id, title: '', body: '', createdAtMs: Date.now(), attachments: [], collapsed: false },
       ...prev,
     ]);
   };
@@ -5137,8 +5139,12 @@ function AppInner() {
     setResearchEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
   };
 
+  const setResearchEntryCollapsed = (id: string, collapsed: boolean) => {
+    setResearchEntries((prev) => prev.map((e) => (e.id === id ? { ...e, collapsed } : e)));
+  };
+
   const removeResearchEntry = async (id: string) => {
-    if (!window.confirm('این گزارش و همهٔ پیوست‌هایش حذف شود؟')) return;
+    if (!window.confirm('Delete this report and all of its attachments?')) return;
     const entry = researchEntries.find((e) => e.id === id);
     if (entry && canCloudResearchUpload) {
       for (const a of entry.attachments) {
@@ -5172,16 +5178,16 @@ function AppInner() {
   const uploadResearchFileForEntry = async (entryId: string, file: File | null | undefined) => {
     if (!file) return;
     if (!canCloudResearchUpload) {
-      alert('برای پیوست فایل، با حساب ابری (غیر دمو) وارد شوید و Firebase Storage را فعال داشته باشید.');
+      alert('Sign in with a real cloud account (not demo) and ensure Firebase Storage is enabled to attach files.');
       return;
     }
     if (file.size > MAX_DASHBOARD_RESEARCH_FILE_BYTES) {
-      alert(`حداکثر حجم هر فایل ${MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} مگابایت است.`);
+      alert(`Each file must be at most ${MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} MB.`);
       return;
     }
     const mime = file.type || 'application/octet-stream';
     if (!isAllowedResearchMime(mime)) {
-      alert('فرمت مجاز: تصویر، PDF، Word، Excel، ویدئو.');
+      alert('Allowed types: images, PDF, Word, Excel, or video.');
       return;
     }
     const uploadKey = `${entryId}:${file.name}:${file.size}`;
@@ -5203,10 +5209,14 @@ function AppInner() {
         uploadedAtMs: Date.now(),
       };
       setResearchEntries((prev) =>
-        prev.map((e) => (e.id === entryId ? { ...e, attachments: [...e.attachments, attachment] } : e))
+        prev.map((e) =>
+          e.id === entryId
+            ? { ...e, attachments: [...e.attachments, attachment], collapsed: false }
+            : e
+        )
       );
     } catch (e: any) {
-      alert('آپلود ناموفق: ' + (e?.message || e));
+      alert('Upload failed: ' + (e?.message || e));
     } finally {
       setResearchUploadingKey(null);
     }
@@ -6368,11 +6378,12 @@ function AppInner() {
           <div className="min-w-0">
             <h2 className="font-semibold text-slate-700 flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-teal-600 shrink-0" />
-              گزارش و تحقیقات
+              Reports &amp; research
             </h2>
             <p className="text-[10px] text-slate-500 mt-1 max-w-3xl leading-snug">
-              موارد را به‌صورت خطی اضافه کنید. پیوست: تصویر، PDF، Word، Excel، ویدئو — حداکثر{' '}
-              {MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} مگابایت برای هر فایل. فایل‌ها در Firebase Storage ذخیره می‌شوند؛ متن‌ها در پروژه.
+              Add notes in order. Attach images, PDF, Word, Excel, or video — up to{' '}
+              {MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} MB per file (Storage). Text and metadata save with your project; use{' '}
+              <strong>Save</strong> on each row to fold it compact, then click a row to open and read again.
             </p>
           </div>
           <button
@@ -6381,127 +6392,204 @@ function AppInner() {
             className="shrink-0 inline-flex items-center justify-center gap-2 text-sm bg-teal-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-teal-700"
           >
             <Plus className="w-4 h-4" />
-            افزودن مورد
+            Add entry
           </button>
         </div>
-        <div className="p-4 space-y-4">
+        <div className="p-3 sm:p-4 space-y-2">
           {!canCloudResearchUpload && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
-              متن گزارش‌ها با ذخیرهٔ پروژه نگه داشته می‌شود. برای <strong>آپلود فایل</strong> باید با حساب ابری (غیر دمو) وارد شوید و Storage فعال باشد.
+              Note text is kept in your workspace and project file. To <strong>upload attachments</strong>, sign in with a real cloud account (not demo) and enable Storage.
             </p>
           )}
           {researchEntries.length === 0 ? (
-            <p className="text-sm text-slate-400 italic text-center py-6">هنوز موردی ثبت نشده — «افزودن مورد» را بزنید.</p>
+            <p className="text-sm text-slate-400 italic text-center py-6">No entries yet — click &quot;Add entry&quot;.</p>
           ) : (
-            researchEntries.map((entry, idx) => (
-              <div
-                key={entry.id}
-                className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 tabular-nums shrink-0 pt-1.5">
-                    #{researchEntries.length - idx}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void removeResearchEntry(entry.id)}
-                    className="text-slate-400 hover:text-red-600 p-1 rounded shrink-0"
-                    title="حذف این مورد"
+            researchEntries.map((entry, idx) => {
+              const isCompact = entry.collapsed !== false;
+              const preview = (entry.body || '').replace(/\s+/g, ' ').trim();
+              const previewShort =
+                preview.length > 180 ? `${preview.slice(0, 180)}…` : preview || '—';
+              const dateLabel = new Date(entry.createdAtMs).toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              });
+
+              if (isCompact) {
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-stretch gap-1 rounded-lg border border-slate-200 bg-slate-50/80 hover:bg-slate-50 transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">عنوان کوتاه (اختیاری)</label>
-                  <input
-                    type="text"
-                    value={entry.title}
-                    onChange={(e) => updateResearchEntryField(entry.id, 'title', e.target.value)}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-teal-500/30 outline-none"
-                    placeholder="مثلاً منبع بازار، جلسه، یادداشت…"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">متن گزارش / تحقیق</label>
-                  <textarea
-                    value={entry.body}
-                    onChange={(e) => updateResearchEntryField(entry.id, 'body', e.target.value)}
-                    rows={4}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-teal-500/30 outline-none resize-y min-h-[5rem]"
-                    placeholder="خلاصه، لینک، نتیجهٔ تحقیق…"
-                  />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 disabled:opacity-50">
-                      {researchUploadingKey?.startsWith(`${entry.id}:`) ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
-                      ) : (
-                        <Paperclip className="w-4 h-4 text-teal-600" />
-                      )}
-                      <span>پیوست فایل</span>
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,video/*,application/pdf"
-                        disabled={!canCloudResearchUpload || !!researchUploadingKey}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          void uploadResearchFileForEntry(entry.id, f);
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
-                    <span className="text-[10px] text-slate-400">
-                      حداکثر {MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} MB برای هر فایل
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setResearchEntryCollapsed(entry.id, false)}
+                      className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 text-left"
+                    >
+                      <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+                      <span className="text-[10px] font-bold text-slate-400 tabular-nums shrink-0">
+                        #{researchEntries.length - idx}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+                          <span className="text-sm font-semibold text-slate-800 truncate">
+                            {(entry.title || '').trim() || 'Untitled'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 shrink-0">{dateLabel}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{previewShort}</p>
+                        {entry.attachments.length > 0 ? (
+                          <span className="text-[10px] font-medium text-teal-700 mt-1 inline-block">
+                            {entry.attachments.length} attachment{entry.attachments.length !== 1 ? 's' : ''}
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        void removeResearchEntry(entry.id);
+                      }}
+                      className="shrink-0 px-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50/50 rounded-r-lg border-l border-slate-200"
+                      title="Delete entry"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  {entry.attachments.length > 0 && (
-                    <ul className="flex flex-wrap gap-2">
-                      {entry.attachments.map((att) => (
-                        <li
-                          key={att.id}
-                          className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg pl-1 pr-2 py-1 max-w-full"
-                        >
-                          {att.mimeType.startsWith('image/') ? (
-                            <a href={att.downloadURL} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                              <img
-                                src={att.downloadURL}
-                                alt=""
-                                className="h-9 w-9 rounded object-cover border border-slate-100"
-                              />
-                            </a>
-                          ) : att.mimeType.startsWith('video/') ? (
-                            <Video className="w-4 h-4 text-violet-500 shrink-0" />
-                          ) : (
-                            <FileIcon className="w-4 h-4 text-slate-500 shrink-0" />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <a
-                              href={att.downloadURL}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs font-medium text-teal-700 hover:underline truncate block max-w-[14rem]"
-                            >
-                              {att.fileName}
-                            </a>
-                            <span className="text-[10px] text-slate-400">{formatFileSizeBytes(att.sizeBytes)}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void removeResearchAttachment(entry.id, att)}
-                            className="text-slate-300 hover:text-red-500 p-0.5 shrink-0"
-                            title="حذف پیوست"
+                );
+              }
+
+              return (
+                <div
+                  key={entry.id}
+                  className="border border-slate-200 rounded-xl p-3 sm:p-4 bg-slate-50/50 space-y-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-slate-400 tabular-nums">
+                      #{researchEntries.length - idx}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setResearchEntryCollapsed(entry.id, true)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 shadow-sm"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeResearchEntry(entry.id)}
+                        className="text-slate-400 hover:text-red-600 p-1.5 rounded"
+                        title="Delete entry"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                      Title (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={entry.title}
+                      onChange={(e) => updateResearchEntryField(entry.id, 'title', e.target.value)}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-teal-500/30 outline-none"
+                      placeholder="e.g. market source, meeting notes…"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                      Report / research
+                    </label>
+                    <textarea
+                      value={entry.body}
+                      onChange={(e) => updateResearchEntryField(entry.id, 'body', e.target.value)}
+                      rows={5}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-teal-500/30 outline-none resize-y min-h-[6rem]"
+                      placeholder="Summary, links, findings…"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <label
+                        className={`inline-flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 ${
+                          !canCloudResearchUpload || researchUploadingKey ? 'opacity-50 pointer-events-none' : ''
+                        }`}
+                      >
+                        {researchUploadingKey?.startsWith(`${entry.id}:`) ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
+                        ) : (
+                          <Paperclip className="w-4 h-4 text-teal-600" />
+                        )}
+                        <span>Attach file</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,video/*,application/pdf"
+                          disabled={!canCloudResearchUpload || !!researchUploadingKey}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            void uploadResearchFileForEntry(entry.id, f);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <span className="text-[10px] text-slate-400">
+                        Max {MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} MB per file
+                      </span>
+                    </div>
+                    {entry.attachments.length > 0 && (
+                      <ul className="flex flex-wrap gap-2">
+                        {entry.attachments.map((att) => (
+                          <li
+                            key={att.id}
+                            className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg pl-1 pr-2 py-1 max-w-full"
                           >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                            {att.mimeType.startsWith('image/') ? (
+                              <a href={att.downloadURL} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                                <img
+                                  src={att.downloadURL}
+                                  alt=""
+                                  className="h-9 w-9 rounded object-cover border border-slate-100"
+                                />
+                              </a>
+                            ) : att.mimeType.startsWith('video/') ? (
+                              <Video className="w-4 h-4 text-violet-500 shrink-0" />
+                            ) : (
+                              <FileIcon className="w-4 h-4 text-slate-500 shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <a
+                                href={att.downloadURL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-medium text-teal-700 hover:underline truncate block max-w-[14rem]"
+                              >
+                                {att.fileName}
+                              </a>
+                              <span className="text-[10px] text-slate-400">{formatFileSizeBytes(att.sizeBytes)}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void removeResearchAttachment(entry.id, att)}
+                              className="text-slate-300 hover:text-red-500 p-0.5 shrink-0"
+                              title="Remove attachment"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 border-t border-slate-200/80 pt-2">
+                    <strong>Save</strong> folds this card. Use your project <strong>Save / Update</strong> in the header to persist to the cloud.
+                  </p>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
