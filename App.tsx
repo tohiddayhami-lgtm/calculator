@@ -88,6 +88,15 @@ function sumEnabledInvoiceExtras(charges: InvoiceExtraCharge[]): number {
     .reduce((s, c) => s + Math.max(0, Number(c.amount) || 0), 0);
 }
 
+function getSupplierDisplayName(s: Pick<Supplier, 'name' | 'firstName' | 'lastName' | 'companyName'>): string {
+  const comp = (s.companyName ?? '').trim();
+  if (comp) return comp;
+  const person = `${(s.firstName ?? '').trim()} ${(s.lastName ?? '').trim()}`.trim();
+  if (person) return person;
+  const legacy = (s.name ?? '').trim();
+  return legacy || 'Supplier';
+}
+
 // --- GLOBAL DECLARATIONS ---
 declare global {
   interface Window {
@@ -4747,7 +4756,7 @@ function AppInner() {
                                     >
                                         <option value="">Select...</option>
                                         {suppliers.map(s => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                            <option key={s.id} value={s.id}>{getSupplierDisplayName(s)}</option>
                                         ))}
                                     </select>
                                 </td>
@@ -8992,139 +9001,211 @@ function AppInner() {
       );
   };
 
-  const renderSuppliers = () => (
+  const renderSuppliers = () => {
+      const patchSupplier = (id: number, patch: Partial<Supplier>) => {
+          setSuppliers((prev) =>
+              prev.map((s) => {
+                  if (s.id !== id) return s;
+                  const next = { ...s, ...patch };
+                  return { ...next, name: getSupplierDisplayName(next) };
+              })
+          );
+      };
+
+      const addSupplierRow = () => {
+          const blank: Supplier = {
+              id: Date.now(),
+              name: '',
+              category: '',
+              firstName: '',
+              lastName: '',
+              companyName: '',
+              contactInfo: '',
+              address: '',
+              notes: '',
+              images: [],
+              attachments: []
+          };
+          setSuppliers((prev) => [...prev, { ...blank, name: getSupplierDisplayName(blank) }]);
+      };
+
+      return (
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden min-h-[500px]">
-        {/* ... (existing suppliers content) ... */}
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
             <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-500" />
                 Supplier Management
             </h2>
-            <button onClick={() => setSuppliers([...suppliers, { id: Date.now(), name: 'New Supplier', contactInfo: '', address: '', notes: '', images: [], attachments: [] }])} className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm">
-                <Plus className="w-4 h-4" /> Add Supplier
+            <button type="button" onClick={addSupplierRow} className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm">
+                <Plus className="w-4 h-4" /> Add row
             </button>
         </div>
-        
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {suppliers.map(s => (
-                <div key={s.id} className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-all group bg-white">
-                    <div className="flex justify-between items-start mb-3">
-                        <input 
-                            value={s.name}
-                            onChange={(e) => setSuppliers(suppliers.map(x => x.id === s.id ? { ...x, name: e.target.value } : x))}
-                            className="font-bold text-lg text-slate-800 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none w-full mr-2"
-                            placeholder="Supplier Name"
-                        />
-                         <button onClick={() => setSuppliers(suppliers.filter(x => x.id !== s.id))} className="text-slate-300 hover:text-red-500 transition-colors p-1">
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                    </div>
-
-                    <div className="space-y-3">
-                        <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Contact Info</label>
-                             <textarea 
-                                value={s.contactInfo}
-                                onChange={(e) => setSuppliers(suppliers.map(x => x.id === s.id ? { ...x, contactInfo: e.target.value } : x))}
-                                className="w-full text-sm bg-slate-50 border border-slate-200 rounded p-2 resize-none focus:ring-1 focus:ring-blue-500 outline-none"
-                                rows={2}
-                                placeholder="Phone, Email, etc."
-                             />
-                        </div>
-                        <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Address</label>
-                             <textarea 
-                                value={s.address}
-                                onChange={(e) => setSuppliers(suppliers.map(x => x.id === s.id ? { ...x, address: e.target.value } : x))}
-                                className="w-full text-sm bg-slate-50 border border-slate-200 rounded p-2 resize-none focus:ring-1 focus:ring-blue-500 outline-none"
-                                rows={2}
-                                placeholder="Full Address"
-                             />
-                        </div>
-                        <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Notes</label>
-                             <textarea 
-                                value={s.notes}
-                                onChange={(e) => setSuppliers(suppliers.map(x => x.id === s.id ? { ...x, notes: e.target.value } : x))}
-                                className="w-full text-sm bg-slate-50 border border-slate-200 rounded p-2 resize-none focus:ring-1 focus:ring-blue-500 outline-none"
-                                rows={3}
-                                placeholder="Bank details, terms, etc."
-                             />
-                        </div>
-                        
-                         {/* Image Upload for Supplier */}
-                        <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1 flex justify-between">
-                                <span>Photos</span>
-                                <label className="cursor-pointer text-blue-600 hover:underline flex items-center gap-1">
-                                    <Plus className="w-3 h-3" /> Add
-                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleSupplierImageUpload(s.id, e)} />
-                                </label>
-                             </label>
-                             <div className="flex gap-2 overflow-x-auto py-1">
-                                 {(s.images && s.images.length > 0) ? (
-                                     s.images.map((img, idx) => (
-                                         <div key={idx} className="relative w-12 h-12 flex-shrink-0 group/img">
-                                             <img src={img} className="w-full h-full object-cover rounded border border-slate-200" alt="" />
-                                             <button 
-                                                onClick={() => setSuppliers(suppliers.map(x => x.id === s.id ? { ...x, images: (x.images || []).filter((_, i) => i !== idx) } : x))}
-                                                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition-opacity"
-                                             >
-                                                 <X className="w-2 h-2" />
-                                             </button>
-                                         </div>
-                                     ))
-                                 ) : (
-                                     <span className="text-xs text-slate-400 italic">No photos</span>
-                                 )}
-                             </div>
-                        </div>
-
-                         {/* Documents / Attachments Upload */}
-                        <div className="pt-2 border-t border-slate-50">
-                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1 flex justify-between">
-                                <span>Attachments (PDF/Video)</span>
-                                <label className="cursor-pointer text-blue-600 hover:underline flex items-center gap-1" title="Max 50MB">
-                                    <Paperclip className="w-3 h-3" /> Add
-                                    <input type="file" accept="application/pdf,video/*" className="hidden" onChange={(e) => handleSupplierAttachmentUpload(s.id, e)} />
-                                </label>
-                             </label>
-                             <div className="space-y-1">
-                                 {(s.attachments && s.attachments.length > 0) ? (
-                                     s.attachments.map((att) => (
-                                         <div key={att.id} className="flex items-center justify-between bg-slate-50 p-1.5 rounded border border-slate-100 group/att">
-                                             <a href={att.data} download={att.name} className="flex items-center gap-2 text-xs text-slate-700 hover:text-blue-600 truncate flex-1" target="_blank" rel="noreferrer">
-                                                 {att.type.startsWith('video') ? <Video className="w-3 h-3 text-purple-500 flex-shrink-0" /> : <FileIcon className="w-3 h-3 text-red-500 flex-shrink-0" />}
-                                                 <span className="truncate max-w-[140px]">{att.name}</span>
-                                                 <span className="text-[9px] text-slate-400">({(att.size / (1024*1024)).toFixed(1)}MB)</span>
-                                             </a>
-                                             <button 
-                                                onClick={() => deleteAttachment(s.id, att.id)}
-                                                className="text-slate-400 hover:text-red-500 opacity-0 group-hover/att:opacity-100 transition-opacity p-0.5"
-                                             >
-                                                 <X className="w-3 h-3" />
-                                             </button>
-                                         </div>
-                                     ))
-                                 ) : (
-                                     <span className="text-xs text-slate-400 italic">No files (Max 50MB)</span>
-                                 )}
-                             </div>
-                        </div>
-
-                    </div>
-                </div>
-            ))}
-            
-            {suppliers.length === 0 && (
-                <div className="col-span-full py-12 text-center text-slate-400 italic bg-slate-50/50 rounded-xl border-2 border-dashed border-slate-200">
-                    <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>No suppliers added yet.</p>
-                </div>
-            )}
+        <p className="text-xs text-slate-500 px-6 pt-3 leading-relaxed" dir="rtl">
+            هر تامین‌کننده یک ردیف مثل اکسل: دسته‌بندی، نام و نام خانوادگی یا نام شرکت، تماس، آدرس و یادداشت را در ستون‌ها پر کنید؛ در لیست کالا همان نام نمایشی (شرکت یا شخص) دیده می‌شود.
+        </p>
+        <div className="p-6 overflow-x-auto">
+            <table className="w-full min-w-[1080px] text-sm border-collapse border border-slate-200 rounded-lg overflow-hidden">
+                <thead>
+                    <tr className="bg-slate-50 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+                        <th className="border border-slate-200 px-2 py-2 w-10 text-center"></th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[88px]">Category</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[100px]">First name</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[100px]">Last name</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[140px]">Company</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[140px]">Contact</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[160px]">Address</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[140px]">Notes</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[120px]">Photos</th>
+                        <th className="border border-slate-200 px-2 py-2 min-w-[140px]">Files</th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white">
+                    {suppliers.length === 0 ? (
+                        <tr>
+                            <td colSpan={10} className="border border-slate-200 px-6 py-14 text-center text-slate-400 italic bg-slate-50/50">
+                                <Users className="w-12 h-12 mx-auto mb-3 opacity-20 text-slate-300" />
+                                <p>No suppliers yet — use &quot;Add row&quot;.</p>
+                            </td>
+                        </tr>
+                    ) : (
+                        suppliers.map((s) => (
+                            <tr key={s.id} className="hover:bg-slate-50/90 align-top">
+                                <td className="border border-slate-200 px-1 py-1.5 text-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSuppliers(suppliers.filter((x) => x.id !== s.id))}
+                                        className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                                        title="Delete row"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </td>
+                                <td className="border border-slate-200 p-0">
+                                    <input
+                                        value={s.category ?? ''}
+                                        onChange={(e) => patchSupplier(s.id, { category: e.target.value })}
+                                        className="w-full min-h-[36px] px-2 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400"
+                                        placeholder="e.g. Packaging"
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-0">
+                                    <input
+                                        value={s.firstName ?? ''}
+                                        onChange={(e) => patchSupplier(s.id, { firstName: e.target.value })}
+                                        className="w-full min-h-[36px] px-2 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400"
+                                        placeholder="First name"
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-0">
+                                    <input
+                                        value={s.lastName ?? ''}
+                                        onChange={(e) => patchSupplier(s.id, { lastName: e.target.value })}
+                                        className="w-full min-h-[36px] px-2 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400"
+                                        placeholder="Last name"
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-0">
+                                    <input
+                                        value={s.companyName ?? ''}
+                                        onChange={(e) => patchSupplier(s.id, { companyName: e.target.value })}
+                                        className="w-full min-h-[36px] px-2 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400"
+                                        placeholder="Company (or person above)"
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-0">
+                                    <input
+                                        value={s.contactInfo}
+                                        onChange={(e) => patchSupplier(s.id, { contactInfo: e.target.value })}
+                                        className="w-full min-h-[36px] px-2 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400"
+                                        placeholder="Phone, email…"
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-0">
+                                    <input
+                                        value={s.address}
+                                        onChange={(e) => patchSupplier(s.id, { address: e.target.value })}
+                                        className="w-full min-h-[36px] px-2 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400"
+                                        placeholder="Address"
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-0">
+                                    <input
+                                        value={s.notes}
+                                        onChange={(e) => patchSupplier(s.id, { notes: e.target.value })}
+                                        className="w-full min-h-[36px] px-2 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400"
+                                        placeholder="Terms, bank…"
+                                    />
+                                </td>
+                                <td className="border border-slate-200 px-1 py-1 align-middle">
+                                    <div className="flex flex-wrap items-center gap-1 max-w-[140px]">
+                                        {(s.images || []).map((img, idx) => (
+                                            <div key={idx} className="relative w-9 h-9 flex-shrink-0 group/img">
+                                                <img src={img} className="w-full h-full object-cover rounded border border-slate-200" alt="" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSuppliers((prev) =>
+                                                            prev.map((x) =>
+                                                                x.id === s.id
+                                                                    ? { ...x, images: (x.images || []).filter((_, i) => i !== idx) }
+                                                                    : x
+                                                            )
+                                                        )
+                                                    }
+                                                    className="absolute -top-0.5 -right-0.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition-opacity"
+                                                >
+                                                    <X className="w-2.5 h-2.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <label className="cursor-pointer flex h-9 w-9 flex-shrink-0 items-center justify-center rounded border border-dashed border-slate-300 text-slate-400 hover:border-blue-400 hover:text-blue-500" title="Add photo">
+                                            <Plus className="w-4 h-4" />
+                                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleSupplierImageUpload(s.id, e)} />
+                                        </label>
+                                    </div>
+                                </td>
+                                <td className="border border-slate-200 px-1 py-1 align-top">
+                                    <div className="flex flex-col gap-0.5 max-w-[200px]">
+                                        {(s.attachments || []).map((att) => (
+                                            <div key={att.id} className="flex items-center gap-1 rounded bg-slate-50 px-1 py-0.5 text-[11px] group/att">
+                                                <a
+                                                    href={att.data}
+                                                    download={att.name}
+                                                    className="flex min-w-0 flex-1 items-center gap-1 truncate text-slate-700 hover:text-blue-600"
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                >
+                                                    {att.type.startsWith('video') ? (
+                                                        <Video className="w-3 h-3 flex-shrink-0 text-purple-500" />
+                                                    ) : (
+                                                        <FileIcon className="w-3 h-3 flex-shrink-0 text-red-500" />
+                                                    )}
+                                                    <span className="truncate">{att.name}</span>
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => deleteAttachment(s.id, att.id)}
+                                                    className="flex-shrink-0 text-slate-400 hover:text-red-500 p-0.5 opacity-0 group-hover/att:opacity-100"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <label className="cursor-pointer text-[11px] text-blue-600 hover:underline flex items-center gap-0.5 py-0.5" title="Max 50MB">
+                                            <Paperclip className="w-3 h-3" /> Add file
+                                            <input type="file" accept="application/pdf,video/*" className="hidden" onChange={(e) => handleSupplierAttachmentUpload(s.id, e)} />
+                                        </label>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+            </table>
         </div>
       </div>
-  );
+      );
+  };
 
   if (authLoading) {
     return (

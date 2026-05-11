@@ -255,7 +255,13 @@ export interface Buyer {
 // New Interface for Suppliers
 export interface Supplier {
   id: number;
+  /** Display label for product picker / legacy: company, or first+last, or old single name */
   name: string;
+  /** Optional grouping (e.g. raw materials, packaging) — shown as spreadsheet column */
+  category?: string;
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
   contactInfo: string;
   address: string;
   notes: string;
