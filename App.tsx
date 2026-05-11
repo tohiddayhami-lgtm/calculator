@@ -595,13 +595,72 @@ const normalizeDigits = (str: string | number): string => {
 
 const formatNumber = (num: number | string): string => {
   if (num === '' || num === null || isNaN(Number(num)) || num === 0) return '';
-  return Number(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const n = Number(num);
+  const str = n.toString();
+  const dot = str.indexOf('.');
+  if (dot === -1) return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return str.slice(0, dot).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + str.slice(dot);
 };
 
 const parseInput = (val: string): number => {
   const clean = normalizeDigits(val).replace(/,/g, '');
   const parsed = parseFloat(clean);
   return isNaN(parsed) ? 0 : parsed;
+};
+
+/** Full number with grouping (including 0); used for blur / display sync in numeric inputs. */
+const formatWithSeparators = (n: number): string => {
+  if (!Number.isFinite(n)) return '';
+  const neg = n < 0 || Object.is(n, -0);
+  const str = Math.abs(n).toString();
+  const dot = str.indexOf('.');
+  if (dot === -1) return (neg ? '-' : '') + str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const intPart = str.slice(0, dot);
+  const dec = str.slice(dot);
+  return (neg ? '-' : '') + intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
+};
+
+/** Formats raw keystrokes with comma grouping while preserving an in-progress decimal point. */
+const formatThousandsWhileTyping = (raw: string, integerOnly?: boolean): string => {
+  let s = normalizeDigits(raw).replace(/,/g, '').trim();
+  if (s === '') return '';
+
+  let neg = false;
+  if (s.startsWith('-')) {
+    neg = true;
+    s = s.slice(1);
+  }
+
+  const buf: string[] = [];
+  let dotSeen = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch >= '0' && ch <= '9') buf.push(ch);
+    else if (!integerOnly && ch === '.' && !dotSeen) {
+      buf.push('.');
+      dotSeen = true;
+    }
+  }
+  s = buf.join('');
+  if (s === '') return neg ? '-' : '';
+  if (s === '.') return neg ? '-.' : '.';
+
+  const dotIdx = s.indexOf('.');
+  if (dotIdx === -1) {
+    const formatted = s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '-' : '') + formatted;
+  }
+
+  const intRaw = s.slice(0, dotIdx);
+  const fracRaw = s.slice(dotIdx + 1);
+  const intFormatted = intRaw ? intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+  const sign = neg ? '-' : '';
+  if (intRaw === '') {
+    if (fracRaw === '') return `${sign}.`;
+    return `${sign}.${fracRaw}`;
+  }
+  if (fracRaw === '' && s.endsWith('.')) return `${sign}${intFormatted}.`;
+  return `${sign}${intFormatted}.${fracRaw}`;
 };
 
 const formatMoney = (amount: number, currency: string): string => {
@@ -1511,6 +1570,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             }
 
             function escapeText(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+            function stripQtyCommas(s){ return String(s == null ? '' : s).replace(/,/g, ''); }
+            function formatQtyInput(n){
+                n = parseInt(stripQtyCommas(String(n)), 10);
+                if (!n || n < 1) n = 1;
+                return String(n).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');
+            }
             function save(){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cart)); } catch(e){} }
             function totalUnits(){
                 var n = 0;
@@ -1568,7 +1633,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                         '<div class="row2">' +
                             '<div class="qty-row">' +
                                 '<button type="button" data-act="dec" aria-label="Decrease">-</button>' +
-                                '<input type="number" min="1" inputmode="numeric" value="' + (it.qty || 1) + '" />' +
+                                '<input type="text" class="cart-qty-inp" inputmode="numeric" autocomplete="off" value="' + formatQtyInput(it.qty || 1) + '" />' +
                                 '<button type="button" data-act="inc" aria-label="Increase">+</button>' +
                             '</div>' +
                             modeToggle +
@@ -1577,14 +1642,34 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                         totalLine +
                         priceHtml +
                     '</div>';
-                var qInput = row.querySelector('input[type="number"]');
+                var qInput = row.querySelector('.cart-qty-inp');
                 var inc = row.querySelector('[data-act="inc"]');
                 var dec = row.querySelector('[data-act="dec"]');
                 var rm = row.querySelector('[data-act="rm"]');
-                if (inc) inc.addEventListener('click', function(){ it.qty = (parseInt(qInput.value, 10) || 0) + 1; if (it.qty < 1) it.qty = 1; save(); refresh(); });
-                if (dec) dec.addEventListener('click', function(){ var v = (parseInt(qInput.value, 10) || 1) - 1; if (v < 1) v = 1; it.qty = v; save(); refresh(); });
+                if (inc) inc.addEventListener('click', function(){
+                    if (!qInput) return;
+                    it.qty = (parseInt(stripQtyCommas(qInput.value), 10) || 0) + 1;
+                    if (it.qty < 1) it.qty = 1;
+                    qInput.value = formatQtyInput(it.qty);
+                    save(); refresh();
+                });
+                if (dec) dec.addEventListener('click', function(){
+                    if (!qInput) return;
+                    var v = (parseInt(stripQtyCommas(qInput.value), 10) || 1) - 1;
+                    if (v < 1) v = 1;
+                    it.qty = v;
+                    qInput.value = formatQtyInput(v);
+                    save(); refresh();
+                });
                 if (qInput) {
-                    qInput.addEventListener('input', function(){ var v = parseInt(qInput.value, 10); if (!v || v < 1) v = 1; it.qty = v; save(); updateBadge(); updateTotalLine(row); });
+                    qInput.addEventListener('input', function(){
+                        var v = parseInt(stripQtyCommas(qInput.value), 10);
+                        if (!v || v < 1) v = 1;
+                        it.qty = v;
+                        var disp = formatQtyInput(v);
+                        if (qInput.value !== disp) qInput.value = disp;
+                        save(); updateBadge(); updateTotalLine(row);
+                    });
                     qInput.addEventListener('blur', function(){ refresh(); });
                 }
                 if (rm) rm.addEventListener('click', function(){ delete cart[key]; save(); refresh(); });
@@ -2347,44 +2432,70 @@ const dbDeleteProject = async (id: string): Promise<void> => {
 // --- COMPONENTS ---
 
 // Helper Input Component
-const FormattedNumberInput = ({ 
-  value, 
-  onChange, 
-  className, 
+const FormattedNumberInput = ({
+  value,
+  onChange,
+  optional = false,
+  integerOnly = false,
+  className,
   style,
   placeholder,
-  disabled
-}: { 
-  value: number; 
-  onChange: (val: number) => void; 
-  className?: string; 
+  disabled,
+  inputMode,
+}: {
+  value: number | undefined;
+  onChange: (val: number | undefined) => void;
+  optional?: boolean;
+  integerOnly?: boolean;
+  className?: string;
   style?: React.CSSProperties;
   placeholder?: string;
   disabled?: boolean;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
 }) => {
   const [localValue, setLocalValue] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
 
+  const displayFromProp = (): string => {
+    if (optional) {
+      if (value === undefined || value === null) return '';
+      if (value === 0) return '0';
+      return formatWithSeparators(value);
+    }
+    const v = value ?? 0;
+    if (v === 0) return '';
+    return formatWithSeparators(v);
+  };
+
   useEffect(() => {
     if (!isEditing) {
-      setLocalValue(value === 0 ? '' : formatNumber(value));
+      setLocalValue(displayFromProp());
     }
-  }, [value, isEditing]);
+  }, [value, isEditing, optional]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
-    setLocalValue(raw);
-    onChange(parseInput(raw));
+    const cleaned = normalizeDigits(raw).replace(/,/g, '').trim();
+    const display = formatThousandsWhileTyping(raw, integerOnly);
+    setLocalValue(display);
+    if (optional && cleaned === '') {
+      onChange(undefined);
+      return;
+    }
+    let n = parseInput(raw);
+    if (integerOnly) n = Math.round(n);
+    onChange(n);
   };
 
   const handleBlur = () => {
     setIsEditing(false);
-    setLocalValue(value === 0 ? '' : formatNumber(value));
+    setLocalValue(displayFromProp());
   };
 
   return (
     <input
       type="text"
+      inputMode={inputMode ?? (integerOnly ? 'numeric' : 'decimal')}
       value={localValue}
       onChange={handleChange}
       onFocus={() => setIsEditing(true)}
@@ -5614,10 +5725,9 @@ function AppInner() {
                         {config.pricingMethod === 'fixed_unit_markup' && <span className="text-[9px] text-red-500">(Off)</span>}
                     </label>
                     <div className="flex items-center gap-2">
-                        <input 
-                            type="number" 
+                        <FormattedNumberInput
                             value={config.profitPercent}
-                            onChange={(e) => setConfig({...config, profitPercent: parseFloat(e.target.value) || 0})}
+                            onChange={(val) => setConfig({ ...config, profitPercent: val ?? 0 })}
                             className="w-20 text-sm border border-slate-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
                             disabled={config.pricingMethod === 'fixed_unit_markup'}
                         />
@@ -5683,9 +5793,9 @@ function AppInner() {
                 {Object.entries(rates).map(([curr, rate]) => (
                     <div key={curr} className="relative group">
                         <label className="block text-xs font-medium text-slate-500 mb-1">{curr} Rate</label>
-                        <FormattedNumberInput 
+                        <FormattedNumberInput
                             value={rate as number}
-                            onChange={(val) => setRates({...rates, [curr]: val})}
+                            onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
                             className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                         />
                     </div>
@@ -6019,7 +6129,7 @@ function AppInner() {
                                 <td className="px-4 py-2">
                                     <FormattedNumberInput 
                                         value={p.qty}
-                                        onChange={(val) => updateProduct(p.id, 'qty', val)}
+                                        onChange={(val) => updateProduct(p.id, 'qty', val ?? 0)}
                                         className="bg-transparent border-none p-0 focus:ring-0 text-slate-600"
                                         style={{ minWidth: '100%', width: `${Math.max(formatNumber(p.qty).length, 3) + 2}ch` }}
                                     />
@@ -6029,7 +6139,7 @@ function AppInner() {
                                     <div className="flex items-center gap-1">
                                         <FormattedNumberInput 
                                             value={p.itemsPerPack}
-                                            onChange={(val) => updateProduct(p.id, 'itemsPerPack', val)}
+                                            onChange={(val) => updateProduct(p.id, 'itemsPerPack', val ?? 0)}
                                             className="bg-slate-50 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 py-1 text-slate-600 w-14 text-center text-xs"
                                             placeholder="0"
                                         />
@@ -6048,7 +6158,7 @@ function AppInner() {
                                         <FormattedNumberInput
                                             value={p.totalPacks || 0}
                                             onChange={(val) => {
-                                                const newQty = val * (p.itemsPerPack || 0);
+                                                const newQty = (val ?? 0) * (p.itemsPerPack || 0);
                                                 updateProduct(p.id, 'qty', newQty);
                                             }}
                                             className="bg-transparent border border-transparent hover:border-indigo-300 focus:border-indigo-500 rounded px-1 py-1 text-indigo-700 font-medium text-center w-full outline-none"
@@ -6066,7 +6176,7 @@ function AppInner() {
                                     <div className="flex gap-2 items-center">
                                         <FormattedNumberInput 
                                             value={p.unitPrice}
-                                            onChange={(val) => updateProduct(p.id, 'unitPrice', val)}
+                                            onChange={(val) => updateProduct(p.id, 'unitPrice', val ?? 0)}
                                             className="bg-transparent border-none p-0 focus:ring-0 text-slate-600"
                                             style={{ minWidth: '60px', width: `${Math.max(formatNumber(p.unitPrice).length, 6) + 2}ch` }}
                                         />
@@ -6097,19 +6207,12 @@ function AppInner() {
                                 
                                 <td className="px-4 py-2 text-right">
                                     {/* DISABLE PER-PRODUCT PROFIT IN FIXED MODE */}
-                                    <input 
-                                        type="text"
-                                        value={p.customProfit !== undefined ? p.customProfit : ''}
-                                        placeholder={config.profitPercent.toString()}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            if (val.trim() === '') {
-                                                updateProduct(p.id, 'customProfit', undefined);
-                                            } else {
-                                                updateProduct(p.id, 'customProfit', parseInput(val));
-                                            }
-                                        }}
+                                    <FormattedNumberInput
+                                        optional
+                                        value={p.customProfit}
+                                        onChange={(val) => updateProduct(p.id, 'customProfit', val)}
                                         disabled={config.pricingMethod === 'fixed_unit_markup'}
+                                        placeholder={String(config.profitPercent)}
                                         className={`w-14 text-right bg-transparent border-b ${p.customProfit !== undefined ? 'border-purple-300 text-purple-700 font-medium' : 'border-slate-200 text-slate-400'} focus:border-purple-500 outline-none text-xs px-1 ${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-30 cursor-not-allowed' : ''}`}
                                     />
                                 </td>
@@ -6141,7 +6244,13 @@ function AppInner() {
                                                 <div className="flex items-center gap-1">
                                                     <FormattedNumberInput
                                                         value={tVal !== undefined ? tVal : 0}
-                                                        onChange={(val) => updateProduct(p.id, 'targetPrice', val === 0 && (tVal === undefined) ? undefined : val)}
+                                                        onChange={(val) =>
+                                                            updateProduct(
+                                                                p.id,
+                                                                'targetPrice',
+                                                                val === 0 && tVal === undefined ? undefined : val ?? 0
+                                                            )
+                                                        }
                                                         className="w-full bg-transparent border-b border-amber-200 focus:border-amber-500 outline-none text-right text-amber-800 font-medium px-1 py-0.5"
                                                         placeholder="0"
                                                     />
@@ -6288,7 +6397,7 @@ function AppInner() {
                                 />
                                 <FormattedNumberInput 
                                     value={ex.val} 
-                                    onChange={(val) => updateExwExtraCost(ex.id, 'val', val)} 
+                                    onChange={(val) => updateExwExtraCost(ex.id, 'val', val ?? 0)} 
                                     className="w-20 text-xs text-right border border-slate-200 rounded px-1 py-1 shrink-0"
                                 />
                                 <select 
@@ -6324,7 +6433,7 @@ function AppInner() {
                          <div className="flex items-center gap-2 shrink-0">
                              <FormattedNumberInput 
                                  value={logistics.inland.val}
-                                 onChange={(val) => updateLogisticsMain('inland', 'val', val)}
+                                 onChange={(val) => updateLogisticsMain('inland', 'val', val ?? 0)}
                                  className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
                              />
                              <select 
@@ -6355,7 +6464,7 @@ function AppInner() {
                          <div className="flex items-center gap-2 shrink-0">
                              <FormattedNumberInput 
                                  value={logistics.port.val}
-                                 onChange={(val) => updateLogisticsMain('port', 'val', val)}
+                                 onChange={(val) => updateLogisticsMain('port', 'val', val ?? 0)}
                                  className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
                              />
                              <select 
@@ -6387,7 +6496,7 @@ function AppInner() {
                              <div className="flex items-center gap-2 shrink-0">
                                  <FormattedNumberInput 
                                      value={logistics.freight.val}
-                                     onChange={(val) => updateLogisticsMain('freight', 'val', val)}
+                                     onChange={(val) => updateLogisticsMain('freight', 'val', val ?? 0)}
                                      className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
                                  />
                                  <select 
@@ -6407,7 +6516,7 @@ function AppInner() {
                              <div className="flex items-center gap-2 shrink-0">
                                  <FormattedNumberInput 
                                      value={logistics.insurance.val}
-                                     onChange={(val) => updateLogisticsMain('insurance', 'val', val)}
+                                     onChange={(val) => updateLogisticsMain('insurance', 'val', val ?? 0)}
                                      className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
                                  />
                                  <select 
@@ -6440,7 +6549,7 @@ function AppInner() {
                              <div className="flex items-center gap-2 shrink-0">
                                  <FormattedNumberInput 
                                      value={logistics.destination.val}
-                                     onChange={(val) => updateLogisticsMain('destination', 'val', val)}
+                                     onChange={(val) => updateLogisticsMain('destination', 'val', val ?? 0)}
                                      className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
                                  />
                                  <select 
@@ -6460,10 +6569,9 @@ function AppInner() {
                                 </span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                                <input 
-                                    type="number" 
+                                <FormattedNumberInput
                                     value={logistics.dutyPercent}
-                                    onChange={(e) => setLogistics({...logistics, dutyPercent: parseFloat(e.target.value) || 0})}
+                                    onChange={(val) => setLogistics({ ...logistics, dutyPercent: val ?? 0 })}
                                     className="w-16 text-right border border-slate-200 rounded px-2 py-1.5 text-sm focus:ring-blue-500 outline-none"
                                 />
                                 <span className="text-xs text-slate-500">%</span>
@@ -6484,7 +6592,7 @@ function AppInner() {
                                 />
                                 <FormattedNumberInput 
                                     value={ex.val} 
-                                    onChange={(val) => updateExtraCost(ex.id, 'val', val)} 
+                                    onChange={(val) => updateExtraCost(ex.id, 'val', val ?? 0)} 
                                     className="w-20 text-xs text-right border border-slate-200 rounded px-1 py-1 shrink-0"
                                 />
                                 <select 
@@ -6588,16 +6696,17 @@ function AppInner() {
                                   <div key={item.id} className="border border-purple-200 bg-purple-50/50 rounded-lg p-3">
                                       <label className="text-xs font-semibold text-purple-800 block mb-1">{item.label}</label>
                                       <div className="flex items-center gap-2 bg-white rounded border border-purple-200 px-2">
-                                          <input 
-                                              type="number"
+                                          <FormattedNumberInput
                                               value={(config.termMultipliers as any)?.[item.id] || 0}
-                                              onChange={(e) => setConfig({
-                                                  ...config, 
-                                                  termMultipliers: {
-                                                      ...config.termMultipliers, 
-                                                      [item.id]: parseFloat(e.target.value) || 0
-                                                  } as any
-                                              })}
+                                              onChange={(val) =>
+                                                  setConfig({
+                                                      ...config,
+                                                      termMultipliers: {
+                                                          ...config.termMultipliers,
+                                                          [item.id]: val ?? 0,
+                                                      } as any,
+                                                  })
+                                              }
                                               className="w-full py-1.5 text-sm outline-none font-bold text-slate-700"
                                           />
                                           <span className="text-xs font-bold text-purple-400">%</span>
@@ -6860,10 +6969,10 @@ function AppInner() {
                 </div>
                 <div className="flex items-center gap-2 mb-4">
                   <label className="text-xs text-slate-500 whitespace-nowrap font-medium">Units per {containerType}:</label>
-                  <input
-                    type="number"
+                  <FormattedNumberInput
+                    integerOnly
                     value={containerCapacity}
-                    onChange={(e) => setContainerCapacity(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={(val) => setContainerCapacity(Math.max(1, Math.round(val ?? 1)))}
                     className="w-24 text-sm border border-slate-200 rounded-lg px-2 py-1 text-center focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 outline-none font-mono"
                   />
                   <span className="text-xs text-slate-400">/ {calculations.totalQty.toLocaleString()} total</span>
@@ -9681,18 +9790,15 @@ function AppInner() {
                   <td>{p.hsCode || '—'}</td>
                   <td className="num">
                     {isInvoiceEditable ? (
-                      <input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        value={nw === undefined || nw === null ? '' : nw}
-                        onChange={(e) => {
-                          const raw = e.target.value;
+                      <FormattedNumberInput
+                        optional
+                        value={nw === undefined || nw === null ? undefined : nw}
+                        onChange={(val) => {
                           setInvoiceOverrides((prev) => ({
                             ...prev,
                             [p.id]: {
                               ...prev[p.id],
-                              netWeightKg: raw === '' ? undefined : parseFloat(raw) || 0,
+                              netWeightKg: val === undefined ? undefined : val,
                             },
                           }));
                         }}
@@ -9706,13 +9812,12 @@ function AppInner() {
                   </td>
                   <td className="num">
                     {isInvoiceEditable ? (
-                      <input
-                        type="number"
+                      <FormattedNumberInput
                         value={displayQty}
-                        onChange={(e) =>
+                        onChange={(val) =>
                           setInvoiceOverrides((prev) => ({
                             ...prev,
-                            [p.id]: { ...prev[p.id], qty: parseFloat(e.target.value) || 0 },
+                            [p.id]: { ...prev[p.id], qty: val ?? 0 },
                           }))
                         }
                         className="welte-inline-inp welte-inline-inp-num"
@@ -9724,12 +9829,10 @@ function AppInner() {
                   </td>
                   <td className="num">
                     {isInvoiceEditable ? (
-                      <input
-                        type="number"
-                        step="0.01"
+                      <FormattedNumberInput
                         value={uPrice}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value) || 0;
+                        onChange={(val) => {
+                          const v = val ?? 0;
                           setInvoiceOverrides((prev) => {
                             const curr = prev[p.id] || {};
                             const up = { ...(curr.unitPrices || {}) };
@@ -10304,12 +10407,9 @@ function AppInner() {
                                <option value="amount">Fixed amount (one scenario)</option>
                            </select>
                            {invoiceGlobalDiscountMode !== 'none' && (
-                               <input
-                                   type="number"
-                                   min={0}
-                                   step={invoiceGlobalDiscountMode === 'percent' ? 0.1 : 0.01}
-                                   value={invoiceGlobalDiscountValue || ''}
-                                   onChange={(e) => setInvoiceGlobalDiscountValue(parseFloat(e.target.value) || 0)}
+                               <FormattedNumberInput
+                                   value={invoiceGlobalDiscountValue || 0}
+                                   onChange={(val) => setInvoiceGlobalDiscountValue(val ?? 0)}
                                    className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
                                    placeholder={invoiceGlobalDiscountMode === 'percent' ? '%' : `Amount (${config.outputCurrency})`}
                                />
@@ -10346,12 +10446,9 @@ function AppInner() {
                        {invoiceVatEnabled && (
                            <div className="flex items-center gap-2">
                                <label className="text-[10px] text-slate-500">Rate %</label>
-                               <input
-                                   type="number"
-                                   min={0}
-                                   step={0.1}
+                               <FormattedNumberInput
                                    value={invoiceVatPercent}
-                                   onChange={(e) => setInvoiceVatPercent(parseFloat(e.target.value) || 0)}
+                                   onChange={(val) => setInvoiceVatPercent(val ?? 0)}
                                    className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5"
                                />
                            </div>
@@ -10403,15 +10500,12 @@ function AppInner() {
                                        placeholder="Label (e.g. Shipping)"
                                        className="flex-1 min-w-[96px] text-[11px] border border-slate-200 rounded px-2 py-1"
                                    />
-                                   <input
-                                       type="number"
-                                       min={0}
-                                       step={0.01}
-                                       value={row.amount === 0 ? '' : row.amount}
-                                       onChange={(e) =>
+                                   <FormattedNumberInput
+                                       value={row.amount}
+                                       onChange={(val) =>
                                            setInvoiceExtraCharges((prev) =>
                                                prev.map((x) =>
-                                                   x.id === row.id ? { ...x, amount: parseFloat(e.target.value) || 0 } : x
+                                                   x.id === row.id ? { ...x, amount: val ?? 0 } : x
                                                )
                                            )
                                        }
@@ -10641,50 +10735,69 @@ function AppInner() {
                                    )}
                                    <td className="center">
                                        {isInvoiceEditable ? (
-                                           <input
-                                               type="number"
+                                           <FormattedNumberInput
                                                value={displayQty}
-                                               onChange={(e) => setInvoiceOverrides(prev => ({
-                                                   ...prev,
-                                                   [p.id]: { ...prev[p.id], qty: parseFloat(e.target.value) || 0 }
-                                               }))}
-                                               style={{ width: 48, textAlign: 'center', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 2px', fontSize: '9pt' }}
+                                               onChange={(val) =>
+                                                   setInvoiceOverrides((prev) => ({
+                                                       ...prev,
+                                                       [p.id]: { ...prev[p.id], qty: val ?? 0 },
+                                                   }))
+                                               }
+                                               style={{
+                                                   width: 48,
+                                                   textAlign: 'center',
+                                                   border: '1px solid #bfdbfe',
+                                                   background: 'rgba(239,246,255,0.4)',
+                                                   borderRadius: 3,
+                                                   padding: '2px 2px',
+                                                   fontSize: '9pt',
+                                               }}
                                            />
                                        ) : formatNumber(displayQty)}
                                    </td>
                                    {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
                                        <td className="center">
                                            {isInvoiceEditable && p.itemsPerPack > 0 ? (
-                                               <input
-                                                   type="number"
+                                               <FormattedNumberInput
                                                    value={displayPacks}
-                                                   onChange={(e) => {
-                                                       const newPacks = parseFloat(e.target.value) || 0;
-                                                       setInvoiceOverrides(prev => ({
+                                                   onChange={(val) => {
+                                                       const newPacks = val ?? 0;
+                                                       setInvoiceOverrides((prev) => ({
                                                            ...prev,
-                                                           [p.id]: { ...prev[p.id], qty: newPacks * p.itemsPerPack }
+                                                           [p.id]: { ...prev[p.id], qty: newPacks * p.itemsPerPack },
                                                        }));
                                                    }}
-                                                   style={{ width: 48, textAlign: 'center', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 2px', fontSize: '9pt' }}
+                                                   style={{
+                                                       width: 48,
+                                                       textAlign: 'center',
+                                                       border: '1px solid #bfdbfe',
+                                                       background: 'rgba(239,246,255,0.4)',
+                                                       borderRadius: 3,
+                                                       padding: '2px 2px',
+                                                       fontSize: '9pt',
+                                                   }}
                                                />
                                            ) : formatNumber(displayPacks)}
                                        </td>
                                    )}
                                    <td className="center">
                                        {isInvoiceEditable ? (
-                                           <input
-                                               type="number"
-                                               min={0}
-                                               max={100}
-                                               step={0.1}
-                                               value={override.discountPercent ?? ''}
-                                               onChange={(e) =>
+                                           <FormattedNumberInput
+                                               value={override.discountPercent ?? 0}
+                                               onChange={(val) =>
                                                    setInvoiceOverrides((prev) => ({
                                                        ...prev,
-                                                       [p.id]: { ...prev[p.id], discountPercent: parseFloat(e.target.value) || 0 }
+                                                       [p.id]: { ...prev[p.id], discountPercent: val ?? 0 },
                                                    }))
                                                }
-                                               style={{ width: 44, textAlign: 'center', border: '1px solid #e2e8f0', borderRadius: 3, padding: '2px 2px', fontSize: '8.5pt' }}
+                                               style={{
+                                                   width: 44,
+                                                   textAlign: 'center',
+                                                   border: '1px solid #e2e8f0',
+                                                   borderRadius: 3,
+                                                   padding: '2px 2px',
+                                                   fontSize: '8.5pt',
+                                               }}
                                                placeholder="0"
                                            />
                                        ) : (
@@ -10695,18 +10808,22 @@ function AppInner() {
                                    </td>
                                    <td className="num">
                                        {isInvoiceEditable ? (
-                                           <input
-                                               type="number"
-                                               min={0}
-                                               step={0.01}
-                                               value={override.discountAmount ?? ''}
-                                               onChange={(e) =>
+                                           <FormattedNumberInput
+                                               value={override.discountAmount ?? 0}
+                                               onChange={(val) =>
                                                    setInvoiceOverrides((prev) => ({
                                                        ...prev,
-                                                       [p.id]: { ...prev[p.id], discountAmount: parseFloat(e.target.value) || 0 }
+                                                       [p.id]: { ...prev[p.id], discountAmount: val ?? 0 },
                                                    }))
                                                }
-                                               style={{ width: 64, textAlign: 'right', border: '1px solid #e2e8f0', borderRadius: 3, padding: '2px 4px', fontSize: '8.5pt' }}
+                                               style={{
+                                                   width: 64,
+                                                   textAlign: 'right',
+                                                   border: '1px solid #e2e8f0',
+                                                   borderRadius: 3,
+                                                   padding: '2px 4px',
+                                                   fontSize: '8.5pt',
+                                               }}
                                                placeholder="0"
                                            />
                                        ) : (
@@ -10728,16 +10845,30 @@ function AppInner() {
                                                {(invoiceBasis === 'unit' || invoiceBasis === 'both') && (
                                                    <td className="num">
                                                        {isInvoiceEditable ? (
-                                                           <input
-                                                               type="number"
+                                                           <FormattedNumberInput
                                                                value={displayUnitPrice}
-                                                               step="0.01"
-                                                               onChange={(e) => setInvoiceOverrides(prev => {
-                                                                   const curr = prev[p.id] || {};
-                                                                   const prices = curr.unitPrices || {};
-                                                                   return { ...prev, [p.id]: { ...curr, unitPrices: { ...prices, [term]: parseFloat(e.target.value) || 0 } } };
-                                                               })}
-                                                               style={{ width: 60, textAlign: 'right', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 4px', fontSize: '8.5pt' }}
+                                                               onChange={(val) =>
+                                                                   setInvoiceOverrides((prev) => {
+                                                                       const curr = prev[p.id] || {};
+                                                                       const prices = curr.unitPrices || {};
+                                                                       return {
+                                                                           ...prev,
+                                                                           [p.id]: {
+                                                                               ...curr,
+                                                                               unitPrices: { ...prices, [term]: val ?? 0 },
+                                                                           },
+                                                                       };
+                                                                   })
+                                                               }
+                                                               style={{
+                                                                   width: 60,
+                                                                   textAlign: 'right',
+                                                                   border: '1px solid #bfdbfe',
+                                                                   background: 'rgba(239,246,255,0.4)',
+                                                                   borderRadius: 3,
+                                                                   padding: '2px 4px',
+                                                                   fontSize: '8.5pt',
+                                                               }}
                                                            />
                                                        ) : formatMoney(displayUnitPrice, config.outputCurrency)}
                                                    </td>
@@ -10745,16 +10876,30 @@ function AppInner() {
                                                {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
                                                    <td className="num">
                                                        {isInvoiceEditable ? (
-                                                           <input
-                                                               type="number"
+                                                           <FormattedNumberInput
                                                                value={displayPackPrice}
-                                                               step="0.01"
-                                                               onChange={(e) => setInvoiceOverrides(prev => {
-                                                                   const curr = prev[p.id] || {};
-                                                                   const prices = curr.packPrices || {};
-                                                                   return { ...prev, [p.id]: { ...curr, packPrices: { ...prices, [term]: parseFloat(e.target.value) || 0 } } };
-                                                               })}
-                                                               style={{ width: 60, textAlign: 'right', border: '1px solid #bfdbfe', background: 'rgba(239,246,255,0.4)', borderRadius: 3, padding: '2px 4px', fontSize: '8.5pt' }}
+                                                               onChange={(val) =>
+                                                                   setInvoiceOverrides((prev) => {
+                                                                       const curr = prev[p.id] || {};
+                                                                       const prices = curr.packPrices || {};
+                                                                       return {
+                                                                           ...prev,
+                                                                           [p.id]: {
+                                                                               ...curr,
+                                                                               packPrices: { ...prices, [term]: val ?? 0 },
+                                                                           },
+                                                                       };
+                                                                   })
+                                                               }
+                                                               style={{
+                                                                   width: 60,
+                                                                   textAlign: 'right',
+                                                                   border: '1px solid #bfdbfe',
+                                                                   background: 'rgba(239,246,255,0.4)',
+                                                                   borderRadius: 3,
+                                                                   padding: '2px 4px',
+                                                                   fontSize: '8.5pt',
+                                                               }}
                                                            />
                                                        ) : formatMoney(displayPackPrice, config.outputCurrency)}
                                                    </td>
@@ -10892,16 +11037,6 @@ function AppInner() {
     const totalNet = packingRows.reduce((s, p) => s + packingLineNetKg(p), 0);
     const totalGross = packingRows.reduce((s, p) => s + packingLineGrossKg(p), 0);
 
-    const numField = (p: Product, field: keyof Product, e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value;
-      if (raw === '') {
-        updateProduct(p.id, field, undefined);
-        return;
-      }
-      const n = parseFloat(raw);
-      updateProduct(p.id, field, Number.isFinite(n) ? n : undefined);
-    };
-
     return (
       <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
         <div className="w-full lg:w-96 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-5">
@@ -11003,84 +11138,71 @@ function AppInner() {
                     <div className="text-xs font-semibold text-slate-800 truncate">{p.name || `Product #${p.id}`}</div>
                     <div className="grid grid-cols-2 gap-1.5">
                       <label className="text-[10px] text-slate-500 col-span-2">Cartons (qty)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="1"
-                        value={p.packingQtyCartons ?? ''}
-                        onChange={(e) => numField(p, 'packingQtyCartons', e)}
+                      <FormattedNumberInput
+                        optional
+                        integerOnly
+                        value={p.packingQtyCartons}
+                        onChange={(val) => updateProduct(p.id, 'packingQtyCartons', val)}
                         className="col-span-2 text-xs border rounded px-1 py-0.5 w-full"
                       />
                       <label className="text-[10px] text-slate-500">N.W./ctn ({wu})</label>
                       <label className="text-[10px] text-slate-500">G.W./ctn ({wu})</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.001"
-                        value={p.packingCartonNetWeightKg ?? ''}
-                        onChange={(e) => numField(p, 'packingCartonNetWeightKg', e)}
+                      <FormattedNumberInput
+                        optional
+                        value={p.packingCartonNetWeightKg}
+                        onChange={(val) => updateProduct(p.id, 'packingCartonNetWeightKg', val)}
                         className="text-xs border rounded px-1 py-0.5 w-full"
                       />
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.001"
-                        value={p.packingCartonGrossWeightKg ?? ''}
-                        onChange={(e) => numField(p, 'packingCartonGrossWeightKg', e)}
+                      <FormattedNumberInput
+                        optional
+                        value={p.packingCartonGrossWeightKg}
+                        onChange={(val) => updateProduct(p.id, 'packingCartonGrossWeightKg', val)}
                         className="text-xs border rounded px-1 py-0.5 w-full"
                       />
                       <label className="text-[10px] text-slate-500 col-span-2">Carton L × W × H (cm)</label>
                       <div className="col-span-2 grid grid-cols-3 gap-1">
-                        <input
-                          type="number"
-                          step="0.1"
+                        <FormattedNumberInput
+                          optional
+                          value={p.packingCartonLengthCm}
+                          onChange={(val) => updateProduct(p.id, 'packingCartonLengthCm', val)}
                           placeholder="L"
-                          value={p.packingCartonLengthCm ?? ''}
-                          onChange={(e) => numField(p, 'packingCartonLengthCm', e)}
                           className="text-xs border rounded px-1 py-0.5 w-full"
                         />
-                        <input
-                          type="number"
-                          step="0.1"
+                        <FormattedNumberInput
+                          optional
+                          value={p.packingCartonWidthCm}
+                          onChange={(val) => updateProduct(p.id, 'packingCartonWidthCm', val)}
                           placeholder="W"
-                          value={p.packingCartonWidthCm ?? ''}
-                          onChange={(e) => numField(p, 'packingCartonWidthCm', e)}
                           className="text-xs border rounded px-1 py-0.5 w-full"
                         />
-                        <input
-                          type="number"
-                          step="0.1"
+                        <FormattedNumberInput
+                          optional
+                          value={p.packingCartonHeightCm}
+                          onChange={(val) => updateProduct(p.id, 'packingCartonHeightCm', val)}
                           placeholder="H"
-                          value={p.packingCartonHeightCm ?? ''}
-                          onChange={(e) => numField(p, 'packingCartonHeightCm', e)}
                           className="text-xs border rounded px-1 py-0.5 w-full"
                         />
                       </div>
                       <label className="text-[10px] text-slate-500 col-span-2">Pallets (qty)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="1"
-                        value={p.packingPalletCount ?? ''}
-                        onChange={(e) => numField(p, 'packingPalletCount', e)}
+                      <FormattedNumberInput
+                        optional
+                        integerOnly
+                        value={p.packingPalletCount}
+                        onChange={(val) => updateProduct(p.id, 'packingPalletCount', val)}
                         className="col-span-2 text-xs border rounded px-1 py-0.5 w-full"
                       />
                       <label className="text-[10px] text-slate-500">N.W./plt ({wu})</label>
                       <label className="text-[10px] text-slate-500">G.W./plt ({wu})</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.001"
-                        value={p.packingPalletNetWeightKg ?? ''}
-                        onChange={(e) => numField(p, 'packingPalletNetWeightKg', e)}
+                      <FormattedNumberInput
+                        optional
+                        value={p.packingPalletNetWeightKg}
+                        onChange={(val) => updateProduct(p.id, 'packingPalletNetWeightKg', val)}
                         className="text-xs border rounded px-1 py-0.5 w-full"
                       />
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.001"
-                        value={p.packingPalletGrossWeightKg ?? ''}
-                        onChange={(e) => numField(p, 'packingPalletGrossWeightKg', e)}
+                      <FormattedNumberInput
+                        optional
+                        value={p.packingPalletGrossWeightKg}
+                        onChange={(val) => updateProduct(p.id, 'packingPalletGrossWeightKg', val)}
                         className="text-xs border rounded px-1 py-0.5 w-full"
                       />
                       <label className="text-[10px] text-slate-500 col-span-2">Marks &amp; numbers</label>
@@ -12483,12 +12605,11 @@ function AppInner() {
                                                           </div>
                                                           <div className="md:col-span-1">
                                                               <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Amount</label>
-                                                              <input
-                                                                  type="number"
-                                                                  min={0}
-                                                                  step={0.01}
-                                                                  value={paymentDraft.amount || ''}
-                                                                  onChange={(e) => setPaymentDraft({ ...paymentDraft, amount: parseFloat(e.target.value) || 0 })}
+                                                              <FormattedNumberInput
+                                                                  value={paymentDraft.amount}
+                                                                  onChange={(val) =>
+                                                                      setPaymentDraft({ ...paymentDraft, amount: val ?? 0 })
+                                                                  }
                                                                   className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
                                                                   placeholder={`Max ${formatMoney(balance, selected.outputCurrency)}`}
                                                               />
