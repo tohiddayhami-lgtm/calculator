@@ -5032,21 +5032,25 @@ function AppInner() {
       </div>
 
       {/* 3. LOGISTICS — lanes aligned to Incoterms (matches cumulative pricing engine) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-              <h2 className="font-semibold text-slate-700 flex items-center gap-2 mb-1">
-                  <Truck className="w-4 h-4 text-amber-500" />
-                  Logistics &amp; transport
-              </h2>
-              <p className="text-xs text-slate-600 leading-relaxed mb-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0 max-h-[min(22rem,48vh)] md:max-h-[min(24rem,50vh)]">
+              <div className="shrink-0 px-4 pt-3 pb-2 border-b border-slate-100 bg-slate-50/60">
+                  <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-amber-500" />
+                      Logistics &amp; transport
+                  </h2>
+                  <p className="text-[10px] text-slate-500 mt-1">Stack EXW→DDP · per-unit share of shipment — <span className="text-slate-400">scroll below</span></p>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 py-3 space-y-3 [scrollbar-gutter:stable]">
+              <p className="text-xs text-slate-600 leading-relaxed">
                   Each field below feeds a <strong>cumulative cost stack</strong> used in scenario pricing: EXW → FCA → FOB → CIF → DDP.
                   Shipment totals are converted to output currency, then spread <strong>evenly per unit</strong> across all active line quantities (same rule as the calculator table).
               </p>
-              <p className="text-[11px] text-slate-500 leading-relaxed mb-3 border-b border-slate-100 pb-3" dir="rtl">
+              <p className="text-[11px] text-slate-500 leading-relaxed pb-2 border-b border-slate-100" dir="rtl">
                   هر بخش هزینه به لایهٔ اینکوترم مربوطش وصل است؛ ترتیب با موتور قیمت‌گذاری یکی است و سهم هر واحد از کل تعداد کالاها یکنواخت تقسیم می‌شود.
               </p>
 
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-500 mb-4 bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-100">
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-500 bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-100">
                   <span className="rounded bg-slate-200/80 px-1.5 py-0.5 font-bold text-slate-700">EXW</span>
                   <span aria-hidden="true">→</span>
                   <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-800">FCA</span>
@@ -5058,7 +5062,7 @@ function AppInner() {
                   <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-800">DDP</span>
               </div>
 
-              <div className="space-y-5">
+              <div className="space-y-3">
                  {/* EXW lane */}
                  <div className="rounded-lg border border-slate-200 bg-slate-50/40 p-3">
                      <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
@@ -5316,16 +5320,20 @@ function AppInner() {
                  </details>
               </div>
           </div>
+          </div>
 
           {/* --- REBUILT PROFIT CONFIGURATION CARD --- */}
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-              <h2 className="font-semibold text-slate-700 flex items-center gap-2 mb-4">
-                  <PieChart className="w-4 h-4 text-purple-500" />
-                  Profit Configuration
-              </h2>
-              
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0 max-h-[min(22rem,48vh)] md:max-h-[min(24rem,50vh)]">
+              <div className="shrink-0 px-4 pt-3 pb-2 border-b border-slate-100 bg-slate-50/60">
+                  <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+                      <PieChart className="w-4 h-4 text-purple-500" />
+                      Profit Configuration
+                  </h2>
+                  <p className="text-[10px] text-slate-500 mt-1">Pricing method &amp; margins — <span className="text-slate-400">scroll if needed</span></p>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 py-3 [scrollbar-gutter:stable]">
               {/* Method Switcher */}
-              <div className="flex bg-slate-100 p-1 rounded-lg mb-4">
+              <div className="flex bg-slate-100 p-1 rounded-lg mb-3">
                   <button
                       onClick={() => setConfig({...config, pricingMethod: 'cost_plus'})}
                       className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${config.pricingMethod === 'cost_plus' ? 'bg-white text-purple-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
@@ -5340,7 +5348,7 @@ function AppInner() {
                   </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                   
                   {/* MODE A: COST PLUS */}
                   {config.pricingMethod === 'cost_plus' && (
@@ -5407,23 +5415,23 @@ function AppInner() {
                   )}
 
               </div>
+              </div>
           </div>
       </div>
 
       {/* 4. SCENARIO ANALYSIS — per product + shipment totals */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
-              <div>
+      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0 max-h-[min(26rem,52vh)] md:max-h-[min(28rem,55vh)]">
+          <div className="shrink-0 px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
+              <div className="min-w-0">
                   <h2 className="font-semibold text-slate-700 flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4 text-indigo-500" />
+                      <BarChart3 className="w-4 h-4 text-indigo-500 shrink-0" />
                       Scenario analysis
                   </h2>
-                  <p className="text-[11px] text-slate-500 mt-1 max-w-2xl leading-relaxed">
-                      Each <strong>active</strong> line shows its own unit cost (product + evenly spread logistics), scenario sell, and margin per Incoterm.
-                      The shipment summary is the sum of all lines (not a unit average across different SKUs).
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug line-clamp-2 sm:line-clamp-none max-w-2xl">
+                      Per active line: unit cost, sell &amp; margin by term. Shipment row = sums. <span className="text-slate-400">Scroll products below.</span>
                   </p>
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 shrink-0">
                    {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].map(term => (
                        <button 
                         key={term} 
@@ -5437,16 +5445,16 @@ function AppInner() {
               </div>
           </div>
 
-          <div className="divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain divide-y divide-slate-100 [scrollbar-gutter:stable]">
               {calculations.productScenarioBreakdown.length === 0 ? (
-                  <div className="px-4 py-10 text-center text-slate-400 text-sm italic">No active products — enable lines in the calculator table to see scenarios.</div>
+                  <div className="px-4 py-8 text-center text-slate-400 text-sm italic">No active products — enable lines in the calculator table to see scenarios.</div>
               ) : (
                   calculations.productScenarioBreakdown.map((block) => (
-                      <div key={block.id} className="px-4 py-4 hover:bg-slate-50/40">
-                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
-                              <span className="font-semibold text-slate-800">{block.name || 'Item'}</span>
-                              {block.sku ? <span className="text-xs font-mono text-slate-400">SKU {block.sku}</span> : null}
-                              <span className="text-xs text-slate-500">Qty <span className="font-mono font-semibold text-slate-700">{block.qty}</span></span>
+                      <div key={block.id} className="px-4 py-2.5 hover:bg-slate-50/40">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1.5">
+                              <span className="font-semibold text-slate-800 text-sm">{block.name || 'Item'}</span>
+                              {block.sku ? <span className="text-[11px] font-mono text-slate-400">SKU {block.sku}</span> : null}
+                              <span className="text-[11px] text-slate-500">Qty <span className="font-mono font-semibold text-slate-700">{block.qty}</span></span>
                           </div>
                           <div className="overflow-x-auto rounded-lg border border-slate-200">
                               <table className="w-full text-sm text-left min-w-[880px]">
@@ -5494,8 +5502,8 @@ function AppInner() {
               )}
           </div>
 
-          <div className="px-4 py-3 bg-slate-50/80 border-t border-slate-200">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Shipment summary (all active lines)</h3>
+          <div className="shrink-0 px-4 py-2 bg-slate-50/90 border-t border-slate-200">
+              <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Shipment summary (all active lines)</h3>
               <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
                   <table className="w-full text-sm text-left min-w-[720px]">
                       <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 text-xs">
