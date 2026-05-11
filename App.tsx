@@ -51,7 +51,9 @@ import {
 // Types
 import { 
   Product, 
-  Logistics, 
+  Logistics,
+  LogisticsItem,
+  LogisticsPreset,
   AppConfig, 
   RateMap, 
   SavedProject,
@@ -67,8 +69,7 @@ import {
   ArchivedInvoiceLineSnapshot,
   ArchivedInvoiceStatus,
   InvoicePayment,
-  InvoiceExtraCharge,
-  LogisticsPreset
+  InvoiceExtraCharge
 } from './types';
 
 function normalizeInvoiceExtraCharges(raw: unknown): InvoiceExtraCharge[] {
@@ -98,58 +99,84 @@ function getSupplierDisplayName(s: Pick<Supplier, 'name' | 'firstName' | 'lastNa
   return legacy || 'Supplier';
 }
 
-const LOGISTICS_PRESETS_STORAGE_KEY = 'exportCalc_logistics_presets_v1';
+const LOGISTICS_PRESETS_STORAGE_KEY = 'exportcalc_logistics_presets_v1';
+const MAX_LOGISTICS_PRESETS = 30;
 
-function cloneLogisticsData(l: Logistics): Logistics {
-  return JSON.parse(JSON.stringify(l)) as Logistics;
-}
-
-function normalizeLogisticsShape(raw: Partial<Logistics> | undefined): Logistics | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const inland = raw.inland && typeof raw.inland.val === 'number' ? raw.inland : null;
-  const port = raw.port && typeof raw.port.val === 'number' ? raw.port : null;
-  if (!inland || !port) return null;
+function defaultLogisticsSeed(): Logistics {
   return {
-    inland,
-    port,
-    freight: raw.freight && typeof raw.freight.val === 'number' ? raw.freight : { val: 0, curr: 'USD' },
-    insurance: raw.insurance && typeof raw.insurance.val === 'number' ? raw.insurance : { val: 0, curr: 'USD' },
-    destination: raw.destination && typeof raw.destination.val === 'number' ? raw.destination : { val: 0, curr: 'USD' },
-    dutyPercent: typeof raw.dutyPercent === 'number' ? raw.dutyPercent : 0,
-    exwExtras: Array.isArray(raw.exwExtras) ? raw.exwExtras : [],
-    extras: Array.isArray(raw.extras) ? raw.extras : []
+    inland: { val: 0, curr: 'IRR' },
+    port: { val: 0, curr: 'IRR' },
+    freight: { val: 0, curr: 'USD' },
+    insurance: { val: 0, curr: 'USD' },
+    destination: { val: 0, curr: 'OMR' },
+    dutyPercent: 0,
+    exwExtras: [],
+    extras: [],
   };
 }
 
-function normalizeLogisticsPresetEntry(raw: unknown): LogisticsPreset | null {
-  if (!raw || typeof raw !== 'object') return null;
+function parseLogisticsItem(raw: unknown, fallbackCurr: string): LogisticsItem {
+  if (!raw || typeof raw !== 'object') return { val: 0, curr: fallbackCurr };
   const o = raw as Record<string, unknown>;
-  const id = typeof o.id === 'string' ? o.id : '';
-  const name = typeof o.name === 'string' ? o.name : '';
-  const logistics = normalizeLogisticsShape(o.logistics as Partial<Logistics>);
-  if (!id || !name || !logistics) return null;
-  const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : Date.now();
-  return { id, name, logistics: cloneLogisticsData(logistics), updatedAt };
+  return {
+    val: Math.max(0, Number(o.val) || 0),
+    curr: typeof o.curr === 'string' ? o.curr : fallbackCurr,
+  };
 }
 
-function loadLogisticsPresetsFromStorage(): LogisticsPreset[] {
-  if (typeof window === 'undefined') return [];
+function parseExtraCostList(raw: unknown): import('./types').ExtraCost[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((e, i) => {
+    if (!e || typeof e !== 'object') {
+      return { id: Date.now() + i, name: '', val: 0, curr: 'USD' };
+    }
+    const o = e as Record<string, unknown>;
+    const id = Number(o.id);
+    return {
+      id: Number.isFinite(id) && id > 0 ? id : Date.now() + i,
+      name: typeof o.name === 'string' ? o.name : '',
+      val: Number(o.val) || 0,
+      curr: typeof o.curr === 'string' ? o.curr : 'USD',
+    };
+  });
+}
+
+function normalizeLogisticsSnapshot(raw: unknown): Logistics {
+  const d = defaultLogisticsSeed();
+  if (!raw || typeof raw !== 'object') return d;
+  const r = raw as Record<string, unknown>;
+  return {
+    inland: { ...d.inland, ...parseLogisticsItem(r.inland, d.inland.curr) },
+    port: { ...d.port, ...parseLogisticsItem(r.port, d.port.curr) },
+    freight: { ...d.freight, ...parseLogisticsItem(r.freight, d.freight.curr) },
+    insurance: { ...d.insurance, ...parseLogisticsItem(r.insurance, d.insurance.curr) },
+    destination: { ...d.destination, ...parseLogisticsItem(r.destination, d.destination.curr) },
+    dutyPercent: Math.max(0, Number(r.dutyPercent) || 0),
+    exwExtras: parseExtraCostList(r.exwExtras),
+    extras: parseExtraCostList(r.extras),
+  };
+}
+
+function parseLogisticsPresetsFromStorage(raw: string | null): LogisticsPreset[] {
   try {
-    const raw = localStorage.getItem(LOGISTICS_PRESETS_STORAGE_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw) as unknown;
-    if (!Array.isArray(arr)) return [];
-    return arr.map(normalizeLogisticsPresetEntry).filter((x): x is LogisticsPreset => x !== null);
+    const a = JSON.parse(raw || '[]');
+    if (!Array.isArray(a)) return [];
+    return a
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .map((x, i) => ({
+        id: String(x.id || `preset-${Date.now()}-${i}`),
+        name: (typeof x.name === 'string' ? x.name : 'Unnamed').trim().slice(0, 96) || 'Unnamed',
+        updatedAt: Number(x.updatedAt) || 0,
+        logistics: normalizeLogisticsSnapshot(x.logistics),
+      }))
+      .slice(0, MAX_LOGISTICS_PRESETS);
   } catch {
     return [];
   }
 }
 
-function mergeLogisticsPresetsFromProject(projectPresets: LogisticsPreset[], current: LogisticsPreset[]): LogisticsPreset[] {
-  const m = new Map<string, LogisticsPreset>();
-  for (const p of current) m.set(p.id, p);
-  for (const p of projectPresets) m.set(p.id, { ...p, logistics: cloneLogisticsData(p.logistics) });
-  return Array.from(m.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+function cloneLogisticsDeep(l: Logistics): Logistics {
+  return normalizeLogisticsSnapshot(JSON.parse(JSON.stringify(l)));
 }
 
 // --- GLOBAL DECLARATIONS ---
@@ -2153,9 +2180,29 @@ function AppInner() {
     extras: []     
   });
 
-  const [logisticsPresets, setLogisticsPresets] = useState<LogisticsPreset[]>(() => loadLogisticsPresetsFromStorage());
-  const [logisticsPresetNameDraft, setLogisticsPresetNameDraft] = useState('');
-  const [selectedLogisticsPresetId, setSelectedLogisticsPresetId] = useState('');
+  const [logisticsPresets, setLogisticsPresets] = useState<LogisticsPreset[]>([]);
+  const [logisticsPresetsReady, setLogisticsPresetsReady] = useState(false);
+  const [logisticsPresetPickerKey, setLogisticsPresetPickerKey] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(LOGISTICS_PRESETS_STORAGE_KEY);
+      setLogisticsPresets(parseLogisticsPresetsFromStorage(raw));
+    } catch {
+      setLogisticsPresets([]);
+    }
+    setLogisticsPresetsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!logisticsPresetsReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(LOGISTICS_PRESETS_STORAGE_KEY, JSON.stringify(logisticsPresets));
+    } catch {
+      /* private mode / quota */
+    }
+  }, [logisticsPresets, logisticsPresetsReady]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
@@ -3427,8 +3474,7 @@ function AppInner() {
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
         invoiceExtraCharges,
         invoiceOrientation,
-        containerCapacity, containerType,
-        logisticsPresets
+        containerCapacity, containerType
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -3565,15 +3611,6 @@ function AppInner() {
         exwExtras: project.data.logistics.exwExtras || [], 
         dutyPercent: project.data.logistics.dutyPercent || 0 
     });
-    const projPresetsRaw = (project.data as any).logisticsPresets;
-    if (Array.isArray(projPresetsRaw) && projPresetsRaw.length > 0) {
-        const projPresets = projPresetsRaw
-            .map(normalizeLogisticsPresetEntry)
-            .filter((x): x is LogisticsPreset => x !== null);
-        if (projPresets.length) {
-            setLogisticsPresets((prev) => mergeLogisticsPresetsFromProject(projPresets, prev));
-        }
-    }
     setVisibleScenarioTerms(project.data.visibleScenarioTerms || ['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
     setInvoiceTerms(project.data.invoiceTerms || ['FOB', 'DDP']);
     setSelectedTerms(project.data.selectedTerms || ['FOB', 'DDP']);
@@ -4114,10 +4151,38 @@ function AppInner() {
       setProducts(products.map(p => p.id === id ? { ...p, active: !p.active } : p)); 
   };
   
-  const updateLogisticsMain = (key: 'inland' | 'port' | 'freight' | 'insurance' | 'destination', field: 'val' | 'curr', val: any) => { 
-      setLogistics(prev => ({ ...prev, [key]: { ...prev[key], [field]: val } })); 
+  const updateLogisticsMain = (key: 'inland' | 'port' | 'freight' | 'insurance' | 'destination', field: 'val' | 'curr', val: any) => {
+      setLogistics(prev => ({ ...prev, [key]: { ...prev[key], [field]: val } }));
   };
-  
+
+  const saveLogisticsPresetFromForm = () => {
+      const name = window.prompt('نام الگو (مثلاً صادرات دریایی CIF، مسیر ایران→بندرعباس):', '')?.trim();
+      if (!name) return;
+      const entry: LogisticsPreset = {
+          id: `lp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name,
+          updatedAt: Date.now(),
+          logistics: cloneLogisticsDeep(logistics),
+      };
+      setLogisticsPresets((prev) => [entry, ...prev].slice(0, MAX_LOGISTICS_PRESETS));
+  };
+
+  const applyLogisticsPresetById = (id: string) => {
+      const p = logisticsPresets.find((x) => x.id === id);
+      if (!p) return;
+      setLogistics(cloneLogisticsDeep(p.logistics));
+      setLogisticsPresetPickerKey((k) => k + 1);
+  };
+
+  const deleteLogisticsPresetById = (id: string) => {
+      if (!id) return;
+      const p = logisticsPresets.find((x) => x.id === id);
+      if (!p) return;
+      if (!window.confirm(`حذف الگوی «${p.name}»؟`)) return;
+      setLogisticsPresets((prev) => prev.filter((x) => x.id !== id));
+      setLogisticsPresetPickerKey((k) => k + 1);
+  };
+
   const addExwExtraCost = () => setLogistics(prev => ({ ...prev, exwExtras: [...(prev.exwExtras || []), { id: Date.now(), name: '', val: 0, curr: 'IRR' }] }));
   const removeExwExtraCost = (id: number) => setLogistics(prev => ({ ...prev, exwExtras: (prev.exwExtras || []).filter(e => e.id !== id) }));
   const updateExwExtraCost = (id: number, field: keyof import('./types').ExtraCost, val: any) => setLogistics(prev => ({ ...prev, exwExtras: (prev.exwExtras || []).map(e => e.id === id ? { ...e, [field]: val } : e) }));
@@ -4206,49 +4271,6 @@ function AppInner() {
           case 'telegram': return <Send className={className} />;
           default: return <Globe className={className} />;
       }
-  };
-
-  useEffect(() => {
-      if (typeof window === 'undefined') return;
-      try {
-          localStorage.setItem(LOGISTICS_PRESETS_STORAGE_KEY, JSON.stringify(logisticsPresets));
-      } catch {
-          /* quota */
-      }
-  }, [logisticsPresets]);
-
-  useEffect(() => {
-      if (!selectedLogisticsPresetId) return;
-      if (!logisticsPresets.some((p) => p.id === selectedLogisticsPresetId)) {
-          setSelectedLogisticsPresetId('');
-      }
-  }, [logisticsPresets, selectedLogisticsPresetId]);
-
-  const saveCurrentLogisticsAsPreset = () => {
-      const name = logisticsPresetNameDraft.trim() || `Logistics ${new Date().toLocaleDateString()}`;
-      const preset: LogisticsPreset = {
-          id: `lp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-          name,
-          logistics: cloneLogisticsData(logistics),
-          updatedAt: Date.now()
-      };
-      setLogisticsPresets((prev) => [preset, ...prev]);
-      setLogisticsPresetNameDraft('');
-      setSelectedLogisticsPresetId(preset.id);
-  };
-
-  const applySelectedLogisticsPreset = () => {
-      if (!selectedLogisticsPresetId) return;
-      const p = logisticsPresets.find((x) => x.id === selectedLogisticsPresetId);
-      if (!p) return;
-      setLogistics(cloneLogisticsData(p.logistics));
-  };
-
-  const deleteSelectedLogisticsPreset = () => {
-      if (!selectedLogisticsPresetId) return;
-      if (!window.confirm('Remove this saved logistics template?')) return;
-      setLogisticsPresets((prev) => prev.filter((x) => x.id !== selectedLogisticsPresetId));
-      setSelectedLogisticsPresetId('');
   };
 
   // --- CORE CALCULATION ENGINE ---
@@ -4673,8 +4695,7 @@ function AppInner() {
             invoiceExtraCharges,
             invoiceOrientation,
             containerCapacity,
-            containerType,
-            logisticsPresets
+            containerType
           }
         };
         sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
@@ -4731,8 +4752,7 @@ function AppInner() {
     invoiceExtraCharges,
     invoiceOrientation,
     containerCapacity,
-    containerType,
-    logisticsPresets
+    containerType
   ]);
 
 
@@ -5153,59 +5173,54 @@ function AppInner() {
                       <Truck className="w-4 h-4 text-amber-500" />
                       Logistics &amp; transport
                   </h2>
-                  <p className="text-[10px] text-slate-500 mt-1">Stack EXW→DDP · per-unit share of shipment — <span className="text-slate-400">scroll form below</span></p>
-                  <div className="mt-2 pt-2 border-t border-slate-200/80 flex flex-col gap-2">
-                      <div className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Saved cost sets</div>
-                      <div className="flex flex-wrap items-center gap-2">
-                          <select
-                              value={selectedLogisticsPresetId}
-                              onChange={(e) => setSelectedLogisticsPresetId(e.target.value)}
-                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white min-w-[10rem] max-w-full flex-1"
-                          >
-                              <option value="">— انتخاب نمونه —</option>
-                              {logisticsPresets.map((pr) => (
-                                  <option key={pr.id} value={pr.id}>
-                                      {pr.name}
-                                  </option>
-                              ))}
-                          </select>
-                          <button
-                              type="button"
-                              onClick={applySelectedLogisticsPreset}
-                              disabled={!selectedLogisticsPresetId}
-                              className="text-xs px-2.5 py-1.5 rounded-lg bg-amber-600 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-700"
-                          >
-                              Apply
-                          </button>
-                          <button
-                              type="button"
-                              onClick={deleteSelectedLogisticsPreset}
-                              disabled={!selectedLogisticsPresetId}
-                              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-medium disabled:opacity-40 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-                          >
-                              Delete
-                          </button>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                          <input
-                              type="text"
-                              value={logisticsPresetNameDraft}
-                              onChange={(e) => setLogisticsPresetNameDraft(e.target.value)}
-                              placeholder="نام نمونه (مثلاً حمل دریایی چین)"
-                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 flex-1 min-w-[8rem] max-w-md"
-                              dir="auto"
-                          />
-                          <button
-                              type="button"
-                              onClick={saveCurrentLogisticsAsPreset}
-                              className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800 shrink-0"
-                          >
-                              Save current
-                          </button>
-                      </div>
-                      <p className="text-[10px] text-slate-400 leading-snug" dir="rtl">
-                          نمونه‌ها در این مرورگر ذخیره می‌شوند و با ذخیرهٔ پروژه در فایل ابری هم همراه می‌شوند.
-                      </p>
+                  <p className="text-[10px] text-slate-500 mt-1">Stack EXW→DDP · per-unit share of shipment — <span className="text-slate-400">scroll below</span></p>
+                  <div
+                      className="mt-2 flex flex-wrap items-stretch gap-2 pt-2 border-t border-slate-200/80"
+                      title="الگوها در حافظهٔ همین مرورگر ذخیره می‌شوند (جدا از پروژهٔ ابری)."
+                  >
+                      <select
+                          key={logisticsPresetPickerKey}
+                          defaultValue=""
+                          onChange={(e) => {
+                              const id = e.target.value;
+                              if (id) applyLogisticsPresetById(id);
+                          }}
+                          className="text-xs border border-slate-200 rounded-md px-2 py-1.5 bg-white min-w-[10rem] max-w-full flex-1 sm:flex-none"
+                      >
+                          <option value="">Load saved template…</option>
+                          {logisticsPresets.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                  {p.name}
+                              </option>
+                          ))}
+                      </select>
+                      <select
+                          key={`log-del-${logisticsPresetPickerKey}`}
+                          defaultValue=""
+                          onChange={(e) => {
+                              const id = e.target.value;
+                              if (id) {
+                                  deleteLogisticsPresetById(id);
+                                  e.target.value = '';
+                              }
+                          }}
+                          className="text-xs border border-rose-100 text-rose-800 rounded-md px-2 py-1.5 bg-rose-50/80 min-w-[9rem] max-w-full flex-1 sm:flex-none"
+                      >
+                          <option value="">Delete template…</option>
+                          {logisticsPresets.map((p) => (
+                              <option key={`del-${p.id}`} value={p.id}>
+                                  {p.name}
+                              </option>
+                          ))}
+                      </select>
+                      <button
+                          type="button"
+                          onClick={saveLogisticsPresetFromForm}
+                          className="text-xs font-medium bg-amber-600 text-white rounded-md px-3 py-1.5 hover:bg-amber-700 shadow-sm flex items-center justify-center gap-1.5 shrink-0"
+                      >
+                          <Archive className="w-3.5 h-3.5" />
+                          Save current
+                      </button>
                   </div>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 py-3 space-y-3 [scrollbar-gutter:stable]">

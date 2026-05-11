@@ -82,12 +82,12 @@ export interface Logistics {
   extras: ExtraCost[];
 }
 
-/** Reusable snapshot of logistics costs (Incoterm lanes) for new product groups / projects */
+/** Saved full logistics ladder (EXW…DDP); persisted in browser localStorage, not per Firestore project. */
 export interface LogisticsPreset {
   id: string;
   name: string;
-  logistics: Logistics;
   updatedAt: number;
+  logistics: Logistics;
 }
 
 export interface ProfitFlags {
@@ -460,7 +460,5 @@ export interface SavedProject {
     invoiceOrientation?: 'portrait' | 'landscape';
     containerCapacity?: number;
     containerType?: string;
-    /** Saved logistics cost templates (also mirrored to browser localStorage) */
-    logisticsPresets?: LogisticsPreset[];
   };
 }
