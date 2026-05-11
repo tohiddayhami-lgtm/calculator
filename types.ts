@@ -406,6 +406,26 @@ export interface ArchivedInvoice {
   updatedAt?: any;
 }
 
+/** File linked to a dashboard research line (binary in Firebase Storage, metadata in project). */
+export interface DashboardResearchAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  downloadURL: string;
+  uploadedAtMs: number;
+}
+
+/** One linear research / report note on the dashboard with optional attachments. */
+export interface DashboardResearchEntry {
+  id: string;
+  title: string;
+  body: string;
+  createdAtMs: number;
+  attachments: DashboardResearchAttachment[];
+}
+
 export interface SavedProject {
   id: string;
   name: string;
@@ -477,5 +497,7 @@ export interface SavedProject {
     invoiceDueDateMs?: number;
     /** When set, editor can overwrite this `invoiceArchive` document. */
     editingArchiveInvoiceId?: string | null;
+    /** Dashboard: linear research / report lines with optional files (Storage URLs). */
+    researchEntries?: DashboardResearchEntry[];
   };
 }

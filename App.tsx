@@ -30,6 +30,7 @@ import {
   getStorage,
   ref as storageRef,
   uploadString,
+  uploadBytes,
   getDownloadURL,
   deleteObject
 } from 'firebase/storage';
@@ -40,7 +41,7 @@ import {
   Settings, Plus, Trash2, Package, Truck, Anchor, Ship, MapPin, 
   FileText, Globe, PieChart, CheckCircle, Circle, BarChart3, Save, 
   FolderOpen, X, Clock, Loader2, LayoutDashboard, Printer, 
-  FileCheck, Image as ImageIcon, Upload, List, Download, FileUp, Folder, 
+  FileCheck, Image as ImageIcon, Upload, List, Download, FileUp, Folder, BookOpen,
   LayoutTemplate, Palette, Type, Smartphone, Globe2, Languages, Edit3, 
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
@@ -71,7 +72,9 @@ import {
   ArchivedInvoiceLineSnapshot,
   ArchivedInvoiceStatus,
   InvoicePayment,
-  InvoiceExtraCharge
+  InvoiceExtraCharge,
+  DashboardResearchEntry,
+  DashboardResearchAttachment
 } from './types';
 
 function normalizeInvoiceExtraCharges(raw: unknown): InvoiceExtraCharge[] {
@@ -125,6 +128,64 @@ function parseInvoiceTextPresetsFromStorage(raw: string | null): InvoiceTextPres
   } catch {
     return [];
   }
+}
+
+const MAX_DASHBOARD_RESEARCH_FILE_BYTES = 30 * 1024 * 1024;
+
+function formatFileSizeBytes(n: number): string {
+  const x = Math.max(0, n);
+  if (x < 1024) return `${x} B`;
+  if (x < 1024 * 1024) return `${(x / 1024).toFixed(1)} KB`;
+  return `${(x / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isAllowedResearchMime(mime: string): boolean {
+  const m = (mime || '').toLowerCase();
+  if (m.startsWith('image/')) return true;
+  if (m.startsWith('video/')) return true;
+  if (m === 'application/pdf') return true;
+  return (
+    m === 'application/msword' ||
+    m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    m === 'application/vnd.ms-excel' ||
+    m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+}
+
+function sanitizeResearchFileName(name: string): string {
+  const t = name.replace(/[/\\]/g, '_').replace(/[\x00-\x1f]/g, '').trim();
+  return (t.slice(0, 180) || 'file');
+}
+
+function parseResearchEntriesFromProject(raw: unknown): DashboardResearchEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+    .map((x, i) => {
+      const attsRaw = x.attachments;
+      const attachments: DashboardResearchAttachment[] = Array.isArray(attsRaw)
+        ? attsRaw
+            .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+            .map((a, j) => ({
+              id: String(a.id || `dra-${i}-${j}`),
+              fileName: String(a.fileName || 'file').slice(0, 200),
+              mimeType: String(a.mimeType || 'application/octet-stream').slice(0, 120),
+              sizeBytes: Math.max(0, Number(a.sizeBytes) || 0),
+              storagePath: String(a.storagePath || ''),
+              downloadURL: String(a.downloadURL || ''),
+              uploadedAtMs: Math.max(0, Number(a.uploadedAtMs) || 0),
+            }))
+            .filter((a) => a.storagePath && a.downloadURL)
+        : [];
+      return {
+        id: String(x.id || `dre-${Date.now()}-${i}`),
+        title: typeof x.title === 'string' ? x.title.slice(0, 300) : '',
+        body: typeof x.body === 'string' ? x.body : '',
+        createdAtMs:
+          typeof x.createdAtMs === 'number' && Number.isFinite(x.createdAtMs) ? x.createdAtMs : Date.now(),
+        attachments,
+      };
+    });
 }
 
 function defaultLogisticsSeed(): Logistics {
@@ -2297,6 +2358,8 @@ function AppInner() {
   const [invoiceIssueDateMs, setInvoiceIssueDateMs] = useState<number>(() => Date.now());
   const [invoiceDueDateMs, setInvoiceDueDateMs] = useState<number | undefined>(undefined);
   const [editingArchiveInvoiceId, setEditingArchiveInvoiceId] = useState<string | null>(null);
+  const [researchEntries, setResearchEntries] = useState<DashboardResearchEntry[]>([]);
+  const [researchUploadingKey, setResearchUploadingKey] = useState<string | null>(null);
   const [invoiceBasis, setInvoiceBasis] = useState<'unit' | 'pack' | 'both'>('both');
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
 
@@ -3761,7 +3824,8 @@ function AppInner() {
         containerCapacity, containerType,
         invoiceIssueDateMs,
         invoiceDueDateMs,
-        editingArchiveInvoiceId
+        editingArchiveInvoiceId,
+        researchEntries
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -3949,6 +4013,7 @@ function AppInner() {
 
     setSuppliers(project.data.suppliers || []);
     setBuyers(((project.data as any).buyers || []) as Buyer[]);
+    setResearchEntries(parseResearchEntriesFromProject((project.data as any).researchEntries));
     setSelectedBuyerId('');
 
     if (project.data.priceListConfig) {
@@ -4991,7 +5056,8 @@ function AppInner() {
             containerType,
             invoiceIssueDateMs,
             invoiceDueDateMs,
-            editingArchiveInvoiceId
+            editingArchiveInvoiceId,
+            researchEntries
           }
         };
         sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
@@ -5051,9 +5117,100 @@ function AppInner() {
     containerType,
     invoiceIssueDateMs,
     invoiceDueDateMs,
-    editingArchiveInvoiceId
+    editingArchiveInvoiceId,
+    researchEntries
   ]);
 
+
+  const canCloudResearchUpload =
+    !!user && !!storage && !!db && !isDemoMode && user.uid !== DEMO_USER_ID;
+
+  const addResearchEntry = () => {
+    const id = `dre_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setResearchEntries((prev) => [
+      { id, title: '', body: '', createdAtMs: Date.now(), attachments: [] },
+      ...prev,
+    ]);
+  };
+
+  const updateResearchEntryField = (id: string, field: 'title' | 'body', value: string) => {
+    setResearchEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const removeResearchEntry = async (id: string) => {
+    if (!window.confirm('این گزارش و همهٔ پیوست‌هایش حذف شود؟')) return;
+    const entry = researchEntries.find((e) => e.id === id);
+    if (entry && canCloudResearchUpload) {
+      for (const a of entry.attachments) {
+        if (a.storagePath) {
+          try {
+            await deleteObject(storageRef(storage, a.storagePath));
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+    setResearchEntries((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const removeResearchAttachment = async (entryId: string, att: DashboardResearchAttachment) => {
+    if (canCloudResearchUpload && att.storagePath) {
+      try {
+        await deleteObject(storageRef(storage, att.storagePath));
+      } catch {
+        /* ignore */
+      }
+    }
+    setResearchEntries((prev) =>
+      prev.map((e) =>
+        e.id === entryId ? { ...e, attachments: e.attachments.filter((x) => x.id !== att.id) } : e
+      )
+    );
+  };
+
+  const uploadResearchFileForEntry = async (entryId: string, file: File | null | undefined) => {
+    if (!file) return;
+    if (!canCloudResearchUpload) {
+      alert('برای پیوست فایل، با حساب ابری (غیر دمو) وارد شوید و Firebase Storage را فعال داشته باشید.');
+      return;
+    }
+    if (file.size > MAX_DASHBOARD_RESEARCH_FILE_BYTES) {
+      alert(`حداکثر حجم هر فایل ${MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} مگابایت است.`);
+      return;
+    }
+    const mime = file.type || 'application/octet-stream';
+    if (!isAllowedResearchMime(mime)) {
+      alert('فرمت مجاز: تصویر، PDF، Word، Excel، ویدئو.');
+      return;
+    }
+    const uploadKey = `${entryId}:${file.name}:${file.size}`;
+    setResearchUploadingKey(uploadKey);
+    try {
+      const attId = `dra_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const safe = sanitizeResearchFileName(file.name);
+      const path = `users/${user!.uid}/dashboard_research/${entryId}/${attId}_${safe}`;
+      const ref = storageRef(storage, path);
+      await uploadBytes(ref, file, { contentType: mime || undefined });
+      const downloadURL = await getDownloadURL(ref);
+      const attachment: DashboardResearchAttachment = {
+        id: attId,
+        fileName: file.name.slice(0, 200),
+        mimeType: mime,
+        sizeBytes: file.size,
+        storagePath: path,
+        downloadURL,
+        uploadedAtMs: Date.now(),
+      };
+      setResearchEntries((prev) =>
+        prev.map((e) => (e.id === entryId ? { ...e, attachments: [...e.attachments, attachment] } : e))
+      );
+    } catch (e: any) {
+      alert('آپلود ناموفق: ' + (e?.message || e));
+    } finally {
+      setResearchUploadingKey(null);
+    }
+  };
 
   // --- RENDER FUNCTIONS ---
   // (Note: Kept inside component to access state closure)
@@ -6204,6 +6361,150 @@ function AppInner() {
           </div>
         );
       })()}
+
+      {/* 6. Dashboard research & reports */}
+      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-teal-600 shrink-0" />
+              گزارش و تحقیقات
+            </h2>
+            <p className="text-[10px] text-slate-500 mt-1 max-w-3xl leading-snug">
+              موارد را به‌صورت خطی اضافه کنید. پیوست: تصویر، PDF، Word، Excel، ویدئو — حداکثر{' '}
+              {MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} مگابایت برای هر فایل. فایل‌ها در Firebase Storage ذخیره می‌شوند؛ متن‌ها در پروژه.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={addResearchEntry}
+            className="shrink-0 inline-flex items-center justify-center gap-2 text-sm bg-teal-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-teal-700"
+          >
+            <Plus className="w-4 h-4" />
+            افزودن مورد
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          {!canCloudResearchUpload && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
+              متن گزارش‌ها با ذخیرهٔ پروژه نگه داشته می‌شود. برای <strong>آپلود فایل</strong> باید با حساب ابری (غیر دمو) وارد شوید و Storage فعال باشد.
+            </p>
+          )}
+          {researchEntries.length === 0 ? (
+            <p className="text-sm text-slate-400 italic text-center py-6">هنوز موردی ثبت نشده — «افزودن مورد» را بزنید.</p>
+          ) : (
+            researchEntries.map((entry, idx) => (
+              <div
+                key={entry.id}
+                className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 tabular-nums shrink-0 pt-1.5">
+                    #{researchEntries.length - idx}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void removeResearchEntry(entry.id)}
+                    className="text-slate-400 hover:text-red-600 p-1 rounded shrink-0"
+                    title="حذف این مورد"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">عنوان کوتاه (اختیاری)</label>
+                  <input
+                    type="text"
+                    value={entry.title}
+                    onChange={(e) => updateResearchEntryField(entry.id, 'title', e.target.value)}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-teal-500/30 outline-none"
+                    placeholder="مثلاً منبع بازار، جلسه، یادداشت…"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">متن گزارش / تحقیق</label>
+                  <textarea
+                    value={entry.body}
+                    onChange={(e) => updateResearchEntryField(entry.id, 'body', e.target.value)}
+                    rows={4}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-teal-500/30 outline-none resize-y min-h-[5rem]"
+                    placeholder="خلاصه، لینک، نتیجهٔ تحقیق…"
+                  />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer bg-white border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 disabled:opacity-50">
+                      {researchUploadingKey?.startsWith(`${entry.id}:`) ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
+                      ) : (
+                        <Paperclip className="w-4 h-4 text-teal-600" />
+                      )}
+                      <span>پیوست فایل</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,video/*,application/pdf"
+                        disabled={!canCloudResearchUpload || !!researchUploadingKey}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          void uploadResearchFileForEntry(entry.id, f);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      حداکثر {MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} MB برای هر فایل
+                    </span>
+                  </div>
+                  {entry.attachments.length > 0 && (
+                    <ul className="flex flex-wrap gap-2">
+                      {entry.attachments.map((att) => (
+                        <li
+                          key={att.id}
+                          className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg pl-1 pr-2 py-1 max-w-full"
+                        >
+                          {att.mimeType.startsWith('image/') ? (
+                            <a href={att.downloadURL} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                              <img
+                                src={att.downloadURL}
+                                alt=""
+                                className="h-9 w-9 rounded object-cover border border-slate-100"
+                              />
+                            </a>
+                          ) : att.mimeType.startsWith('video/') ? (
+                            <Video className="w-4 h-4 text-violet-500 shrink-0" />
+                          ) : (
+                            <FileIcon className="w-4 h-4 text-slate-500 shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <a
+                              href={att.downloadURL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-teal-700 hover:underline truncate block max-w-[14rem]"
+                            >
+                              {att.fileName}
+                            </a>
+                            <span className="text-[10px] text-slate-400">{formatFileSizeBytes(att.sizeBytes)}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void removeResearchAttachment(entry.id, att)}
+                            className="text-slate-300 hover:text-red-500 p-0.5 shrink-0"
+                            title="حذف پیوست"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 
