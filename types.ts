@@ -82,6 +82,14 @@ export interface Logistics {
   extras: ExtraCost[];
 }
 
+/** Reusable snapshot of logistics costs (Incoterm lanes) for new product groups / projects */
+export interface LogisticsPreset {
+  id: string;
+  name: string;
+  logistics: Logistics;
+  updatedAt: number;
+}
+
 export interface ProfitFlags {
   [key: string]: boolean;
   exw: boolean;
@@ -452,5 +460,7 @@ export interface SavedProject {
     invoiceOrientation?: 'portrait' | 'landscape';
     containerCapacity?: number;
     containerType?: string;
+    /** Saved logistics cost templates (also mirrored to browser localStorage) */
+    logisticsPresets?: LogisticsPreset[];
   };
 }

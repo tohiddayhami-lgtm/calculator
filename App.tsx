@@ -67,7 +67,8 @@ import {
   ArchivedInvoiceLineSnapshot,
   ArchivedInvoiceStatus,
   InvoicePayment,
-  InvoiceExtraCharge
+  InvoiceExtraCharge,
+  LogisticsPreset
 } from './types';
 
 function normalizeInvoiceExtraCharges(raw: unknown): InvoiceExtraCharge[] {
@@ -95,6 +96,60 @@ function getSupplierDisplayName(s: Pick<Supplier, 'name' | 'firstName' | 'lastNa
   if (person) return person;
   const legacy = (s.name ?? '').trim();
   return legacy || 'Supplier';
+}
+
+const LOGISTICS_PRESETS_STORAGE_KEY = 'exportCalc_logistics_presets_v1';
+
+function cloneLogisticsData(l: Logistics): Logistics {
+  return JSON.parse(JSON.stringify(l)) as Logistics;
+}
+
+function normalizeLogisticsShape(raw: Partial<Logistics> | undefined): Logistics | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const inland = raw.inland && typeof raw.inland.val === 'number' ? raw.inland : null;
+  const port = raw.port && typeof raw.port.val === 'number' ? raw.port : null;
+  if (!inland || !port) return null;
+  return {
+    inland,
+    port,
+    freight: raw.freight && typeof raw.freight.val === 'number' ? raw.freight : { val: 0, curr: 'USD' },
+    insurance: raw.insurance && typeof raw.insurance.val === 'number' ? raw.insurance : { val: 0, curr: 'USD' },
+    destination: raw.destination && typeof raw.destination.val === 'number' ? raw.destination : { val: 0, curr: 'USD' },
+    dutyPercent: typeof raw.dutyPercent === 'number' ? raw.dutyPercent : 0,
+    exwExtras: Array.isArray(raw.exwExtras) ? raw.exwExtras : [],
+    extras: Array.isArray(raw.extras) ? raw.extras : []
+  };
+}
+
+function normalizeLogisticsPresetEntry(raw: unknown): LogisticsPreset | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === 'string' ? o.id : '';
+  const name = typeof o.name === 'string' ? o.name : '';
+  const logistics = normalizeLogisticsShape(o.logistics as Partial<Logistics>);
+  if (!id || !name || !logistics) return null;
+  const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : Date.now();
+  return { id, name, logistics: cloneLogisticsData(logistics), updatedAt };
+}
+
+function loadLogisticsPresetsFromStorage(): LogisticsPreset[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LOGISTICS_PRESETS_STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr.map(normalizeLogisticsPresetEntry).filter((x): x is LogisticsPreset => x !== null);
+  } catch {
+    return [];
+  }
+}
+
+function mergeLogisticsPresetsFromProject(projectPresets: LogisticsPreset[], current: LogisticsPreset[]): LogisticsPreset[] {
+  const m = new Map<string, LogisticsPreset>();
+  for (const p of current) m.set(p.id, p);
+  for (const p of projectPresets) m.set(p.id, { ...p, logistics: cloneLogisticsData(p.logistics) });
+  return Array.from(m.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 
 // --- GLOBAL DECLARATIONS ---
@@ -2098,6 +2153,10 @@ function AppInner() {
     extras: []     
   });
 
+  const [logisticsPresets, setLogisticsPresets] = useState<LogisticsPreset[]>(() => loadLogisticsPresetsFromStorage());
+  const [logisticsPresetNameDraft, setLogisticsPresetNameDraft] = useState('');
+  const [selectedLogisticsPresetId, setSelectedLogisticsPresetId] = useState('');
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
   const [selectedBuyerId, setSelectedBuyerId] = useState<number | ''>('');
@@ -3368,7 +3427,8 @@ function AppInner() {
         invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
         invoiceExtraCharges,
         invoiceOrientation,
-        containerCapacity, containerType
+        containerCapacity, containerType,
+        logisticsPresets
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -3505,6 +3565,15 @@ function AppInner() {
         exwExtras: project.data.logistics.exwExtras || [], 
         dutyPercent: project.data.logistics.dutyPercent || 0 
     });
+    const projPresetsRaw = (project.data as any).logisticsPresets;
+    if (Array.isArray(projPresetsRaw) && projPresetsRaw.length > 0) {
+        const projPresets = projPresetsRaw
+            .map(normalizeLogisticsPresetEntry)
+            .filter((x): x is LogisticsPreset => x !== null);
+        if (projPresets.length) {
+            setLogisticsPresets((prev) => mergeLogisticsPresetsFromProject(projPresets, prev));
+        }
+    }
     setVisibleScenarioTerms(project.data.visibleScenarioTerms || ['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
     setInvoiceTerms(project.data.invoiceTerms || ['FOB', 'DDP']);
     setSelectedTerms(project.data.selectedTerms || ['FOB', 'DDP']);
@@ -4139,6 +4208,49 @@ function AppInner() {
       }
   };
 
+  useEffect(() => {
+      if (typeof window === 'undefined') return;
+      try {
+          localStorage.setItem(LOGISTICS_PRESETS_STORAGE_KEY, JSON.stringify(logisticsPresets));
+      } catch {
+          /* quota */
+      }
+  }, [logisticsPresets]);
+
+  useEffect(() => {
+      if (!selectedLogisticsPresetId) return;
+      if (!logisticsPresets.some((p) => p.id === selectedLogisticsPresetId)) {
+          setSelectedLogisticsPresetId('');
+      }
+  }, [logisticsPresets, selectedLogisticsPresetId]);
+
+  const saveCurrentLogisticsAsPreset = () => {
+      const name = logisticsPresetNameDraft.trim() || `Logistics ${new Date().toLocaleDateString()}`;
+      const preset: LogisticsPreset = {
+          id: `lp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+          name,
+          logistics: cloneLogisticsData(logistics),
+          updatedAt: Date.now()
+      };
+      setLogisticsPresets((prev) => [preset, ...prev]);
+      setLogisticsPresetNameDraft('');
+      setSelectedLogisticsPresetId(preset.id);
+  };
+
+  const applySelectedLogisticsPreset = () => {
+      if (!selectedLogisticsPresetId) return;
+      const p = logisticsPresets.find((x) => x.id === selectedLogisticsPresetId);
+      if (!p) return;
+      setLogistics(cloneLogisticsData(p.logistics));
+  };
+
+  const deleteSelectedLogisticsPreset = () => {
+      if (!selectedLogisticsPresetId) return;
+      if (!window.confirm('Remove this saved logistics template?')) return;
+      setLogisticsPresets((prev) => prev.filter((x) => x.id !== selectedLogisticsPresetId));
+      setSelectedLogisticsPresetId('');
+  };
+
   // --- CORE CALCULATION ENGINE ---
   const calculations = useMemo(() => {
     const applyProfit = (cost: number, flag: boolean, percent: number) => {
@@ -4561,7 +4673,8 @@ function AppInner() {
             invoiceExtraCharges,
             invoiceOrientation,
             containerCapacity,
-            containerType
+            containerType,
+            logisticsPresets
           }
         };
         sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
@@ -4618,7 +4731,8 @@ function AppInner() {
     invoiceExtraCharges,
     invoiceOrientation,
     containerCapacity,
-    containerType
+    containerType,
+    logisticsPresets
   ]);
 
 
@@ -5039,7 +5153,60 @@ function AppInner() {
                       <Truck className="w-4 h-4 text-amber-500" />
                       Logistics &amp; transport
                   </h2>
-                  <p className="text-[10px] text-slate-500 mt-1">Stack EXW→DDP · per-unit share of shipment — <span className="text-slate-400">scroll below</span></p>
+                  <p className="text-[10px] text-slate-500 mt-1">Stack EXW→DDP · per-unit share of shipment — <span className="text-slate-400">scroll form below</span></p>
+                  <div className="mt-2 pt-2 border-t border-slate-200/80 flex flex-col gap-2">
+                      <div className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Saved cost sets</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                          <select
+                              value={selectedLogisticsPresetId}
+                              onChange={(e) => setSelectedLogisticsPresetId(e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white min-w-[10rem] max-w-full flex-1"
+                          >
+                              <option value="">— انتخاب نمونه —</option>
+                              {logisticsPresets.map((pr) => (
+                                  <option key={pr.id} value={pr.id}>
+                                      {pr.name}
+                                  </option>
+                              ))}
+                          </select>
+                          <button
+                              type="button"
+                              onClick={applySelectedLogisticsPreset}
+                              disabled={!selectedLogisticsPresetId}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-amber-600 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-700"
+                          >
+                              Apply
+                          </button>
+                          <button
+                              type="button"
+                              onClick={deleteSelectedLogisticsPreset}
+                              disabled={!selectedLogisticsPresetId}
+                              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-medium disabled:opacity-40 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                          >
+                              Delete
+                          </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                          <input
+                              type="text"
+                              value={logisticsPresetNameDraft}
+                              onChange={(e) => setLogisticsPresetNameDraft(e.target.value)}
+                              placeholder="نام نمونه (مثلاً حمل دریایی چین)"
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 flex-1 min-w-[8rem] max-w-md"
+                              dir="auto"
+                          />
+                          <button
+                              type="button"
+                              onClick={saveCurrentLogisticsAsPreset}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800 shrink-0"
+                          >
+                              Save current
+                          </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-snug" dir="rtl">
+                          نمونه‌ها در این مرورگر ذخیره می‌شوند و با ذخیرهٔ پروژه در فایل ابری هم همراه می‌شوند.
+                      </p>
+                  </div>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 py-3 space-y-3 [scrollbar-gutter:stable]">
               <p className="text-xs text-slate-600 leading-relaxed">
