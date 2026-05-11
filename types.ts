@@ -479,6 +479,19 @@ export interface DashboardResearchEntry {
   collapsed?: boolean;
 }
 
+/** Compact linear task on the dashboard (start / end window + optional one file). */
+export interface DashboardTodoItem {
+  id: string;
+  label: string;
+  /** Optional task window start. */
+  startAtMs?: number;
+  /** Deadline (end) — drives “days left” / overdue. */
+  dueAtMs: number;
+  done?: boolean;
+  /** Optional single attachment (same Storage metadata shape as research). */
+  attachment?: DashboardResearchAttachment;
+}
+
 export interface SavedProject {
   id: string;
   name: string;
@@ -547,5 +560,7 @@ export interface SavedProject {
     editingArchiveInvoiceId?: string | null;
     /** Dashboard: linear research / report lines with optional files (Storage URLs). */
     researchEntries?: DashboardResearchEntry[];
+    /** Dashboard: compact linear todo list (tasks with dates + optional file). */
+    dashboardTodos?: DashboardTodoItem[];
   };
 }

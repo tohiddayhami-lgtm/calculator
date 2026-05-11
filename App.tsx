@@ -46,7 +46,7 @@ import {
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
-  AlignJustify, ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus
+  AlignJustify, ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo
 } from 'lucide-react';
 
 // Types
@@ -75,6 +75,7 @@ import {
   InvoiceExtraCharge,
   DashboardResearchEntry,
   DashboardResearchAttachment,
+  DashboardTodoItem,
   InvoiceWelteTradeBlock,
   InvoiceLineOverride
 } from './types';
@@ -212,6 +213,75 @@ function parseResearchEntriesFromProject(raw: unknown): DashboardResearchEntry[]
         collapsed,
       };
     });
+}
+
+function parseDashboardTodosFromProject(raw: unknown): DashboardTodoItem[] {
+  if (!Array.isArray(raw)) return [];
+  const items = raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+    .map((x, i) => {
+      const due = Number(x.dueAtMs);
+      const dueAtMs = Number.isFinite(due) && due > 0 ? due : Date.now() + 7 * 86400000;
+      const startRaw = Number(x.startAtMs);
+      const startAtMs = Number.isFinite(startRaw) && startRaw > 0 ? startRaw : undefined;
+      let attachment: DashboardResearchAttachment | undefined;
+      const ar = x.attachment;
+      if (ar && typeof ar === 'object') {
+        const a = ar as Record<string, unknown>;
+        const storagePath = String(a.storagePath || '');
+        const downloadURL = String(a.downloadURL || '');
+        if (storagePath && downloadURL) {
+          attachment = {
+            id: String(a.id || `dta-${i}`),
+            fileName: String(a.fileName || 'file').slice(0, 200),
+            mimeType: String(a.mimeType || 'application/octet-stream').slice(0, 120),
+            sizeBytes: Math.max(0, Number(a.sizeBytes) || 0),
+            storagePath,
+            downloadURL,
+            uploadedAtMs: Math.max(0, Number(a.uploadedAtMs) || 0),
+          };
+        }
+      }
+      return {
+        id: String(x.id || `dt-${Date.now()}-${i}`),
+        label: typeof x.label === 'string' ? x.label.slice(0, 240) : 'Task',
+        startAtMs,
+        dueAtMs,
+        done: Boolean(x.done),
+        attachment,
+      };
+    });
+  return items.sort((a, b) => a.dueAtMs - b.dueAtMs);
+}
+
+function formatShortTaskDate(ms: number | undefined): string {
+  if (ms === undefined || ms === null || !Number.isFinite(ms) || ms <= 0) return '—';
+  return new Date(ms).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function todoDueBadge(dueMs: number): { className: string; label: string } {
+  const now = Date.now();
+  const day = 86400000;
+  const diff = dueMs - now;
+  if (diff < -day) {
+    const overdue = Math.ceil(-diff / day);
+    return {
+      className: 'bg-rose-50 text-rose-800 border border-rose-200',
+      label: `${overdue}d overdue`,
+    };
+  }
+  if (diff <= 0) {
+    return { className: 'bg-amber-50 text-amber-900 border border-amber-200', label: 'Due today' };
+  }
+  const days = Math.ceil(diff / day);
+  if (days === 1) return { className: 'bg-sky-50 text-sky-900 border border-sky-200', label: '1d left' };
+  if (days <= 7) return { className: 'bg-slate-100 text-slate-700 border border-slate-200', label: `${days}d left` };
+  return { className: 'bg-emerald-50/80 text-emerald-900 border border-emerald-100', label: `${days}d left` };
 }
 
 function createDefaultAppConfig(): AppConfig {
@@ -2536,6 +2606,10 @@ function AppInner() {
   const [editingArchiveInvoiceId, setEditingArchiveInvoiceId] = useState<string | null>(null);
   const [researchEntries, setResearchEntries] = useState<DashboardResearchEntry[]>([]);
   const [researchUploadingKey, setResearchUploadingKey] = useState<string | null>(null);
+  const [dashboardTodos, setDashboardTodos] = useState<DashboardTodoItem[]>([]);
+  const [dashboardTodoDraft, setDashboardTodoDraft] = useState({ label: '', start: '', due: '' });
+  const [dashboardTodoUploadingId, setDashboardTodoUploadingId] = useState<string | null>(null);
+  const [expandedTodoId, setExpandedTodoId] = useState<string | null>(null);
   const [invoiceBasis, setInvoiceBasis] = useState<'unit' | 'pack' | 'both'>('both');
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
 
@@ -3928,7 +4002,8 @@ function AppInner() {
         invoiceIssueDateMs,
         invoiceDueDateMs,
         editingArchiveInvoiceId,
-        researchEntries
+        researchEntries,
+        dashboardTodos
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -4119,6 +4194,7 @@ function AppInner() {
     setSuppliers(project.data.suppliers || []);
     setBuyers(((project.data as any).buyers || []) as Buyer[]);
     setResearchEntries(parseResearchEntriesFromProject((project.data as any).researchEntries));
+    setDashboardTodos(parseDashboardTodosFromProject((project.data as any).dashboardTodos));
     setSelectedBuyerId('');
 
     const packRaw = (project.data as any).packingListConfig ?? (project.data as any).priceListConfig;
@@ -5133,7 +5209,8 @@ function AppInner() {
             invoiceIssueDateMs,
             invoiceDueDateMs,
             editingArchiveInvoiceId,
-            researchEntries
+            researchEntries,
+            dashboardTodos
           }
         };
         sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
@@ -5196,7 +5273,8 @@ function AppInner() {
     invoiceIssueDateMs,
     invoiceDueDateMs,
     editingArchiveInvoiceId,
-    researchEntries
+    researchEntries,
+    dashboardTodos
   ]);
 
 
@@ -5298,6 +5376,109 @@ function AppInner() {
     }
   };
 
+  const updateDashboardTodo = (id: string, patch: Partial<DashboardTodoItem>) => {
+    setDashboardTodos((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, ...patch } : t));
+      return [...next].sort((a, b) => a.dueAtMs - b.dueAtMs);
+    });
+  };
+
+  const addDashboardTodo = () => {
+    const label = dashboardTodoDraft.label.trim();
+    if (!label) {
+      alert('Enter a short title for the task.');
+      return;
+    }
+    const dueMs = parseDatetimeLocalToMs(dashboardTodoDraft.due);
+    if (dueMs === undefined) {
+      alert('Pick a due (end) date and time.');
+      return;
+    }
+    const startMs = parseDatetimeLocalToMs(dashboardTodoDraft.start);
+    const id = `dt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setDashboardTodos((prev) =>
+      [...prev, { id, label, startAtMs: startMs, dueAtMs: dueMs, done: false }].sort((a, b) => a.dueAtMs - b.dueAtMs)
+    );
+    setDashboardTodoDraft({ label: '', start: '', due: '' });
+    setExpandedTodoId(null);
+  };
+
+  const removeDashboardTodo = async (id: string) => {
+    if (!window.confirm('Delete this task?')) return;
+    const t = dashboardTodos.find((x) => x.id === id);
+    if (t?.attachment?.storagePath && canCloudResearchUpload) {
+      try {
+        await deleteObject(storageRef(storage, t.attachment.storagePath));
+      } catch {
+        /* ignore */
+      }
+    }
+    setDashboardTodos((prev) => prev.filter((x) => x.id !== id));
+    if (expandedTodoId === id) setExpandedTodoId(null);
+  };
+
+  const removeDashboardTodoAttachment = async (todoId: string) => {
+    const t = dashboardTodos.find((x) => x.id === todoId);
+    if (!t?.attachment) return;
+    if (canCloudResearchUpload && t.attachment.storagePath) {
+      try {
+        await deleteObject(storageRef(storage, t.attachment.storagePath));
+      } catch {
+        /* ignore */
+      }
+    }
+    updateDashboardTodo(todoId, { attachment: undefined });
+  };
+
+  const uploadDashboardTodoFile = async (todoId: string, file: File | null | undefined) => {
+    if (!file) return;
+    if (!canCloudResearchUpload) {
+      alert('Sign in with a real cloud account (not demo) and ensure Firebase Storage is enabled to attach files.');
+      return;
+    }
+    if (file.size > MAX_DASHBOARD_RESEARCH_FILE_BYTES) {
+      alert(`Each file must be at most ${MAX_DASHBOARD_RESEARCH_FILE_BYTES / (1024 * 1024)} MB.`);
+      return;
+    }
+    const mime = file.type || 'application/octet-stream';
+    if (!isAllowedResearchMime(mime)) {
+      alert('Allowed types: images, PDF, Word, Excel, or video.');
+      return;
+    }
+    const existing = dashboardTodos.find((x) => x.id === todoId);
+    if (existing?.attachment?.storagePath && canCloudResearchUpload) {
+      try {
+        await deleteObject(storageRef(storage, existing.attachment.storagePath));
+      } catch {
+        /* ignore */
+      }
+    }
+    const uploadKey = `${todoId}:${file.name}:${file.size}`;
+    setDashboardTodoUploadingId(uploadKey);
+    try {
+      const attId = `dta_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const safe = sanitizeResearchFileName(file.name);
+      const path = `users/${user!.uid}/dashboard_todos/${todoId}/${attId}_${safe}`;
+      const ref = storageRef(storage, path);
+      await uploadBytes(ref, file, { contentType: mime || undefined });
+      const downloadURL = await getDownloadURL(ref);
+      const attachment: DashboardResearchAttachment = {
+        id: attId,
+        fileName: file.name.slice(0, 200),
+        mimeType: mime,
+        sizeBytes: file.size,
+        storagePath: path,
+        downloadURL,
+        uploadedAtMs: Date.now(),
+      };
+      updateDashboardTodo(todoId, { attachment });
+    } catch (e: any) {
+      alert('Upload failed: ' + (e?.message || e));
+    } finally {
+      setDashboardTodoUploadingId(null);
+    }
+  };
+
   const handleStartNewProject = () => {
     if (
       !window.confirm(
@@ -5357,6 +5538,10 @@ function AppInner() {
     setEditingArchiveInvoiceId(null);
     setResearchEntries([]);
     setResearchUploadingKey(null);
+    setDashboardTodos([]);
+    setDashboardTodoDraft({ label: '', start: '', due: '' });
+    setDashboardTodoUploadingId(null);
+    setExpandedTodoId(null);
     setInvoiceBasis('both');
     setBankDetails('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
     setSuppliers([]);
@@ -5508,6 +5693,183 @@ function AppInner() {
             </div>
         )}
       </div>
+
+      {/* 1b. Linear tasks — compact, collapsed by default */}
+      <details className="bg-white rounded-lg border border-slate-200 shadow-sm open:shadow-md transition-shadow">
+        <summary className="flex items-center justify-between gap-3 px-3 py-2 cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden hover:bg-slate-50/90 rounded-lg">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <ListTodo className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden />
+            <span className="text-sm font-semibold text-slate-800">Tasks</span>
+            <span className="text-[11px] text-slate-500 truncate">
+              {dashboardTodos.filter((x) => !x.done).length} open
+              {(() => {
+                const upcoming = dashboardTodos.filter((x) => !x.done).sort((a, b) => a.dueAtMs - b.dueAtMs)[0];
+                if (!upcoming) return '';
+                return ` · next ${todoDueBadge(upcoming.dueAtMs).label}`;
+              })()}
+            </span>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+        </summary>
+        <div className="px-3 pb-3 space-y-2 border-t border-slate-100 pt-2">
+          {!canCloudResearchUpload ? (
+            <p className="text-[10px] text-amber-900/90 bg-amber-50 border border-amber-100 rounded-md px-2 py-1 leading-snug">
+              File attachments use the same Storage rules as Reports — sign in with a real account (not demo).
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex-1 min-w-[8rem]">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Title</span>
+              <input
+                type="text"
+                value={dashboardTodoDraft.label}
+                onChange={(e) => setDashboardTodoDraft((d) => ({ ...d, label: e.target.value }))}
+                placeholder="Short task name"
+                className="w-full text-xs border border-slate-200 rounded-md px-2 py-1.5"
+              />
+            </label>
+            <label className="min-w-[10.5rem]">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Start</span>
+              <input
+                type="datetime-local"
+                value={dashboardTodoDraft.start}
+                onChange={(e) => setDashboardTodoDraft((d) => ({ ...d, start: e.target.value }))}
+                className="w-full text-[11px] border border-slate-200 rounded-md px-1.5 py-1"
+              />
+            </label>
+            <label className="min-w-[10.5rem]">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Due</span>
+              <input
+                type="datetime-local"
+                value={dashboardTodoDraft.due}
+                onChange={(e) => setDashboardTodoDraft((d) => ({ ...d, due: e.target.value }))}
+                className="w-full text-[11px] border border-slate-200 rounded-md px-1.5 py-1"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={addDashboardTodo}
+              className="text-xs font-semibold bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700 shrink-0"
+            >
+              Add
+            </button>
+          </div>
+          {dashboardTodos.length === 0 ? (
+            <p className="text-[11px] text-slate-400 italic text-center py-2">No tasks yet.</p>
+          ) : (
+            <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
+              {dashboardTodos.map((t) => {
+                const badge = todoDueBadge(t.dueAtMs);
+                const isOpen = expandedTodoId === t.id;
+                const uploading = dashboardTodoUploadingId?.startsWith(`${t.id}:`);
+                return (
+                  <div key={t.id} className="rounded-md border border-slate-200 bg-slate-50/80">
+                    <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={!!t.done}
+                        onChange={() => updateDashboardTodo(t.id, { done: !t.done })}
+                        className="rounded border-slate-300 text-indigo-600 shrink-0"
+                        title="Done"
+                      />
+                      <span
+                        className={`flex-1 min-w-0 truncate font-medium ${t.done ? 'line-through text-slate-400' : 'text-slate-800'}`}
+                      >
+                        {t.label}
+                      </span>
+                      <span className="hidden md:inline text-[10px] text-slate-500 tabular-nums shrink-0 max-w-[9rem] truncate" title="Start → Due">
+                        {formatShortTaskDate(t.startAtMs)} → {formatShortTaskDate(t.dueAtMs)}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                      {t.attachment ? (
+                        <a
+                          href={t.attachment.downloadURL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                          title={t.attachment.fileName}
+                        >
+                          <Paperclip className="w-3.5 h-3.5" />
+                        </a>
+                      ) : (
+                        <span className="w-6 shrink-0" aria-hidden />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedTodoId(isOpen ? null : t.id)}
+                        className="shrink-0 p-1 text-slate-500 hover:text-indigo-600 rounded"
+                        title="Edit dates / file"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeDashboardTodo(t.id)}
+                        className="shrink-0 p-1 text-slate-400 hover:text-red-600 rounded"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {isOpen ? (
+                      <div className="px-2 pb-2 pt-0 flex flex-wrap gap-2 items-end border-t border-slate-100 bg-white/80">
+                        <label className="min-w-[10.5rem]">
+                          <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Start</span>
+                          <input
+                            type="datetime-local"
+                            value={t.startAtMs ? formatMsForDatetimeLocal(t.startAtMs) : ''}
+                            onChange={(e) => {
+                              const ms = parseDatetimeLocalToMs(e.target.value);
+                              updateDashboardTodo(t.id, { startAtMs: ms });
+                            }}
+                            className="w-full text-[11px] border border-slate-200 rounded px-1.5 py-1"
+                          />
+                        </label>
+                        <label className="min-w-[10.5rem]">
+                          <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Due</span>
+                          <input
+                            type="datetime-local"
+                            value={formatMsForDatetimeLocal(t.dueAtMs)}
+                            onChange={(e) => {
+                              const ms = parseDatetimeLocalToMs(e.target.value);
+                              if (ms !== undefined) updateDashboardTodo(t.id, { dueAtMs: ms });
+                            }}
+                            className="w-full text-[11px] border border-slate-200 rounded px-1.5 py-1"
+                          />
+                        </label>
+                        <label className="text-[10px] font-semibold text-indigo-700 border border-dashed border-indigo-200 rounded-md px-2 py-1 cursor-pointer hover:bg-indigo-50/50 shrink-0">
+                          {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" /> : 'Attach file'}
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = '';
+                              void uploadDashboardTodoFile(t.id, f);
+                            }}
+                          />
+                        </label>
+                        {t.attachment ? (
+                          <button
+                            type="button"
+                            onClick={() => void removeDashboardTodoAttachment(t.id)}
+                            className="text-[10px] font-semibold text-rose-700 hover:underline shrink-0"
+                          >
+                            Remove file
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </details>
 
       {/* 2. PRODUCT INPUT */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
