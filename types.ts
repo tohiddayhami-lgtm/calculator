@@ -62,15 +62,24 @@ export interface LogisticsItem {
   curr: string;
 }
 
+/** Shipment-level costs; engine stacks EXW → FCA → FOB → CIF → DDP then spreads per active unit. */
 export interface Logistics {
+  /** Pre-carriage — FCA band in app pricing */
   inland: LogisticsItem;
+  /** Origin THC / stuffing — FOB band */
   port: LogisticsItem;
+  /** Main carriage — CIF band */
   freight: LogisticsItem;
-  insurance: LogisticsItem; // Added: Cargo Insurance
+  /** Seller insurance — CIF band */
+  insurance: LogisticsItem;
+  /** DTHC / brokerage / delivery — DDP band (with duty % and extras after CIF stack) */
   destination: LogisticsItem;
+  /** Import duty & taxes as % of CIF-style landed value (aggregate), then per-unit */
   dutyPercent: number;
-  exwExtras: ExtraCost[]; // New field for EXW specific extra costs
-  extras: ExtraCost[]; // Existing field for DDP/Global extras
+  /** Named origin charges — EXW layer with product cost */
+  exwExtras: ExtraCost[];
+  /** Fixed landed lines — DDP band with destination + duty */
+  extras: ExtraCost[];
 }
 
 export interface ProfitFlags {

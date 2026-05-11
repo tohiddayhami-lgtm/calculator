@@ -5031,123 +5031,289 @@ function AppInner() {
         </div>
       </div>
 
-      {/* 3. LOGISTICS */}
+      {/* 3. LOGISTICS — lanes aligned to Incoterms (matches cumulative pricing engine) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* ... existing logistics components ... */}
-          {/* Just inserting them here to maintain file structure, assume they are correct */}
            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-              <h2 className="font-semibold text-slate-700 flex items-center gap-2 mb-4">
+              <h2 className="font-semibold text-slate-700 flex items-center gap-2 mb-1">
                   <Truck className="w-4 h-4 text-amber-500" />
-                  Logistics & Transport
+                  Logistics &amp; transport
               </h2>
-              <div className="space-y-4">
-                 <div className="pb-3 border-b border-slate-100">
-                     <div className="flex justify-between items-center mb-2">
-                        <label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">
-                            <FileCheck className="w-3 h-3" />
-                            EXW Specific Costs
-                        </label>
-                        <button onClick={addExwExtraCost} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
+              <p className="text-xs text-slate-600 leading-relaxed mb-2">
+                  Each field below feeds a <strong>cumulative cost stack</strong> used in scenario pricing: EXW → FCA → FOB → CIF → DDP.
+                  Shipment totals are converted to output currency, then spread <strong>evenly per unit</strong> across all active line quantities (same rule as the calculator table).
+              </p>
+              <p className="text-[11px] text-slate-500 leading-relaxed mb-3 border-b border-slate-100 pb-3" dir="rtl">
+                  هر بخش هزینه به لایهٔ اینکوترم مربوطش وصل است؛ ترتیب با موتور قیمت‌گذاری یکی است و سهم هر واحد از کل تعداد کالاها یکنواخت تقسیم می‌شود.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-500 mb-4 bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-100">
+                  <span className="rounded bg-slate-200/80 px-1.5 py-0.5 font-bold text-slate-700">EXW</span>
+                  <span aria-hidden="true">→</span>
+                  <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-800">FCA</span>
+                  <span aria-hidden="true">→</span>
+                  <span className="rounded bg-indigo-100 px-1.5 py-0.5 font-bold text-indigo-800">FOB</span>
+                  <span aria-hidden="true">→</span>
+                  <span className="rounded bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">CIF</span>
+                  <span aria-hidden="true">→</span>
+                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-800">DDP</span>
+              </div>
+
+              <div className="space-y-5">
+                 {/* EXW lane */}
+                 <div className="rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+                     <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Origin / seller</span>
+                                <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-slate-200 text-slate-800 border border-slate-300">EXW</span>
+                            </div>
+                            <label className="text-sm font-semibold text-slate-800 mt-1 block">EXW-specific charges</label>
+                            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                Costs incurred <em>before</em> main carriage: certificates, labelling, origin inspection, packing labour, documentation. In the model these sit on the <strong>EXW cost layer</strong> (together with product unit cost).
+                            </p>
+                        </div>
+                        <button type="button" onClick={addExwExtraCost} className="text-xs text-blue-600 hover:underline flex items-center gap-1 shrink-0"><Plus className="w-3 h-3" /> Add line</button>
                      </div>
-                     <p className="text-[10px] text-slate-400 mb-2">Costs before transport (e.g. Health Cert, Translation, Inspection) - Included in EXW Price.</p>
                      <div className="space-y-2">
                         {(logistics.exwExtras || []).map(ex => (
-                            <div key={ex.id} className="flex items-center gap-2">
+                            <div key={ex.id} className="flex items-center gap-2 bg-white rounded-md border border-slate-100 px-2 py-1">
+                                <FileCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <input 
                                     type="text" 
-                                    placeholder="Description" 
+                                    placeholder="e.g. Health cert, fumigation" 
                                     value={ex.name} 
                                     onChange={(e) => updateExwExtraCost(ex.id, 'name', e.target.value)} 
-                                    className="w-full text-xs border-b border-slate-200 focus:border-blue-500 outline-none"
+                                    className="w-full text-xs border-b border-transparent focus:border-blue-500 outline-none min-w-0"
                                 />
                                 <FormattedNumberInput 
                                     value={ex.val} 
                                     onChange={(val) => updateExwExtraCost(ex.id, 'val', val)} 
-                                    className="w-20 text-xs text-right border border-slate-200 rounded px-1 py-1"
+                                    className="w-20 text-xs text-right border border-slate-200 rounded px-1 py-1 shrink-0"
                                 />
                                 <select 
                                     value={ex.curr} 
                                     onChange={(e) => updateExwExtraCost(ex.id, 'curr', e.target.value)} 
-                                    className="text-xs bg-slate-50 border-none"
+                                    className="text-xs bg-slate-50 border border-slate-200 rounded px-1 py-1 shrink-0"
                                 >
                                     {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
-                                <button onClick={() => removeExwExtraCost(ex.id)} className="text-slate-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                                <button type="button" onClick={() => removeExwExtraCost(ex.id)} className="text-slate-400 hover:text-red-500 shrink-0"><X className="w-3 h-3" /></button>
                             </div>
                         ))}
+                        {(!logistics.exwExtras || logistics.exwExtras.length === 0) && (
+                            <p className="text-[11px] text-slate-400 italic">No lines — optional if all origin costs are in unit price.</p>
+                        )}
                      </div>
                  </div>
 
-                 {[
-                     { id: 'inland', label: 'Inland Transport', icon: MapPin },
-                     { id: 'port', label: 'Port & Handling', icon: Anchor },
-                     { id: 'freight', label: 'Sea/Air Freight', icon: Ship },
-                     { id: 'insurance', label: 'Cargo Insurance', icon: CheckSquare }, // Added Insurance
-                     { id: 'destination', label: 'Destination Clearance', icon: CheckCircle }
-                 ].map((item) => (
-                     <div key={item.id} className="flex items-center justify-between">
-                         <div className="flex items-center gap-2 text-sm text-slate-600">
-                             <item.icon className="w-4 h-4 text-slate-400" />
-                             {item.label}
+                 {/* FCA — inland */}
+                 <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-blue-200 text-blue-900 border border-blue-300">FCA</span>
+                        <span className="text-sm font-semibold text-slate-800">Inland &amp; local haulage</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mb-2 leading-snug">
+                        Pre-carriage (factory → port or named handover). First <strong>transport</strong> band after EXW in this stack; used when building <strong>FCA</strong> and all later terms.
+                    </p>
+                    <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-slate-100 px-2 py-2">
+                         <div className="flex items-center gap-2 text-sm text-slate-700 min-w-0">
+                             <MapPin className="w-4 h-4 text-blue-500 shrink-0" />
+                             <span className="font-medium truncate">Road / rail to port</span>
                          </div>
-                         <div className="flex items-center gap-2">
+                         <div className="flex items-center gap-2 shrink-0">
                              <FormattedNumberInput 
-                                 value={(logistics as any)[item.id].val}
-                                 onChange={(val) => updateLogisticsMain(item.id as any, 'val', val)}
+                                 value={logistics.inland.val}
+                                 onChange={(val) => updateLogisticsMain('inland', 'val', val)}
                                  className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
                              />
                              <select 
-                                 value={(logistics as any)[item.id].curr}
-                                 onChange={(e) => updateLogisticsMain(item.id as any, 'curr', e.target.value)}
+                                 value={logistics.inland.curr}
+                                 onChange={(e) => updateLogisticsMain('inland', 'curr', e.target.value)}
                                  className="text-xs bg-slate-50 border border-slate-200 rounded px-1 py-1"
                              >
                                  {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
                              </select>
                          </div>
                      </div>
-                 ))}
-                 
-                 <div className="pt-3 border-t border-slate-100">
-                     <div className="flex justify-between items-center mb-2">
-                        <label className="text-xs font-semibold text-slate-500 uppercase">DDP Extra Costs / Duties</label>
-                        <button onClick={addExtraCost} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
+                 </div>
+
+                 {/* FOB — port */}
+                 <div className="rounded-lg border border-indigo-100 bg-indigo-50/30 p-3">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-indigo-200 text-indigo-900 border border-indigo-300">FOB</span>
+                        <span className="text-sm font-semibold text-slate-800">Origin port &amp; terminal</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mb-2 leading-snug">
+                        THC, stuffing, VGM, port documentation — costs tied to <strong>loading / handover at origin port</strong> before main carriage. Stacks after inland for <strong>FOB+</strong> scenarios.
+                    </p>
+                    <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-slate-100 px-2 py-2">
+                         <div className="flex items-center gap-2 text-sm text-slate-700 min-w-0">
+                             <Anchor className="w-4 h-4 text-indigo-500 shrink-0" />
+                             <span className="font-medium truncate">Port &amp; handling</span>
+                         </div>
+                         <div className="flex items-center gap-2 shrink-0">
+                             <FormattedNumberInput 
+                                 value={logistics.port.val}
+                                 onChange={(val) => updateLogisticsMain('port', 'val', val)}
+                                 className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
+                             />
+                             <select 
+                                 value={logistics.port.curr}
+                                 onChange={(e) => updateLogisticsMain('port', 'curr', e.target.value)}
+                                 className="text-xs bg-slate-50 border border-slate-200 rounded px-1 py-1"
+                             >
+                                 {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                             </select>
+                         </div>
                      </div>
+                 </div>
+
+                 {/* CIF — freight + insurance */}
+                 <div className="rounded-lg border border-violet-100 bg-violet-50/30 p-3">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-violet-200 text-violet-900 border border-violet-300">CIF</span>
+                        <span className="text-sm font-semibold text-slate-800">Main carriage &amp; cover</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mb-2 leading-snug">
+                        Ocean or air <strong>freight</strong> plus seller-arranged <strong>cargo insurance</strong> (Institute clauses, etc.). Both roll into the <strong>CIF</strong> leg; duty % below is calculated on the landed value up to CIF.
+                    </p>
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-slate-100 px-2 py-2">
+                             <div className="flex items-center gap-2 text-sm text-slate-700 min-w-0">
+                                 <Ship className="w-4 h-4 text-violet-500 shrink-0" />
+                                 <span className="font-medium truncate">Sea / air freight</span>
+                             </div>
+                             <div className="flex items-center gap-2 shrink-0">
+                                 <FormattedNumberInput 
+                                     value={logistics.freight.val}
+                                     onChange={(val) => updateLogisticsMain('freight', 'val', val)}
+                                     className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
+                                 />
+                                 <select 
+                                     value={logistics.freight.curr}
+                                     onChange={(e) => updateLogisticsMain('freight', 'curr', e.target.value)}
+                                     className="text-xs bg-slate-50 border border-slate-200 rounded px-1 py-1"
+                                 >
+                                     {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                                 </select>
+                             </div>
+                         </div>
+                        <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-slate-100 px-2 py-2">
+                             <div className="flex items-center gap-2 text-sm text-slate-700 min-w-0">
+                                 <Globe2 className="w-4 h-4 text-violet-500 shrink-0" />
+                                 <span className="font-medium truncate">Cargo insurance</span>
+                             </div>
+                             <div className="flex items-center gap-2 shrink-0">
+                                 <FormattedNumberInput 
+                                     value={logistics.insurance.val}
+                                     onChange={(val) => updateLogisticsMain('insurance', 'val', val)}
+                                     className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
+                                 />
+                                 <select 
+                                     value={logistics.insurance.curr}
+                                     onChange={(e) => updateLogisticsMain('insurance', 'curr', e.target.value)}
+                                     className="text-xs bg-slate-50 border border-slate-200 rounded px-1 py-1"
+                                 >
+                                     {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                                 </select>
+                             </div>
+                         </div>
+                    </div>
+                 </div>
+
+                 {/* DDP — destination, duty, extras */}
+                 <div className="rounded-lg border border-emerald-100 bg-emerald-50/30 p-3">
+                     <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-emerald-200 text-emerald-900 border border-emerald-300">DDP</span>
+                        <span className="text-sm font-semibold text-slate-800">Arrival, duty &amp; door</span>
+                     </div>
+                     <p className="text-[11px] text-slate-600 mb-2 leading-snug">
+                        Destination charges (DTHC, brokerage, delivery), <strong>import duty / taxes</strong> as a percent of CIF-style landed value, and any other <strong>landed</strong> lines you model as fixed amounts.
+                     </p>
                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-600">Duty % (on CIF)</span>
-                            <input 
-                                type="number" 
-                                value={logistics.dutyPercent}
-                                onChange={(e) => setLogistics({...logistics, dutyPercent: parseFloat(e.target.value) || 0})}
-                                className="w-16 text-right border border-slate-200 rounded px-2 py-1 text-sm focus:ring-blue-500 outline-none"
-                            />
+                        <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-slate-100 px-2 py-2">
+                             <div className="flex items-center gap-2 text-sm text-slate-700 min-w-0">
+                                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                 <span className="font-medium truncate">Destination clearance &amp; handling</span>
+                             </div>
+                             <div className="flex items-center gap-2 shrink-0">
+                                 <FormattedNumberInput 
+                                     value={logistics.destination.val}
+                                     onChange={(val) => updateLogisticsMain('destination', 'val', val)}
+                                     className="w-24 text-sm text-right border border-slate-200 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
+                                 />
+                                 <select 
+                                     value={logistics.destination.curr}
+                                     onChange={(e) => updateLogisticsMain('destination', 'curr', e.target.value)}
+                                     className="text-xs bg-slate-50 border border-slate-200 rounded px-1 py-1"
+                                 >
+                                     {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                                 </select>
+                             </div>
+                         </div>
+                        <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-slate-100 px-2 py-2">
+                            <div className="min-w-0">
+                                <span className="text-sm font-medium text-slate-700 block">Duty / import tax %</span>
+                                <span className="text-[10px] text-slate-500 leading-tight block mt-0.5">
+                                    Applied in code to <strong className="text-slate-700">(product + EXW extras + inland + port + freight + insurance) × qty</strong> aggregate basis, then per-unit for pricing — same basis as CIF landed stack before destination fees.
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <input 
+                                    type="number" 
+                                    value={logistics.dutyPercent}
+                                    onChange={(e) => setLogistics({...logistics, dutyPercent: parseFloat(e.target.value) || 0})}
+                                    className="w-16 text-right border border-slate-200 rounded px-2 py-1.5 text-sm focus:ring-blue-500 outline-none"
+                                />
+                                <span className="text-xs text-slate-500">%</span>
+                            </div>
+                        </div>
+                        <div className="flex justify-between items-center pt-1">
+                            <span className="text-xs font-semibold text-slate-600">Other landed costs (fixed)</span>
+                            <button type="button" onClick={addExtraCost} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Add line</button>
                         </div>
                         {(logistics.extras || []).map(ex => (
-                            <div key={ex.id} className="flex items-center gap-2">
+                            <div key={ex.id} className="flex items-center gap-2 bg-white rounded-md border border-slate-100 px-2 py-1">
                                 <input 
                                     type="text" 
-                                    placeholder="Desc" 
+                                    placeholder="e.g. Customs broker, THC dest." 
                                     value={ex.name} 
                                     onChange={(e) => updateExtraCost(ex.id, 'name', e.target.value)} 
-                                    className="w-full text-xs border-b border-slate-200 focus:border-blue-500 outline-none"
+                                    className="w-full text-xs border-b border-transparent focus:border-blue-500 outline-none min-w-0"
                                 />
                                 <FormattedNumberInput 
                                     value={ex.val} 
                                     onChange={(val) => updateExtraCost(ex.id, 'val', val)} 
-                                    className="w-20 text-xs text-right border border-slate-200 rounded px-1 py-1"
+                                    className="w-20 text-xs text-right border border-slate-200 rounded px-1 py-1 shrink-0"
                                 />
                                 <select 
                                     value={ex.curr} 
                                     onChange={(e) => updateExtraCost(ex.id, 'curr', e.target.value)} 
-                                    className="text-xs bg-slate-50 border-none"
+                                    className="text-xs bg-slate-50 border border-slate-200 rounded px-1 py-1 shrink-0"
                                 >
                                     {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
-                                <button onClick={() => removeExtraCost(ex.id)} className="text-slate-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                                <button type="button" onClick={() => removeExtraCost(ex.id)} className="text-slate-400 hover:text-red-500 shrink-0"><X className="w-3 h-3" /></button>
                             </div>
                         ))}
                      </div>
                  </div>
+
+                 <details className="rounded-lg border border-slate-200 bg-slate-50/80 text-xs text-slate-600 group">
+                    <summary className="cursor-pointer select-none px-3 py-2 font-semibold text-slate-700 list-none flex items-center gap-2">
+                        <Layers className="w-3.5 h-3.5 text-slate-500" />
+                        Developer: how fields map in <code className="text-[10px] bg-white px-1 rounded border">calculations</code>
+                        <span className="text-[10px] font-normal text-slate-400 group-open:hidden">(click)</span>
+                    </summary>
+                    <div className="px-3 pb-3 pt-0 space-y-1.5 font-mono text-[10px] leading-relaxed border-t border-slate-100">
+                        <p><code>exwExtras[]</code> → <code>costExwExtras</code> → per-unit <code>uExwExtra</code> (EXW layer).</p>
+                        <p><code>inland</code> → <code>uInland</code> (first leg after EXW; FCA+ sell path).</p>
+                        <p><code>port</code> → <code>uPort</code> (FOB+).</p>
+                        <p><code>freight</code> + <code>insurance</code> → <code>uFreight</code>, <code>uInsurance</code> (CIF+).</p>
+                        <p><code>destination</code> + <code>dutyPercent</code> × per-line CIF cost + <code>extras[]</code> → <code>uDest</code>, <code>uDuty</code>, <code>uExtras</code> (DDP).</p>
+                        <p className="text-slate-500 pt-1 border-t border-slate-100">Real contracts vary; this UI is a <em>simplified ladder</em> aligned to the app&apos;s pricing engine, not legal Incoterms advice.</p>
+                    </div>
+                 </details>
               </div>
           </div>
 
