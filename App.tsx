@@ -8786,7 +8786,7 @@ function AppInner() {
                            </div>
 
                           {/* Main Title Block */}
-                          <div className="space-y-6 max-w-3xl">
+                          <div className="space-y-6 max-w-3xl w-full shrink-0 py-2">
                                <input 
                                   value={catalogConfig.collectionText || ''}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, collectionText: e.target.value})}
@@ -8796,10 +8796,11 @@ function AppInner() {
                                <textarea 
                                   value={catalogConfig.title}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
-                                  rows={2}
-                                  className="bg-transparent font-black tracking-tight w-full outline-none placeholder-white/40 leading-[0.9] resize-none overflow-hidden"
+                                  rows={4}
+                                  className="bg-transparent font-black tracking-tight w-full outline-none placeholder-white/40 leading-[1.05] resize-none overflow-visible block"
                                   style={{
                                       fontSize: `clamp(${Math.max(16, Math.round((catalogConfig.coverTitleFontSizePx ?? 56) * 0.45))}px, 8vw, ${catalogConfig.coverTitleFontSizePx ?? 56}px)`,
+                                      minHeight: `${Math.max(120, Math.round((catalogConfig.coverTitleFontSizePx ?? 56) * 2.35))}px`,
                                   }}
                                   placeholder="TITLE"
                               />
