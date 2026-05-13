@@ -1118,16 +1118,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             const rawParas: string[] = cc.aboutUsText.split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean);
             const isFarsiPara = (p: string) => /[؀-ۿ]/.test(p);
 
-            let prevWasFarsi: boolean | null = null;
-            const parasHtml = rawParas.map((para: string) => {
-                const farsi = isFarsiPara(para);
-                let divider = '';
-                if (prevWasFarsi !== null && farsi !== prevWasFarsi) {
-                    divider = '<div class="about-lang-divider"></div>';
-                }
-                prevWasFarsi = farsi;
-                return `${divider}<p class="about-para${farsi ? ' rtl' : ''}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`;
-            }).join('');
+            const parasHtml = rawParas
+                .map(
+                    (para: string) =>
+                        `<p class="about-para${isFarsiPara(para) ? ' rtl' : ''}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`
+                )
+                .join('');
 
             const layout = cc.aboutUsImageLayout || 'side-right';
             const imgPanel = imgs.length
@@ -1361,8 +1357,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .about-para { font-size: 15px; line-height: 1.85; color: var(--text); text-align: justify; hyphens: auto; margin-bottom: 16px; }
         .about-para:last-child { margin-bottom: 0; }
         .about-para.rtl { direction: rtl; text-align: right; font-size: 15px; border-right: 3px solid var(--primary); padding-right: 14px; color: #1e293b; background: #f8fafc; border-radius: 0 8px 8px 0; padding-top: 8px; padding-bottom: 8px; padding-left: 8px; }
-        .about-lang-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-        .about-lang-divider::before, .about-lang-divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
         @media (max-width: 680px) { .about-text-panel { padding: 20px 18px; } .about-header { padding: 18px 20px 14px; } }
 
         /* Custom pages (Catalog sections) */
