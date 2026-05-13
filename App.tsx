@@ -2874,12 +2874,12 @@ function AppInner() {
 
   // -- STATE: COMMUNITY HUB --
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
-  const [communityFilter, setCommunityFilter] = useState<'all' | 'news' | 'suppliers' | 'buyers' | 'education' | 'general'>('all');
+  const [communityFilter, setCommunityFilter] = useState<'all' | 'news' | 'suppliers' | 'education' | 'general'>('all');
   const [communitySearch, setCommunitySearch] = useState('');
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostBody, setNewPostBody] = useState('');
-  const [newPostCategory, setNewPostCategory] = useState<'news' | 'suppliers' | 'buyers' | 'education' | 'general'>('general');
+  const [newPostCategory, setNewPostCategory] = useState<'news' | 'suppliers' | 'education' | 'general'>('general');
   const [newPostFiles, setNewPostFiles] = useState<File[]>([]);
   const [communityUploading, setCommunityUploading] = useState(false);
   const [communityError, setCommunityError] = useState('');
@@ -2887,7 +2887,7 @@ function AppInner() {
   const [editingPost, setEditingPost] = useState<any | null>(null);
   const [editPostTitle, setEditPostTitle] = useState('');
   const [editPostBody, setEditPostBody] = useState('');
-  const [editPostCategory, setEditPostCategory] = useState<'news' | 'suppliers' | 'buyers' | 'education' | 'general'>('general');
+  const [editPostCategory, setEditPostCategory] = useState<'news' | 'suppliers' | 'education' | 'general'>('general');
   const [editPostExistingAttachments, setEditPostExistingAttachments] = useState<any[]>([]);
   const [editPostNewFiles, setEditPostNewFiles] = useState<File[]>([]);
   const [editPostUploading, setEditPostUploading] = useState(false);
@@ -12349,13 +12349,12 @@ function AppInner() {
       { id: 'all', label: 'All Posts' },
       { id: 'news', label: 'News' },
       { id: 'suppliers', label: 'Suppliers' },
-      { id: 'buyers', label: 'Buyers' },
       { id: 'education', label: 'Education' },
       { id: 'general', label: 'General' },
     ];
 
     const getCategoryLabel = (cat: string) =>
-      ({ news: 'News', suppliers: 'Suppliers', buyers: 'Buyers', education: 'Education', general: 'General' } as any)[cat] || cat;
+      ({ news: 'News', suppliers: 'Suppliers', education: 'Education', general: 'General' } as any)[cat] || cat;
 
     const ColorPicker = ({ value, onChange }: { value: string; onChange: (c: string) => void }) => (
       <div className="flex gap-2.5 flex-wrap items-center">
@@ -12397,7 +12396,7 @@ function AppInner() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">Community Hub</h2>
-            <p className="text-sm text-slate-500 mt-0.5">Share news, approved suppliers, buyers, educational content, and files with all team members</p>
+            <p className="text-sm text-slate-500 mt-0.5">Share news, approved suppliers, educational content, and files with all team members</p>
           </div>
           <button
             onClick={() => { setShowNewPostModal(true); setCommunityError(''); setNewPostTitle(''); setNewPostBody(''); setNewPostCategory('general'); setNewPostColor('yellow'); setNewPostFiles([]); }}
@@ -12584,7 +12583,7 @@ function AppInner() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
                   <div className="flex gap-2 flex-wrap">
-                    {CATS.filter(c => c.id !== 'all').map(cat => (
+                    {[{ id: 'news', label: 'News' }, { id: 'suppliers', label: 'Suppliers' }, { id: 'education', label: 'Education' }, { id: 'general', label: 'General' }].map(cat => (
                       <button key={cat.id} onClick={() => setNewPostCategory(cat.id as any)}
                         className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${newPostCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                         {cat.label}
@@ -12659,7 +12658,7 @@ function AppInner() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
                   <div className="flex gap-2 flex-wrap">
-                    {CATS.filter(c => c.id !== 'all').map(cat => (
+                    {[{ id: 'news', label: 'News' }, { id: 'suppliers', label: 'Suppliers' }, { id: 'education', label: 'Education' }, { id: 'general', label: 'General' }].map(cat => (
                       <button key={cat.id} onClick={() => setEditPostCategory(cat.id as any)}
                         className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${editPostCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                         {cat.label}
