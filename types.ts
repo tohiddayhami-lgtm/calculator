@@ -375,8 +375,56 @@ export interface InvoiceExtraCharge {
   enabled: boolean;
 }
 
-/** Trade / shipping fields for the Welte-style proforma (matches classic Iranian export proforma blocks). */
+/** Editable titles / column headers on the customs-style proforma (layout key `welte`). */
+export interface InvoiceCustomsStyleLabels {
+  docTitle: string;
+  sellerCaption: string;
+  invoiceNoLabel: string;
+  invoiceDateLabel: string;
+  invoiceValidityLabel: string;
+  buyersCardLabel: string;
+  sellersRefLabel: string;
+  buyerLabel: string;
+  freightForwarderLabel: string;
+  countryBeneficiaryLabel: string;
+  transportModeLabel: string;
+  portLoadingLabel: string;
+  countryOriginLabel: string;
+  destinationLabel: string;
+  portDischargeLabel: string;
+  placeDeliveryLabel: string;
+  termsDeliveryLabel: string;
+  transactionCurrencyLabel: string;
+  termsPaymentLabel: string;
+  shippingMarksLabel: string;
+  packagesDescLabel: string;
+  commodityLabel: string;
+  totalGrossWtLabel: string;
+  totalVolumeLabel: string;
+  packageKindsLabel: string;
+  colItem: string;
+  colDescription: string;
+  colOrigin: string;
+  colCommodityCode: string;
+  colNetWt: string;
+  colQuantity: string;
+  colUnitPrice: string;
+  colAmount: string;
+  discountLabel: string;
+  vatLabel: string;
+  totalAmountLabel: string;
+  noteLabel: string;
+  paymentBankTitleLabel: string;
+  signatoryLabel: string;
+  placeDateIssueLabel: string;
+  totalKgLabel: string;
+  totalPiecesLabel: string;
+}
+
+/** Trade / shipping fields for the customs-style proforma (classic bordered export layout). */
 export interface InvoiceWelteTradeBlock {
+  /** Overrides for fixed English (or any) wording on the customs-style sheet. */
+  customsLabels?: Partial<InvoiceCustomsStyleLabels>;
   buyersCommercialCardNo?: string;
   sellersReference?: string;
   freightForwarder?: string;
@@ -407,9 +455,9 @@ export interface InvoiceLineOverride {
   /** Line discount: if discountPercent > 0 it applies to all scenario columns; else discountAmount applies only to `invoiceDiscountBaseTerm` column. */
   discountPercent?: number;
   discountAmount?: number;
-  /** Welte layout: origin country column */
+  /** Customs-style layout: origin country column */
   origin?: string;
-  /** Welte layout: line net weight (kg) */
+  /** Customs-style layout: line net weight (kg) */
   netWeightKg?: number;
 }
 
@@ -568,9 +616,9 @@ export interface SavedProject {
     invoiceExtraCharges?: InvoiceExtraCharge[];
     /** Page orientation for the printed proforma invoice. */
     invoiceOrientation?: 'portrait' | 'landscape';
-    /** Proforma document layout: default app layout vs. Welte-style trade table. */
+    /** Proforma document layout: default app layout vs. customs-style trade table (`welte` key). */
     invoiceLayout?: 'standard' | 'welte';
-    /** Free-text trade / logistics fields used when `invoiceLayout` is `welte`. */
+    /** Trade / logistics + label overrides when `invoiceLayout` is `welte` (Customs style). */
     invoiceWelteTrade?: InvoiceWelteTradeBlock;
     containerCapacity?: number;
     containerType?: string;

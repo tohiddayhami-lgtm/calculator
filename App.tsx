@@ -78,6 +78,7 @@ import {
   DashboardResearchAttachment,
   DashboardTodoItem,
   InvoiceWelteTradeBlock,
+  InvoiceCustomsStyleLabels,
   InvoiceLineOverride
 } from './types';
 
@@ -89,11 +90,108 @@ function createDefaultInvoiceWelteTrade(): InvoiceWelteTradeBlock {
   };
 }
 
-function mergeInvoiceWelteTrade(raw: Partial<InvoiceWelteTradeBlock> | undefined): InvoiceWelteTradeBlock {
-  return { ...createDefaultInvoiceWelteTrade(), ...(raw || {}) };
+const INVOICE_CUSTOMS_LABEL_DEFAULTS: InvoiceCustomsStyleLabels = {
+  docTitle: 'PROFORMA INVOICE',
+  sellerCaption: 'Seller(name, address)',
+  invoiceNoLabel: 'PROFORMA Invoice No.',
+  invoiceDateLabel: 'Proforma Invoice Date:',
+  invoiceValidityLabel: 'Proforma Invoice Validity:',
+  buyersCardLabel: "Buyer's Commercial Card No.:",
+  sellersRefLabel: "Seller's Reference:",
+  buyerLabel: 'Buyer:',
+  freightForwarderLabel: 'Freight Forwarder:',
+  countryBeneficiaryLabel: 'Country of Beneficiary:',
+  transportModeLabel: 'Transportation mode and means:',
+  portLoadingLabel: 'Port of loading:',
+  countryOriginLabel: 'Country of Origin:',
+  destinationLabel: 'Destination:',
+  portDischargeLabel: 'Port of Discharge:',
+  placeDeliveryLabel: 'Place of delivery:',
+  termsDeliveryLabel: 'Terms of delivery:',
+  transactionCurrencyLabel: 'Transaction Currency',
+  termsPaymentLabel: 'Terms of payment:',
+  shippingMarksLabel: 'Shipping marks, Transportation unit ID',
+  packagesDescLabel: 'No. and kinds of packages/shipping description of goods',
+  commodityLabel: 'Commodity',
+  totalGrossWtLabel: 'Total Gross Weight (kg)',
+  totalVolumeLabel: 'Total Volume (m3)',
+  packageKindsLabel: 'No. and Kind of Standard:',
+  colItem: 'Item',
+  colDescription: 'Item Description',
+  colOrigin: 'Origin',
+  colCommodityCode: 'Commodity Code',
+  colNetWt: 'Net Wt. (Kg)',
+  colQuantity: 'Quantity',
+  colUnitPrice: 'Unit Price',
+  colAmount: 'Amount',
+  discountLabel: 'Discount',
+  vatLabel: 'VAT',
+  totalAmountLabel: 'Total Amount',
+  noteLabel: 'Note:',
+  paymentBankTitleLabel: 'Payment / Bank Details',
+  signatoryLabel: 'Name of Signatory',
+  placeDateIssueLabel: 'Place and date of issue',
+  totalKgLabel: 'TOTAL KG',
+  totalPiecesLabel: 'TOTAL PIECES',
+};
+
+const CUSTOMS_LABEL_FORM_FIELDS: { key: keyof InvoiceCustomsStyleLabels; label: string }[] = [
+  { key: 'docTitle', label: 'Document title (top right)' },
+  { key: 'sellerCaption', label: 'Seller block caption' },
+  { key: 'invoiceNoLabel', label: 'Invoice number row label' },
+  { key: 'invoiceDateLabel', label: 'Issue date label (before date)' },
+  { key: 'invoiceValidityLabel', label: 'Validity date label (before date)' },
+  { key: 'buyersCardLabel', label: "Buyer's commercial card label" },
+  { key: 'sellersRefLabel', label: "Seller's reference label" },
+  { key: 'buyerLabel', label: 'Buyer section title' },
+  { key: 'freightForwarderLabel', label: 'Freight forwarder label' },
+  { key: 'countryBeneficiaryLabel', label: 'Country of beneficiary label' },
+  { key: 'transportModeLabel', label: 'Transport mode label' },
+  { key: 'portLoadingLabel', label: 'Port of loading label' },
+  { key: 'countryOriginLabel', label: 'Country of origin label' },
+  { key: 'destinationLabel', label: 'Destination label' },
+  { key: 'portDischargeLabel', label: 'Port of discharge label' },
+  { key: 'placeDeliveryLabel', label: 'Place of delivery label' },
+  { key: 'termsDeliveryLabel', label: 'Terms of delivery label' },
+  { key: 'transactionCurrencyLabel', label: 'Transaction currency label' },
+  { key: 'termsPaymentLabel', label: 'Terms of payment label' },
+  { key: 'shippingMarksLabel', label: 'Shipping marks block title' },
+  { key: 'packagesDescLabel', label: 'Packages / goods description title' },
+  { key: 'commodityLabel', label: 'Commodity block title' },
+  { key: 'totalGrossWtLabel', label: 'Total gross weight label' },
+  { key: 'totalVolumeLabel', label: 'Total volume label' },
+  { key: 'packageKindsLabel', label: 'Standard / kind label' },
+  { key: 'colItem', label: 'Table column: Item' },
+  { key: 'colDescription', label: 'Table column: Description' },
+  { key: 'colOrigin', label: 'Table column: Origin' },
+  { key: 'colCommodityCode', label: 'Table column: Commodity code' },
+  { key: 'colNetWt', label: 'Table column: Net weight' },
+  { key: 'colQuantity', label: 'Table column: Quantity' },
+  { key: 'colUnitPrice', label: 'Table column: Unit price' },
+  { key: 'colAmount', label: 'Table column: Amount' },
+  { key: 'discountLabel', label: 'Discount row label' },
+  { key: 'vatLabel', label: 'VAT row label (percent added after)' },
+  { key: 'totalAmountLabel', label: 'Total amount row label' },
+  { key: 'noteLabel', label: 'Certification / note heading' },
+  { key: 'paymentBankTitleLabel', label: 'Bank details block title' },
+  { key: 'signatoryLabel', label: 'Signatory label' },
+  { key: 'placeDateIssueLabel', label: 'Place & date of issue label' },
+  { key: 'totalKgLabel', label: 'Footer total kg label' },
+  { key: 'totalPiecesLabel', label: 'Footer total pieces label' },
+];
+
+function mergeCustomsLabels(raw: Partial<InvoiceCustomsStyleLabels> | undefined): InvoiceCustomsStyleLabels {
+  return { ...INVOICE_CUSTOMS_LABEL_DEFAULTS, ...(raw || {}) };
 }
 
-/** dd/mm/yyyy — matches the Welte Word template date style. */
+function mergeInvoiceWelteTrade(raw: Partial<InvoiceWelteTradeBlock> | undefined): InvoiceWelteTradeBlock {
+  const r = raw || {};
+  const merged: InvoiceWelteTradeBlock = { ...createDefaultInvoiceWelteTrade(), ...r };
+  merged.customsLabels = mergeCustomsLabels(r.customsLabels);
+  return merged;
+}
+
+/** dd/mm/yyyy — customs-style sheet date format. */
 function formatWelteDate(ms: number | undefined): string {
   if (ms === undefined || ms === null || !Number.isFinite(ms) || ms <= 0) return '';
   const d = new Date(ms);
@@ -9905,6 +10003,7 @@ function AppInner() {
         ? invoiceDiscountBaseTerm
         : invoiceTerms[0] || 'FOB';
     const wt = mergeInvoiceWelteTrade(invoiceWelteTrade);
+    const L = mergeCustomsLabels(wt.customsLabels);
 
     const welteDisplayUnitPrice = (p: (typeof activeProducts)[number]) => {
       const override = invoiceOverrides[p.id] || {};
@@ -9942,7 +10041,7 @@ function AppInner() {
 
     const welteBody = (
       <>
-        <p style={{ margin: '0 0 6px', textAlign: 'right', fontSize: '10pt' }}>PROFORMA INVOICE</p>
+        <p style={{ margin: '0 0 6px', textAlign: 'right', fontSize: '10pt' }}>{L.docTitle}</p>
         <table className="invoice-welte-t">
           <tbody>
             <tr>
@@ -9954,7 +10053,7 @@ function AppInner() {
                     style={{ maxHeight: 48, maxWidth: 180, objectFit: 'contain', display: 'block', marginBottom: 4 }}
                   />
                 ) : null}
-                <div>Seller(name, address)</div>
+                <div>{L.sellerCaption}</div>
                 <div style={{ fontWeight: 700, marginTop: 4 }}>{billedFrom || 'Your Company'}</div>
                 {billedFromDetails ? (
                   <div style={{ whiteSpace: 'pre-line', marginTop: 2 }}>{billedFromDetails}</div>
@@ -9966,113 +10065,117 @@ function AppInner() {
                   </div>
                 )}
               </td>
-              <td style={{ width: '27%' }}>PROFORMA Invoice No.</td>
+              <td style={{ width: '27%' }}>{L.invoiceNoLabel}</td>
               <td style={{ width: '27%', fontWeight: 700 }}>{invoiceRef || '—'}</td>
             </tr>
             <tr>
-              <td>Proforma Invoice Date: {formatWelteDate(invoiceIssueDateMs) || '—'}</td>
-              <td>Proforma Invoice Validity: {invoiceDueDateMs ? formatWelteDate(invoiceDueDateMs) : '—'}</td>
+              <td>
+                {L.invoiceDateLabel} {formatWelteDate(invoiceIssueDateMs) || '—'}
+              </td>
+              <td>
+                {L.invoiceValidityLabel} {invoiceDueDateMs ? formatWelteDate(invoiceDueDateMs) : '—'}
+              </td>
             </tr>
             <tr>
               <td>
-                Buyer&apos;s Commercial Card No.:
+                {L.buyersCardLabel}
                 {wt.buyersCommercialCardNo ? <div style={{ fontWeight: 600 }}>{wt.buyersCommercialCardNo}</div> : null}
               </td>
               <td>
-                Seller&apos;s Reference:
+                {L.sellersRefLabel}
                 {wt.sellersReference ? <div style={{ fontWeight: 600 }}>{wt.sellersReference}</div> : null}
               </td>
             </tr>
             <tr>
               <td colSpan={3}>
-                <div>Buyer:</div>
+                <div>{L.buyerLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{customerName || '—'}</div>
                 <div style={{ whiteSpace: 'pre-line', marginTop: 2 }}>{customerAddress || ''}</div>
               </td>
             </tr>
             <tr>
               <td colSpan={2}>
-                <div>Freight Forwarder:</div>
+                <div>{L.freightForwarderLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2, whiteSpace: 'pre-line' }}>{wt.freightForwarder || '—'}</div>
               </td>
               <td>
-                <span>Country of Beneficiary: </span>
+                <span>{L.countryBeneficiaryLabel} </span>
                 <span style={{ fontWeight: 700 }}>{wt.countryOfBeneficiary || '—'}</span>
               </td>
             </tr>
             <tr>
               <td>
-                <div>Transportation mode and means:</div>
+                <div>{L.transportModeLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.transportMode || '—'}</div>
               </td>
               <td>
-                <div>Port of loading:</div>
+                <div>{L.portLoadingLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.portOfLoading || '—'}</div>
               </td>
               <td>
                 <div>
-                  Country of Origin: <span style={{ fontWeight: 700 }}>{wt.countryOfOriginDefault || '—'}</span>
+                  {L.countryOriginLabel} <span style={{ fontWeight: 700 }}>{wt.countryOfOriginDefault || '—'}</span>
                 </div>
                 <div style={{ marginTop: 6 }}>
-                  Destination: <span style={{ fontWeight: 700 }}>{wt.destination || '—'}</span>
+                  {L.destinationLabel} <span style={{ fontWeight: 700 }}>{wt.destination || '—'}</span>
                 </div>
               </td>
             </tr>
             <tr>
               <td>
-                <div>Port of Discharge:</div>
+                <div>{L.portDischargeLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.portOfDischarge || '—'}</div>
               </td>
               <td>
-                <div>Place of delivery:</div>
+                <div>{L.placeDeliveryLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.placeOfDelivery || '—'}</div>
               </td>
               <td>
-                <span>Terms of delivery: </span>
+                <span>{L.termsDeliveryLabel} </span>
                 <span style={{ fontWeight: 700 }}>{wt.termsOfDelivery || '—'}</span>
               </td>
             </tr>
             <tr>
-              <td>Transaction Currency</td>
+              <td>{L.transactionCurrencyLabel}</td>
               <td colSpan={2} style={{ fontWeight: 700 }}>
                 {config.outputCurrency}
               </td>
             </tr>
             <tr>
-              <td>Terms of payment:</td>
+              <td>{L.termsPaymentLabel}</td>
               <td colSpan={2}>
                 {paymentTerms || '—'}
               </td>
             </tr>
             <tr>
               <td colSpan={3}>
-                <div>Shipping marks, Transportation unit ID</div>
+                <div>{L.shippingMarksLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.shippingMarksLine || '—'}</div>
               </td>
             </tr>
             <tr>
               <td colSpan={3}>
-                <div>No. and kinds of packages/shipping description of goods</div>
+                <div>{L.packagesDescLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.packagesDescription || '—'}</div>
               </td>
             </tr>
             <tr>
               <td colSpan={3}>
-                <div>Commodity</div>
+                <div>{L.commodityLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.commoditySummary || '—'}</div>
               </td>
             </tr>
             <tr>
               <td>
-                <div>Total Gross Weight (kg)</div>
+                <div>{L.totalGrossWtLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.totalGrossWeightKg || '—'}</div>
               </td>
               <td>
-                <div>Total Volume (m3)</div>
+                <div>{L.totalVolumeLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.totalVolumeM3 || '—'}</div>
               </td>
               <td>
-                <div>No. and Kind of Standard:</div>
+                <div>{L.packageKindsLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{wt.packageKindsStd || '—'}</div>
               </td>
             </tr>
@@ -10082,14 +10185,14 @@ function AppInner() {
         <table className="invoice-welte-t invoice-welte-items" style={{ marginTop: 8 }}>
           <thead>
             <tr>
-              <th style={{ width: '5%' }}>Item</th>
-              <th style={{ width: '28%' }}>Item Description</th>
-              <th style={{ width: '12%' }}>Origin</th>
-              <th style={{ width: '12%' }}>Commodity Code</th>
-              <th style={{ width: '11%' }}>Net Wt. (Kg)</th>
-              <th style={{ width: '14%' }}>Quantity</th>
-              <th style={{ width: '9%' }}>Unit Price</th>
-              <th style={{ width: '11%' }}>Amount</th>
+              <th style={{ width: '5%' }}>{L.colItem}</th>
+              <th style={{ width: '28%' }}>{L.colDescription}</th>
+              <th style={{ width: '12%' }}>{L.colOrigin}</th>
+              <th style={{ width: '12%' }}>{L.colCommodityCode}</th>
+              <th style={{ width: '11%' }}>{L.colNetWt}</th>
+              <th style={{ width: '14%' }}>{L.colQuantity}</th>
+              <th style={{ width: '9%' }}>{L.colUnitPrice}</th>
+              <th style={{ width: '11%' }}>{L.colAmount}</th>
             </tr>
           </thead>
           <tbody>
@@ -10195,7 +10298,7 @@ function AppInner() {
         <table className="invoice-welte-t" style={{ marginTop: 8 }}>
           <tbody>
             <tr>
-              <td style={{ width: '55%' }}>Discount</td>
+              <td style={{ width: '55%' }}>{L.discountLabel}</td>
               <td className="num" style={{ width: '22%' }}>
                 {formatMoney(welteGlobalDiscountAmt, config.outputCurrency)}
               </td>
@@ -10214,7 +10317,9 @@ function AppInner() {
             ))}
             {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
               <tr>
-                <td>VAT ({Number(invoiceVatPercent)}%)</td>
+                <td>
+                  {L.vatLabel} ({Number(invoiceVatPercent)}%)
+                </td>
                 <td className="num">{formatMoney(welteVat, config.outputCurrency)}</td>
                 <td className="num" style={{ fontWeight: 700 }}>
                   {config.outputCurrency}
@@ -10222,7 +10327,7 @@ function AppInner() {
               </tr>
             )}
             <tr>
-              <td style={{ fontWeight: 700 }}>Total Amount</td>
+              <td style={{ fontWeight: 700 }}>{L.totalAmountLabel}</td>
               <td className="num" style={{ fontWeight: 700 }}>
                 {formatMoney(welteGrand, config.outputCurrency)}
               </td>
@@ -10232,7 +10337,7 @@ function AppInner() {
             </tr>
             <tr>
               <td colSpan={3}>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>Note:</div>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{L.noteLabel}</div>
                 <div style={{ whiteSpace: 'pre-line' }}>{wt.certificationNote || '—'}</div>
               </td>
             </tr>
@@ -10244,7 +10349,7 @@ function AppInner() {
             <tbody>
               <tr>
                 <td>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Payment / Bank Details</div>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>{L.paymentBankTitleLabel}</div>
                   <div style={{ whiteSpace: 'pre-line' }}>{bankDetails}</div>
                 </td>
               </tr>
@@ -10256,11 +10361,11 @@ function AppInner() {
           <tbody>
             <tr>
               <td style={{ width: '50%' }}>
-                <div>Name of Signatory</div>
+                <div>{L.signatoryLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 8, minHeight: 28 }}>{wt.signatoryName || '—'}</div>
               </td>
               <td style={{ width: '50%' }}>
-                <div>Place and date of issue</div>
+                <div>{L.placeDateIssueLabel}</div>
                 <div style={{ fontWeight: 700, marginTop: 8 }}>
                   {[(wt.issuePlace || '').trim(), formatWelteDate(invoiceIssueDateMs) || ''].filter(Boolean).join(' · ') ||
                     '—'}
@@ -10269,11 +10374,11 @@ function AppInner() {
             </tr>
             <tr>
               <td>
-                <span style={{ fontWeight: 700 }}>TOTAL KG</span>
+                <span style={{ fontWeight: 700 }}>{L.totalKgLabel}</span>
                 <div style={{ marginTop: 4 }}>{welteNetWtAny ? formatNumber(welteNetWtSum) : '—'}</div>
               </td>
               <td>
-                <span style={{ fontWeight: 700 }}>TOTAL PIECES</span>
+                <span style={{ fontWeight: 700 }}>{L.totalPiecesLabel}</span>
                 <div style={{ marginTop: 4 }}>{formatNumber(welteQtySum)}</div>
               </td>
             </tr>
@@ -10363,10 +10468,10 @@ function AppInner() {
                            className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
                        >
                            <option value="standard">Standard (multi-column)</option>
-                           <option value="welte">Welte-style trade proforma</option>
+                           <option value="welte">Customs style (bordered trade proforma)</option>
                        </select>
                        <p className="text-[10px] text-slate-500 mt-1 leading-tight">
-                           Welte matches the bordered export proforma: seller header, shipment blocks, single-price goods table, discount / charges / total, certification note, and signatory lines (A4 portrait).
+                           Customs style matches the classic bordered export proforma: seller header, shipment blocks, single-price goods table, discount / charges / total, certification note, and signatory lines (A4 portrait). All block titles and column headers are editable under Customs style.
                        </p>
                    </div>
                    <div>
@@ -10666,65 +10771,110 @@ function AppInner() {
                        </div>
                        <p className="text-[10px] text-slate-500 mt-1 leading-tight">
                            Landscape is great when you show many Incoterm columns or both unit + pack pricing — more horizontal room, no cramped totals.
-                           {invoiceLayout === 'welte' ? ' Welte layout always prints portrait.' : ''}
+                           {invoiceLayout === 'welte' ? ' Customs style always prints portrait.' : ''}
                        </p>
                    </div>
 
                    {invoiceLayout === 'welte' && (
-                       <details open className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
-                           <summary className="text-xs font-bold text-slate-700 cursor-pointer">Trade / shipment fields (Welte)</summary>
-                           <p className="text-[10px] text-slate-500">
-                               Unit price column uses the scenario selected under &quot;Flat discounts apply to scenario&quot; ({invoiceDiscountBaseTerm}).
-                           </p>
-                           <div className="grid grid-cols-1 gap-2 max-h-[min(22rem,45vh)] overflow-y-auto pr-1">
-                               {(
-                                   [
-                                       ['buyersCommercialCardNo', "Buyer's commercial card no."],
-                                       ['sellersReference', "Seller's reference"],
-                                       ['freightForwarder', 'Freight forwarder (name & address)'],
-                                       ['countryOfBeneficiary', 'Country of beneficiary'],
-                                       ['transportMode', 'Transportation mode and means'],
-                                       ['portOfLoading', 'Port of loading'],
-                                       ['countryOfOriginDefault', 'Default country of origin (line override wins)'],
-                                       ['destination', 'Destination'],
-                                       ['portOfDischarge', 'Port of discharge'],
-                                       ['placeOfDelivery', 'Place of delivery'],
-                                       ['termsOfDelivery', 'Terms of delivery (e.g. EX WORK)'],
-                                       ['shippingMarksLine', 'Shipping marks / transportation unit ID'],
-                                       ['packagesDescription', 'No. and kinds of packages / shipping description'],
-                                       ['commoditySummary', 'Commodity summary heading'],
-                                       ['totalGrossWeightKg', 'Total gross weight (kg) — display text'],
-                                       ['totalVolumeM3', 'Total volume (m³) — display text'],
-                                       ['packageKindsStd', 'No. and kind of standard (e.g. DIN 7715)'],
-                                       ['signatoryName', 'Name of signatory'],
-                                       ['issuePlace', 'Place of issue (printed next to date)'],
-                                   ] as const
-                               ).map(([key, lab]) => (
-                                   <label key={key} className="block">
-                                       <span className="text-[10px] font-semibold text-slate-500 uppercase">{lab}</span>
+                       <>
+                           <details open className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
+                               <summary className="text-xs font-bold text-slate-700 cursor-pointer">
+                                   Customs style — trade &amp; shipment values
+                               </summary>
+                               <p className="text-[10px] text-slate-500">
+                                   Unit price column uses the scenario selected under &quot;Flat discounts apply to scenario&quot; (
+                                   {invoiceDiscountBaseTerm}).
+                               </p>
+                               <div className="grid grid-cols-1 gap-2 max-h-[min(22rem,45vh)] overflow-y-auto pr-1">
+                                   {(
+                                       [
+                                           ['buyersCommercialCardNo', "Buyer's commercial card no."],
+                                           ['sellersReference', "Seller's reference"],
+                                           ['freightForwarder', 'Freight forwarder (name & address)'],
+                                           ['countryOfBeneficiary', 'Country of beneficiary'],
+                                           ['transportMode', 'Transportation mode and means'],
+                                           ['portOfLoading', 'Port of loading'],
+                                           ['countryOfOriginDefault', 'Default country of origin (line override wins)'],
+                                           ['destination', 'Destination'],
+                                           ['portOfDischarge', 'Port of discharge'],
+                                           ['placeOfDelivery', 'Place of delivery'],
+                                           ['termsOfDelivery', 'Terms of delivery (e.g. EX WORK)'],
+                                           ['shippingMarksLine', 'Shipping marks / transportation unit ID'],
+                                           ['packagesDescription', 'No. and kinds of packages / shipping description'],
+                                           ['commoditySummary', 'Commodity summary (body text)'],
+                                           ['totalGrossWeightKg', 'Total gross weight (kg) — display text'],
+                                           ['totalVolumeM3', 'Total volume (m³) — display text'],
+                                           ['packageKindsStd', 'No. and kind of standard (e.g. DIN 7715)'],
+                                           ['signatoryName', 'Name of signatory'],
+                                           ['issuePlace', 'Place of issue (printed next to date)'],
+                                       ] as const
+                                   ).map(([key, lab]) => (
+                                       <label key={key} className="block">
+                                           <span className="text-[10px] font-semibold text-slate-500 uppercase">{lab}</span>
+                                           <textarea
+                                               rows={key === 'freightForwarder' ? 3 : 2}
+                                               value={(invoiceWelteTrade as any)[key] || ''}
+                                               onChange={(e) =>
+                                                   setInvoiceWelteTrade((prev) => ({ ...prev, [key]: e.target.value }))
+                                               }
+                                               className="w-full mt-0.5 text-xs border border-slate-200 rounded px-2 py-1 resize-y"
+                                           />
+                                       </label>
+                                   ))}
+                                   <label className="block">
+                                       <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                                           Certification note (body under note heading)
+                                       </span>
                                        <textarea
-                                           rows={key === 'freightForwarder' ? 3 : 2}
-                                           value={(invoiceWelteTrade as any)[key] || ''}
+                                           rows={4}
+                                           value={invoiceWelteTrade.certificationNote || ''}
                                            onChange={(e) =>
-                                               setInvoiceWelteTrade((prev) => ({ ...prev, [key]: e.target.value }))
+                                               setInvoiceWelteTrade((prev) => ({
+                                                   ...prev,
+                                                   certificationNote: e.target.value,
+                                               }))
                                            }
                                            className="w-full mt-0.5 text-xs border border-slate-200 rounded px-2 py-1 resize-y"
                                        />
                                    </label>
-                               ))}
-                               <label className="block">
-                                   <span className="text-[10px] font-semibold text-slate-500 uppercase">Certification note</span>
-                                   <textarea
-                                       rows={4}
-                                       value={invoiceWelteTrade.certificationNote || ''}
-                                       onChange={(e) =>
-                                           setInvoiceWelteTrade((prev) => ({ ...prev, certificationNote: e.target.value }))
-                                       }
-                                       className="w-full mt-0.5 text-xs border border-slate-200 rounded px-2 py-1 resize-y"
-                                   />
-                               </label>
-                           </div>
-                       </details>
+                               </div>
+                           </details>
+                           <details open className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
+                               <summary className="text-xs font-bold text-slate-700 cursor-pointer">
+                                   Customs style — sheet titles &amp; column headers
+                               </summary>
+                               <p className="text-[10px] text-slate-500">
+                                   These lines print on the proforma (defaults follow the standard English export layout). Edit
+                                   them for your customs authority or language; changes show in the preview immediately.
+                               </p>
+                               <div className="grid grid-cols-1 gap-2 max-h-[min(28rem,50vh)] overflow-y-auto pr-1">
+                                   {CUSTOMS_LABEL_FORM_FIELDS.map(({ key, label }) => {
+                                       const merged = mergeCustomsLabels(invoiceWelteTrade.customsLabels);
+                                       return (
+                                           <label key={key} className="block">
+                                               <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                                                   {label}
+                                               </span>
+                                               <input
+                                                   type="text"
+                                                   value={merged[key]}
+                                                   onChange={(e) =>
+                                                       setInvoiceWelteTrade((prev) => ({
+                                                           ...prev,
+                                                           customsLabels: {
+                                                               ...prev.customsLabels,
+                                                               [key]: e.target.value,
+                                                           },
+                                                       }))
+                                                   }
+                                                   className="w-full mt-0.5 text-xs border border-slate-200 rounded px-2 py-1"
+                                               />
+                                           </label>
+                                       );
+                                   })}
+                               </div>
+                           </details>
+                       </>
                    )}
 
                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
