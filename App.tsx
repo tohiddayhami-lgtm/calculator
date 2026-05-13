@@ -12983,9 +12983,9 @@ function AppInner() {
                         <button
                             key={item.id}
                             onClick={() => setView(item.id as any)}
-                            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === item.id ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${view === item.id ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
                         >
-                            <item.icon className="w-4 h-4" />
+                            <item.icon className="w-3.5 h-3.5" />
                             {item.label}
                         </button>
                     ))}
