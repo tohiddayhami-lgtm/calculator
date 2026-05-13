@@ -1315,6 +1315,14 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         return `<a class="social-icon" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeAttr(meta.label)}" title="${escapeAttr(meta.label)}" style="--social-color:${meta.color}">${meta.icon}</a>`;
     }).join('');
 
+    const coverExportTitleLen = (cc.title || 'CATALOG').length;
+    const coverExportTitlePx = Math.max(16, Math.min(56, Math.round(700 / Math.max(10, Math.sqrt(coverExportTitleLen + 5)))));
+    const coverExportSubLen = (cc.subtitle || '').length;
+    const coverExportSubPx =
+        cc.subtitle && coverExportSubLen > 0
+            ? Math.max(12, Math.min(24, Math.round(480 / Math.max(8, Math.sqrt(coverExportSubLen + 4)))))
+            : 18;
+
     const css = `
         :root {
             --primary: ${primary};
@@ -1338,8 +1346,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .cover-inner { position: relative; z-index: 2; max-width: 720px; margin: 0 auto; }
         .cover, .cover h1, .cover .subtitle, .cover .collection { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans Arabic', 'Segoe UI Historic', 'Arabic UI Text', Tahoma, sans-serif; }
         .logo { max-height: 80px; margin: 0 auto 24px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
-        .cover h1 { font-size: clamp(28px, 6vw, 56px); font-weight: 900; letter-spacing: normal; line-height: 1.15; margin-bottom: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.45); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 1; font-weight: 400; letter-spacing: normal; white-space: pre-wrap; word-break: break-word; line-height: 1.65; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+        .cover h1 { font-weight: 900; letter-spacing: normal; line-height: 1.15; margin-bottom: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.45); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+        .cover .subtitle { opacity: 1; font-weight: 400; letter-spacing: normal; white-space: pre-wrap; word-break: break-word; line-height: 1.65; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
         .cover .collection { font-size: 12px; letter-spacing: normal; text-transform: none; opacity: 1; margin-bottom: 16px; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
 
         /* Section title */
@@ -2262,8 +2270,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     <div class="cover-inner">
         ${logoHtml}
         ${cc.collectionText ? `<p class="collection">${escapeHtml(cc.collectionText)}</p>` : ''}
-        <h1>${escapeHtml(cc.title || 'CATALOG')}</h1>
-        ${cc.subtitle ? `<p class="subtitle">${escapeHtml(cc.subtitle)}</p>` : ''}
+        <h1 style="font-size:${coverExportTitlePx}px">${escapeHtml(cc.title || 'CATALOG')}</h1>
+        ${cc.subtitle ? `<p class="subtitle" style="font-size:${coverExportSubPx}px">${escapeHtml(cc.subtitle)}</p>` : ''}
     </div>
 </header>
 
@@ -3033,6 +3041,13 @@ function AppInner() {
   // Catalog Config
   const [catalogConfig, setCatalogConfig] = useState<CatalogConfig>(() => createDefaultCatalogConfig());
 
+  const coverTitleSlotRef = useRef<HTMLDivElement>(null);
+  const coverTitleTaRef = useRef<HTMLTextAreaElement>(null);
+  const coverSubtitleSlotRef = useRef<HTMLDivElement>(null);
+  const coverSubtitleTaRef = useRef<HTMLTextAreaElement>(null);
+  const [coverTitleFontPx, setCoverTitleFontPx] = useState(72);
+  const [coverSubtitleFontPx, setCoverSubtitleFontPx] = useState(22);
+
   // --- EFFECTS ---
 
   // Auth Initialization
@@ -3110,6 +3125,71 @@ function AppInner() {
       catalogConfig.headingColor,
       catalogConfig.primaryColor
   ]);
+
+  useLayoutEffect(() => {
+      if (view !== 'catalog') return;
+      const titleSlot = coverTitleSlotRef.current;
+      const titleTa = coverTitleTaRef.current;
+      const subSlot = coverSubtitleSlotRef.current;
+      const subTa = coverSubtitleTaRef.current;
+      if (!titleSlot || !titleTa || !subSlot || !subTa) return;
+
+      const fitTextarea = (
+          ta: HTMLTextAreaElement,
+          slot: HTMLDivElement,
+          minPx: number,
+          maxPx: number,
+          setPx: (n: number) => void
+      ) => {
+          const slotH = slot.clientHeight;
+          const slotW = slot.clientWidth;
+          if (slotH < 10 || slotW < 10) return;
+          ta.style.width = '100%';
+          ta.style.height = `${slotH}px`;
+          ta.style.overflow = 'hidden';
+          let lo = minPx;
+          let hi = maxPx;
+          let best = minPx;
+          while (lo <= hi) {
+              const mid = (lo + hi) >> 1;
+              ta.style.fontSize = `${mid}px`;
+              ta.style.lineHeight = '1.08';
+              void ta.offsetHeight;
+              const fits = ta.scrollHeight <= slotH + 2 && ta.scrollWidth <= slotW + 2;
+              if (fits) {
+                  best = mid;
+                  lo = mid + 1;
+              } else {
+                  hi = mid - 1;
+              }
+          }
+          setPx(best);
+      };
+
+      const run = () => {
+          fitTextarea(titleTa, titleSlot, 14, 112, setCoverTitleFontPx);
+          const subEmpty = !(catalogConfig.subtitle || '').trim();
+          if (subEmpty) {
+              const sh = subSlot.clientHeight;
+              if (sh >= 10) {
+                  subTa.style.width = '100%';
+                  subTa.style.height = `${sh}px`;
+                  subTa.style.overflow = 'hidden';
+                  subTa.style.fontSize = '22px';
+                  subTa.style.lineHeight = '1.35';
+                  setCoverSubtitleFontPx(22);
+              }
+          } else {
+              fitTextarea(subTa, subSlot, 11, 36, setCoverSubtitleFontPx);
+          }
+      };
+
+      run();
+      const ro = new ResizeObserver(() => run());
+      ro.observe(titleSlot);
+      ro.observe(subSlot);
+      return () => ro.disconnect();
+  }, [view, catalogConfig.title, catalogConfig.subtitle]);
 
   useEffect(() => {
     if (editingCatalogDetailsId !== null && catalogVideoUrlInputRef.current) {
@@ -8699,7 +8779,7 @@ function AppInner() {
                   style={{ backgroundColor: catalogConfig.backgroundColor, color: catalogConfig.textColor }}
               >
                   {/* --- PAGE 1: COVER --- */}
-                  <div className="catalog-cover-page w-full min-h-[297mm] relative flex flex-col print-page overflow-visible">
+                  <div className="w-full h-[297mm] relative flex flex-col print-page overflow-hidden">
                       {catalogConfig.coverImage ? (
                           <div className="absolute inset-0 z-0">
                               <img src={catalogConfig.coverImage} className="w-full h-full object-cover" alt="Cover" />
@@ -8746,7 +8826,7 @@ function AppInner() {
                       })()}
 
                       <div
-                          className="relative z-10 h-full min-h-0 flex flex-col justify-between gap-6 p-12 sm:p-16 print:min-h-0"
+                          className="relative z-10 h-full flex flex-col justify-between p-16"
                           style={{
                               color: catalogConfig.coverTextColor || '#ffffff',
                               fontFamily:
@@ -8754,7 +8834,7 @@ function AppInner() {
                           }}
                       >
                            {/* Top Brand Mark */}
-                           <div className="flex justify-between items-start pt-8" style={{ 
+                           <div className="flex justify-between items-start pt-8 shrink-0" style={{ 
                                borderTopWidth: catalogConfig.showCoverLines !== false ? '4px' : '0',
                                borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                            }}>
@@ -8771,35 +8851,55 @@ function AppInner() {
                                 </div>
                            </div>
 
-                          {/* Main Title Block — textareas must grow / stay visible for print; rows+overflow-hidden clipped bilingual titles */}
-                          <div className="space-y-6 max-w-full w-full min-w-0 shrink-0">
+                          {/* Middle: fixed slots; font size shrinks to fit text (A4 cover stays one page) */}
+                          <div className="flex-1 min-h-0 flex flex-col justify-center gap-4 w-full max-w-3xl py-2">
                                <input 
                                   value={catalogConfig.collectionText || ''}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, collectionText: e.target.value})}
-                                  className="bg-transparent text-2xl md:text-3xl tracking-normal font-medium w-full min-w-0 outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
+                                  className="shrink-0 bg-transparent text-2xl md:text-3xl tracking-normal font-medium w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
                                   placeholder="COLLECTION NAME"
                               />
-                               <textarea 
-                                  value={catalogConfig.title}
-                                  onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
-                                  rows={Math.max(2, (catalogConfig.title || '').split(/\n/).length + 2)}
-                                  className="bg-transparent text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-black tracking-normal w-full min-w-0 outline-none placeholder-white/40 leading-[1.08] resize-y overflow-visible print:overflow-visible [field-sizing:content]"
-                                  style={{ fieldSizing: 'content' } as React.CSSProperties}
-                                  placeholder="TITLE"
-                              />
-                              <textarea
-                                  value={catalogConfig.subtitle}
-                                  onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})}
-                                  rows={Math.max(2, (catalogConfig.subtitle || '').split(/\n/).length + 2)}
-                                  className="bg-transparent text-lg sm:text-xl md:text-2xl font-normal w-full min-w-0 outline-none placeholder-white/40 opacity-100 resize-y overflow-visible print:overflow-visible leading-snug [field-sizing:content]"
-                                  style={{ fieldSizing: 'content' } as React.CSSProperties}
-                                  placeholder="Subtitle text goes here"
-                              />
+                               <div
+                                  ref={coverTitleSlotRef}
+                                  className="w-full h-[200px] sm:h-[220px] shrink-0 overflow-hidden"
+                              >
+                                  <textarea
+                                      ref={coverTitleTaRef}
+                                      value={catalogConfig.title}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
+                                      rows={4}
+                                      spellCheck={false}
+                                      className="bg-transparent font-black tracking-normal w-full h-full min-h-0 resize-none overflow-hidden outline-none placeholder-white/40"
+                                      style={{
+                                          fontSize: `${coverTitleFontPx}px`,
+                                          lineHeight: 1.08,
+                                      }}
+                                      placeholder="TITLE"
+                                  />
+                              </div>
+                              <div
+                                  ref={coverSubtitleSlotRef}
+                                  className="w-full h-[80px] sm:h-[88px] shrink-0 overflow-hidden"
+                              >
+                                  <textarea
+                                      ref={coverSubtitleTaRef}
+                                      value={catalogConfig.subtitle}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})}
+                                      rows={3}
+                                      spellCheck={false}
+                                      className="bg-transparent font-normal w-full h-full min-h-0 resize-none overflow-hidden outline-none placeholder-white/40 opacity-100 leading-snug"
+                                      style={{
+                                          fontSize: `${coverSubtitleFontPx}px`,
+                                          lineHeight: 1.35,
+                                      }}
+                                      placeholder="Subtitle text goes here"
+                                  />
+                              </div>
                           </div>
 
                           {/* Footer Contact */}
                           {catalogConfig.showCoverContact !== false && (
-                            <div className="flex flex-col items-end pb-8" style={{ 
+                            <div className="flex flex-col items-end pb-8 shrink-0" style={{ 
                                     borderBottomWidth: catalogConfig.showCoverLines !== false ? '4px' : '0', 
                                     borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                             }}>
@@ -12283,13 +12383,6 @@ function AppInner() {
                 position: relative !important;
                 print-color-adjust: exact !important;
                 -webkit-print-color-adjust: exact !important;
-            }
-
-            /* Cover page: show full bilingual title (avoid clipping from overflow + textarea) */
-            .print-page.catalog-cover-page {
-                height: auto !important;
-                min-height: 297mm !important;
-                overflow: visible !important;
             }
 
             .print-page:last-child {
