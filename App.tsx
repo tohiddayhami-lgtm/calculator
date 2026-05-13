@@ -12224,6 +12224,11 @@ function AppInner() {
                 -webkit-print-color-adjust: exact !important;
             }
 
+            .print-page:last-child {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }
+
             .break-inside-avoid {
                 break-inside: avoid !important;
                 page-break-inside: avoid !important;
