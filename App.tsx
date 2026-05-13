@@ -1116,6 +1116,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         ? (() => {
             const imgs: string[] = (cc.aboutUsImages || []).slice(0, 4).filter(Boolean);
             const rawParas: string[] = cc.aboutUsText.split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean);
+            const hasFarsi = /[؀-ۿ]/.test(cc.aboutUsText);
             const isFarsiPara = (p: string) => /[؀-ۿ]/.test(p);
 
             let prevWasFarsi: boolean | null = null;
@@ -1123,7 +1124,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 const farsi = isFarsiPara(para);
                 let divider = '';
                 if (prevWasFarsi !== null && farsi !== prevWasFarsi) {
-                    divider = '<div class="about-lang-divider"></div>';
+                    divider = hasFarsi
+                        ? `<div class="about-lang-divider"><span>${farsi ? 'فارسی' : 'English'}</span></div>`
+                        : '<div class="about-lang-divider"></div>';
                 }
                 prevWasFarsi = farsi;
                 return `${divider}<p class="about-para${farsi ? ' rtl' : ''}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`;
@@ -1315,14 +1318,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         return `<a class="social-icon" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeAttr(meta.label)}" title="${escapeAttr(meta.label)}" style="--social-color:${meta.color}">${meta.icon}</a>`;
     }).join('');
 
-    const coverExportTitleLen = (cc.title || 'CATALOG').length;
-    const coverExportTitlePx = Math.max(16, Math.min(56, Math.round(700 / Math.max(10, Math.sqrt(coverExportTitleLen + 5)))));
-    const coverExportSubLen = (cc.subtitle || '').length;
-    const coverExportSubPx =
-        cc.subtitle && coverExportSubLen > 0
-            ? Math.max(12, Math.min(24, Math.round(480 / Math.max(8, Math.sqrt(coverExportSubLen + 4)))))
-            : 18;
-
     const css = `
         :root {
             --primary: ${primary};
@@ -1344,11 +1339,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: cover; background-position: center;` : ''} opacity: 1; z-index: 0; }
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.65)); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover-inner { position: relative; z-index: 2; max-width: 720px; margin: 0 auto; }
-        .cover, .cover h1, .cover .subtitle, .cover .collection { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans Arabic', 'Segoe UI Historic', 'Arabic UI Text', Tahoma, sans-serif; }
         .logo { max-height: 80px; margin: 0 auto 24px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
-        .cover h1 { font-weight: 900; letter-spacing: normal; line-height: 1.15; margin-bottom: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.45); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-        .cover .subtitle { opacity: 1; font-weight: 400; letter-spacing: normal; white-space: pre-wrap; word-break: break-word; line-height: 1.65; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-        .cover .collection { font-size: 12px; letter-spacing: normal; text-transform: none; opacity: 1; margin-bottom: 16px; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+        .cover h1 { font-size: clamp(28px, 6vw, 56px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 12px; }
+        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 0.9; font-weight: 300; letter-spacing: 0.05em; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+        .cover .collection { font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; opacity: 0.7; margin-bottom: 16px; }
 
         /* Section title */
         .section-title { font-size: clamp(20px, 4vw, 32px); font-weight: 800; color: var(--heading); margin: 48px 0 24px; padding-bottom: 12px; border-bottom: 3px solid var(--primary); display: inline-block; }
@@ -2270,8 +2264,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     <div class="cover-inner">
         ${logoHtml}
         ${cc.collectionText ? `<p class="collection">${escapeHtml(cc.collectionText)}</p>` : ''}
-        <h1 style="font-size:${coverExportTitlePx}px">${escapeHtml(cc.title || 'CATALOG')}</h1>
-        ${cc.subtitle ? `<p class="subtitle" style="font-size:${coverExportSubPx}px">${escapeHtml(cc.subtitle)}</p>` : ''}
+        <h1>${escapeHtml(cc.title || 'CATALOG')}</h1>
+        ${cc.subtitle ? `<p class="subtitle">${escapeHtml(cc.subtitle)}</p>` : ''}
     </div>
 </header>
 
@@ -3041,13 +3035,6 @@ function AppInner() {
   // Catalog Config
   const [catalogConfig, setCatalogConfig] = useState<CatalogConfig>(() => createDefaultCatalogConfig());
 
-  const coverTitleSlotRef = useRef<HTMLDivElement>(null);
-  const coverTitleTaRef = useRef<HTMLTextAreaElement>(null);
-  const coverSubtitleSlotRef = useRef<HTMLDivElement>(null);
-  const coverSubtitleTaRef = useRef<HTMLTextAreaElement>(null);
-  const [coverTitleFontPx, setCoverTitleFontPx] = useState(72);
-  const [coverSubtitleFontPx, setCoverSubtitleFontPx] = useState(22);
-
   // --- EFFECTS ---
 
   // Auth Initialization
@@ -3125,71 +3112,6 @@ function AppInner() {
       catalogConfig.headingColor,
       catalogConfig.primaryColor
   ]);
-
-  useLayoutEffect(() => {
-      if (view !== 'catalog') return;
-      const titleSlot = coverTitleSlotRef.current;
-      const titleTa = coverTitleTaRef.current;
-      const subSlot = coverSubtitleSlotRef.current;
-      const subTa = coverSubtitleTaRef.current;
-      if (!titleSlot || !titleTa || !subSlot || !subTa) return;
-
-      const fitTextarea = (
-          ta: HTMLTextAreaElement,
-          slot: HTMLDivElement,
-          minPx: number,
-          maxPx: number,
-          setPx: (n: number) => void
-      ) => {
-          const slotH = slot.clientHeight;
-          const slotW = slot.clientWidth;
-          if (slotH < 10 || slotW < 10) return;
-          ta.style.width = '100%';
-          ta.style.height = `${slotH}px`;
-          ta.style.overflow = 'hidden';
-          let lo = minPx;
-          let hi = maxPx;
-          let best = minPx;
-          while (lo <= hi) {
-              const mid = (lo + hi) >> 1;
-              ta.style.fontSize = `${mid}px`;
-              ta.style.lineHeight = '1.08';
-              void ta.offsetHeight;
-              const fits = ta.scrollHeight <= slotH + 2 && ta.scrollWidth <= slotW + 2;
-              if (fits) {
-                  best = mid;
-                  lo = mid + 1;
-              } else {
-                  hi = mid - 1;
-              }
-          }
-          setPx(best);
-      };
-
-      const run = () => {
-          fitTextarea(titleTa, titleSlot, 14, 112, setCoverTitleFontPx);
-          const subEmpty = !(catalogConfig.subtitle || '').trim();
-          if (subEmpty) {
-              const sh = subSlot.clientHeight;
-              if (sh >= 10) {
-                  subTa.style.width = '100%';
-                  subTa.style.height = `${sh}px`;
-                  subTa.style.overflow = 'hidden';
-                  subTa.style.fontSize = '22px';
-                  subTa.style.lineHeight = '1.35';
-                  setCoverSubtitleFontPx(22);
-              }
-          } else {
-              fitTextarea(subTa, subSlot, 11, 36, setCoverSubtitleFontPx);
-          }
-      };
-
-      run();
-      const ro = new ResizeObserver(() => run());
-      ro.observe(titleSlot);
-      ro.observe(subSlot);
-      return () => ro.disconnect();
-  }, [view, catalogConfig.title, catalogConfig.subtitle]);
 
   useEffect(() => {
     if (editingCatalogDetailsId !== null && catalogVideoUrlInputRef.current) {
@@ -8825,90 +8747,61 @@ function AppInner() {
                           );
                       })()}
 
-                      <div
-                          className="relative z-10 h-full flex flex-col justify-between p-16"
-                          style={{
-                              color: catalogConfig.coverTextColor || '#ffffff',
-                              fontFamily:
-                                  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans Arabic', 'Segoe UI Historic', 'Arabic UI Text', Tahoma, sans-serif",
-                          }}
-                      >
+                      <div className="relative z-10 h-full flex flex-col justify-between p-16" style={{ color: catalogConfig.coverTextColor || '#ffffff' }}>
                            {/* Top Brand Mark */}
-                           <div className="flex justify-between items-start pt-8 shrink-0" style={{ 
+                           <div className="flex justify-between items-start pt-8" style={{ 
                                borderTopWidth: catalogConfig.showCoverLines !== false ? '4px' : '0',
                                borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                            }}>
                                 <div className="space-y-1">
-                                    <h3 className="text-sm font-bold tracking-normal min-h-[1.25rem] opacity-100">
+                                    <h3 className="text-sm font-bold tracking-[0.3em] uppercase opacity-80 min-h-[1.25rem]">
                                         {catalogConfig.coverHeaderText}
                                     </h3>
                                     {catalogConfig.showCoverLines !== false && (
                                         <div className="w-12 h-1 opacity-50" style={{ backgroundColor: catalogConfig.coverLineColor || 'white' }}></div>
                                     )}
                                 </div>
-                                <div className="text-right opacity-90 font-mono text-xs">
+                                <div className="text-right opacity-60 font-mono text-xs">
                                      {catalogConfig.coverYearText}
                                 </div>
                            </div>
 
-                          {/* Middle: fixed slots; font size shrinks to fit text (A4 cover stays one page) */}
-                          <div className="flex-1 min-h-0 flex flex-col justify-center gap-4 w-full max-w-3xl py-2">
+                          {/* Main Title Block */}
+                          <div className="space-y-6 max-w-3xl">
                                <input 
                                   value={catalogConfig.collectionText || ''}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, collectionText: e.target.value})}
-                                  className="shrink-0 bg-transparent text-2xl md:text-3xl tracking-normal font-medium w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
+                                  className="bg-transparent text-2xl md:text-3xl tracking-[0.2em] font-light uppercase w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
                                   placeholder="COLLECTION NAME"
                               />
-                               <div
-                                  ref={coverTitleSlotRef}
-                                  className="w-full h-[200px] sm:h-[220px] shrink-0 overflow-hidden"
-                              >
-                                  <textarea
-                                      ref={coverTitleTaRef}
-                                      value={catalogConfig.title}
-                                      onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
-                                      rows={4}
-                                      spellCheck={false}
-                                      className="bg-transparent font-black tracking-normal w-full h-full min-h-0 resize-none overflow-hidden outline-none placeholder-white/40"
-                                      style={{
-                                          fontSize: `${coverTitleFontPx}px`,
-                                          lineHeight: 1.08,
-                                      }}
-                                      placeholder="TITLE"
-                                  />
-                              </div>
-                              <div
-                                  ref={coverSubtitleSlotRef}
-                                  className="w-full h-[80px] sm:h-[88px] shrink-0 overflow-hidden"
-                              >
-                                  <textarea
-                                      ref={coverSubtitleTaRef}
-                                      value={catalogConfig.subtitle}
-                                      onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})}
-                                      rows={3}
-                                      spellCheck={false}
-                                      className="bg-transparent font-normal w-full h-full min-h-0 resize-none overflow-hidden outline-none placeholder-white/40 opacity-100 leading-snug"
-                                      style={{
-                                          fontSize: `${coverSubtitleFontPx}px`,
-                                          lineHeight: 1.35,
-                                      }}
-                                      placeholder="Subtitle text goes here"
-                                  />
-                              </div>
+                               <textarea 
+                                  value={catalogConfig.title}
+                                  onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
+                                  rows={2}
+                                  className="bg-transparent text-6xl md:text-8xl font-black tracking-tight w-full outline-none placeholder-white/40 leading-[0.9] resize-none overflow-hidden"
+                                  placeholder="TITLE"
+                              />
+                              <textarea
+                                  value={catalogConfig.subtitle}
+                                  onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})}
+                                  rows={2}
+                                  className="bg-transparent text-xl md:text-2xl font-light w-full outline-none placeholder-white/40 opacity-90 resize-none overflow-hidden leading-snug"
+                                  placeholder="Subtitle text goes here"
+                              />
                           </div>
 
                           {/* Footer Contact */}
                           {catalogConfig.showCoverContact !== false && (
-                            <div className="flex flex-col items-end pb-8 shrink-0" style={{ 
+                            <div className="flex flex-col items-end pb-8" style={{ 
                                     borderBottomWidth: catalogConfig.showCoverLines !== false ? '4px' : '0', 
                                     borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                             }}>
                                 <div className="text-right space-y-1">
-                                    <h3 className="text-lg font-bold mb-2 tracking-normal">
+                                    <h3 className="text-lg font-bold mb-2 tracking-wide uppercase">
                                         {catalogConfig.coverContactTitle || tCombined('contact')}
                                     </h3>
-                                    <p className="text-sm font-normal tracking-normal opacity-100">{catalogConfig.contactEmail}</p>
-                                    <p className="text-sm font-normal tracking-normal opacity-100">{catalogConfig.website}</p>
+                                    <p className="text-sm font-light tracking-wide opacity-90">{catalogConfig.contactEmail}</p>
+                                    <p className="text-sm font-light tracking-wide opacity-90">{catalogConfig.website}</p>
                                 </div>
                             </div>
                           )}
@@ -9049,10 +8942,10 @@ function AppInner() {
                                 style={{ backgroundColor: catalogConfig.primaryColor }}
                              >
                                  <div className="text-center p-12 border-y-2 border-white/20 w-full max-w-2xl">
-                                     <h2 className="text-6xl font-bold text-white tracking-normal mb-4 drop-shadow-md">
+                                     <h2 className="text-6xl font-bold text-white uppercase tracking-widest mb-4 drop-shadow-md">
                                          {group.name}
                                      </h2>
-                                     <p className="text-white text-lg tracking-normal">{catalogConfig.collectionText}</p>
+                                     <p className="text-white/70 text-lg uppercase tracking-wider">{catalogConfig.collectionText}</p>
                                  </div>
                              </div>
                         )}
