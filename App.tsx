@@ -4473,7 +4473,40 @@ function AppInner() {
             showCompanyPhotos: project.data.catalogConfig.showCompanyPhotos || false,
             companyPhotos: project.data.catalogConfig.companyPhotos || [],
             website: project.data.catalogConfig.website || '',
-            sections: project.data.catalogConfig.sections || []
+            sections: (() => {
+                const rawSections: any[] = project.data.catalogConfig.sections || [];
+                // Keep only proper CatalogSection objects (have content or position)
+                const realSections = rawSections.filter((s: any) =>
+                    s.content !== undefined || s.position !== undefined
+                );
+                // Convert customPages (AI-added format with type + items) to CatalogSection
+                const rawCustomPages: any[] = (project.data.catalogConfig as any).customPages || [];
+                const converted: CatalogSection[] = rawCustomPages
+                    .filter((p: any) => p.active !== false)
+                    .map((p: any, i: number): CatalogSection => {
+                        const items: any[] = (p.items || []).filter((it: any) => it.active !== false);
+                        const itemsText = items
+                            .map((it: any) => it.name ? `• ${it.name}${it.description ? ': ' + it.description : ''}` : '')
+                            .filter(Boolean)
+                            .join('\n');
+                        const content = [p.description, itemsText].filter(Boolean).join('\n\n');
+                        const images = items.filter((it: any) => it.image).map((it: any) => it.image as string);
+                        const imageLayout: CatalogSection['imageLayout'] =
+                            images.length === 2 ? 'two-column' :
+                            images.length === 3 ? 'three-column' :
+                            images.length > 3 ? 'grid' : 'single';
+                        return {
+                            id: Date.now() + i,
+                            title: p.title || 'Page',
+                            content,
+                            alignment: 'left',
+                            images,
+                            imageLayout,
+                            position: 'after',
+                        };
+                    });
+                return [...realSections, ...converted];
+            })()
         });
     }
 
