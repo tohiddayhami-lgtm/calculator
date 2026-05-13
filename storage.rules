@@ -6,6 +6,14 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
+    // Community shared files — all authenticated users can read; any authenticated user can upload; no overwrite
+    match /community/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if request.auth != null;
+      allow update: if false;
+    }
     // All other private files: only the owner can read/write
     match /users/{userId}/{allPaths=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;

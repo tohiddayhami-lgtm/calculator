@@ -2817,7 +2817,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 function AppInner() {
   
   // -- STATE: VIEW & UI --
-  const [view, setView] = useState<'dashboard' | 'invoice' | 'packinglist' | 'catalog' | 'suppliers' | 'buyers'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'invoice' | 'packinglist' | 'catalog' | 'suppliers' | 'buyers' | 'community'>('dashboard');
   const [showRateSettings, setShowRateSettings] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   
@@ -2871,6 +2871,28 @@ function AppInner() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
+
+  // -- STATE: COMMUNITY HUB --
+  const [communityPosts, setCommunityPosts] = useState<any[]>([]);
+  const [communityFilter, setCommunityFilter] = useState<'all' | 'news' | 'suppliers' | 'education' | 'general'>('all');
+  const [communitySearch, setCommunitySearch] = useState('');
+  const [showNewPostModal, setShowNewPostModal] = useState(false);
+  const [newPostTitle, setNewPostTitle] = useState('');
+  const [newPostBody, setNewPostBody] = useState('');
+  const [newPostCategory, setNewPostCategory] = useState<'news' | 'suppliers' | 'education' | 'general'>('general');
+  const [newPostFiles, setNewPostFiles] = useState<File[]>([]);
+  const [communityUploading, setCommunityUploading] = useState(false);
+  const [communityError, setCommunityError] = useState('');
+  const [expandedPost, setExpandedPost] = useState<string | null>(null);
+  const [editingPost, setEditingPost] = useState<any | null>(null);
+  const [editPostTitle, setEditPostTitle] = useState('');
+  const [editPostBody, setEditPostBody] = useState('');
+  const [editPostCategory, setEditPostCategory] = useState<'news' | 'suppliers' | 'education' | 'general'>('general');
+  const [editPostExistingAttachments, setEditPostExistingAttachments] = useState<any[]>([]);
+  const [editPostNewFiles, setEditPostNewFiles] = useState<File[]>([]);
+  const [editPostUploading, setEditPostUploading] = useState(false);
+  const [editPostError, setEditPostError] = useState('');
+
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
   
@@ -3358,6 +3380,23 @@ function AppInner() {
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId]);
 
+  // Community posts listener — all authenticated users can read
+  useEffect(() => {
+    if (!db || !dataAppId) return;
+    let q: any;
+    try {
+      q = query(collection(db, 'artifacts', dataAppId, 'communityPosts'), orderBy('createdAt', 'desc'));
+    } catch {
+      q = collection(db, 'artifacts', dataAppId, 'communityPosts');
+    }
+    const unsub = onSnapshot(q, (snap: any) => {
+      setCommunityPosts(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+    }, (err: any) => {
+      console.error('Community posts listener failed:', err);
+    });
+    return () => unsub();
+  }, [db, dataAppId]);
+
   // Short link ?c=CODE → redirect to hosted catalog HTML (full Storage URL)
   useEffect(() => {
     if (!db || typeof window === 'undefined') return;
@@ -3499,6 +3538,106 @@ function AppInner() {
       } catch (err: any) {
           alert('Failed to delete inquiry: ' + (err?.message || err));
       }
+  };
+
+  // --- COMMUNITY HANDLERS ---
+  const handleCreateCommunityPost = async () => {
+    if (!user || !db || !newPostTitle.trim()) return;
+    setCommunityUploading(true);
+    setCommunityError('');
+    try {
+      const attachments: any[] = [];
+      for (const file of newPostFiles) {
+        if (!storage) throw new Error('Storage not available');
+        const path = `community/${dataAppId}/${Date.now()}_${file.name}`;
+        const sRef = storageRef(storage, path);
+        await uploadBytes(sRef, file);
+        const url = await getDownloadURL(sRef);
+        attachments.push({ name: file.name, url, type: file.type, storagePath: path });
+      }
+      await addDoc(collection(db, 'artifacts', dataAppId, 'communityPosts'), {
+        title: newPostTitle.trim(),
+        body: newPostBody.trim(),
+        category: newPostCategory,
+        authorId: user.uid,
+        authorEmail: user.email,
+        createdAt: serverTimestamp(),
+        attachments,
+      });
+      setShowNewPostModal(false);
+      setNewPostTitle('');
+      setNewPostBody('');
+      setNewPostCategory('general');
+      setNewPostFiles([]);
+    } catch (err: any) {
+      setCommunityError(err.message || 'Failed to publish post');
+    } finally {
+      setCommunityUploading(false);
+    }
+  };
+
+  const handleDeleteCommunityPost = async (post: any) => {
+    if (!user || !db) return;
+    if (user.uid !== post.authorId && !isMasterUser) return;
+    if (!window.confirm(`Delete post "${post.title}"?`)) return;
+    try {
+      for (const att of (post.attachments || [])) {
+        if (att.storagePath && storage) {
+          try { await deleteObject(storageRef(storage, att.storagePath)); } catch {}
+        }
+      }
+      await deleteDoc(doc(db, 'artifacts', dataAppId, 'communityPosts', post.id));
+    } catch (err: any) {
+      alert('Failed to delete post: ' + (err?.message || err));
+    }
+  };
+
+  const openEditPost = (post: any) => {
+    setEditingPost(post);
+    setEditPostTitle(post.title || '');
+    setEditPostBody(post.body || '');
+    setEditPostCategory(post.category || 'general');
+    setEditPostExistingAttachments([...(post.attachments || [])]);
+    setEditPostNewFiles([]);
+    setEditPostError('');
+  };
+
+  const handleSaveEditCommunityPost = async () => {
+    if (!user || !db || !editingPost || !editPostTitle.trim()) return;
+    if (user.uid !== editingPost.authorId) return;
+    setEditPostUploading(true);
+    setEditPostError('');
+    try {
+      const newAttachments: any[] = [];
+      for (const file of editPostNewFiles) {
+        if (!storage) throw new Error('Storage not available');
+        const path = `community/${dataAppId}/${Date.now()}_${file.name}`;
+        const sRef = storageRef(storage, path);
+        await uploadBytes(sRef, file);
+        const url = await getDownloadURL(sRef);
+        newAttachments.push({ name: file.name, url, type: file.type, storagePath: path });
+      }
+      // Delete removed attachments from storage
+      const removedAtts = (editingPost.attachments || []).filter(
+        (a: any) => !editPostExistingAttachments.some((e: any) => e.storagePath === a.storagePath)
+      );
+      for (const att of removedAtts) {
+        if (att.storagePath && storage) {
+          try { await deleteObject(storageRef(storage, att.storagePath)); } catch {}
+        }
+      }
+      await updateDoc(doc(db, 'artifacts', dataAppId, 'communityPosts', editingPost.id), {
+        title: editPostTitle.trim(),
+        body: editPostBody.trim(),
+        category: editPostCategory,
+        attachments: [...editPostExistingAttachments, ...newAttachments],
+      });
+      setEditingPost(null);
+    } catch (err: any) {
+      setEditPostError(err.message || 'Failed to save changes');
+    } finally {
+      setEditPostUploading(false);
+    }
   };
 
   const handleMarkInquiry = async (id: string, status: 'new' | 'read' | 'archived') => {
@@ -12185,6 +12324,339 @@ function AppInner() {
       );
   };
 
+  // --- COMMUNITY HUB ---
+  const renderCommunity = () => {
+    const CATS = [
+      { id: 'all', label: 'All Posts' },
+      { id: 'news', label: 'News' },
+      { id: 'suppliers', label: 'Suppliers' },
+      { id: 'education', label: 'Education' },
+      { id: 'general', label: 'General' },
+    ];
+
+    const getCategoryStyle = (cat: string) => {
+      const map: Record<string, string> = {
+        news: 'bg-blue-100 text-blue-700',
+        suppliers: 'bg-emerald-100 text-emerald-700',
+        education: 'bg-purple-100 text-purple-700',
+        general: 'bg-amber-100 text-amber-700',
+      };
+      return map[cat] || 'bg-slate-100 text-slate-700';
+    };
+
+    const getCategoryLabel = (cat: string) => {
+      const map: Record<string, string> = { news: 'News', suppliers: 'Suppliers', education: 'Education', general: 'General' };
+      return map[cat] || cat;
+    };
+
+    const formatDate = (ts: any) => {
+      if (!ts) return '';
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+    };
+
+    const getAttachIcon = (type: string) => {
+      if (type?.startsWith('image/')) return <ImageIcon className="w-4 h-4 flex-shrink-0" />;
+      if (type?.startsWith('video/')) return <Video className="w-4 h-4 flex-shrink-0" />;
+      return <FileIcon className="w-4 h-4 flex-shrink-0" />;
+    };
+
+    const filtered = communityPosts.filter(p => {
+      const matchCat = communityFilter === 'all' || p.category === communityFilter;
+      const q = communitySearch.toLowerCase();
+      const matchSearch = !q || (p.title || '').toLowerCase().includes(q) || (p.body || '').toLowerCase().includes(q) || (p.authorEmail || '').toLowerCase().includes(q);
+      return matchCat && matchSearch;
+    });
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">Community Hub</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Share news, approved suppliers, educational content, and files with all team members</p>
+          </div>
+          <button
+            onClick={() => { setShowNewPostModal(true); setCommunityError(''); setNewPostTitle(''); setNewPostBody(''); setNewPostCategory('general'); setNewPostFiles([]); }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            New Post
+          </button>
+        </div>
+
+        {/* Filters & Search */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          <div className="flex gap-2 flex-wrap">
+            {CATS.map(cat => (
+              <button key={cat.id} onClick={() => setCommunityFilter(cat.id as any)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${communityFilter === cat.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                {cat.label}
+              </button>
+            ))}
+          </div>
+          <div className="relative sm:ml-auto w-full sm:w-56">
+            <input
+              type="text"
+              value={communitySearch}
+              onChange={e => setCommunitySearch(e.target.value)}
+              placeholder="Search posts..."
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <svg className="absolute left-2.5 top-2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Posts Grid */}
+        {filtered.length === 0 ? (
+          <div className="text-center py-20 text-slate-400">
+            <Users className="w-14 h-14 mx-auto mb-4 opacity-25" />
+            <p className="text-base font-medium text-slate-500">No posts yet</p>
+            <p className="text-sm mt-1">Be the first to share something with the community</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map(post => {
+              const isExpanded = expandedPost === post.id;
+              const isOwner = user?.uid === post.authorId;
+              const canDelete = isOwner || isMasterUser;
+              const images = (post.attachments || []).filter((a: any) => a.type?.startsWith('image/'));
+              const others = (post.attachments || []).filter((a: any) => !a.type?.startsWith('image/'));
+              return (
+                <div key={post.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col">
+                  {/* Image preview */}
+                  {images.length > 0 && (
+                    <div className={`grid gap-1 p-2 ${images.length === 1 ? '' : 'grid-cols-2'}`}>
+                      {images.slice(0, 4).map((img: any, i: number) => (
+                        <a key={i} href={img.url} target="_blank" rel="noopener noreferrer">
+                          <img src={img.url} alt={img.name} className={`w-full object-cover rounded-lg border border-slate-100 hover:opacity-90 transition-opacity ${images.length === 1 ? 'h-40' : 'h-24'}`} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <div className="p-4 flex-1">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getCategoryStyle(post.category)}`}>
+                        {getCategoryLabel(post.category)}
+                      </span>
+                      {isOwner && (
+                        <div className="flex items-center gap-0.5">
+                          <button onClick={() => openEditPost(post)}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit post">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleDeleteCommunityPost(post)}
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="Delete post">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                      {!isOwner && isMasterUser && (
+                        <button onClick={() => handleDeleteCommunityPost(post)}
+                          className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="Delete post (admin)">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <h3 className="font-semibold text-slate-800 text-sm leading-snug mb-1.5">{post.title}</h3>
+                    {post.body && (
+                      <>
+                        <p className={`text-sm text-slate-600 leading-relaxed whitespace-pre-line ${isExpanded ? '' : 'line-clamp-3'}`}>{post.body}</p>
+                        {post.body.length > 200 && (
+                          <button onClick={() => setExpandedPost(isExpanded ? null : post.id)} className="text-xs text-blue-600 hover:underline mt-1">
+                            {isExpanded ? 'Show less' : 'Read more'}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {others.length > 0 && (
+                    <div className="px-4 pb-3 flex flex-wrap gap-2">
+                      {others.map((att: any, i: number) => (
+                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 transition-colors max-w-[160px]">
+                          {getAttachIcon(att.type)}
+                          <span className="truncate">{att.name}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
+                        {post.authorEmail?.[0]?.toUpperCase() || 'U'}
+                      </div>
+                      <span className="text-xs text-slate-500">{post.authorEmail?.split('@')[0]}</span>
+                    </div>
+                    <span className="text-xs text-slate-400">{formatDate(post.createdAt)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* New Post Modal */}
+        {showNewPostModal && (
+          <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-800">New Community Post</h3>
+                <button onClick={() => setShowNewPostModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {communityError && (
+                  <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{communityError}</div>
+                )}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {[{ id: 'news', label: 'News' }, { id: 'suppliers', label: 'Suppliers' }, { id: 'education', label: 'Education' }, { id: 'general', label: 'General' }].map(cat => (
+                      <button key={cat.id} onClick={() => setNewPostCategory(cat.id as any)}
+                        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${newPostCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Title *</label>
+                  <input type="text" value={newPostTitle} onChange={e => setNewPostTitle(e.target.value)}
+                    placeholder="Enter post title..." className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Content</label>
+                  <textarea value={newPostBody} onChange={e => setNewPostBody(e.target.value)}
+                    placeholder="Write your post content..." rows={5}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Attachments — images, videos, files</label>
+                  <label className="flex items-center gap-2 cursor-pointer px-3 py-2.5 rounded-lg border-2 border-dashed border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-colors">
+                    <Upload className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm text-slate-500">Click to attach files</span>
+                    <input type="file" multiple className="hidden"
+                      onChange={e => setNewPostFiles(prev => [...prev, ...Array.from(e.target.files || [])])}
+                      accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" />
+                  </label>
+                  {newPostFiles.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {newPostFiles.map((f, i) => (
+                        <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 rounded-md text-xs text-slate-700">
+                          {f.type.startsWith('image/') ? <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" /> : f.type.startsWith('video/') ? <Video className="w-3.5 h-3.5 flex-shrink-0" /> : <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />}
+                          <span className="max-w-[100px] truncate">{f.name}</span>
+                          <button onClick={() => setNewPostFiles(newPostFiles.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500 ml-0.5"><X className="w-3 h-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 px-5 pb-5">
+                <button onClick={() => setShowNewPostModal(false)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleCreateCommunityPost} disabled={communityUploading || !newPostTitle.trim()}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {communityUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {communityUploading ? 'Publishing...' : 'Publish Post'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Edit Post Modal */}
+        {editingPost && (
+          <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-800">Edit Post</h3>
+                <button onClick={() => setEditingPost(null)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {editPostError && (
+                  <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{editPostError}</div>
+                )}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {[{ id: 'news', label: 'News' }, { id: 'suppliers', label: 'Suppliers' }, { id: 'education', label: 'Education' }, { id: 'general', label: 'General' }].map(cat => (
+                      <button key={cat.id} onClick={() => setEditPostCategory(cat.id as any)}
+                        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${editPostCategory === cat.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Title *</label>
+                  <input type="text" value={editPostTitle} onChange={e => setEditPostTitle(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Content</label>
+                  <textarea value={editPostBody} onChange={e => setEditPostBody(e.target.value)} rows={5}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Attachments</label>
+                  {editPostExistingAttachments.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {editPostExistingAttachments.map((att: any, i: number) => (
+                        <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 rounded-md text-xs text-slate-700 group">
+                          {att.type?.startsWith('image/') ? <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" /> : att.type?.startsWith('video/') ? <Video className="w-3.5 h-3.5 flex-shrink-0" /> : <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />}
+                          <span className="max-w-[100px] truncate">{att.name}</span>
+                          <button onClick={() => setEditPostExistingAttachments(editPostExistingAttachments.filter((_, j) => j !== i))}
+                            className="text-slate-400 hover:text-red-500 ml-0.5" title="Remove attachment">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 cursor-pointer px-3 py-2.5 rounded-lg border-2 border-dashed border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-colors">
+                    <Upload className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm text-slate-500">Add more files</span>
+                    <input type="file" multiple className="hidden"
+                      onChange={e => setEditPostNewFiles(prev => [...prev, ...Array.from(e.target.files || [])])}
+                      accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" />
+                  </label>
+                  {editPostNewFiles.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {editPostNewFiles.map((f, i) => (
+                        <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700">
+                          {f.type.startsWith('image/') ? <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" /> : f.type.startsWith('video/') ? <Video className="w-3.5 h-3.5 flex-shrink-0" /> : <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />}
+                          <span className="max-w-[100px] truncate">{f.name}</span>
+                          <button onClick={() => setEditPostNewFiles(editPostNewFiles.filter((_, j) => j !== i))} className="text-blue-400 hover:text-red-500 ml-0.5"><X className="w-3 h-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 px-5 pb-5">
+                <button onClick={() => setEditingPost(null)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleSaveEditCommunityPost} disabled={editPostUploading || !editPostTitle.trim()}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {editPostUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  {editPostUploading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -12506,6 +12978,7 @@ function AppInner() {
                         { id: 'catalog', label: 'Catalog Gen', icon: LayoutTemplate },
                         { id: 'suppliers', label: 'Suppliers', icon: Users },
                         { id: 'buyers', label: 'Buyers', icon: Users },
+                        { id: 'community', label: 'Community', icon: Globe },
                     ].map(item => (
                         <button
                             key={item.id}
@@ -12609,6 +13082,7 @@ function AppInner() {
                     { id: 'catalog', label: 'Catalog', icon: LayoutTemplate },
                     { id: 'suppliers', label: 'Suppliers', icon: Users },
                     { id: 'buyers', label: 'Buyers', icon: Users },
+                    { id: 'community', label: 'Community', icon: Globe },
                 ].map(item => (
                     <button
                         key={item.id}
@@ -12650,6 +13124,7 @@ function AppInner() {
           {view === 'catalog' && renderCatalog()}
           {view === 'suppliers' && renderSuppliers()}
           {view === 'buyers' && renderBuyers()}
+          {view === 'community' && renderCommunity()}
       </main>
 
       {/* --- MODALS --- */}
