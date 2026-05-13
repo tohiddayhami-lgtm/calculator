@@ -9098,6 +9098,42 @@ function AppInner() {
                        </div>
                   ))}
 
+                  {/* --- CUSTOM PAGES (partners, certifications, etc.) --- */}
+                  {(catalogConfig.customPages || []).filter((p: any) => p.active !== false).map((page: any) => {
+                      const items = (page.items || []).filter((it: any) => it.active !== false);
+                      return (
+                          <div key={page.id} className="w-full min-h-[297mm] print-page p-12 flex flex-col relative overflow-hidden bg-white text-slate-800">
+                              <h2 className="text-3xl font-bold uppercase tracking-wider mb-4 pb-4 border-b-4"
+                                  style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor, borderColor: catalogConfig.primaryColor }}>
+                                  {page.title}
+                              </h2>
+                              {page.description && (
+                                  <p className="text-base leading-relaxed text-slate-600 mb-6" style={{ textAlign: 'justify' }}>
+                                      {page.description}
+                                  </p>
+                              )}
+                              {items.length > 0 && (
+                                  <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                                      {items.map((item: any) => (
+                                          <div key={item.id} className="flex flex-col items-center text-center bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                              {item.image && (
+                                                  <div className="w-16 h-16 flex items-center justify-center mb-3 flex-shrink-0">
+                                                      <img src={item.image} alt={item.name || ''} className="max-w-full max-h-full object-contain" />
+                                                  </div>
+                                              )}
+                                              <div className="text-xs font-bold text-slate-800 leading-snug mb-1">{item.name}</div>
+                                              {item.description && (
+                                                  <div className="text-[10px] text-slate-500 leading-relaxed">{item.description}</div>
+                                              )}
+                                          </div>
+                                      ))}
+                                  </div>
+                              )}
+                              <div className="absolute bottom-0 right-0 w-48 h-48 opacity-5" style={{ backgroundColor: catalogConfig.primaryColor, borderRadius: '100% 0 0 0' }}></div>
+                          </div>
+                      );
+                  })}
+
                   {/* --- EXTRA PAGE: GALLERY --- */}
                   {catalogConfig.showCompanyPhotos && (catalogConfig.companyPhotos || []).length > 0 && (
                       <div className="w-full h-[297mm] print-page p-8 flex flex-col relative overflow-hidden bg-white">
