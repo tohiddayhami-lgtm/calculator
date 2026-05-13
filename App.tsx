@@ -1301,7 +1301,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .cover-inner { position: relative; z-index: 2; max-width: 720px; margin: 0 auto; }
         .logo { max-height: 80px; margin: 0 auto 24px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
         .cover h1 { font-size: clamp(28px, 6vw, 56px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 12px; }
-        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 0.9; font-weight: 300; letter-spacing: 0.05em; }
+        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 0.9; font-weight: 300; letter-spacing: 0.05em; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
         .cover .collection { font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; opacity: 0.7; margin-bottom: 16px; }
 
         /* Section title */
@@ -1499,15 +1499,15 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         }
         .cart-incoterm-quick button.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
-        .cart-form { padding: 16px; border-top: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0; max-height: 55vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-        .cart-form h3 { font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
-        .cart-form .field { margin-bottom: 10px; }
-        .cart-form label { display: block; font-size: 11px; color: #475569; font-weight: 600; margin-bottom: 4px; }
-        .cart-form input, .cart-form select, .cart-form textarea { width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; background: #fff; outline: none; font-family: inherit; }
-        .cart-form input:focus, .cart-form select:focus, .cart-form textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,23,42,0.08); }
-        .cart-form .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .cart-form { padding: 12px 16px; border-top: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0; max-height: 42vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .cart-form h3 { font-size: 12px; font-weight: 800; color: #0f172a; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .cart-form .field { margin-bottom: 7px; }
+        .cart-form label { display: block; font-size: 10px; color: #475569; font-weight: 600; margin-bottom: 3px; }
+        .cart-form input, .cart-form select, .cart-form textarea { width: 100%; padding: 6px 9px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 13px; background: #fff; outline: none; font-family: inherit; }
+        .cart-form input:focus, .cart-form select:focus, .cart-form textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(15,23,42,0.08); }
+        .cart-form .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .cart-form .req::after { content: ' *'; color: #ef4444; }
-        .submit-btn { width: 100%; padding: 14px 20px; background: var(--primary); color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 20px rgba(0,0,0,0.15); transition: transform 0.18s, opacity 0.18s; margin-top: 8px; }
+        .submit-btn { width: 100%; padding: 11px 20px; background: var(--primary); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(0,0,0,0.15); transition: transform 0.18s, opacity 0.18s; margin-top: 6px; }
         .submit-btn:active { transform: scale(0.98); }
         .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .submit-status { font-size: 12px; text-align: center; margin-top: 8px; min-height: 1em; }
@@ -8728,10 +8728,11 @@ function AppInner() {
                                   className="bg-transparent text-6xl md:text-8xl font-black tracking-tight w-full outline-none placeholder-white/40 leading-[0.9] resize-none overflow-hidden"
                                   placeholder="TITLE"
                               />
-                              <input 
+                              <textarea
                                   value={catalogConfig.subtitle}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})}
-                                  className="bg-transparent text-xl md:text-2xl font-light w-full outline-none placeholder-white/40 opacity-90"
+                                  rows={2}
+                                  className="bg-transparent text-xl md:text-2xl font-light w-full outline-none placeholder-white/40 opacity-90 resize-none overflow-hidden leading-snug"
                                   placeholder="Subtitle text goes here"
                               />
                           </div>
