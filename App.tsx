@@ -2892,6 +2892,9 @@ function AppInner() {
   const [editPostNewFiles, setEditPostNewFiles] = useState<File[]>([]);
   const [editPostUploading, setEditPostUploading] = useState(false);
   const [editPostError, setEditPostError] = useState('');
+  const [newPostColor, setNewPostColor] = useState('yellow');
+  const [editPostColor, setEditPostColor] = useState('yellow');
+  const [communityPage, setCommunityPage] = useState(1);
 
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
   const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
@@ -3559,6 +3562,7 @@ function AppInner() {
         title: newPostTitle.trim(),
         body: newPostBody.trim(),
         category: newPostCategory,
+        color: newPostColor,
         authorId: user.uid,
         authorEmail: user.email,
         createdAt: serverTimestamp(),
@@ -3568,6 +3572,7 @@ function AppInner() {
       setNewPostTitle('');
       setNewPostBody('');
       setNewPostCategory('general');
+      setNewPostColor('yellow');
       setNewPostFiles([]);
     } catch (err: any) {
       setCommunityError(err.message || 'Failed to publish post');
@@ -3597,6 +3602,7 @@ function AppInner() {
     setEditPostTitle(post.title || '');
     setEditPostBody(post.body || '');
     setEditPostCategory(post.category || 'general');
+    setEditPostColor(post.color || 'yellow');
     setEditPostExistingAttachments([...(post.attachments || [])]);
     setEditPostNewFiles([]);
     setEditPostError('');
@@ -3630,6 +3636,7 @@ function AppInner() {
         title: editPostTitle.trim(),
         body: editPostBody.trim(),
         category: editPostCategory,
+        color: editPostColor,
         attachments: [...editPostExistingAttachments, ...newAttachments],
       });
       setEditingPost(null);
@@ -12326,6 +12333,18 @@ function AppInner() {
 
   // --- COMMUNITY HUB ---
   const renderCommunity = () => {
+    const POSTS_PER_PAGE = 10;
+
+    const NOTE_COLORS: Record<string, { bg: string; stripe: string; pin: string; text: string; subtext: string; border: string; label: string }> = {
+      yellow: { bg: '#fef9c3', stripe: '#fef08a', pin: '#ca8a04', text: '#713f12', subtext: '#92400e', border: '#fde047', label: 'Yellow' },
+      pink:   { bg: '#fce7f3', stripe: '#fbcfe8', pin: '#db2777', text: '#831843', subtext: '#9d174d', border: '#f9a8d4', label: 'Pink'   },
+      sky:    { bg: '#e0f2fe', stripe: '#bae6fd', pin: '#0284c7', text: '#0c4a6e', subtext: '#075985', border: '#7dd3fc', label: 'Blue'   },
+      green:  { bg: '#d1fae5', stripe: '#a7f3d0', pin: '#059669', text: '#064e3b', subtext: '#065f46', border: '#6ee7b7', label: 'Green'  },
+      purple: { bg: '#ede9fe', stripe: '#ddd6fe', pin: '#7c3aed', text: '#4c1d95', subtext: '#5b21b6', border: '#c4b5fd', label: 'Purple' },
+      orange: { bg: '#ffedd5', stripe: '#fed7aa', pin: '#ea580c', text: '#7c2d12', subtext: '#9a3412', border: '#fdba74', label: 'Orange' },
+    };
+    const ROTATIONS = ['-1.2deg','0.8deg','-0.5deg','1.5deg','0deg','-1.8deg','1deg','-0.3deg','1.8deg','-0.8deg'];
+
     const CATS = [
       { id: 'all', label: 'All Posts' },
       { id: 'news', label: 'News' },
@@ -12334,20 +12353,19 @@ function AppInner() {
       { id: 'general', label: 'General' },
     ];
 
-    const getCategoryStyle = (cat: string) => {
-      const map: Record<string, string> = {
-        news: 'bg-blue-100 text-blue-700',
-        suppliers: 'bg-emerald-100 text-emerald-700',
-        education: 'bg-purple-100 text-purple-700',
-        general: 'bg-amber-100 text-amber-700',
-      };
-      return map[cat] || 'bg-slate-100 text-slate-700';
-    };
+    const getCategoryLabel = (cat: string) =>
+      ({ news: 'News', suppliers: 'Suppliers', education: 'Education', general: 'General' } as any)[cat] || cat;
 
-    const getCategoryLabel = (cat: string) => {
-      const map: Record<string, string> = { news: 'News', suppliers: 'Suppliers', education: 'Education', general: 'General' };
-      return map[cat] || cat;
-    };
+    const ColorPicker = ({ value, onChange }: { value: string; onChange: (c: string) => void }) => (
+      <div className="flex gap-2.5 flex-wrap items-center">
+        {Object.entries(NOTE_COLORS).map(([id, c]) => (
+          <button key={id} onClick={() => onChange(id)} title={c.label}
+            style={{ backgroundColor: c.bg, borderColor: value === id ? c.pin : c.border, outlineColor: c.pin }}
+            className={`w-8 h-8 rounded-full border-2 transition-all duration-150 ${value === id ? 'scale-125 shadow-md outline outline-2 outline-offset-1' : 'hover:scale-110'}`}
+          />
+        ))}
+      </div>
+    );
 
     const formatDate = (ts: any) => {
       if (!ts) return '';
@@ -12356,9 +12374,9 @@ function AppInner() {
     };
 
     const getAttachIcon = (type: string) => {
-      if (type?.startsWith('image/')) return <ImageIcon className="w-4 h-4 flex-shrink-0" />;
-      if (type?.startsWith('video/')) return <Video className="w-4 h-4 flex-shrink-0" />;
-      return <FileIcon className="w-4 h-4 flex-shrink-0" />;
+      if (type?.startsWith('image/')) return <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" />;
+      if (type?.startsWith('video/')) return <Video className="w-3.5 h-3.5 flex-shrink-0" />;
+      return <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />;
     };
 
     const filtered = communityPosts.filter(p => {
@@ -12367,6 +12385,10 @@ function AppInner() {
       const matchSearch = !q || (p.title || '').toLowerCase().includes(q) || (p.body || '').toLowerCase().includes(q) || (p.authorEmail || '').toLowerCase().includes(q);
       return matchCat && matchSearch;
     });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / POSTS_PER_PAGE));
+    const safePage = Math.min(communityPage, totalPages);
+    const paged = filtered.slice((safePage - 1) * POSTS_PER_PAGE, safePage * POSTS_PER_PAGE);
 
     return (
       <div className="space-y-6">
@@ -12377,7 +12399,7 @@ function AppInner() {
             <p className="text-sm text-slate-500 mt-0.5">Share news, approved suppliers, educational content, and files with all team members</p>
           </div>
           <button
-            onClick={() => { setShowNewPostModal(true); setCommunityError(''); setNewPostTitle(''); setNewPostBody(''); setNewPostCategory('general'); setNewPostFiles([]); }}
+            onClick={() => { setShowNewPostModal(true); setCommunityError(''); setNewPostTitle(''); setNewPostBody(''); setNewPostCategory('general'); setNewPostColor('yellow'); setNewPostFiles([]); }}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0"
           >
             <Plus className="w-4 h-4" />
@@ -12389,17 +12411,15 @@ function AppInner() {
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           <div className="flex gap-2 flex-wrap">
             {CATS.map(cat => (
-              <button key={cat.id} onClick={() => setCommunityFilter(cat.id as any)}
+              <button key={cat.id} onClick={() => { setCommunityFilter(cat.id as any); setCommunityPage(1); }}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${communityFilter === cat.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                 {cat.label}
               </button>
             ))}
           </div>
           <div className="relative sm:ml-auto w-full sm:w-56">
-            <input
-              type="text"
-              value={communitySearch}
-              onChange={e => setCommunitySearch(e.target.value)}
+            <input type="text" value={communitySearch}
+              onChange={e => { setCommunitySearch(e.target.value); setCommunityPage(1); }}
               placeholder="Search posts..."
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -12409,7 +12429,7 @@ function AppInner() {
           </div>
         </div>
 
-        {/* Posts Grid */}
+        {/* Posts Grid — Sticky Notes */}
         {filtered.length === 0 ? (
           <div className="text-center py-20 text-slate-400">
             <Users className="w-14 h-14 mx-auto mb-4 opacity-25" />
@@ -12417,85 +12437,129 @@ function AppInner() {
             <p className="text-sm mt-1">Be the first to share something with the community</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map(post => {
-              const isExpanded = expandedPost === post.id;
-              const isOwner = user?.uid === post.authorId;
-              const canDelete = isOwner || isMasterUser;
-              const images = (post.attachments || []).filter((a: any) => a.type?.startsWith('image/'));
-              const others = (post.attachments || []).filter((a: any) => !a.type?.startsWith('image/'));
-              return (
-                <div key={post.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                  {/* Image preview */}
-                  {images.length > 0 && (
-                    <div className={`grid gap-1 p-2 ${images.length === 1 ? '' : 'grid-cols-2'}`}>
-                      {images.slice(0, 4).map((img: any, i: number) => (
-                        <a key={i} href={img.url} target="_blank" rel="noopener noreferrer">
-                          <img src={img.url} alt={img.name} className={`w-full object-cover rounded-lg border border-slate-100 hover:opacity-90 transition-opacity ${images.length === 1 ? 'h-40' : 'h-24'}`} />
-                        </a>
-                      ))}
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 py-4">
+              {paged.map((post, idx) => {
+                const isExpanded = expandedPost === post.id;
+                const isOwner = user?.uid === post.authorId;
+                const c = NOTE_COLORS[post.color || 'yellow'] || NOTE_COLORS.yellow;
+                const rotation = ROTATIONS[idx % ROTATIONS.length];
+                const images = (post.attachments || []).filter((a: any) => a.type?.startsWith('image/'));
+                const others = (post.attachments || []).filter((a: any) => !a.type?.startsWith('image/'));
+                return (
+                  <div key={post.id}
+                    style={{ transform: `rotate(${rotation})`, backgroundColor: c.bg, borderColor: c.border }}
+                    className="relative rounded border shadow-[4px_4px_14px_rgba(0,0,0,0.14)] hover:shadow-[6px_6px_20px_rgba(0,0,0,0.22)] hover:scale-[1.02] transition-all duration-200 flex flex-col overflow-hidden group/card"
+                  >
+                    {/* Tape strip at top */}
+                    <div style={{ backgroundColor: c.stripe }} className="h-7 w-full flex items-center justify-between px-3 shrink-0">
+                      <span style={{ color: c.pin }} className="text-[10px] font-bold uppercase tracking-widest select-none">{getCategoryLabel(post.category)}</span>
+                      <div style={{ backgroundColor: c.pin }} className="w-4 h-4 rounded-full shadow-inner flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-full bg-white/50" />
+                      </div>
                     </div>
-                  )}
-                  <div className="p-4 flex-1">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getCategoryStyle(post.category)}`}>
-                        {getCategoryLabel(post.category)}
-                      </span>
-                      {isOwner && (
-                        <div className="flex items-center gap-0.5">
-                          <button onClick={() => openEditPost(post)}
-                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit post">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
+
+                    {/* Images */}
+                    {images.length > 0 && (
+                      <div className={`grid gap-0.5 px-2 pt-2 ${images.length === 1 ? '' : 'grid-cols-2'}`}>
+                        {images.slice(0, 4).map((img: any, i: number) => (
+                          <a key={i} href={img.url} target="_blank" rel="noopener noreferrer">
+                            <img src={img.url} alt={img.name} className={`w-full object-cover rounded hover:opacity-90 transition-opacity ${images.length === 1 ? 'h-36' : 'h-20'}`} />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Content */}
+                    <div className="px-3 pt-2.5 pb-1 flex-1">
+                      <div className="flex items-start justify-between gap-1 mb-1.5">
+                        <h3 style={{ color: c.text }} className="font-bold text-sm leading-snug flex-1">{post.title}</h3>
+                        {isOwner && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0">
+                            <button onClick={() => openEditPost(post)} style={{ color: c.pin }}
+                              className="p-0.5 rounded hover:bg-black/10 transition-colors" title="Edit">
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button onClick={() => handleDeleteCommunityPost(post)}
+                              className="p-0.5 rounded hover:bg-black/10 text-red-500 transition-colors" title="Delete">
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                        {!isOwner && isMasterUser && (
                           <button onClick={() => handleDeleteCommunityPost(post)}
-                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="Delete post">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
-                      {!isOwner && isMasterUser && (
-                        <button onClick={() => handleDeleteCommunityPost(post)}
-                          className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="Delete post (admin)">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <h3 className="font-semibold text-slate-800 text-sm leading-snug mb-1.5">{post.title}</h3>
-                    {post.body && (
-                      <>
-                        <p className={`text-sm text-slate-600 leading-relaxed whitespace-pre-line ${isExpanded ? '' : 'line-clamp-3'}`}>{post.body}</p>
-                        {post.body.length > 200 && (
-                          <button onClick={() => setExpandedPost(isExpanded ? null : post.id)} className="text-xs text-blue-600 hover:underline mt-1">
-                            {isExpanded ? 'Show less' : 'Read more'}
+                            className="p-0.5 rounded hover:bg-black/10 text-red-500 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         )}
-                      </>
-                    )}
-                  </div>
-                  {others.length > 0 && (
-                    <div className="px-4 pb-3 flex flex-wrap gap-2">
-                      {others.map((att: any, i: number) => (
-                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 transition-colors max-w-[160px]">
-                          {getAttachIcon(att.type)}
-                          <span className="truncate">{att.name}</span>
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
-                        {post.authorEmail?.[0]?.toUpperCase() || 'U'}
                       </div>
-                      <span className="text-xs text-slate-500">{post.authorEmail?.split('@')[0]}</span>
+                      {post.body && (
+                        <>
+                          <p style={{ color: c.subtext }} className={`text-xs leading-relaxed whitespace-pre-line ${isExpanded ? '' : 'line-clamp-4'}`}>{post.body}</p>
+                          {post.body.length > 180 && (
+                            <button onClick={() => setExpandedPost(isExpanded ? null : post.id)} style={{ color: c.pin }} className="text-[10px] font-semibold hover:underline mt-0.5">
+                              {isExpanded ? 'Show less ↑' : 'Read more ↓'}
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
-                    <span className="text-xs text-slate-400">{formatDate(post.createdAt)}</span>
+
+                    {/* File attachments */}
+                    {others.length > 0 && (
+                      <div className="px-3 pb-1.5 flex flex-wrap gap-1">
+                        {others.map((att: any, i: number) => (
+                          <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
+                            style={{ borderColor: c.border, color: c.text }}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-medium hover:opacity-75 transition-opacity max-w-[130px]">
+                            {getAttachIcon(att.type)}
+                            <span className="truncate">{att.name}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Footer */}
+                    <div style={{ borderTopColor: c.border, color: c.subtext }} className="px-3 py-1.5 border-t flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div style={{ backgroundColor: c.pin }} className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                          {post.authorEmail?.[0]?.toUpperCase() || 'U'}
+                        </div>
+                        <span className="text-[10px] font-medium">{post.authorEmail?.split('@')[0]}</span>
+                      </div>
+                      <span className="text-[10px]">{formatDate(post.createdAt)}</span>
+                    </div>
+
+                    {/* Corner fold */}
+                    <div style={{ borderTopColor: c.border, borderLeftColor: c.stripe }}
+                      className="absolute bottom-0 right-0 w-5 h-5 border-t-8 border-r-0 border-b-0 border-l-8 border-r-transparent border-b-transparent" />
                   </div>
+                );
+              })}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button onClick={() => setCommunityPage(p => Math.max(1, p - 1))} disabled={safePage === 1}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  ← Prev
+                </button>
+                <div className="flex gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(pg => (
+                    <button key={pg} onClick={() => setCommunityPage(pg)}
+                      className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${safePage === pg ? 'bg-blue-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                      {pg}
+                    </button>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+                <button onClick={() => setCommunityPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* New Post Modal */}
@@ -12512,6 +12576,10 @@ function AppInner() {
                 {communityError && (
                   <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{communityError}</div>
                 )}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Note Color</label>
+                  <ColorPicker value={newPostColor} onChange={setNewPostColor} />
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
                   <div className="flex gap-2 flex-wrap">
@@ -12583,6 +12651,10 @@ function AppInner() {
                 {editPostError && (
                   <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{editPostError}</div>
                 )}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Note Color</label>
+                  <ColorPicker value={editPostColor} onChange={setEditPostColor} />
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
                   <div className="flex gap-2 flex-wrap">
