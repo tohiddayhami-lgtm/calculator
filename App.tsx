@@ -1116,7 +1116,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         ? (() => {
             const imgs: string[] = (cc.aboutUsImages || []).slice(0, 4).filter(Boolean);
             const rawParas: string[] = cc.aboutUsText.split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean);
-            const hasFarsi = /[؀-ۿ]/.test(cc.aboutUsText);
             const isFarsiPara = (p: string) => /[؀-ۿ]/.test(p);
 
             let prevWasFarsi: boolean | null = null;
@@ -1124,9 +1123,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 const farsi = isFarsiPara(para);
                 let divider = '';
                 if (prevWasFarsi !== null && farsi !== prevWasFarsi) {
-                    divider = hasFarsi
-                        ? `<div class="about-lang-divider"><span>${farsi ? 'فارسی' : 'English'}</span></div>`
-                        : '<div class="about-lang-divider"></div>';
+                    divider = '<div class="about-lang-divider"></div>';
                 }
                 prevWasFarsi = farsi;
                 return `${divider}<p class="about-para${farsi ? ' rtl' : ''}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`;
@@ -1339,10 +1336,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: cover; background-position: center;` : ''} opacity: 1; z-index: 0; }
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.65)); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover-inner { position: relative; z-index: 2; max-width: 720px; margin: 0 auto; }
+        .cover, .cover h1, .cover .subtitle, .cover .collection { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans Arabic', 'Segoe UI Historic', 'Arabic UI Text', Tahoma, sans-serif; }
         .logo { max-height: 80px; margin: 0 auto 24px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
-        .cover h1 { font-size: clamp(28px, 6vw, 56px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 12px; }
-        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 0.9; font-weight: 300; letter-spacing: 0.05em; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
-        .cover .collection { font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; opacity: 0.7; margin-bottom: 16px; }
+        .cover h1 { font-size: clamp(28px, 6vw, 56px); font-weight: 900; letter-spacing: normal; line-height: 1.15; margin-bottom: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 1; font-weight: 400; letter-spacing: normal; white-space: pre-wrap; word-break: break-word; line-height: 1.65; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+        .cover .collection { font-size: 12px; letter-spacing: normal; text-transform: none; opacity: 1; margin-bottom: 16px; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
 
         /* Section title */
         .section-title { font-size: clamp(20px, 4vw, 32px); font-weight: 800; color: var(--heading); margin: 48px 0 24px; padding-bottom: 12px; border-bottom: 3px solid var(--primary); display: inline-block; }
@@ -8747,21 +8745,28 @@ function AppInner() {
                           );
                       })()}
 
-                      <div className="relative z-10 h-full flex flex-col justify-between p-16" style={{ color: catalogConfig.coverTextColor || '#ffffff' }}>
+                      <div
+                          className="relative z-10 h-full flex flex-col justify-between p-16"
+                          style={{
+                              color: catalogConfig.coverTextColor || '#ffffff',
+                              fontFamily:
+                                  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans Arabic', 'Segoe UI Historic', 'Arabic UI Text', Tahoma, sans-serif",
+                          }}
+                      >
                            {/* Top Brand Mark */}
                            <div className="flex justify-between items-start pt-8" style={{ 
                                borderTopWidth: catalogConfig.showCoverLines !== false ? '4px' : '0',
                                borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                            }}>
                                 <div className="space-y-1">
-                                    <h3 className="text-sm font-bold tracking-[0.3em] uppercase opacity-80 min-h-[1.25rem]">
+                                    <h3 className="text-sm font-bold tracking-normal min-h-[1.25rem] opacity-100">
                                         {catalogConfig.coverHeaderText}
                                     </h3>
                                     {catalogConfig.showCoverLines !== false && (
                                         <div className="w-12 h-1 opacity-50" style={{ backgroundColor: catalogConfig.coverLineColor || 'white' }}></div>
                                     )}
                                 </div>
-                                <div className="text-right opacity-60 font-mono text-xs">
+                                <div className="text-right opacity-90 font-mono text-xs">
                                      {catalogConfig.coverYearText}
                                 </div>
                            </div>
@@ -8771,21 +8776,21 @@ function AppInner() {
                                <input 
                                   value={catalogConfig.collectionText || ''}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, collectionText: e.target.value})}
-                                  className="bg-transparent text-2xl md:text-3xl tracking-[0.2em] font-light uppercase w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
+                                  className="bg-transparent text-2xl md:text-3xl tracking-normal font-medium w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
                                   placeholder="COLLECTION NAME"
                               />
                                <textarea 
                                   value={catalogConfig.title}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
                                   rows={2}
-                                  className="bg-transparent text-6xl md:text-8xl font-black tracking-tight w-full outline-none placeholder-white/40 leading-[0.9] resize-none overflow-hidden"
+                                  className="bg-transparent text-6xl md:text-8xl font-black tracking-normal w-full outline-none placeholder-white/40 leading-[1.05] resize-none overflow-hidden"
                                   placeholder="TITLE"
                               />
                               <textarea
                                   value={catalogConfig.subtitle}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})}
                                   rows={2}
-                                  className="bg-transparent text-xl md:text-2xl font-light w-full outline-none placeholder-white/40 opacity-90 resize-none overflow-hidden leading-snug"
+                                  className="bg-transparent text-xl md:text-2xl font-normal w-full outline-none placeholder-white/40 opacity-100 resize-none overflow-hidden leading-snug"
                                   placeholder="Subtitle text goes here"
                               />
                           </div>
@@ -8797,11 +8802,11 @@ function AppInner() {
                                     borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                             }}>
                                 <div className="text-right space-y-1">
-                                    <h3 className="text-lg font-bold mb-2 tracking-wide uppercase">
+                                    <h3 className="text-lg font-bold mb-2 tracking-normal">
                                         {catalogConfig.coverContactTitle || tCombined('contact')}
                                     </h3>
-                                    <p className="text-sm font-light tracking-wide opacity-90">{catalogConfig.contactEmail}</p>
-                                    <p className="text-sm font-light tracking-wide opacity-90">{catalogConfig.website}</p>
+                                    <p className="text-sm font-normal tracking-normal opacity-100">{catalogConfig.contactEmail}</p>
+                                    <p className="text-sm font-normal tracking-normal opacity-100">{catalogConfig.website}</p>
                                 </div>
                             </div>
                           )}
@@ -8942,10 +8947,10 @@ function AppInner() {
                                 style={{ backgroundColor: catalogConfig.primaryColor }}
                              >
                                  <div className="text-center p-12 border-y-2 border-white/20 w-full max-w-2xl">
-                                     <h2 className="text-6xl font-bold text-white uppercase tracking-widest mb-4 drop-shadow-md">
+                                     <h2 className="text-6xl font-bold text-white tracking-normal mb-4 drop-shadow-md">
                                          {group.name}
                                      </h2>
-                                     <p className="text-white/70 text-lg uppercase tracking-wider">{catalogConfig.collectionText}</p>
+                                     <p className="text-white text-lg tracking-normal">{catalogConfig.collectionText}</p>
                                  </div>
                              </div>
                         )}
