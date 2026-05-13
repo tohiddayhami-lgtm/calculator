@@ -1116,7 +1116,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         ? (() => {
             const imgs: string[] = (cc.aboutUsImages || []).slice(0, 4).filter(Boolean);
             const rawParas: string[] = cc.aboutUsText.split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean);
-            const hasFarsi = /[؀-ۿ]/.test(cc.aboutUsText);
             const isFarsiPara = (p: string) => /[؀-ۿ]/.test(p);
 
             let prevWasFarsi: boolean | null = null;
@@ -1124,9 +1123,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 const farsi = isFarsiPara(para);
                 let divider = '';
                 if (prevWasFarsi !== null && farsi !== prevWasFarsi) {
-                    divider = hasFarsi
-                        ? `<div class="about-lang-divider"><span>${farsi ? 'فارسی' : 'English'}</span></div>`
-                        : '<div class="about-lang-divider"></div>';
+                    divider = '<div class="about-lang-divider"></div>';
                 }
                 prevWasFarsi = farsi;
                 return `${divider}<p class="about-para${farsi ? ' rtl' : ''}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`;
