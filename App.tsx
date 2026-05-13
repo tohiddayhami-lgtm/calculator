@@ -66,6 +66,7 @@ import {
   Supplier,
   SupplierAttachment,
   CatalogSection,
+  CustomPage,
   Buyer,
   SellerProfile,
   ArchivedInvoice,
@@ -442,6 +443,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     showCompanyPhotos: false,
     companyPhotos: [],
     sections: [],
+    customPages: [],
   };
 }
 
@@ -1163,6 +1165,27 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const customSectionsBeforeHtml = buildSectionsBlock('before');
     const customSectionsAfterHtml = buildSectionsBlock('after');
 
+    const customPagesAll: any[] = Array.isArray(cc.customPages) ? cc.customPages : [];
+    const customPagesHtml = customPagesAll
+        .filter((p: any) => p.active !== false)
+        .map((p: any) => {
+            const items: any[] = (p.items || []).filter((it: any) => it.active !== false);
+            const itemCardsHtml = items.length
+                ? `<div class="cp-cards">${items.map((it: any) => `
+                    <div class="cp-card">
+                        ${it.image ? `<div class="cp-card-img-wrap"><img src="${escapeAttr(it.image)}" alt="${escapeAttr(it.name || '')}" loading="lazy" /></div>` : ''}
+                        <div class="cp-card-name">${escapeHtml(it.name || '')}</div>
+                        ${it.description ? `<div class="cp-card-desc">${escapeHtml(it.description)}</div>` : ''}
+                    </div>`).join('')}</div>`
+                : '';
+            return `
+            <section class="cp-section">
+                <h2 class="cp-title">${escapeHtml(p.title || '')}</h2>
+                ${p.description ? `<p class="cp-desc">${escapeHtml(p.description)}</p>` : ''}
+                ${itemCardsHtml}
+            </section>`;
+        }).join('');
+
     const ctaHtml = formUrl
         ? `
             <section class="cta-section">
@@ -1288,7 +1311,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .about { padding: 24px 16px; }
         .about-grid { display: grid; gap: 24px; grid-template-columns: 1fr; }
         @media (min-width: 768px) { .about-grid { grid-template-columns: 1fr 1fr; } }
-        .about-text { font-size: 15px; line-height: 1.7; color: var(--text); }
+        .about-text { font-size: 15px; line-height: 1.7; color: var(--text); text-align: justify; hyphens: auto; }
         .about-images { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
         .about-images img { aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
 
@@ -1296,7 +1319,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .custom-page { margin: 40px 0; padding: 28px 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
         .custom-page + .custom-page { margin-top: 20px; }
         .custom-page-title { font-size: clamp(20px, 3.5vw, 32px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid; }
-        .custom-page-content { font-size: 16px; line-height: 1.75; color: var(--text); }
+        .custom-page-content { font-size: 16px; line-height: 1.75; color: var(--text); text-align: justify; hyphens: auto; }
         .custom-page .img-grid { display: grid; gap: 14px; margin-top: 24px; }
         .custom-page .img-grid-single { grid-template-columns: 1fr; }
         .custom-page .img-grid-2 { grid-template-columns: 1fr 1fr; }
@@ -1306,6 +1329,18 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             .custom-page .img-grid-2, .custom-page .img-grid-3 { grid-template-columns: 1fr; }
         }
         .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #f1f5f9; background: #fafafa; }
+
+        /* Custom Pages - item card grid (partners, certifications, etc.) */
+        .cp-section { margin: 40px 0; padding: 32px 24px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .cp-title { font-size: clamp(20px, 3.5vw, 30px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--heading); margin: 0 0 14px; padding-bottom: 14px; border-bottom: 3px solid var(--primary); }
+        .cp-desc { font-size: 15px; line-height: 1.8; color: var(--text); text-align: justify; hyphens: auto; margin: 0 0 24px; }
+        .cp-cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+        @media (max-width: 480px) { .cp-cards { grid-template-columns: 1fr 1fr; gap: 12px; } }
+        .cp-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 14px; display: flex; flex-direction: column; align-items: center; text-align: center; break-inside: avoid; }
+        .cp-card-img-wrap { width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; flex-shrink: 0; }
+        .cp-card-img-wrap img { max-width: 80px; max-height: 80px; object-fit: contain; }
+        .cp-card-name { font-size: 13px; font-weight: 700; color: var(--heading); line-height: 1.3; margin-bottom: 6px; }
+        .cp-card-desc { font-size: 11px; color: #64748b; line-height: 1.5; }
 
         /* Product grid */
         .products-section { padding: 24px 16px 48px; }
@@ -2192,6 +2227,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     </section>
 
     ${customSectionsAfterHtml}
+    ${customPagesHtml}
     ${ctaHtml}
 </main>
 
@@ -4473,40 +4509,10 @@ function AppInner() {
             showCompanyPhotos: project.data.catalogConfig.showCompanyPhotos || false,
             companyPhotos: project.data.catalogConfig.companyPhotos || [],
             website: project.data.catalogConfig.website || '',
-            sections: (() => {
-                const rawSections: any[] = project.data.catalogConfig.sections || [];
-                // Keep only proper CatalogSection objects (have content or position)
-                const realSections = rawSections.filter((s: any) =>
-                    s.content !== undefined || s.position !== undefined
-                );
-                // Convert customPages (AI-added format with type + items) to CatalogSection
-                const rawCustomPages: any[] = (project.data.catalogConfig as any).customPages || [];
-                const converted: CatalogSection[] = rawCustomPages
-                    .filter((p: any) => p.active !== false)
-                    .map((p: any, i: number): CatalogSection => {
-                        const items: any[] = (p.items || []).filter((it: any) => it.active !== false);
-                        const itemsText = items
-                            .map((it: any) => it.name ? `• ${it.name}${it.description ? ': ' + it.description : ''}` : '')
-                            .filter(Boolean)
-                            .join('\n');
-                        const content = [p.description, itemsText].filter(Boolean).join('\n\n');
-                        const images = items.filter((it: any) => it.image).map((it: any) => it.image as string);
-                        const imageLayout: CatalogSection['imageLayout'] =
-                            images.length === 2 ? 'two-column' :
-                            images.length === 3 ? 'three-column' :
-                            images.length > 3 ? 'grid' : 'single';
-                        return {
-                            id: Date.now() + i,
-                            title: p.title || 'Page',
-                            content,
-                            alignment: 'left',
-                            images,
-                            imageLayout,
-                            position: 'after',
-                        };
-                    });
-                return [...realSections, ...converted];
-            })()
+            sections: (project.data.catalogConfig.sections || []).filter(
+                (s: any) => s.content !== undefined || s.position !== undefined
+            ),
+            customPages: ((project.data.catalogConfig as any).customPages || []) as CustomPage[]
         });
     }
 

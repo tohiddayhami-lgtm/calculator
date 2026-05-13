@@ -155,6 +155,23 @@ export interface SocialLink {
   handle: string;
 }
 
+export interface CustomPageItem {
+  id: number | string;
+  name: string;
+  description?: string;
+  image?: string;
+  active?: boolean;
+}
+
+export interface CustomPage {
+  id: string;
+  type?: string;
+  title: string;
+  description?: string;
+  active?: boolean;
+  items?: CustomPageItem[];
+}
+
 // New Interface for Custom Catalog Sections
 export interface CatalogSection {
   id: number;
@@ -255,6 +272,7 @@ export interface CatalogConfig {
   
   // Dynamic Sections
   sections?: CatalogSection[]; // New: Unlimited custom sections
+  customPages?: CustomPage[]; // AI-editable structured pages (partners, certifications, etc.)
 }
 
 /** Formal packing list document (replaces legacy price list). */
