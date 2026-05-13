@@ -417,6 +417,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     logoPosition: 'top-left',
     logoStyle: 'plain',
     coverTextColor: '#ffffff',
+    coverTitleFontSizePx: 56,
     backCoverImage: '',
     backCoverOverlayOpacity: 60,
     showQrCode: false,
@@ -945,6 +946,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const bg = cc.backgroundColor || '#ffffff';
     const cover = cc.coverColor || '#0f172a';
     const coverText = cc.coverTextColor || '#ffffff';
+    const coverTitlePx = Math.min(120, Math.max(20, Number(cc.coverTitleFontSizePx) || 56));
+    const coverTitleClampMin = Math.max(16, Math.round(coverTitlePx * 0.45));
     const baseUnit = cc.baseUnit || tCombined('pcs') || 'pcs';
     const showPrices = cc.showPrices !== false;
     const priceBasis = cc.priceBasis || 'unit';
@@ -1333,7 +1336,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.65)); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover-inner { position: relative; z-index: 2; max-width: 720px; margin: 0 auto; }
         .logo { max-height: 80px; margin: 0 auto 24px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
-        .cover h1 { font-size: clamp(28px, 6vw, 56px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 12px; }
+        .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 12px; }
         .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 0.9; font-weight: 300; letter-spacing: 0.05em; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
         .cover .collection { font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; opacity: 0.7; margin-bottom: 16px; }
 
@@ -4531,6 +4534,10 @@ function AppInner() {
             logoPosition: project.data.catalogConfig.logoPosition || 'top-left',
             logoStyle: project.data.catalogConfig.logoStyle || 'plain',
             coverTextColor: project.data.catalogConfig.coverTextColor || '#ffffff',
+            coverTitleFontSizePx:
+                project.data.catalogConfig.coverTitleFontSizePx !== undefined
+                    ? project.data.catalogConfig.coverTitleFontSizePx
+                    : 56,
             backCoverImage: project.data.catalogConfig.backCoverImage || '',
             backCoverOverlayOpacity: project.data.catalogConfig.backCoverOverlayOpacity !== undefined ? project.data.catalogConfig.backCoverOverlayOpacity : 60,
             showQrCode: project.data.catalogConfig.showQrCode || false,
@@ -7821,6 +7828,27 @@ function AppInner() {
                                    <input type="text" value={catalogConfig.title} onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none" placeholder="Main Title"/>
                               </div>
                               <div className="space-y-1">
+                                  <div className="flex justify-between">
+                                      <label className="text-[10px] text-slate-400 font-medium">Title font size</label>
+                                      <span className="text-[10px] text-slate-600 tabular-nums">
+                                          {catalogConfig.coverTitleFontSizePx ?? 56}px
+                                      </span>
+                                  </div>
+                                  <input
+                                      type="range"
+                                      min={20}
+                                      max={120}
+                                      value={catalogConfig.coverTitleFontSizePx ?? 56}
+                                      onChange={(e) =>
+                                          setCatalogConfig({
+                                              ...catalogConfig,
+                                              coverTitleFontSizePx: parseInt(e.target.value, 10),
+                                          })
+                                      }
+                                      className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                  />
+                              </div>
+                              <div className="space-y-1">
                                    <label className="text-[10px] text-slate-400 font-medium">Subtitle</label>
                                    <input type="text" value={catalogConfig.subtitle} onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none" placeholder="Subtitle" />
                               </div>
@@ -8769,7 +8797,10 @@ function AppInner() {
                                   value={catalogConfig.title}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
                                   rows={2}
-                                  className="bg-transparent text-6xl md:text-8xl font-black tracking-tight w-full outline-none placeholder-white/40 leading-[0.9] resize-none overflow-hidden"
+                                  className="bg-transparent font-black tracking-tight w-full outline-none placeholder-white/40 leading-[0.9] resize-none overflow-hidden"
+                                  style={{
+                                      fontSize: `clamp(${Math.max(16, Math.round((catalogConfig.coverTitleFontSizePx ?? 56) * 0.45))}px, 8vw, ${catalogConfig.coverTitleFontSizePx ?? 56}px)`,
+                                  }}
                                   placeholder="TITLE"
                               />
                               <textarea

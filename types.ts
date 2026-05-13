@@ -240,6 +240,8 @@ export interface CatalogConfig {
 
   // Cover typography color (text on the cover)
   coverTextColor?: string;
+  /** Main cover title (h1) max font size in px; HTML uses clamp() down to ~45% for small viewports */
+  coverTitleFontSizePx?: number;
 
   // Back Cover background image + overlay
   backCoverImage?: string;
