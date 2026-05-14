@@ -1629,6 +1629,153 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+/** Word opens this HTML as an editable document (Save as .doc / Open in Word). */
+function buildContractWordHtml(c: ContractDef): string {
+  const rtlFont = c.rtlLanguage === 'fa'
+    ? 'Vazirmatn,Tahoma,Segoe UI,sans-serif'
+    : 'Noto Naskh Arabic,Tahoma,Segoe UI,sans-serif';
+  const eff = c.effectiveDate
+    ? new Date(c.effectiveDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
+  const logoSrc = c.logoUrl && safeCatalogMediaUrl(c.logoUrl) ? escapeAttr(c.logoUrl) : '';
+
+  const partiesRows = c.parties
+    .map(
+      (party, pi) => `
+    <tr>
+      <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #cbd5e1;font-size:11pt;">
+        <div style="font-weight:bold;margin-bottom:4px">${pi + 1}. ${escapeHtml(party.labelEn)}:</div>
+        ${party.companyEn ? `<div>${escapeHtml(party.companyEn)}</div>` : ''}
+        ${party.regNo ? `<div>Reg. No.: ${escapeHtml(party.regNo)}</div>` : ''}
+        ${party.country ? `<div>Country: ${escapeHtml(party.country)}</div>` : ''}
+        ${party.repNameEn ? `<div style="margin-top:4px">Represented by: ${escapeHtml(party.repNameEn)}</div>` : ''}
+        ${party.repTitleEn ? `<div>Capacity: ${escapeHtml(party.repTitleEn)}</div>` : ''}
+        ${party.aliasEn ? `<div style="margin-top:4px;color:#64748b;font-style:italic">(hereinafter &quot;${escapeHtml(party.aliasEn)}&quot;)</div>` : ''}
+      </td>
+      <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #cbd5e1;font-size:11pt;direction:rtl;text-align:right;font-family:${rtlFont}">
+        <div style="font-weight:bold;margin-bottom:4px">${pi + 1}. ${escapeHtml(party.labelRtl)}:</div>
+        ${party.companyRtl ? `<div>${escapeHtml(party.companyRtl)}</div>` : ''}
+        ${party.regNo ? `<div>شماره ثبت: ${escapeHtml(party.regNo)}</div>` : ''}
+        ${party.country ? `<div>کشور: ${escapeHtml(party.country)}</div>` : ''}
+        ${party.repNameRtl ? `<div style="margin-top:4px">با نمایندگی: ${escapeHtml(party.repNameRtl)}</div>` : ''}
+        ${party.repTitleRtl ? `<div>به عنوان: ${escapeHtml(party.repTitleRtl)}</div>` : ''}
+        ${party.aliasRtl ? `<div style="margin-top:4px;color:#64748b;font-style:italic">(که از این پس «${escapeHtml(party.aliasRtl)}» نامیده می‌شود)</div>` : ''}
+      </td>
+    </tr>`,
+    )
+    .join('');
+
+  const clauseBlocks = c.clauses
+    .map(cl => {
+      const head =
+        cl.titleEn || cl.titleRtl
+          ? `<tr style="background:#f1f5f9;">
+        <th style="width:50%;padding:6px 12px;font-size:11pt;border:1px solid #cbd5e1;text-align:left">${escapeHtml(cl.titleEn)}</th>
+        <th style="width:50%;padding:6px 12px;font-size:11pt;border:1px solid #cbd5e1;text-align:right;direction:rtl;font-family:${rtlFont}">${escapeHtml(cl.titleRtl)}</th>
+      </tr>`
+          : '';
+      return `<table style="width:100%;border-collapse:collapse;margin-bottom:0">${head ? `<thead>${head}</thead>` : ''}<tbody><tr>
+        <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #e2e8f0;font-size:11pt;line-height:1.65;white-space:pre-wrap">${escapeHtml(cl.contentEn).replace(/\n/g, '<br/>')}</td>
+        <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #e2e8f0;font-size:11pt;line-height:1.65;direction:rtl;text-align:right;font-family:${rtlFont};white-space:pre-wrap">${escapeHtml(cl.contentRtl).replace(/\n/g, '<br/>')}</td>
+      </tr></tbody></table>`;
+    })
+    .join('');
+
+  let scheduleHtml = '';
+  if (c.scheduleRows.length > 0) {
+    const rows = c.scheduleRows
+      .map(
+        row => `<tr>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px">${escapeHtml(row.tierEn)}${row.tierRtl ? `<div dir="rtl" style="text-align:right;font-size:10pt;color:#64748b;font-family:${rtlFont}">${escapeHtml(row.tierRtl)}</div>` : ''}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${escapeHtml(row.buildFee)}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${escapeHtml(row.annualFee)}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${escapeHtml(row.interpretation)}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${row.selected ? '☑' : '☐'}</td>
+      </tr>`,
+      )
+      .join('');
+    const addRows =
+      c.addOns.length > 0
+        ? c.addOns
+            .map(
+              ao => `<tr>
+          <td style="border:1px solid #e2e8f0;padding:5px 8px" colspan="2"><b>${escapeHtml(ao.nameEn)}</b>${ao.nameRtl ? ` / <span dir="rtl" style="font-family:${rtlFont}">${escapeHtml(ao.nameRtl)}</span>` : ''}${ao.descEn ? `<div style="font-size:10pt;color:#64748b">${escapeHtml(ao.descEn)}</div>` : ''}${ao.descRtl ? `<div dir="rtl" style="font-size:10pt;color:#64748b;font-family:${rtlFont}">${escapeHtml(ao.descRtl)}</div>` : ''}</td>
+          <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:center" colspan="2">${escapeHtml(ao.price)}</td>
+          <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:center">${ao.selected ? '☑' : '☐'}</td>
+        </tr>`,
+            )
+            .join('')
+        : '';
+    scheduleHtml = `<h2 style="font-size:13pt;margin:16px 0 8px">SCHEDULE A — FEES / پیوست الف</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:11pt">
+        <thead><tr style="background:#f1f5f9">
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:left">Tier</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Build (OMR)</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Annual (OMR)</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Interp.</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Sel.</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${addRows ? `<table style="width:100%;border-collapse:collapse;font-size:11pt;margin-top:8px"><tbody>${addRows}</tbody></table>` : ''}`;
+  }
+
+  const defaultSigParties: ContractParty[] = [
+    { id: 'sp', labelEn: 'SERVICE PROVIDER', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: '', aliasRtl: '' },
+    { id: 'cl', labelEn: 'CLIENT', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: '', aliasRtl: '' },
+  ];
+  const sigParties = c.parties.length > 0 ? c.parties : defaultSigParties;
+  const sigCells = sigParties
+    .map(
+      (party, pi, arr) => `
+    <td style="width:${100 / arr.length}%;padding:14px;vertical-align:top;border:1px solid #cbd5e1;font-size:11pt">
+      <div style="font-weight:bold;margin-bottom:6px">FOR ${escapeHtml(party.labelEn).toUpperCase()}</div>
+      ${party.companyEn ? `<div>${escapeHtml(party.companyEn)}</div>` : ''}
+      ${party.repNameEn ? `<div>Name: ${escapeHtml(party.repNameEn)}</div>` : ''}
+      ${party.repTitleEn ? `<div>Title: ${escapeHtml(party.repTitleEn)}</div>` : ''}
+      <div style="margin-top:20px;font-size:10pt;color:#475569">Signature:</div>
+      <div style="border-bottom:1px solid #94a3b8;margin-top:28px;width:85%"></div>
+      <div style="margin-top:8px;font-size:10pt;color:#475569">Date: ________________</div>
+    </td>`,
+    )
+    .join('');
+
+  return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="en">
+<head><meta charset="utf-8"><title>${escapeHtml(c.titleEn)}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6}</style>
+</head><body>
+<div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:12px">
+  ${logoSrc ? `<img src="${logoSrc}" alt="" style="max-height:48px;margin-bottom:8px"/>` : ''}
+  <div style="font-size:13pt;font-weight:bold">${escapeHtml(c.titleEn)}</div>
+  ${c.titleRtl ? `<div style="font-size:12pt;font-weight:600;color:#334155" dir="rtl">${escapeHtml(c.titleRtl)}</div>` : ''}
+  ${c.subtitleEn ? `<div style="font-size:10pt;font-style:italic;color:#64748b;margin-top:4px">${escapeHtml(c.subtitleEn)}</div>` : ''}
+  ${c.subtitleRtl ? `<div style="font-size:10pt;font-style:italic;color:#64748b" dir="rtl">${escapeHtml(c.subtitleRtl)}</div>` : ''}
+  <div style="font-size:9pt;color:#64748b;margin-top:8px">
+    ${c.refNo ? `Ref. ${escapeHtml(c.refNo)}` : ''}${c.refNo && eff ? ' | ' : ''}${eff ? `Date: ${escapeHtml(eff)}` : ''}
+  </div>
+</div>
+${c.parties.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr><th colspan="2" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">THE PARTIES / طرفین قرارداد</th></tr></thead><tbody>${partiesRows}</tbody></table>` : ''}
+${clauseBlocks}
+${scheduleHtml}
+<table style="width:100%;border-collapse:collapse;margin-top:20px"><thead><tr><th colspan="${sigParties.length}" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">IN WITNESS WHEROF / امضای طرفین</th></tr></thead><tbody><tr>${sigCells}</tr></tbody></table>
+<p style="text-align:center;font-size:9pt;color:#94a3b8;margin-top:16px">${escapeHtml(c.titleEn)}${c.refNo ? ` | Ref. ${escapeHtml(c.refNo)}` : ''}</p>
+</body></html>`;
+}
+
+function downloadContractAsWord(c: ContractDef) {
+  const html = buildContractWordHtml(c);
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const safe = String(c.refNo || c.id).replace(/[^\w.-]+/g, '_') || 'contract';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safe}.doc`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Allow only http(s) URLs for embedded catalog media (blocks javascript:, data:, etc.). */
 const safeCatalogMediaUrl = (raw: string): string | null => {
     const s = raw.trim();
@@ -14578,22 +14725,65 @@ function AppInner() {
           <div className="flex-1" />
           <button onClick={() => { window.print(); }}
             className="flex items-center gap-2 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700">
-            <Printer className="w-4 h-4" /> Print / Export PDF
+            <Printer className="w-4 h-4" /> Print / PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadContractAsWord(c)}
+            className="flex items-center gap-2 border border-slate-300 bg-white text-slate-800 rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            title="Download as Word (.doc). Open in Microsoft Word or LibreOffice.">
+            <FileText className="w-4 h-4" /> Word (.doc)
           </button>
         </div>
 
         {/* Contract Document */}
         <style>{`
           @media print {
-            body > *:not(#contract-preview-root) { display: none !important; }
-            #contract-preview-root { display: block !important; }
-            .print\\:hidden { display: none !important; }
+            html, body {
+              height: auto !important;
+              overflow: visible !important;
+              background: #fff !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            /* React mounts under #root — do not use body>child (hides entire app and preview). */
+            body * {
+              visibility: hidden;
+            }
+            #contract-preview-root,
+            #contract-preview-root * {
+              visibility: visible;
+            }
+            #contract-preview-root {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              max-width: 100%;
+              margin: 0 !important;
+              box-shadow: none !important;
+              border-radius: 0 !important;
+              overflow: visible !important;
+              background: #fff !important;
+            }
+            .print\\:hidden {
+              display: none !important;
+              visibility: hidden !important;
+            }
             @page { size: A4; margin: 15mm; }
           }
         `}</style>
         <div id="contract-preview-root"
-          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden"
-          style={{ maxWidth: '210mm', fontFamily: 'Georgia, "Times New Roman", serif', fontSize: '9.5pt', lineHeight: '1.65', color: '#1e293b' }}>
+          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none"
+          style={{
+            maxWidth: '210mm',
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: '9.5pt',
+            lineHeight: '1.65',
+            color: '#1e293b',
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          }}>
 
           {/* Header */}
           <div className="border-b-2 border-slate-800 p-6 pb-4">
