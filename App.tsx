@@ -87,6 +87,16 @@ import {
   FormSubmission,
 } from './types';
 
+function formFieldLtrTitle(f: Pick<FormField, 'label' | 'labelLtr'>): string {
+  return String(f.labelLtr ?? f.label ?? '').trim();
+}
+function formFieldRtlTitle(f: Pick<FormField, 'labelRtl'>): string {
+  return String(f.labelRtl ?? '').trim();
+}
+function formFieldIsBilingual(f: FormField): boolean {
+  return formFieldRtlTitle(f).length > 0 && formFieldLtrTitle(f).length > 0;
+}
+
 /** Public custom forms (?form=KEY): A4 document look + print rules (mounts before the main App style block). */
 const PUBLIC_FORM_DOCUMENT_CSS = `
 #public-form-root.public-form-page {
@@ -251,14 +261,97 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   object-fit: contain;
   background: #fff;
 }
+.public-form-doc .pf-bilingual-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+.public-form-doc .pf-bilingual-ltr {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.public-form-doc .pf-bilingual-rtl {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  direction: rtl;
+  unicode-bidi: isolate;
+}
+.public-form-doc .pf-section .pf-bilingual-row h3 {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.public-form-doc .pf-label-row .pf-label {
+  margin-bottom: 0;
+}
 .public-form-doc .pf-drop {
   border: 2px dashed #cbd5e1;
   border-radius: 6px;
-  padding: 18px 14px;
-  text-align: center;
+  padding: 14px 14px 16px;
   background: #fff;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.public-form-doc .pf-drop .pf-bilingual-row .pf-label--in-drop {
+  font-size: 8pt;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+  font-weight: 700;
+  margin-bottom: 0;
+  line-height: 1.35;
+}
+.public-form-doc .pf-drop-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0 2px;
+}
+.public-form-doc .pf-drop-icon {
+  font-size: 28px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 36px;
+  user-select: none;
+}
+.public-form-doc .pf-drop-line-ltr {
+  font-weight: 600;
+  font-size: 9.5pt;
+  color: #334155;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.public-form-doc .pf-drop-line-rtl {
+  font-size: 9pt;
+  color: #475569;
+  direction: rtl;
+  unicode-bidi: isolate;
+}
+.public-form-doc .pf-drop-hint-row {
+  width: 100%;
+  margin-top: 2px;
+}
+.public-form-doc .pf-drop-hint-row .pf-section-note {
+  margin: 0;
 }
 .public-form-doc .pf-drop:hover {
   border-color: #94a3b8;
@@ -12607,52 +12700,122 @@ function AppInner() {
       const setVal = (v: string) => setPublicFormData((prev) => ({ ...prev, [field.id]: v }));
       const val = publicFormData[field.id] || '';
       const reqMark = field.required ? <span className="text-red-600"> *</span> : null;
+      const bi = formFieldIsBilingual(field);
+      const ltrT = formFieldLtrTitle(field);
+      const rtlT = formFieldRtlTitle(field);
+
+      const labelRow = (htmlFor?: string) =>
+        bi ? (
+          <div className="pf-bilingual-row pf-label-row" style={{ marginBottom: 6 }}>
+            {htmlFor ? (
+              <label className="pf-label pf-bilingual-ltr" htmlFor={htmlFor}>
+                {ltrT}
+                {reqMark}
+              </label>
+            ) : (
+              <span className="pf-label pf-bilingual-ltr">
+                {ltrT}
+                {reqMark}
+              </span>
+            )}
+            <span className="pf-label pf-bilingual-rtl">
+              {rtlT}
+            </span>
+          </div>
+        ) : htmlFor ? (
+          <label className="pf-label" htmlFor={htmlFor}>
+            {field.label}
+            {reqMark}
+          </label>
+        ) : (
+          <span className="pf-label">
+            {field.label}
+            {reqMark}
+          </span>
+        );
 
       if (field.type === 'section_title') {
+        const subL = String(field.placeholderLtr ?? '').trim();
+        const subR = String(field.placeholderRtl ?? '').trim();
+        const subSingle = String(field.placeholder ?? '').trim();
         return (
           <div key={field.id} className="pf-section">
-            <h3>{field.label}</h3>
-            {field.placeholder ? <p className="pf-section-note">{field.placeholder}</p> : null}
+            {bi ? (
+              <div className="pf-bilingual-row">
+                <h3 className="pf-bilingual-ltr">{ltrT}</h3>
+                <h3 className="pf-bilingual-rtl">{rtlT}</h3>
+              </div>
+            ) : (
+              <h3>{field.label}</h3>
+            )}
+            {subL && subR ? (
+              <div className="pf-bilingual-row" style={{ marginTop: 6 }}>
+                <p className="pf-section-note pf-bilingual-ltr">{subL}</p>
+                <p className="pf-section-note pf-bilingual-rtl">{subR}</p>
+              </div>
+            ) : subSingle ? (
+              <p className="pf-section-note">{subSingle}</p>
+            ) : null}
           </div>
         );
       }
 
       if (field.type === 'display_image') {
+        const capL = String(field.placeholderLtr ?? '').trim();
+        const capR = String(field.placeholderRtl ?? '').trim();
+        const capSingle = String(field.placeholder ?? '').trim();
         return (
           <div key={field.id} className="pf-field">
-            <span className="pf-label">
-              {field.label}
-              {reqMark}
-            </span>
+            {bi ? (
+              <div className="pf-bilingual-row pf-label-row" style={{ marginBottom: 6 }}>
+                <span className="pf-label pf-bilingual-ltr">
+                  {ltrT}
+                  {reqMark}
+                </span>
+                <span className="pf-label pf-bilingual-rtl">
+                  {rtlT}
+                </span>
+              </div>
+            ) : (
+              <span className="pf-label">
+                {field.label}
+                {reqMark}
+              </span>
+            )}
             {field.imageUrl ? (
               <img src={field.imageUrl} alt="" className="pf-img-display" />
             ) : (
               <p className="pf-section-note" style={{ marginTop: 4 }}>No image configured.</p>
             )}
-            {field.placeholder ? <p className="pf-section-note" style={{ marginTop: 8 }}>{field.placeholder}</p> : null}
+            {capL && capR ? (
+              <div className="pf-bilingual-row" style={{ marginTop: 8 }}>
+                <p className="pf-section-note pf-bilingual-ltr">{capL}</p>
+                <p className="pf-section-note pf-bilingual-rtl">{capR}</p>
+              </div>
+            ) : capSingle ? (
+              <p className="pf-section-note" style={{ marginTop: 8 }}>{capSingle}</p>
+            ) : null}
           </div>
         );
       }
 
-      const labelEl = (
-        <label className="pf-label" htmlFor={`pf-${field.id}`}>
-          {field.label}
-          {reqMark}
-        </label>
-      );
+      const phLtr = String(field.placeholderLtr ?? '').trim();
+      const phRtl = String(field.placeholderRtl ?? '').trim();
+      const phSingle = field.placeholder || '';
 
       if (field.type === 'textarea') {
         return (
           <div key={field.id} className="pf-field">
-            {labelEl}
+            {labelRow(`pf-${field.id}`)}
             <textarea
               id={`pf-${field.id}`}
               className="pf-textarea"
               rows={4}
-              placeholder={field.placeholder || ''}
+              placeholder={bi ? phLtr || phSingle : phSingle}
               value={val}
               onChange={(e) => setVal(e.target.value)}
             />
+            {bi && phRtl ? <p className="pf-section-note pf-bilingual-rtl" style={{ marginTop: 6 }}>{phRtl}</p> : null}
           </div>
         );
       }
@@ -12660,7 +12823,7 @@ function AppInner() {
       if (field.type === 'select') {
         return (
           <div key={field.id} className="pf-field">
-            {labelEl}
+            {labelRow(`pf-${field.id}`)}
             <select id={`pf-${field.id}`} className="pf-select" value={val} onChange={(e) => setVal(e.target.value)}>
               <option value="">—</option>
               {(field.options || []).map((opt) => (
@@ -12669,6 +12832,7 @@ function AppInner() {
                 </option>
               ))}
             </select>
+            {bi && phRtl ? <p className="pf-section-note pf-bilingual-rtl" style={{ marginTop: 6 }}>{phRtl}</p> : null}
           </div>
         );
       }
@@ -12676,10 +12840,7 @@ function AppInner() {
       if (field.type === 'multiselect') {
         return (
           <div key={field.id} className="pf-field pf-check">
-            <span className="pf-label">
-              {field.label}
-              {reqMark}
-            </span>
+            {labelRow()}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {(field.options || []).map((opt) => {
                 const checked = (publicFormMulti[field.id] || []).includes(opt);
@@ -12706,16 +12867,41 @@ function AppInner() {
       }
 
       if (field.type === 'checkbox') {
+        const hintL = phLtr || (bi ? '' : phSingle);
+        const hintR = phRtl;
         return (
           <div key={field.id} className="pf-field pf-check">
-            <label>
-              <input type="checkbox" checked={!!val} onChange={(e) => setVal(e.target.checked ? 'true' : '')} />
-              <span style={{ fontSize: '9.5pt', fontWeight: 600, color: '#0f172a' }}>
-                {field.label}
-                {reqMark}
-              </span>
-            </label>
-            {field.placeholder ? <p className="pf-section-note" style={{ marginTop: 8, marginLeft: 24 }}>{field.placeholder}</p> : null}
+            {bi ? (
+              <div className="pf-bilingual-row" style={{ marginBottom: 8, alignItems: 'center' }}>
+                <label className="pf-bilingual-ltr" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!val} onChange={(e) => setVal(e.target.checked ? 'true' : '')} />
+                  <span style={{ fontSize: '9.5pt', fontWeight: 600, color: '#0f172a' }}>
+                    {ltrT}
+                    {reqMark}
+                  </span>
+                </label>
+                <span style={{ fontSize: '9.5pt', fontWeight: 600, color: '#0f172a', textAlign: 'right', direction: 'rtl' }} className="pf-bilingual-rtl">
+                  {rtlT}
+                </span>
+              </div>
+            ) : (
+              <>
+                <label>
+                  <input type="checkbox" checked={!!val} onChange={(e) => setVal(e.target.checked ? 'true' : '')} />
+                  <span style={{ fontSize: '9.5pt', fontWeight: 600, color: '#0f172a' }}>
+                    {field.label}
+                    {reqMark}
+                  </span>
+                </label>
+                {phSingle ? <p className="pf-section-note" style={{ marginTop: 8, marginLeft: 24 }}>{phSingle}</p> : null}
+              </>
+            )}
+            {bi && (hintL || hintR) ? (
+              <div className="pf-bilingual-row">
+                {hintL ? <p className="pf-section-note pf-bilingual-ltr" style={{ marginLeft: bi ? 28 : 0 }}>{hintL}</p> : <span className="pf-bilingual-ltr" />}
+                {hintR ? <p className="pf-section-note pf-bilingual-rtl">{hintR}</p> : null}
+              </div>
+            ) : null}
           </div>
         );
       }
@@ -12725,10 +12911,7 @@ function AppInner() {
         const cur = publicFormRatings[field.id] || 0;
         return (
           <div key={field.id} className="pf-field">
-            <span className="pf-label">
-              {field.label}
-              {reqMark}
-            </span>
+            {labelRow()}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
               {Array.from({ length: maxR }, (_, i) => i + 1).map((star) => (
                 <button
@@ -12756,27 +12939,65 @@ function AppInner() {
         const fileObj = publicFormFiles[field.id];
         const iconMap: Record<string, string> = { image_upload: '🖼', video_upload: '🎬', file_upload: '📄' };
         const maxMb = field.maxSizeMb || (field.type === 'video_upload' ? 50 : 10);
+        const hintClickL = String(field.uploadHintLtr ?? '').trim() || 'Click to upload';
+        const hintClickR =
+          String(field.uploadHintRtl ?? '').trim() || (bi ? 'برای بارگذاری کلیک کنید' : '');
+        const specL = phLtr || phSingle;
+        const specR = phRtl;
+
         return (
           <div key={field.id} className="pf-field">
-            <span className="pf-label">
-              {field.label}
-              {reqMark}
-            </span>
+            {!bi ? (
+              <span className="pf-label">
+                {field.label}
+                {reqMark}
+              </span>
+            ) : null}
             <label className={`pf-drop ${fileObj ? 'pf-drop--ok' : ''}`}>
-              <span style={{ fontSize: '26px', lineHeight: 1 }}>{iconMap[field.type]}</span>
-              {fileObj ? (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 600, fontSize: '9.5pt', color: '#047857' }}>{fileObj.name}</div>
-                  <div className="pf-section-note" style={{ marginTop: 4 }}>
-                    {(fileObj.size / 1024 / 1024).toFixed(2)} MB
+              {bi ? (
+                <div className="pf-bilingual-row">
+                  <span className="pf-label pf-bilingual-ltr pf-label--in-drop">
+                    {ltrT}
+                    {reqMark}
+                  </span>
+                  <span className="pf-label pf-bilingual-rtl pf-label--in-drop">
+                    {rtlT}
+                  </span>
+                </div>
+              ) : null}
+              <div className="pf-drop-mid">
+                <div className="pf-drop-icon" aria-hidden>{iconMap[field.type]}</div>
+                {fileObj ? (
+                  <div style={{ textAlign: 'center', width: '100%' }}>
+                    <div style={{ fontWeight: 600, fontSize: '9.5pt', color: '#047857' }}>{fileObj.name}</div>
+                    <div className="pf-section-note" style={{ marginTop: 4 }}>
+                      {(fileObj.size / 1024 / 1024).toFixed(2)} MB
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div style={{ marginTop: 6 }}>
-                  <div style={{ fontWeight: 600, fontSize: '9.5pt', color: '#334155' }}>Click to upload</div>
-                  <div className="pf-section-note" style={{ marginTop: 4 }}>{field.placeholder || `Max ${maxMb} MB`}</div>
-                </div>
-              )}
+                ) : bi ? (
+                  <>
+                    <div className="pf-bilingual-row" style={{ alignItems: 'center' }}>
+                      <span className="pf-drop-line-ltr pf-bilingual-ltr">{hintClickL}</span>
+                      <span className="pf-drop-line-rtl pf-bilingual-rtl">{hintClickR}</span>
+                    </div>
+                    {specL && specR ? (
+                      <div className="pf-bilingual-row pf-drop-hint-row">
+                        <p className="pf-section-note pf-bilingual-ltr">{specL}</p>
+                        <p className="pf-section-note pf-bilingual-rtl">{specR}</p>
+                      </div>
+                    ) : specL || specR ? (
+                      <p className="pf-section-note" style={{ textAlign: 'center' }}>{specL || specR}</p>
+                    ) : (
+                      <p className="pf-section-note" style={{ textAlign: 'center' }}>{`Max ${maxMb} MB`}</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="pf-drop-line-ltr">Click to upload</div>
+                    <div className="pf-section-note">{phSingle || `Max ${maxMb} MB`}</div>
+                  </>
+                )}
+              </div>
               <input
                 type="file"
                 accept={field.accept}
@@ -12799,15 +13020,16 @@ function AppInner() {
       const inputType = field.type === 'phone' ? 'tel' : field.type;
       return (
         <div key={field.id} className="pf-field">
-          {labelEl}
+          {labelRow(`pf-${field.id}`)}
           <input
             id={`pf-${field.id}`}
             type={inputType}
             className="pf-input"
-            placeholder={field.placeholder || ''}
+            placeholder={bi ? phLtr || phSingle : phSingle}
             value={val}
             onChange={(e) => setVal(e.target.value)}
           />
+          {bi && phRtl ? <p className="pf-section-note pf-bilingual-rtl" style={{ marginTop: 6 }}>{phRtl}</p> : null}
         </div>
       );
     };
@@ -12863,15 +13085,17 @@ function AppInner() {
   };
 
   const SAMPLE_FORM_JSON = {
-    _schema_version: '1.1',
+    _schema_version: '1.2',
     _about:
       'CloudExport Pro — custom form JSON. The live page is an A4-style document (like the proforma invoice): white page, company block + logo on the right, thin accent stripe from headerBgColor, optional formNumber, then fields in light bordered cards.',
     _for_ai_models:
-      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id (keep ids or replace with new slugs). Use section_title to group blocks. For customer photos use image_upload with accept "image/*". For PDFs/spreadsheets use file_upload with accept like ".pdf,.doc,.docx" and maxSizeMb. display_image = show a fixed image URL (catalog/spec); no upload. video_upload for short clips.',
+      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload. display_image = fixed image URL.',
     _field_types:
       'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
     _root_keys:
       'name (string), formNumber (optional string, shown as “Form no.”), description, companyName, headerSubtitle, logoUrl (https image), headerBgColor (hex, accent stripe), headerTextColor (hex, kept for presets/export), fields (array)',
+    _bilingual_layout:
+      'When labelRtl is set and label (or labelLtr) has text, the form shows English/LTR on the LEFT and RTL (Farsi, Arabic, …) on the RIGHT for titles and helper rows. Keys: labelLtr (optional), labelRtl, placeholderLtr, placeholderRtl, uploadHintLtr, uploadHintRtl (file fields).',
     name: 'Sample — Inquiry with photos & files',
     formNumber: 'RFQ-2026-SAMPLE',
     description:
@@ -12938,19 +13162,31 @@ function AppInner() {
         maxSizeMb: 8,
       },
       {
-        id: 'sec_documents',
+        id: 'sec_attachments_bi',
         type: 'section_title',
-        label: 'Customer uploads — documents',
-        placeholder: 'PDF, Word, Excel, or combined photo+PDF accept strings.',
+        label: 'Attachments',
+        labelRtl: 'پیوست‌ها',
+        placeholderLtr: 'Optional documents — catalog, proforma, or datasheet.',
+        placeholderRtl: 'مدارک اختیاری — کاتالوگ، پیش‌فاکتور یا دیتاشیت.',
       },
       {
-        id: 'up_spec_pdf',
+        id: 'up_proforma_catalog_bi',
         type: 'file_upload',
-        label: 'Specification / packing list (PDF)',
-        placeholder: 'PDF preferred — max 15 MB',
+        label: 'PROFORMA / CATALOG / DATASHEET',
+        labelRtl: 'پیش‌فاکتور / کاتالوگ / دیتاشیت',
+        placeholderLtr: 'PDF, Word, or Excel — max 15 MB',
+        placeholderRtl: 'پی‌دی‌اف، ورد یا اکسل — حداکثر ۱۵ مگابایت',
+        uploadHintLtr: 'Click to upload',
+        uploadHintRtl: 'برای بارگذاری کلیک کنید',
         required: false,
-        accept: '.pdf',
+        accept: '.pdf,.doc,.docx,.xls,.xlsx',
         maxSizeMb: 15,
+      },
+      {
+        id: 'sec_documents',
+        type: 'section_title',
+        label: 'More documents (single-language example)',
+        placeholder: 'PDF, Word, Excel, or combined photo+PDF accept strings.',
       },
       {
         id: 'up_mixed',
@@ -13007,7 +13243,7 @@ function AppInner() {
     const blob = new Blob([JSON.stringify(SAMPLE_FORM_JSON, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'sample_form_schema_v1.1.json'; a.click();
+    a.href = url; a.download = 'sample_form_schema_v1.2.json'; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -15629,25 +15865,162 @@ function AppInner() {
                             className="text-red-400 hover:text-red-600 p-0.5 flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
 
+                        <div className="rounded-md bg-white/70 border border-slate-200/80 p-2 space-y-2">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Bilingual (optional)</p>
+                          <p className="text-[9px] text-slate-400 leading-snug">Set labelRtl + Label (or labelLtr) for English left / Persian or Arabic right on the published form.</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] text-slate-500 block mb-0.5">labelRtl</label>
+                              <input
+                                type="text"
+                                dir="rtl"
+                                value={field.labelRtl || ''}
+                                onChange={(e) => upd({ labelRtl: e.target.value || undefined })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                placeholder="فارسی / العربية"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] text-slate-500 block mb-0.5">labelLtr (optional)</label>
+                              <input
+                                type="text"
+                                value={field.labelLtr || ''}
+                                onChange={(e) => upd({ labelLtr: e.target.value || undefined })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                placeholder="Overrides Label for left column"
+                              />
+                            </div>
+                          </div>
+                          {field.type !== 'section_title' && field.type !== 'display_image' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] text-slate-500 block mb-0.5">placeholderLtr</label>
+                              <input
+                                type="text"
+                                value={field.placeholderLtr || ''}
+                                onChange={(e) => upd({ placeholderLtr: e.target.value || undefined })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] text-slate-500 block mb-0.5">placeholderRtl</label>
+                              <input
+                                type="text"
+                                dir="rtl"
+                                value={field.placeholderRtl || ''}
+                                onChange={(e) => upd({ placeholderRtl: e.target.value || undefined })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                              />
+                            </div>
+                          </div>
+                          )}
+                          {isFileType && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[9px] text-slate-500 block mb-0.5">uploadHintLtr</label>
+                                <input
+                                  type="text"
+                                  value={field.uploadHintLtr || ''}
+                                  onChange={(e) => upd({ uploadHintLtr: e.target.value || undefined })}
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                  placeholder="Click to upload"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] text-slate-500 block mb-0.5">uploadHintRtl</label>
+                                <input
+                                  type="text"
+                                  dir="rtl"
+                                  value={field.uploadHintRtl || ''}
+                                  onChange={(e) => upd({ uploadHintRtl: e.target.value || undefined })}
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         {/* Placeholder / hint text */}
-                        {!isDisplayOnly && field.type !== 'display_image' && (
+                        {!isDisplayOnly && field.type !== 'display_image' && field.type !== 'section_title' && (
                           <input type="text" value={field.placeholder || ''} placeholder={field.type === 'checkbox' ? 'Checkbox label text' : 'Placeholder / hint text (optional)'}
                             onChange={(e) => upd({ placeholder: e.target.value })}
                             className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
                         )}
 
-                        {/* Section title: description text */}
+                        {/* Section title: bilingual subtitle lines */}
                         {field.type === 'section_title' && (
-                          <input type="text" value={field.placeholder || ''} placeholder="Section subtitle / instructions (optional)"
-                            onChange={(e) => upd({ placeholder: e.target.value })}
-                            className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-slate-500 block mb-0.5">Subtitle (LTR)</label>
+                              <input
+                                type="text"
+                                value={field.placeholderLtr || ''}
+                                onChange={(e) => upd({ placeholderLtr: e.target.value || undefined })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                placeholder="English subtitle"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-500 block mb-0.5">Subtitle (RTL)</label>
+                              <input
+                                type="text"
+                                dir="rtl"
+                                value={field.placeholderRtl || ''}
+                                onChange={(e) => upd({ placeholderRtl: e.target.value || undefined })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                placeholder="زیرعنوان"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="text-[10px] text-slate-500 block mb-0.5">Or single line (legacy)</label>
+                              <input
+                                type="text"
+                                value={field.placeholder || ''}
+                                onChange={(e) => upd({ placeholder: e.target.value })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                placeholder="One line if you do not use L/R subtitles"
+                              />
+                            </div>
+                          </div>
                         )}
 
                         {/* Display image: image URL */}
                         {field.type === 'display_image' && (
-                          <input type="url" value={field.imageUrl || ''} placeholder="Image URL to display in form (https://...)"
-                            onChange={(e) => upd({ imageUrl: e.target.value })}
-                            className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-purple-400 outline-none bg-white" />
+                          <>
+                            <input type="url" value={field.imageUrl || ''} placeholder="Image URL to display in form (https://...)"
+                              onChange={(e) => upd({ imageUrl: e.target.value })}
+                              className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-purple-400 outline-none bg-white" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] text-slate-500 block mb-0.5">Caption (LTR)</label>
+                                <input
+                                  type="text"
+                                  value={field.placeholderLtr || ''}
+                                  onChange={(e) => upd({ placeholderLtr: e.target.value || undefined })}
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block mb-0.5">Caption (RTL)</label>
+                                <input
+                                  type="text"
+                                  dir="rtl"
+                                  value={field.placeholderRtl || ''}
+                                  onChange={(e) => upd({ placeholderRtl: e.target.value || undefined })}
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="text-[10px] text-slate-500 block mb-0.5">Or single caption (legacy)</label>
+                                <input
+                                  type="text"
+                                  value={field.placeholder || ''}
+                                  onChange={(e) => upd({ placeholder: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                />
+                              </div>
+                            </div>
+                          </>
                         )}
 
                         {/* Options for select / multiselect */}

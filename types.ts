@@ -644,8 +644,20 @@ export type FormFieldType =
 export interface FormField {
   id: string;
   type: FormFieldType;
+  /** Primary label (LTR / English). If `labelRtl` is set, shown as the left column; else used alone. */
   label: string;
+  /** RTL column (Persian, Arabic, …) when paired with `label` or `labelLtr`. */
+  labelRtl?: string;
+  /** Optional explicit LTR title; defaults to `label` when bilingual. */
+  labelLtr?: string;
   placeholder?: string;
+  /** Bilingual helper lines (e.g. under section titles or inside upload zones). */
+  placeholderLtr?: string;
+  placeholderRtl?: string;
+  /** Short “click to upload” line inside file fields (LTR). */
+  uploadHintLtr?: string;
+  /** Short “click to upload” line inside file fields (RTL). */
+  uploadHintRtl?: string;
   required?: boolean;
   options?: string[];      // select / multiselect choices
   accept?: string;         // file input accept attr, e.g. "image/*" or ".pdf,.docx"
