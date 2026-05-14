@@ -86,6 +86,236 @@ import {
   FormSubmission,
 } from './types';
 
+/** Public custom forms (?form=KEY): A4 document look + print rules (mounts before the main App style block). */
+const PUBLIC_FORM_DOCUMENT_CSS = `
+#public-form-root.public-form-page {
+  min-height: 100vh;
+  background: #e8edf3;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.public-form-doc-wrap {
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 28px 16px 56px;
+  box-sizing: border-box;
+}
+.public-form-doc {
+  width: 210mm;
+  max-width: 100%;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
+  padding: 14mm 14mm 12mm;
+  box-sizing: border-box;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 9.5pt;
+  line-height: 1.45;
+}
+.public-form-doc * { box-sizing: border-box; }
+.public-form-doc .pf-kicker {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 4px;
+}
+.public-form-doc h1.pf-doc-title {
+  font-size: 18pt;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: #0f172a;
+  line-height: 1.15;
+}
+.public-form-doc .pf-desc {
+  font-size: 9pt;
+  color: #64748b;
+  margin: 8px 0 0;
+  line-height: 1.45;
+  max-width: 52ch;
+}
+.public-form-doc .pf-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+.public-form-doc .pf-seller {
+  text-align: right;
+  font-size: 8.5pt;
+  line-height: 1.55;
+  color: #334155;
+  flex-shrink: 0;
+  max-width: 240px;
+}
+.public-form-doc .pf-seller .pf-co {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #0f172a;
+}
+.public-form-doc .pf-seller .pf-sub {
+  margin-top: 2px;
+  color: #475569;
+}
+.public-form-doc .pf-seller img {
+  display: block;
+  margin-left: auto;
+  max-height: 52px;
+  max-width: 180px;
+  object-fit: contain;
+  object-position: right center;
+  margin-bottom: 6px;
+}
+.public-form-doc .pf-accent {
+  height: 3px;
+  border-radius: 2px;
+  margin: 12px 0 18px;
+}
+.public-form-doc .pf-fields { display: flex; flex-direction: column; gap: 11px; }
+.public-form-doc .pf-field {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fafafa;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.public-form-doc .pf-field--flush {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.public-form-doc .pf-label {
+  display: block;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 6px;
+}
+.public-form-doc .pf-input,
+.public-form-doc .pf-textarea,
+.public-form-doc .pf-select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 9.5pt;
+  color: #0f172a;
+  background: #fff;
+  font-family: inherit;
+}
+.public-form-doc .pf-textarea { resize: vertical; min-height: 72px; }
+.public-form-doc .pf-select { cursor: pointer; }
+.public-form-doc .pf-section {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+.public-form-doc .pf-section h3 {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+.public-form-doc .pf-section-note {
+  font-size: 8.5pt;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+.public-form-doc .pf-img-display {
+  max-height: 200px;
+  width: auto;
+  max-width: 100%;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  object-fit: contain;
+  background: #fff;
+}
+.public-form-doc .pf-drop {
+  border: 2px dashed #cbd5e1;
+  border-radius: 6px;
+  padding: 18px 14px;
+  text-align: center;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.public-form-doc .pf-drop:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+.public-form-doc .pf-drop.pf-drop--ok {
+  border-color: #34d399;
+  background: #ecfdf5;
+}
+.public-form-doc .pf-check label { cursor: pointer; }
+.public-form-doc .pf-check input { margin-right: 8px; }
+.public-form-doc .pf-star-btn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+.public-form-doc .pf-submit {
+  margin-top: 20px;
+  width: 100%;
+  padding: 12px 16px;
+  background: #0f172a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 10pt;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.public-form-doc .pf-submit:disabled { opacity: 0.65; cursor: not-allowed; }
+.public-form-doc .pf-doc-footer {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 7.5pt;
+  color: #94a3b8;
+  text-align: center;
+  line-height: 1.5;
+}
+@media print {
+  @page { size: A4 portrait; margin: 12mm; }
+  #public-form-root.public-form-page { background: #fff !important; }
+  .public-form-doc-wrap {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .public-form-doc {
+    width: 100% !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+  .public-form-toolbar { display: none !important; }
+  .public-form-doc .pf-submit { display: none !important; }
+  .public-form-doc .pf-print-hide { display: none !important; }
+  .public-form-doc .pf-drop { break-inside: avoid; page-break-inside: avoid; }
+}
+`;
+
 function createDefaultInvoiceWelteTrade(): InvoiceWelteTradeBlock {
   return {
     certificationNote:
@@ -12244,160 +12474,268 @@ function AppInner() {
     const fields: FormField[] = form.fields || [];
     if (publicFormDone) return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center max-w-sm">
+        <div className="text-center max-w-sm px-4">
           <CheckCircle className="w-14 h-14 mx-auto text-emerald-500 mb-4" />
           <h2 className="text-xl font-bold text-slate-800 mb-2">Submitted!</h2>
           <p className="text-slate-500 text-sm">Your response has been recorded. Thank you.</p>
         </div>
       </div>
     );
+
+    const rawAccent = (form.headerBgColor || '#0f172a').trim();
+    const accentHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawAccent) ? rawAccent : '#0f172a';
+
     const renderField = (field: FormField) => {
       const setVal = (v: string) => setPublicFormData((prev) => ({ ...prev, [field.id]: v }));
       const val = publicFormData[field.id] || '';
+      const reqMark = field.required ? <span className="text-red-600"> *</span> : null;
 
-      // ── Section title ──────────────────────────────────
-      if (field.type === 'section_title') return (
-        <div className="border-t border-slate-200 pt-5 mt-2">
-          <h3 className="text-base font-bold text-slate-800">{field.label}</h3>
-          {field.placeholder && <p className="text-xs text-slate-500 mt-0.5">{field.placeholder}</p>}
-        </div>
-      );
+      if (field.type === 'section_title') {
+        return (
+          <div key={field.id} className="pf-section">
+            <h3>{field.label}</h3>
+            {field.placeholder ? <p className="pf-section-note">{field.placeholder}</p> : null}
+          </div>
+        );
+      }
 
-      // ── Display image ──────────────────────────────────
-      if (field.type === 'display_image') return (
-        <div>
-          <p className="block text-sm font-medium text-slate-700 mb-2">{field.label}</p>
-          {field.imageUrl ? (
-            <img src={field.imageUrl} alt={field.label} className="max-h-52 rounded-xl border border-slate-200 object-contain" />
-          ) : <p className="text-xs text-slate-400 italic">No image configured.</p>}
-          {field.placeholder && <p className="text-xs text-slate-400 mt-1">{field.placeholder}</p>}
-        </div>
-      );
+      if (field.type === 'display_image') {
+        return (
+          <div key={field.id} className="pf-field">
+            <span className="pf-label">
+              {field.label}
+              {reqMark}
+            </span>
+            {field.imageUrl ? (
+              <img src={field.imageUrl} alt="" className="pf-img-display" />
+            ) : (
+              <p className="pf-section-note" style={{ marginTop: 4 }}>No image configured.</p>
+            )}
+            {field.placeholder ? <p className="pf-section-note" style={{ marginTop: 8 }}>{field.placeholder}</p> : null}
+          </div>
+        );
+      }
 
       const labelEl = (
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          {field.label}{field.required && <span className="text-red-500 ml-1">*</span>}
+        <label className="pf-label" htmlFor={`pf-${field.id}`}>
+          {field.label}
+          {reqMark}
         </label>
       );
 
-      // ── Textarea ───────────────────────────────────────
-      if (field.type === 'textarea') return <div>{labelEl}
-        <textarea rows={3} placeholder={field.placeholder} value={val} onChange={(e) => setVal(e.target.value)}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" /></div>;
+      if (field.type === 'textarea') {
+        return (
+          <div key={field.id} className="pf-field">
+            {labelEl}
+            <textarea
+              id={`pf-${field.id}`}
+              className="pf-textarea"
+              rows={4}
+              placeholder={field.placeholder || ''}
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+            />
+          </div>
+        );
+      }
 
-      // ── Select ─────────────────────────────────────────
-      if (field.type === 'select') return <div>{labelEl}
-        <select value={val} onChange={(e) => setVal(e.target.value)}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-          <option value="">— Select —</option>
-          {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-        </select></div>;
+      if (field.type === 'select') {
+        return (
+          <div key={field.id} className="pf-field">
+            {labelEl}
+            <select id={`pf-${field.id}`} className="pf-select" value={val} onChange={(e) => setVal(e.target.value)}>
+              <option value="">—</option>
+              {(field.options || []).map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      }
 
-      // ── Multi-select ───────────────────────────────────
-      if (field.type === 'multiselect') return <div>{labelEl}
-        <div className="flex flex-col gap-2">
-          {(field.options || []).map((opt) => {
-            const checked = (publicFormMulti[field.id] || []).includes(opt);
-            return (
-              <label key={opt} className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={checked} onChange={(e) => {
-                  const prev = publicFormMulti[field.id] || [];
-                  setPublicFormMulti((m) => ({ ...m, [field.id]: e.target.checked ? [...prev, opt] : prev.filter((x) => x !== opt) }));
-                }} className="rounded border-slate-300 text-blue-600" />
-                <span className="text-sm text-slate-700">{opt}</span>
-              </label>
-            );
-          })}
-        </div></div>;
+      if (field.type === 'multiselect') {
+        return (
+          <div key={field.id} className="pf-field pf-check">
+            <span className="pf-label">
+              {field.label}
+              {reqMark}
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(field.options || []).map((opt) => {
+                const checked = (publicFormMulti[field.id] || []).includes(opt);
+                return (
+                  <label key={opt}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const prev = publicFormMulti[field.id] || [];
+                        setPublicFormMulti((m) => ({
+                          ...m,
+                          [field.id]: e.target.checked ? [...prev, opt] : prev.filter((x) => x !== opt),
+                        }));
+                      }}
+                    />
+                    <span style={{ fontSize: '9.5pt', color: '#1e293b' }}>{opt}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
 
-      // ── Checkbox ───────────────────────────────────────
-      if (field.type === 'checkbox') return <div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={!!val} onChange={(e) => setVal(e.target.checked ? 'true' : '')}
-            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
-          <span className="text-sm font-medium text-slate-700">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</span>
-        </label>
-        {field.placeholder && <p className="text-xs text-slate-500 ml-6 mt-0.5">{field.placeholder}</p>}
-      </div>;
+      if (field.type === 'checkbox') {
+        return (
+          <div key={field.id} className="pf-field pf-check">
+            <label>
+              <input type="checkbox" checked={!!val} onChange={(e) => setVal(e.target.checked ? 'true' : '')} />
+              <span style={{ fontSize: '9.5pt', fontWeight: 600, color: '#0f172a' }}>
+                {field.label}
+                {reqMark}
+              </span>
+            </label>
+            {field.placeholder ? <p className="pf-section-note" style={{ marginTop: 8, marginLeft: 24 }}>{field.placeholder}</p> : null}
+          </div>
+        );
+      }
 
-      // ── Rating ─────────────────────────────────────────
       if (field.type === 'rating') {
         const maxR = field.maxRating || 5;
         const cur = publicFormRatings[field.id] || 0;
-        return <div>{labelEl}
-          <div className="flex gap-1">
-            {Array.from({ length: maxR }, (_, i) => i + 1).map((star) => (
-              <button key={star} type="button" onClick={() => setPublicFormRatings((r) => ({ ...r, [field.id]: star }))}
-                className={`text-2xl transition-colors ${star <= cur ? 'text-yellow-400' : 'text-slate-300 hover:text-yellow-300'}`}>★</button>
-            ))}
+        return (
+          <div key={field.id} className="pf-field">
+            <span className="pf-label">
+              {field.label}
+              {reqMark}
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+              {Array.from({ length: maxR }, (_, i) => i + 1).map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  className="pf-star-btn"
+                  aria-label={`${star} of ${maxR} stars`}
+                  onClick={() => setPublicFormRatings((r) => ({ ...r, [field.id]: star }))}
+                  style={{ color: star <= cur ? '#ca8a04' : '#cbd5e1' }}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            {cur > 0 ? (
+              <p className="pf-print-hide pf-section-note" style={{ marginTop: 6 }}>
+                {cur} / {maxR}
+              </p>
+            ) : null}
           </div>
-          {cur > 0 && <p className="text-xs text-slate-500 mt-1">{cur} / {maxR}</p>}
-        </div>;
+        );
       }
 
-      // ── File uploads ───────────────────────────────────
       if (['image_upload', 'video_upload', 'file_upload'].includes(field.type)) {
         const fileObj = publicFormFiles[field.id];
-        const iconMap: Record<string, string> = { image_upload: '🖼️', video_upload: '🎬', file_upload: '📄' };
+        const iconMap: Record<string, string> = { image_upload: '🖼', video_upload: '🎬', file_upload: '📄' };
         const maxMb = field.maxSizeMb || (field.type === 'video_upload' ? 50 : 10);
-        return <div>{labelEl}
-          <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-5 cursor-pointer transition-colors ${fileObj ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50/30'}`}>
-            <span className="text-3xl">{iconMap[field.type]}</span>
-            {fileObj ? (
-              <div className="text-center">
-                <p className="text-sm font-semibold text-emerald-700">{fileObj.name}</p>
-                <p className="text-xs text-slate-400">{(fileObj.size / 1024 / 1024).toFixed(2)} MB</p>
-              </div>
-            ) : (
-              <div className="text-center">
-                <p className="text-sm text-slate-600 font-medium">Click to upload</p>
-                <p className="text-xs text-slate-400">{field.placeholder || `Max ${maxMb} MB`}</p>
-              </div>
-            )}
-            <input type="file" accept={field.accept} className="hidden" onChange={(e) => {
-              const f = e.target.files?.[0]; if (!f) return;
-              if (f.size > maxMb * 1024 * 1024) { alert(`File too large. Max size: ${maxMb} MB`); return; }
-              setPublicFormFiles((prev) => ({ ...prev, [field.id]: f }));
-            }} />
-          </label>
-        </div>;
+        return (
+          <div key={field.id} className="pf-field">
+            <span className="pf-label">
+              {field.label}
+              {reqMark}
+            </span>
+            <label className={`pf-drop ${fileObj ? 'pf-drop--ok' : ''}`}>
+              <span style={{ fontSize: '26px', lineHeight: 1 }}>{iconMap[field.type]}</span>
+              {fileObj ? (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: '9.5pt', color: '#047857' }}>{fileObj.name}</div>
+                  <div className="pf-section-note" style={{ marginTop: 4 }}>
+                    {(fileObj.size / 1024 / 1024).toFixed(2)} MB
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontWeight: 600, fontSize: '9.5pt', color: '#334155' }}>Click to upload</div>
+                  <div className="pf-section-note" style={{ marginTop: 4 }}>{field.placeholder || `Max ${maxMb} MB`}</div>
+                </div>
+              )}
+              <input
+                type="file"
+                accept={field.accept}
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (f.size > maxMb * 1024 * 1024) {
+                    alert(`File too large. Max size: ${maxMb} MB`);
+                    return;
+                  }
+                  setPublicFormFiles((prev) => ({ ...prev, [field.id]: f }));
+                }}
+              />
+            </label>
+          </div>
+        );
       }
 
-      // ── Default text inputs ────────────────────────────
       const inputType = field.type === 'phone' ? 'tel' : field.type;
-      return <div>{labelEl}
-        <input type={inputType} placeholder={field.placeholder} value={val} onChange={(e) => setVal(e.target.value)}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-      </div>;
+      return (
+        <div key={field.id} className="pf-field">
+          {labelEl}
+          <input
+            id={`pf-${field.id}`}
+            type={inputType}
+            className="pf-input"
+            placeholder={field.placeholder || ''}
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+          />
+        </div>
+      );
     };
 
     return (
-      <div className="min-h-screen bg-slate-50">
-        {/* Letterhead header */}
-        <div className="w-full py-6 px-6 flex items-center gap-4 print:py-4" style={{ backgroundColor: form.headerBgColor || '#1e3a5f' }}>
-          {form.logoUrl && <img src={form.logoUrl} className="h-14 w-14 object-contain rounded-lg bg-white/10 p-1" alt="logo" />}
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: form.headerTextColor || '#ffffff' }}>{form.companyName || form.name}</h1>
-            {form.headerSubtitle && <p className="text-sm opacity-80 mt-0.5" style={{ color: form.headerTextColor || '#ffffff' }}>{form.headerSubtitle}</p>}
-          </div>
-        </div>
-        <div className="max-w-xl mx-auto px-4 py-8">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5">
-            <div className="border-b border-slate-100 pb-4">
-              <h2 className="text-lg font-bold text-slate-800">{form.name}</h2>
-              {form.description && <p className="text-sm text-slate-500 mt-1">{form.description}</p>}
-            </div>
-            {fields.map((field: FormField) => (
-              <div key={field.id}>{renderField(field)}</div>
-            ))}
-            <button onClick={handleSubmitPublicForm} disabled={publicFormSubmitting}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 flex items-center justify-center gap-2 mt-2">
-              {publicFormSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {publicFormSubmitting ? 'Uploading & Submitting…' : 'Submit'}
+      <>
+        <style>{PUBLIC_FORM_DOCUMENT_CSS}</style>
+        <div id="public-form-root" className="public-form-page">
+          <div className="public-form-toolbar print:hidden" style={{ position: 'fixed', top: 12, right: 12, zIndex: 50 }}>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              <Printer className="h-4 w-4" /> Print
             </button>
           </div>
+
+          <div className="public-form-doc-wrap">
+            <div className="public-form-doc">
+              <div className="pf-header">
+                <div style={{ minWidth: 0 }}>
+                  <p className="pf-kicker">Electronic form</p>
+                  <h1 className="pf-doc-title">{form.name}</h1>
+                  {form.description ? <p className="pf-desc">{form.description}</p> : null}
+                </div>
+                <div className="pf-seller">
+                  {form.logoUrl ? <img src={form.logoUrl} alt="" /> : null}
+                  <div className="pf-co">{form.companyName || form.name}</div>
+                  {form.headerSubtitle ? <div className="pf-sub">{form.headerSubtitle}</div> : null}
+                </div>
+              </div>
+              <div className="pf-accent" style={{ background: `linear-gradient(90deg, ${accentHex} 0%, #64748b 100%)` }} />
+
+              <div className="pf-fields">{fields.map((field) => renderField(field))}</div>
+
+              <button type="button" className="pf-submit" onClick={handleSubmitPublicForm} disabled={publicFormSubmitting}>
+                {publicFormSubmitting ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Send className="h-4 w-4 shrink-0" />}
+                {publicFormSubmitting ? 'Uploading & Submitting…' : 'Submit'}
+              </button>
+
+              <p className="pf-doc-footer pf-print-hide">Print hides the toolbar and submit button for a clean document.</p>
+            </div>
+          </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -12520,13 +12858,20 @@ function AppInner() {
               const formUrl = getFormUrl(form);
               return (
                 <div key={form.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="h-16 flex items-center px-4 gap-3" style={{ backgroundColor: form.headerBgColor || '#1e3a5f' }}>
-                    {form.logoUrl && <img src={form.logoUrl} className="h-8 w-8 object-contain rounded bg-white/10 p-0.5" alt="" />}
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold truncate" style={{ color: form.headerTextColor || '#ffffff' }}>{form.companyName || form.name}</div>
-                      {form.headerSubtitle && <div className="text-[11px] opacity-75 truncate" style={{ color: form.headerTextColor || '#ffffff' }}>{form.headerSubtitle}</div>}
+                <div className="border-b border-slate-100 bg-white px-4 pt-3 pb-2">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Form</p>
+                      <div className="text-xs font-bold text-slate-800 truncate">{form.companyName || form.name}</div>
+                      {form.headerSubtitle && <div className="text-[10px] text-slate-500 truncate mt-0.5">{form.headerSubtitle}</div>}
                     </div>
+                    {form.logoUrl ? <img src={form.logoUrl} className="h-7 max-w-[72px] object-contain shrink-0" alt="" /> : null}
                   </div>
+                  <div
+                    className="h-0.5 rounded-full mt-2"
+                    style={{ background: `linear-gradient(90deg, ${form.headerBgColor || '#0f172a'}, #94a3b8)` }}
+                  />
+                </div>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div>
@@ -14808,18 +15153,37 @@ function AppInner() {
               <button onClick={() => { setShowFormBuilder(false); setEditingForm(null); setFormBuilderDraft(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {/* Header Preview */}
-              <div className="rounded-xl overflow-hidden border border-slate-200">
-                <div className="py-4 px-5 flex items-center gap-3" style={{ backgroundColor: formBuilderDraft.headerBgColor || '#1e3a5f' }}>
-                  {formBuilderDraft.logoUrl && <img src={formBuilderDraft.logoUrl} className="h-10 w-10 object-contain rounded bg-white/10 p-0.5" alt="" />}
-                  <div>
-                    <div className="font-bold text-base" style={{ color: formBuilderDraft.headerTextColor || '#ffffff' }}>{formBuilderDraft.companyName || formBuilderDraft.name || 'Company Name'}</div>
-                    {formBuilderDraft.headerSubtitle && <div className="text-xs opacity-75" style={{ color: formBuilderDraft.headerTextColor || '#ffffff' }}>{formBuilderDraft.headerSubtitle}</div>}
+              {/* Header Preview — matches published A4 / proforma-style letterhead */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Published form preview</p>
+                <div className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm">
+                  <div className="p-4 border-b border-slate-100">
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mb-1.5">Electronic form</p>
+                        <p className="text-base font-bold text-slate-900 leading-tight">{formBuilderDraft.name || 'Form title'}</p>
+                        {formBuilderDraft.description ? (
+                          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-md">{formBuilderDraft.description}</p>
+                        ) : null}
+                      </div>
+                      <div className="text-right text-[11px] text-slate-600 max-w-[46%] shrink-0">
+                        {formBuilderDraft.logoUrl ? (
+                          <img src={formBuilderDraft.logoUrl} alt="" className="max-h-11 max-w-[140px] object-contain ml-auto mb-1" />
+                        ) : null}
+                        <div className="text-sm font-bold text-slate-900">{formBuilderDraft.companyName || formBuilderDraft.name || 'Company'}</div>
+                        {formBuilderDraft.headerSubtitle ? (
+                          <div className="text-slate-500 mt-0.5">{formBuilderDraft.headerSubtitle}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div
+                      className="h-0.5 rounded-full mt-3"
+                      style={{ background: `linear-gradient(90deg, ${formBuilderDraft.headerBgColor || '#0f172a'}, #94a3b8)` }}
+                    />
                   </div>
-                </div>
-                <div className="bg-white px-5 py-3">
-                  <p className="text-sm font-semibold text-slate-700">{formBuilderDraft.name}</p>
-                  {formBuilderDraft.description && <p className="text-xs text-slate-400 mt-0.5">{formBuilderDraft.description}</p>}
+                  <p className="px-4 py-2 text-[10px] text-slate-400 bg-slate-50/80 border-t border-slate-100">
+                    A4-style layout for respondents. “Header background” sets the accent stripe; open the share link and use Print for a clean paper copy.
+                  </p>
                 </div>
               </div>
 
