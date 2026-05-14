@@ -83,6 +83,7 @@ import {
   FormField,
   FormFieldType,
   CustomFormDef,
+  FormAccessLevel,
   FormHeaderPreset,
   FormSubmission,
 } from './types';
@@ -3411,7 +3412,11 @@ function AppInner() {
   const [publicFormData, setPublicFormData] = useState<Record<string, string>>({});
   const [publicFormSubmitting, setPublicFormSubmitting] = useState(false);
   const [publicFormDone, setPublicFormDone] = useState(false);
-  const [publicFormLoading, setPublicFormLoading] = useState(false);
+  const [publicFormLoading, setPublicFormLoading] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const k = new URLSearchParams(window.location.search).get('form');
+    return !!(k && k.length >= 8);
+  });
   const [publicFormFiles, setPublicFormFiles] = useState<Record<string, File>>({});
   const [publicFormMulti, setPublicFormMulti] = useState<Record<string, string[]>>({});
   const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
@@ -4020,12 +4025,16 @@ function AppInner() {
     };
   }, [db]);
 
-  // Public form view: ?form=KEY
+  // Public form view: ?form=KEY (no app login required when accessLevel is public)
   useEffect(() => {
-    if (!db || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
     const fKey = sp.get('form');
     if (!fKey || fKey.length < 8) return;
+    if (!db) {
+      setPublicFormLoading(false);
+      return;
+    }
     setPublicFormLoading(true);
     getDoc(doc(db, 'publicForms', fKey)).then((snap: any) => {
       if (snap.exists() && snap.data()?.isActive !== false) {
@@ -4033,7 +4042,7 @@ function AppInner() {
       }
     }).catch((e: any) => console.error('Public form fetch failed:', e))
       .finally(() => setPublicFormLoading(false));
-  }, [db]);
+  }, [db, user?.uid]);
 
   const loadLocalProjects = async () => {
       let mergedProjects: SavedProject[] = [];
@@ -4159,6 +4168,7 @@ function AppInner() {
     id: '',
     name: 'New Form',
     formNumber: '',
+    accessLevel: 'public',
     description: '',
     logoUrl: '',
     companyName: '',
@@ -4188,6 +4198,7 @@ function AppInner() {
             updateDoc(doc(db, 'publicForms', formDef.publishedKey), {
               name: formDef.name,
               formNumber: formDef.formNumber || '',
+              accessLevel: formDef.accessLevel === 'internal' ? 'internal' : 'public',
               companyName: formDef.companyName || '', logoUrl: formDef.logoUrl || '',
               headerBgColor: formDef.headerBgColor || '#1e3a5f', headerTextColor: formDef.headerTextColor || '#ffffff',
               headerSubtitle: formDef.headerSubtitle || '', description: formDef.description || '',
@@ -4238,6 +4249,7 @@ function AppInner() {
       const publicData = {
         ownerUid: user.uid, appId: dataAppId, name: form.name,
         formNumber: form.formNumber || '',
+        accessLevel: form.accessLevel === 'internal' ? 'internal' : 'public',
         companyName: form.companyName || '', logoUrl: form.logoUrl || '',
         headerBgColor: form.headerBgColor || '#1e3a5f', headerTextColor: form.headerTextColor || '#ffffff',
         headerSubtitle: form.headerSubtitle || '', description: form.description || '',
@@ -12844,6 +12856,54 @@ function AppInner() {
     );
     const { form } = publicFormView;
     const fields: FormField[] = form.fields || [];
+    const accessLevel: FormAccessLevel = form.accessLevel === 'internal' ? 'internal' : 'public';
+    if (accessLevel === 'internal' && !user) {
+      return (
+        <>
+          <style>{PUBLIC_FORM_DOCUMENT_CSS}</style>
+          <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-sm">
+              <div className="text-center mb-4">
+                <ListTodo className="w-10 h-10 mx-auto text-slate-400 mb-2" />
+                <h2 className="text-lg font-bold text-slate-900">Internal form</h2>
+                <p className="text-sm text-slate-500 mt-1">Sign in to open and submit this form (team / private link).</p>
+              </div>
+              <div className="space-y-3">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleEmailAuth();
+                  }}
+                  placeholder="Password"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleEmailAuth}
+                  disabled={authLoading || !auth}
+                  className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  Sign In
+                </button>
+              </div>
+              {!auth && (
+                <p className="text-xs text-amber-700 mt-3">Firebase is not configured. Add Firebase env values in `.env.local`.</p>
+              )}
+              {authError && <p className="text-xs text-red-600 mt-3">{authError}</p>}
+            </div>
+          </div>
+        </>
+      );
+    }
     if (publicFormDone) return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center max-w-sm px-4">
@@ -13254,11 +13314,12 @@ function AppInner() {
     _field_types:
       'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
     _root_keys:
-      'name (string), formNumber (optional string, shown as “Form no.”), description, companyName, headerSubtitle, logoUrl (https image), headerBgColor (hex, accent stripe), headerTextColor (hex, kept for presets/export), fields (array)',
+      'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, fields',
     _bilingual_layout:
       'When labelRtl is set and label (or labelLtr) has text, the form shows English/LTR on the LEFT and RTL (Farsi, Arabic, …) on the RIGHT for titles and helper rows. Keys: labelLtr (optional), labelRtl, placeholderLtr, placeholderRtl, uploadHintLtr, uploadHintRtl (file fields).',
     name: 'Sample — Inquiry with photos & files',
     formNumber: 'RFQ-2026-SAMPLE',
+    accessLevel: 'public',
     description:
       'Demonstrates reference images (display_image), multiple customer photo uploads, PDF/Office uploads, and a video slot — same layout as your branded electronic forms.',
     companyName: 'Your Company Ltd.',
@@ -13422,6 +13483,7 @@ function AppInner() {
               id: '',
               name: parsed.name || 'Imported Form',
               formNumber: typeof parsed.formNumber === 'string' ? parsed.formNumber : '',
+              accessLevel: parsed.accessLevel === 'internal' ? 'internal' : 'public',
               description: parsed.description || '',
               logoUrl: parsed.logoUrl || '',
               companyName: parsed.companyName || '',
@@ -13445,6 +13507,7 @@ function AppInner() {
       const exportData = {
         name: form.name,
         formNumber: form.formNumber || '',
+        accessLevel: form.accessLevel === 'internal' ? 'internal' : 'public',
         description: form.description,
         logoUrl: form.logoUrl,
         companyName: form.companyName,
@@ -13529,9 +13592,14 @@ function AppInner() {
                         ) : null}
                         {form.description && <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{form.description}</p>}
                       </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${form.isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                        {form.isPublished ? 'Live' : 'Draft'}
-                      </span>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${form.isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {form.isPublished ? 'Live' : 'Draft'}
+                        </span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${form.accessLevel === 'internal' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-sky-50 text-sky-800 border border-sky-200'}`}>
+                          {form.accessLevel === 'internal' ? 'Internal' : 'Public'}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 text-[11px] text-slate-500 mb-3">
                       <span>{form.fields.length} field{form.fields.length !== 1 ? 's' : ''}</span>
@@ -14344,7 +14412,15 @@ function AppInner() {
     );
   };
 
-  if (authLoading) {
+  const publicFormUrlKey =
+    typeof window !== 'undefined'
+      ? (() => {
+          const k = new URLSearchParams(window.location.search).get('form');
+          return k && k.length >= 8 ? k : null;
+        })()
+      : null;
+
+  if (authLoading && !publicFormUrlKey) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
@@ -14353,6 +14429,10 @@ function AppInner() {
         </div>
       </div>
     );
+  }
+
+  if (publicFormUrlKey) {
+    return renderPublicForm();
   }
 
   if (!user) {
@@ -14400,11 +14480,6 @@ function AppInner() {
         </div>
       </div>
     );
-  }
-
-  // Public form view (no auth required — URL has ?form=KEY)
-  if (publicFormLoading || publicFormView) {
-    return renderPublicForm();
   }
 
   return (
@@ -15862,6 +15937,25 @@ function AppInner() {
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
                     placeholder="e.g. RFQ-2026-014" />
                   <p className="text-[10px] text-slate-400 mt-0.5">Shown on the published A4 page as “Form no.” (like a proforma reference).</p>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Who can open the link</label>
+                  <select
+                    value={formBuilderDraft.accessLevel === 'internal' ? 'internal' : 'public'}
+                    onChange={(e) =>
+                      setFormBuilderDraft({
+                        ...formBuilderDraft,
+                        accessLevel: e.target.value === 'internal' ? 'internal' : 'public',
+                      })
+                    }
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  >
+                    <option value="public">Public — no sign-in (embed on your website)</option>
+                    <option value="internal">Internal — sign-in required (team only)</option>
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Public links work for visitors without an account. Internal shows a sign-in screen first; tighten Firestore rules for real security.
+                  </p>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Description</label>

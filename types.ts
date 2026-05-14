@@ -678,11 +678,15 @@ export interface FormHeaderPreset {
   createdAt: number;
 }
 
+export type FormAccessLevel = 'public' | 'internal';
+
 export interface CustomFormDef {
   id: string;
   name: string;
   /** Optional reference shown on the published A4 form (e.g. RFQ-2026-014). */
   formNumber?: string;
+  /** public = anyone with link (embeddable). internal = must sign in to Firebase first. */
+  accessLevel?: FormAccessLevel;
   description?: string;
   logoUrl?: string;
   companyName?: string;
