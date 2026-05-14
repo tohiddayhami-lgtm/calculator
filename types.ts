@@ -634,3 +634,37 @@ export interface SavedProject {
     dashboardTodos?: DashboardTodoItem[];
   };
 }
+
+export interface FormField {
+  id: string;
+  type: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'date' | 'email' | 'phone';
+  label: string;
+  placeholder?: string;
+  required?: boolean;
+  options?: string[];
+}
+
+export interface CustomFormDef {
+  id: string;
+  name: string;
+  description?: string;
+  logoUrl?: string;
+  companyName?: string;
+  headerSubtitle?: string;
+  headerBgColor?: string;
+  headerTextColor?: string;
+  fields: FormField[];
+  createdAt: number;
+  updatedAt: number;
+  publishedKey?: string;
+  isPublished: boolean;
+}
+
+export interface FormSubmission {
+  id: string;
+  formKey: string;
+  formName: string;
+  submittedAt: number;
+  data: Record<string, string | number | boolean>;
+  isRead: boolean;
+}

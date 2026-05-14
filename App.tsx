@@ -50,15 +50,15 @@ import {
 } from 'lucide-react';
 
 // Types
-import { 
-  Product, 
+import {
+  Product,
   Logistics,
   LogisticsItem,
   LogisticsPreset,
   InvoiceTextPreset,
   InvoiceTextPresetKind,
-  AppConfig, 
-  RateMap, 
+  AppConfig,
+  RateMap,
   SavedProject,
   CatalogConfig,
   SocialLink,
@@ -79,7 +79,10 @@ import {
   DashboardTodoItem,
   InvoiceWelteTradeBlock,
   InvoiceCustomsStyleLabels,
-  InvoiceLineOverride
+  InvoiceLineOverride,
+  FormField,
+  CustomFormDef,
+  FormSubmission,
 } from './types';
 
 function createDefaultInvoiceWelteTrade(): InvoiceWelteTradeBlock {
@@ -2817,7 +2820,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 function AppInner() {
   
   // -- STATE: VIEW & UI --
-  const [view, setView] = useState<'dashboard' | 'invoice' | 'packinglist' | 'catalog' | 'suppliers' | 'buyers' | 'community'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'invoice' | 'forms' | 'catalog' | 'suppliers' | 'buyers' | 'community'>('dashboard');
   const [showRateSettings, setShowRateSettings] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   
@@ -2871,6 +2874,23 @@ function AppInner() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
+
+  // -- STATE: FORMS --
+  const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
+  const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list'>('list');
+  const [showFormBuilder, setShowFormBuilder] = useState(false);
+  const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
+  const [showFormSubmissions, setShowFormSubmissions] = useState(false);
+  const [selectedFormSubmission, setSelectedFormSubmission] = useState<FormSubmission | null>(null);
+  const [formBuilderDraft, setFormBuilderDraft] = useState<CustomFormDef | null>(null);
+  const [formBuilderSaving, setFormBuilderSaving] = useState(false);
+  const [formPublishing, setFormPublishing] = useState<string | null>(null);
+  const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
+  const [publicFormData, setPublicFormData] = useState<Record<string, string>>({});
+  const [publicFormSubmitting, setPublicFormSubmitting] = useState(false);
+  const [publicFormDone, setPublicFormDone] = useState(false);
+  const [publicFormLoading, setPublicFormLoading] = useState(false);
 
   // -- STATE: COMMUNITY HUB --
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
@@ -3383,6 +3403,34 @@ function AppInner() {
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId]);
 
+  // Custom forms listener
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) { setCustomForms([]); return; }
+    let q: any;
+    try { q = query(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'forms'), orderBy('createdAt', 'desc')); }
+    catch { q = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'forms'); }
+    const unsub = onSnapshot(q, (snap: any) => {
+      setCustomForms(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+    }, (err: any) => console.error('Forms listener failed:', err));
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId]);
+
+  // Form submissions listener
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) { setFormSubmissions([]); return; }
+    let q: any;
+    try { q = query(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions'), orderBy('submittedAt', 'desc'), limit(200)); }
+    catch { q = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions'); }
+    const unsub = onSnapshot(q, (snap: any) => {
+      setFormSubmissions(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+    }, (err: any) => console.error('Form submissions listener failed:', err));
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId]);
+
   // Community posts listener — all authenticated users can read
   useEffect(() => {
     if (!db || !dataAppId) return;
@@ -3422,6 +3470,21 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
+  }, [db]);
+
+  // Public form view: ?form=KEY
+  useEffect(() => {
+    if (!db || typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const fKey = sp.get('form');
+    if (!fKey || fKey.length < 8) return;
+    setPublicFormLoading(true);
+    getDoc(doc(db, 'publicForms', fKey)).then((snap: any) => {
+      if (snap.exists() && snap.data()?.isActive !== false) {
+        setPublicFormView({ key: fKey, form: snap.data() });
+      }
+    }).catch((e: any) => console.error('Public form fetch failed:', e))
+      .finally(() => setPublicFormLoading(false));
   }, [db]);
 
   const loadLocalProjects = async () => {
@@ -3541,6 +3604,159 @@ function AppInner() {
       } catch (err: any) {
           alert('Failed to delete inquiry: ' + (err?.message || err));
       }
+  };
+
+  // --- FORMS HANDLERS ---
+  const makeBlankForm = (): CustomFormDef => ({
+    id: '',
+    name: 'New Form',
+    description: '',
+    logoUrl: '',
+    companyName: '',
+    headerSubtitle: '',
+    headerBgColor: '#1e3a5f',
+    headerTextColor: '#ffffff',
+    fields: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    isPublished: false,
+  });
+
+  const handleSaveForm = async (formDef: CustomFormDef) => {
+    if (!user || !db) return;
+    setFormBuilderSaving(true);
+    try {
+      const now = Date.now();
+      const isExisting = !!formDef.id && customForms.some((f) => f.id === formDef.id);
+      if (isExisting) {
+        await withTimeout(
+          setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formDef.id), { ...formDef, updatedAt: now }),
+          10000, 'Save form'
+        );
+        // Also refresh public definition if published
+        if (formDef.publishedKey && formDef.isPublished) {
+          await withTimeout(
+            updateDoc(doc(db, 'publicForms', formDef.publishedKey), {
+              name: formDef.name, companyName: formDef.companyName || '', logoUrl: formDef.logoUrl || '',
+              headerBgColor: formDef.headerBgColor || '#1e3a5f', headerTextColor: formDef.headerTextColor || '#ffffff',
+              headerSubtitle: formDef.headerSubtitle || '', description: formDef.description || '',
+              fields: formDef.fields, updatedAt: now,
+            }),
+            10000, 'Sync public form'
+          ).catch(() => {});
+        }
+      } else {
+        const newId = `form_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const newForm = { ...formDef, id: newId, createdAt: now, updatedAt: now };
+        await withTimeout(
+          setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', newId), newForm),
+          10000, 'Save form'
+        );
+      }
+      setShowFormBuilder(false);
+      setEditingForm(null);
+      setFormBuilderDraft(null);
+    } catch (err: any) {
+      alert('Failed to save form: ' + (err?.message || err));
+    } finally {
+      setFormBuilderSaving(false);
+    }
+  };
+
+  const handleDeleteForm = async (formId: string) => {
+    if (!user || !db) return;
+    if (!window.confirm('Delete this form? This cannot be undone.')) return;
+    const form = customForms.find((f) => f.id === formId);
+    if (form?.publishedKey) {
+      try { await withTimeout(deleteDoc(doc(db, 'publicForms', form.publishedKey)), 10000, 'Delete public form'); } catch {}
+    }
+    try {
+      await withTimeout(deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId)), 10000, 'Delete form');
+    } catch (err: any) {
+      alert('Failed to delete form: ' + (err?.message || err));
+    }
+  };
+
+  const handlePublishForm = async (formId: string) => {
+    if (!user || !db) return;
+    const form = customForms.find((f) => f.id === formId);
+    if (!form) return;
+    setFormPublishing(formId);
+    try {
+      const key = form.publishedKey || `f_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
+      const publicData = {
+        ownerUid: user.uid, appId: dataAppId, name: form.name,
+        companyName: form.companyName || '', logoUrl: form.logoUrl || '',
+        headerBgColor: form.headerBgColor || '#1e3a5f', headerTextColor: form.headerTextColor || '#ffffff',
+        headerSubtitle: form.headerSubtitle || '', description: form.description || '',
+        fields: form.fields, isActive: true, updatedAt: Date.now(),
+      };
+      await withTimeout(setDoc(doc(db, 'publicForms', key), publicData), 10000, 'Publish form');
+      await withTimeout(
+        setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId), { ...form, publishedKey: key, isPublished: true, updatedAt: Date.now() }),
+        10000, 'Update form'
+      );
+    } catch (err: any) {
+      alert('Failed to publish form: ' + (err?.message || err));
+    } finally {
+      setFormPublishing(null);
+    }
+  };
+
+  const handleUnpublishForm = async (formId: string) => {
+    if (!user || !db) return;
+    const form = customForms.find((f) => f.id === formId);
+    if (!form?.publishedKey) return;
+    try {
+      await withTimeout(updateDoc(doc(db, 'publicForms', form.publishedKey), { isActive: false }), 10000, 'Unpublish form');
+      await withTimeout(
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId), { isPublished: false, updatedAt: Date.now() }),
+        10000, 'Update form'
+      );
+    } catch (err: any) {
+      alert('Failed to unpublish: ' + (err?.message || err));
+    }
+  };
+
+  const handleMarkFormSubmission = async (subId: string, isRead: boolean) => {
+    if (!user || !db) return;
+    try {
+      await withTimeout(
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions', subId), { isRead }),
+        10000, 'Update submission'
+      );
+    } catch {}
+  };
+
+  const handleDeleteFormSubmission = async (subId: string) => {
+    if (!user || !db) return;
+    try {
+      await withTimeout(
+        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions', subId)),
+        10000, 'Delete submission'
+      );
+      if (selectedFormSubmission?.id === subId) setSelectedFormSubmission(null);
+    } catch (err: any) {
+      alert('Failed to delete: ' + (err?.message || err));
+    }
+  };
+
+  const handleSubmitPublicForm = async () => {
+    if (!db || !publicFormView) return;
+    setPublicFormSubmitting(true);
+    try {
+      const { key, form } = publicFormView;
+      const subRef = doc(collection(db, 'artifacts', form.appId, 'users', form.ownerUid, 'formSubmissions'));
+      await setDoc(subRef, {
+        formKey: key, formName: form.name,
+        submittedAt: Date.now(), data: publicFormData, isRead: false,
+      });
+      setPublicFormDone(true);
+    } catch (err: any) {
+      alert('Submit failed: ' + (err?.message || err));
+    } finally {
+      setPublicFormSubmitting(false);
+    }
   };
 
   // --- COMMUNITY HANDLERS ---
@@ -5683,8 +5899,8 @@ function AppInner() {
       setLoadedProjectId(cloudId);
       setProjectName(parsed.projectName ?? synthetic.name);
       setFolderName(parsed.folderName ?? '');
-      const allowedViews = ['dashboard', 'invoice', 'packinglist', 'catalog', 'suppliers'] as const;
-      const rawView = parsed.view === 'pricelist' ? 'packinglist' : parsed.view;
+      const allowedViews = ['dashboard', 'invoice', 'forms', 'catalog', 'suppliers'] as const;
+      const rawView = (parsed.view === 'pricelist' || parsed.view === 'packinglist') ? 'forms' : parsed.view;
       const v = allowedViews.includes(rawView as any) ? rawView : 'dashboard';
       setView(v);
       setInvoiceIncludedIds(parsed.invoiceIncludedIds === undefined ? null : parsed.invoiceIncludedIds);
@@ -11986,6 +12202,252 @@ function AppInner() {
     );
   };
 
+  // ---- FORMS RENDER ----
+
+  const renderPublicForm = () => {
+    if (publicFormLoading) return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+    if (!publicFormView) return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center text-slate-500">
+          <ListTodo className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+          <p className="font-medium">Form not found or no longer active.</p>
+        </div>
+      </div>
+    );
+    const { form } = publicFormView;
+    const fields: FormField[] = form.fields || [];
+    if (publicFormDone) return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center max-w-sm">
+          <CheckCircle className="w-14 h-14 mx-auto text-emerald-500 mb-4" />
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Submitted!</h2>
+          <p className="text-slate-500 text-sm">Your response has been recorded. Thank you.</p>
+        </div>
+      </div>
+    );
+    return (
+      <div className="min-h-screen bg-slate-50">
+        {/* Letterhead header */}
+        <div className="w-full py-6 px-6 flex items-center gap-4" style={{ backgroundColor: form.headerBgColor || '#1e3a5f' }}>
+          {form.logoUrl && <img src={form.logoUrl} className="h-14 w-14 object-contain rounded-lg bg-white/10 p-1" alt="logo" />}
+          <div>
+            <h1 className="text-xl font-bold" style={{ color: form.headerTextColor || '#ffffff' }}>{form.companyName || form.name}</h1>
+            {form.headerSubtitle && <p className="text-sm opacity-80 mt-0.5" style={{ color: form.headerTextColor || '#ffffff' }}>{form.headerSubtitle}</p>}
+          </div>
+        </div>
+        <div className="max-w-xl mx-auto px-4 py-8">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5">
+            <div className="border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-bold text-slate-800">{form.name}</h2>
+              {form.description && <p className="text-sm text-slate-500 mt-1">{form.description}</p>}
+            </div>
+            {fields.map((field: FormField) => (
+              <div key={field.id}>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {field.label}{field.required && <span className="text-red-500 ml-1">*</span>}
+                </label>
+                {field.type === 'textarea' ? (
+                  <textarea rows={3} placeholder={field.placeholder} value={publicFormData[field.id] || ''}
+                    onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" />
+                ) : field.type === 'select' ? (
+                  <select value={publicFormData[field.id] || ''}
+                    onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                    <option value="">— Select —</option>
+                    {(field.options || []).map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                ) : field.type === 'checkbox' ? (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={!!publicFormData[field.id]}
+                      onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.checked ? 'true' : '' })}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                    <span className="text-sm text-slate-600">{field.placeholder || 'Yes'}</span>
+                  </label>
+                ) : (
+                  <input type={field.type === 'phone' ? 'tel' : field.type} placeholder={field.placeholder}
+                    value={publicFormData[field.id] || ''}
+                    onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                )}
+              </div>
+            ))}
+            <button onClick={handleSubmitPublicForm} disabled={publicFormSubmitting}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 flex items-center justify-center gap-2 mt-2">
+              {publicFormSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Submit
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCustomFormsList = () => {
+    const handleImportJson = () => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.json';
+      input.onchange = (e: any) => {
+        const file = e.target.files?.[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.target?.result as string);
+            const imported: CustomFormDef = {
+              id: '', name: parsed.name || 'Imported Form', description: parsed.description || '',
+              logoUrl: parsed.logoUrl || '', companyName: parsed.companyName || '',
+              headerSubtitle: parsed.headerSubtitle || '', headerBgColor: parsed.headerBgColor || '#1e3a5f',
+              headerTextColor: parsed.headerTextColor || '#ffffff',
+              fields: Array.isArray(parsed.fields) ? parsed.fields : [],
+              createdAt: Date.now(), updatedAt: Date.now(), isPublished: false,
+            };
+            setEditingForm(imported); setFormBuilderDraft(imported); setShowFormBuilder(true);
+          } catch { alert('Invalid JSON file'); }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    };
+
+    const handleExportJson = (form: CustomFormDef) => {
+      const exportData = { name: form.name, description: form.description, logoUrl: form.logoUrl, companyName: form.companyName, headerSubtitle: form.headerSubtitle, headerBgColor: form.headerBgColor, headerTextColor: form.headerTextColor, fields: form.fields };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `${form.name.replace(/\s+/g, '_')}.json`; a.click(); URL.revokeObjectURL(url);
+    };
+
+    const getFormUrl = (form: CustomFormDef) =>
+      form.publishedKey ? `${window.location.origin}${window.location.pathname}?form=${form.publishedKey}` : '';
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <ListTodo className="w-5 h-5 text-blue-600" /> Custom Forms
+          </h2>
+          <div className="flex gap-2">
+            <button onClick={handleImportJson} className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50">
+              <Upload className="w-4 h-4" /> Import JSON
+            </button>
+            <button onClick={() => { const b = makeBlankForm(); setEditingForm(b); setFormBuilderDraft(b); setShowFormBuilder(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <Plus className="w-4 h-4" /> New Form
+            </button>
+          </div>
+        </div>
+
+        {!user ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+            <ListTodo className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+            <p className="text-slate-500 text-sm">Sign in to create and manage custom forms.</p>
+          </div>
+        ) : customForms.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
+            <ListTodo className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+            <p className="text-slate-600 font-medium mb-1">No custom forms yet</p>
+            <p className="text-slate-400 text-sm mb-4">Create branded forms with logo & header. Share online — submissions land here automatically.</p>
+            <button onClick={() => { const b = makeBlankForm(); setEditingForm(b); setFormBuilderDraft(b); setShowFormBuilder(true); }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+              Create your first form
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {customForms.map((form) => {
+              const subCount = formSubmissions.filter((s) => s.formKey === form.publishedKey).length;
+              const unreadCount = formSubmissions.filter((s) => s.formKey === form.publishedKey && !s.isRead).length;
+              const formUrl = getFormUrl(form);
+              return (
+                <div key={form.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="h-16 flex items-center px-4 gap-3" style={{ backgroundColor: form.headerBgColor || '#1e3a5f' }}>
+                    {form.logoUrl && <img src={form.logoUrl} className="h-8 w-8 object-contain rounded bg-white/10 p-0.5" alt="" />}
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold truncate" style={{ color: form.headerTextColor || '#ffffff' }}>{form.companyName || form.name}</div>
+                      {form.headerSubtitle && <div className="text-[11px] opacity-75 truncate" style={{ color: form.headerTextColor || '#ffffff' }}>{form.headerSubtitle}</div>}
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <h3 className="font-semibold text-slate-800 text-sm">{form.name}</h3>
+                        {form.description && <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{form.description}</p>}
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${form.isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {form.isPublished ? 'Live' : 'Draft'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 mb-3">
+                      <span>{form.fields.length} field{form.fields.length !== 1 ? 's' : ''}</span>
+                      {subCount > 0 && (
+                        <button onClick={() => { setShowFormSubmissions(true); }} className={`${unreadCount > 0 ? 'text-blue-600 font-semibold' : ''}`}>
+                          {subCount} submission{subCount !== 1 ? 's' : ''}{unreadCount > 0 ? ` (${unreadCount} new)` : ''}
+                        </button>
+                      )}
+                    </div>
+                    {form.isPublished && formUrl && (
+                      <div className="mb-3 flex items-center gap-1.5 bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-200">
+                        <Link2 className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                        <span className="text-[10px] text-slate-500 truncate flex-1">{formUrl}</span>
+                        <button onClick={() => navigator.clipboard?.writeText(formUrl)} className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold flex-shrink-0">Copy</button>
+                      </div>
+                    )}
+                    <div className="flex gap-1.5 flex-wrap">
+                      <button onClick={() => { setEditingForm(form); setFormBuilderDraft({ ...form }); setShowFormBuilder(true); }}
+                        className="flex items-center gap-1 px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50">
+                        <Edit3 className="w-3 h-3" /> Edit
+                      </button>
+                      <button onClick={() => handleExportJson(form)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50">
+                        <Download className="w-3 h-3" /> JSON
+                      </button>
+                      {!form.isPublished ? (
+                        <button onClick={() => handlePublishForm(form.id)} disabled={formPublishing === form.id}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 rounded hover:bg-emerald-100">
+                          {formPublishing === form.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Globe className="w-3 h-3" />} Publish
+                        </button>
+                      ) : (
+                        <button onClick={() => handleUnpublishForm(form.id)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded hover:bg-amber-100">
+                          <Globe2 className="w-3 h-3" /> Unpublish
+                        </button>
+                      )}
+                      <button onClick={() => handleDeleteForm(form.id)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-red-50 border border-red-200 text-red-700 rounded hover:bg-red-100 ml-auto">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderForms = () => (
+    <div className="space-y-4">
+      <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
+        <button onClick={() => setFormsSubView('list')}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'list' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <ListTodo className="w-4 h-4" /> Custom Forms
+        </button>
+        <div className="w-px bg-slate-200" />
+        <button onClick={() => setFormsSubView('packinglist')}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'packinglist' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <ClipboardList className="w-4 h-4" /> Packing List
+        </button>
+      </div>
+      {formsSubView === 'list' && renderCustomFormsList()}
+      {formsSubView === 'packinglist' && renderPackingList()}
+    </div>
+  );
+
   const renderBuyers = () => {
       const newBlankBuyer = (): Buyer => ({
           id: Date.now(),
@@ -12787,6 +13249,11 @@ function AppInner() {
     );
   }
 
+  // Public form view (no auth required — URL has ?form=KEY)
+  if (publicFormLoading || publicFormView) {
+    return renderPublicForm();
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <style>{`
@@ -13046,7 +13513,7 @@ function AppInner() {
                     {[
                         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                         { id: 'invoice', label: 'Proforma Invoice', icon: FileText },
-                        { id: 'packinglist', label: 'Packing list', icon: ClipboardList },
+                        { id: 'forms', label: 'Forms', icon: ListTodo },
                         { id: 'catalog', label: 'Catalog Gen', icon: LayoutTemplate },
                         { id: 'suppliers', label: 'Suppliers', icon: Users },
                         { id: 'buyers', label: 'Buyers', icon: Users },
@@ -13101,6 +13568,22 @@ function AppInner() {
                     )}
                 </button>
 
+                {(() => {
+                  const unreadSubs = formSubmissions.filter((s) => !s.isRead).length;
+                  return (
+                    <button onClick={() => setShowFormSubmissions(true)}
+                      className="relative p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Form Submissions">
+                      <Mail className="w-5 h-5" />
+                      {unreadSubs > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-indigo-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                          {unreadSubs > 99 ? '99+' : unreadSubs}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })()}
+
                 <div className="flex items-center gap-3 ml-2 pl-3 border-l border-slate-200">
                     {user.photoURL ? (
                         <img src={user.photoURL} className="w-8 h-8 rounded-full border border-slate-200" alt="User" />
@@ -13150,7 +13633,7 @@ function AppInner() {
                 {[
                     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                     { id: 'invoice', label: 'Invoice', icon: FileText },
-                    { id: 'packinglist', label: 'Packing list', icon: ClipboardList },
+                    { id: 'forms', label: 'Forms', icon: ListTodo },
                     { id: 'catalog', label: 'Catalog', icon: LayoutTemplate },
                     { id: 'suppliers', label: 'Suppliers', icon: Users },
                     { id: 'buyers', label: 'Buyers', icon: Users },
@@ -13192,7 +13675,7 @@ function AppInner() {
           )}
           {view === 'dashboard' && renderDashboard()}
           {view === 'invoice' && renderInvoice()}
-          {view === 'packinglist' && renderPackingList()}
+          {view === 'forms' && renderForms()}
           {view === 'catalog' && renderCatalog()}
           {view === 'suppliers' && renderSuppliers()}
           {view === 'buyers' && renderBuyers()}
@@ -14154,6 +14637,239 @@ function AppInner() {
                   </div>
               </div>
           </div>
+      )}
+
+      {/* Form Builder Modal */}
+      {showFormBuilder && formBuilderDraft && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-blue-50 to-white">
+              <div className="flex items-center gap-3">
+                <ListTodo className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-slate-800">{formBuilderDraft.id ? 'Edit Form' : 'New Form'}</h3>
+              </div>
+              <button onClick={() => { setShowFormBuilder(false); setEditingForm(null); setFormBuilderDraft(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {/* Header Preview */}
+              <div className="rounded-xl overflow-hidden border border-slate-200">
+                <div className="py-4 px-5 flex items-center gap-3" style={{ backgroundColor: formBuilderDraft.headerBgColor || '#1e3a5f' }}>
+                  {formBuilderDraft.logoUrl && <img src={formBuilderDraft.logoUrl} className="h-10 w-10 object-contain rounded bg-white/10 p-0.5" alt="" />}
+                  <div>
+                    <div className="font-bold text-base" style={{ color: formBuilderDraft.headerTextColor || '#ffffff' }}>{formBuilderDraft.companyName || formBuilderDraft.name || 'Company Name'}</div>
+                    {formBuilderDraft.headerSubtitle && <div className="text-xs opacity-75" style={{ color: formBuilderDraft.headerTextColor || '#ffffff' }}>{formBuilderDraft.headerSubtitle}</div>}
+                  </div>
+                </div>
+                <div className="bg-white px-5 py-3">
+                  <p className="text-sm font-semibold text-slate-700">{formBuilderDraft.name}</p>
+                  {formBuilderDraft.description && <p className="text-xs text-slate-400 mt-0.5">{formBuilderDraft.description}</p>}
+                </div>
+              </div>
+
+              {/* Basic Info */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Form Name *</label>
+                  <input type="text" value={formBuilderDraft.name}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, name: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Company Name</label>
+                  <input type="text" value={formBuilderDraft.companyName || ''}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, companyName: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Description</label>
+                  <input type="text" value={formBuilderDraft.description || ''}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, description: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Header Subtitle</label>
+                  <input type="text" value={formBuilderDraft.headerSubtitle || ''}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, headerSubtitle: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Your trusted export partner" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Logo URL</label>
+                  <input type="url" value={formBuilderDraft.logoUrl || ''}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, logoUrl: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://..." />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Header Background</label>
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={formBuilderDraft.headerBgColor || '#1e3a5f'}
+                      onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, headerBgColor: e.target.value })}
+                      className="h-9 w-14 rounded border border-slate-300 cursor-pointer" />
+                    <input type="text" value={formBuilderDraft.headerBgColor || '#1e3a5f'}
+                      onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, headerBgColor: e.target.value })}
+                      className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Header Text Color</label>
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={formBuilderDraft.headerTextColor || '#ffffff'}
+                      onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, headerTextColor: e.target.value })}
+                      className="h-9 w-14 rounded border border-slate-300 cursor-pointer" />
+                    <input type="text" value={formBuilderDraft.headerTextColor || '#ffffff'}
+                      onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, headerTextColor: e.target.value })}
+                      className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Fields */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-slate-700">Form Fields</h4>
+                  <button onClick={() => {
+                    const newField: FormField = { id: `f_${Date.now()}`, type: 'text', label: 'New Field', required: false };
+                    setFormBuilderDraft({ ...formBuilderDraft, fields: [...formBuilderDraft.fields, newField] });
+                  }} className="flex items-center gap-1 px-2.5 py-1.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100">
+                    <Plus className="w-3.5 h-3.5" /> Add Field
+                  </button>
+                </div>
+                {formBuilderDraft.fields.length === 0 && (
+                  <p className="text-xs text-slate-400 italic text-center py-4 border border-dashed border-slate-200 rounded-lg">No fields yet. Click "Add Field" to start.</p>
+                )}
+                <div className="space-y-3">
+                  {formBuilderDraft.fields.map((field, idx) => (
+                    <div key={field.id} className="border border-slate-200 rounded-xl p-3 bg-slate-50/60 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400 font-mono w-5 flex-shrink-0">{idx + 1}</span>
+                        <select value={field.type}
+                          onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], type: e.target.value as FormField['type'] }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
+                          className="text-xs border border-slate-300 rounded px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                          {(['text','textarea','email','phone','number','date','select','checkbox'] as FormField['type'][]).map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <input type="text" value={field.label} placeholder="Field label"
+                          onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], label: e.target.value }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
+                          className="flex-1 text-xs border border-slate-300 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+                          <input type="checkbox" checked={!!field.required}
+                            onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], required: e.target.checked }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
+                            className="rounded border-slate-300 text-blue-600" />
+                          Req
+                        </label>
+                        <button onClick={() => { const f = formBuilderDraft.fields.filter((_, i) => i !== idx); setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
+                          className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
+                      {field.type !== 'checkbox' && (
+                        <input type="text" value={field.placeholder || ''} placeholder="Placeholder text (optional)"
+                          onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], placeholder: e.target.value }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
+                          className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                      )}
+                      {field.type === 'select' && (
+                        <div>
+                          <input type="text" value={(field.options || []).join(', ')} placeholder="Option 1, Option 2, Option 3"
+                            onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
+                            className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                          <p className="text-[10px] text-slate-400 mt-0.5">Comma-separated options</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 flex justify-between items-center gap-3 bg-slate-50">
+              <button onClick={() => { setShowFormBuilder(false); setEditingForm(null); setFormBuilderDraft(null); }}
+                className="px-4 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-100">Cancel</button>
+              <button onClick={() => { if (formBuilderDraft) handleSaveForm(formBuilderDraft); }} disabled={formBuilderSaving || !formBuilderDraft?.name?.trim()}
+                className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50">
+                {formBuilderSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Form
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Form Submissions Modal */}
+      {showFormSubmissions && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-indigo-50 to-white">
+              <div className="flex items-center gap-3">
+                <Mail className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-800">Form Submissions</h3>
+                <span className="text-xs px-2 py-0.5 bg-slate-100 rounded-full font-medium text-slate-600">{formSubmissions.length} total</span>
+                {formSubmissions.filter((s) => !s.isRead).length > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-bold">{formSubmissions.filter((s) => !s.isRead).length} new</span>
+                )}
+              </div>
+              <button onClick={() => { setShowFormSubmissions(false); setSelectedFormSubmission(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="flex-1 flex overflow-hidden">
+              {/* List */}
+              <div className="w-72 border-r border-slate-200 overflow-y-auto bg-slate-50/40">
+                {formSubmissions.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-slate-500">
+                    <Mail className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <p className="font-medium">No submissions yet.</p>
+                    <p className="text-xs text-slate-400 mt-1">Publish a form and share the link — responses appear here in real time.</p>
+                  </div>
+                ) : (
+                  formSubmissions.map((sub) => {
+                    const isSelected = selectedFormSubmission?.id === sub.id;
+                    return (
+                      <button key={sub.id} onClick={() => { setSelectedFormSubmission(sub); if (!sub.isRead) handleMarkFormSubmission(sub.id, true); }}
+                        className={`w-full text-left px-3 py-2.5 border-b border-slate-100 hover:bg-indigo-50/50 transition-colors ${isSelected ? 'bg-indigo-50' : ''}`}>
+                        <div className="flex items-start gap-2">
+                          {!sub.isRead && <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1" />}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-slate-800 truncate">{sub.formName}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{new Date(sub.submittedAt).toLocaleString()}</div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              {/* Detail */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {!selectedFormSubmission ? (
+                  <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                    <div className="text-center">
+                      <Mail className="w-10 h-10 mx-auto text-slate-200 mb-2" />
+                      <p>Select a submission to view details.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                      <div>
+                        <h4 className="font-bold text-slate-800">{selectedFormSubmission.formName}</h4>
+                        <p className="text-xs text-slate-500">{new Date(selectedFormSubmission.submittedAt).toLocaleString()}</p>
+                      </div>
+                      <button onClick={() => handleDeleteFormSubmission(selectedFormSubmission.id)}
+                        className="px-2.5 py-1 text-xs bg-red-50 border border-red-200 text-red-700 rounded hover:bg-red-100 flex items-center gap-1">
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {Object.entries(selectedFormSubmission.data).map(([key, val]) => {
+                        const form = customForms.find((f) => f.publishedKey === selectedFormSubmission.formKey);
+                        const field = form?.fields.find((f) => f.id === key);
+                        return (
+                          <div key={key} className="border border-slate-100 rounded-lg p-3 bg-slate-50/50">
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">{field?.label || key}</div>
+                            <div className="text-sm text-slate-800 whitespace-pre-wrap">{String(val) || '—'}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
