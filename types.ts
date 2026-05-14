@@ -654,9 +654,23 @@ export interface FormField {
   maxRating?: number;      // for rating type (default 5)
 }
 
+/** Saved letterhead (logo, company, colors) for reuse when building new forms — stored locally in the browser. */
+export interface FormHeaderPreset {
+  id: string;
+  name: string;
+  companyName?: string;
+  logoUrl?: string;
+  headerSubtitle?: string;
+  headerBgColor?: string;
+  headerTextColor?: string;
+  createdAt: number;
+}
+
 export interface CustomFormDef {
   id: string;
   name: string;
+  /** Optional reference shown on the published A4 form (e.g. RFQ-2026-014). */
+  formNumber?: string;
   description?: string;
   logoUrl?: string;
   companyName?: string;
@@ -674,6 +688,8 @@ export interface FormSubmission {
   id: string;
   formKey: string;
   formName: string;
+  /** Copied from the form definition when submitted (if set). */
+  formNumber?: string;
   submittedAt: number;
   data: Record<string, string | number | boolean | string[]>;
   isRead: boolean;

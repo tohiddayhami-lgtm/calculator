@@ -83,6 +83,7 @@ import {
   FormField,
   FormFieldType,
   CustomFormDef,
+  FormHeaderPreset,
   FormSubmission,
 } from './types';
 
@@ -139,6 +140,16 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   margin: 8px 0 0;
   line-height: 1.45;
   max-width: 52ch;
+}
+.public-form-doc .pf-meta {
+  font-size: 8.5pt;
+  color: #475569;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.public-form-doc .pf-meta b {
+  color: #0f172a;
+  font-weight: 600;
 }
 .public-form-doc .pf-header {
   display: flex;
@@ -483,6 +494,31 @@ function parseInvoiceTextPresetsFromStorage(raw: string | null): InvoiceTextPres
         updatedAt: Number(x.updatedAt) || 0,
       }))
       .slice(0, MAX_INVOICE_TEXT_PRESETS);
+  } catch {
+    return [];
+  }
+}
+
+const FORM_HEADER_PRESETS_STORAGE_KEY = 'exportcalc_form_header_presets_v1';
+const MAX_FORM_HEADER_PRESETS = 25;
+
+function parseFormHeaderPresetsFromStorage(raw: string | null): FormHeaderPreset[] {
+  try {
+    const a = JSON.parse(raw || '[]');
+    if (!Array.isArray(a)) return [];
+    return a
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .map((x, i) => ({
+        id: String(x.id || `fhp-${Date.now()}-${i}`),
+        name: (typeof x.name === 'string' ? x.name : 'Untitled').trim().slice(0, 80) || 'Untitled',
+        companyName: typeof x.companyName === 'string' ? x.companyName : '',
+        logoUrl: typeof x.logoUrl === 'string' ? x.logoUrl : '',
+        headerSubtitle: typeof x.headerSubtitle === 'string' ? x.headerSubtitle : '',
+        headerBgColor: typeof x.headerBgColor === 'string' ? x.headerBgColor : '#1e3a5f',
+        headerTextColor: typeof x.headerTextColor === 'string' ? x.headerTextColor : '#ffffff',
+        createdAt: Number(x.createdAt) || 0,
+      }))
+      .slice(0, MAX_FORM_HEADER_PRESETS);
   } catch {
     return [];
   }
@@ -3125,6 +3161,10 @@ function AppInner() {
   const [publicFormFiles, setPublicFormFiles] = useState<Record<string, File>>({});
   const [publicFormMulti, setPublicFormMulti] = useState<Record<string, string[]>>({});
   const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
+  const [formHeaderPresets, setFormHeaderPresets] = useState<FormHeaderPreset[]>([]);
+  const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
+  const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
+  const [headerPresetSaveName, setHeaderPresetSaveName] = useState('');
 
   // -- STATE: COMMUNITY HUB --
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
@@ -3238,6 +3278,26 @@ function AppInner() {
       /* ignore */
     }
   }, [invoiceTextPresets, invoiceTextPresetsReady]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(FORM_HEADER_PRESETS_STORAGE_KEY);
+      setFormHeaderPresets(parseFormHeaderPresetsFromStorage(raw));
+    } catch {
+      setFormHeaderPresets([]);
+    }
+    setFormHeaderPresetsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!formHeaderPresetsReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(FORM_HEADER_PRESETS_STORAGE_KEY, JSON.stringify(formHeaderPresets));
+    } catch {
+      /* ignore */
+    }
+  }, [formHeaderPresets, formHeaderPresetsReady]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
@@ -3844,6 +3904,7 @@ function AppInner() {
   const makeBlankForm = (): CustomFormDef => ({
     id: '',
     name: 'New Form',
+    formNumber: '',
     description: '',
     logoUrl: '',
     companyName: '',
@@ -3871,7 +3932,9 @@ function AppInner() {
         if (formDef.publishedKey && formDef.isPublished) {
           await withTimeout(
             updateDoc(doc(db, 'publicForms', formDef.publishedKey), {
-              name: formDef.name, companyName: formDef.companyName || '', logoUrl: formDef.logoUrl || '',
+              name: formDef.name,
+              formNumber: formDef.formNumber || '',
+              companyName: formDef.companyName || '', logoUrl: formDef.logoUrl || '',
               headerBgColor: formDef.headerBgColor || '#1e3a5f', headerTextColor: formDef.headerTextColor || '#ffffff',
               headerSubtitle: formDef.headerSubtitle || '', description: formDef.description || '',
               fields: formDef.fields, updatedAt: now,
@@ -3920,6 +3983,7 @@ function AppInner() {
       const key = form.publishedKey || `f_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
       const publicData = {
         ownerUid: user.uid, appId: dataAppId, name: form.name,
+        formNumber: form.formNumber || '',
         companyName: form.companyName || '', logoUrl: form.logoUrl || '',
         headerBgColor: form.headerBgColor || '#1e3a5f', headerTextColor: form.headerTextColor || '#ffffff',
         headerSubtitle: form.headerSubtitle || '', description: form.description || '',
@@ -3950,6 +4014,53 @@ function AppInner() {
     } catch (err: any) {
       alert('Failed to unpublish: ' + (err?.message || err));
     }
+  };
+
+  const applyFormHeaderPresetToDraft = (presetId: string) => {
+    const p = formHeaderPresets.find((x) => x.id === presetId);
+    if (!p || !formBuilderDraft) return;
+    setFormBuilderDraft({
+      ...formBuilderDraft,
+      companyName: p.companyName || '',
+      logoUrl: p.logoUrl || '',
+      headerSubtitle: p.headerSubtitle || '',
+      headerBgColor: p.headerBgColor || '#1e3a5f',
+      headerTextColor: p.headerTextColor || '#ffffff',
+    });
+  };
+
+  const saveFormHeaderPresetFromDraft = () => {
+    if (!formBuilderDraft) return;
+    const name = headerPresetSaveName.trim();
+    if (!name) {
+      alert('Enter a name for this letterhead preset.');
+      return;
+    }
+    if (formHeaderPresets.length >= MAX_FORM_HEADER_PRESETS) {
+      alert(`You can save at most ${MAX_FORM_HEADER_PRESETS} letterhead presets. Delete one first.`);
+      return;
+    }
+    const id = `fhp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const p: FormHeaderPreset = {
+      id,
+      name,
+      companyName: formBuilderDraft.companyName,
+      logoUrl: formBuilderDraft.logoUrl,
+      headerSubtitle: formBuilderDraft.headerSubtitle,
+      headerBgColor: formBuilderDraft.headerBgColor,
+      headerTextColor: formBuilderDraft.headerTextColor,
+      createdAt: Date.now(),
+    };
+    setFormHeaderPresets((list) => [...list, p]);
+    setHeaderPresetSaveName('');
+    setSelectedHeaderPresetId(id);
+  };
+
+  const deleteFormHeaderPresetById = (presetId: string) => {
+    if (!presetId) return;
+    if (!window.confirm('Delete this saved letterhead preset?')) return;
+    setFormHeaderPresets((list) => list.filter((x) => x.id !== presetId));
+    setSelectedHeaderPresetId((cur) => (cur === presetId ? '' : cur));
   };
 
   const handleMarkFormSubmission = async (subId: string, isRead: boolean) => {
@@ -4002,7 +4113,14 @@ function AppInner() {
         }
       }
       const subRef = doc(db, 'artifacts', form.appId, 'users', form.ownerUid, 'formSubmissions', subId);
-      await setDoc(subRef, { formKey: key, formName: form.name, submittedAt: Date.now(), data: mergedData, isRead: false });
+      await setDoc(subRef, {
+        formKey: key,
+        formName: form.name,
+        formNumber: form.formNumber || '',
+        submittedAt: Date.now(),
+        data: mergedData,
+        isRead: false,
+      });
       setPublicFormDone(true);
     } catch (err: any) {
       alert('Submit failed: ' + (err?.message || err));
@@ -12714,6 +12832,11 @@ function AppInner() {
                 <div style={{ minWidth: 0 }}>
                   <p className="pf-kicker">Electronic form</p>
                   <h1 className="pf-doc-title">{form.name}</h1>
+                  {form.formNumber ? (
+                    <p className="pf-meta">
+                      <b>Form no.</b> {String(form.formNumber)}
+                    </p>
+                  ) : null}
                   {form.description ? <p className="pf-desc">{form.description}</p> : null}
                 </div>
                 <div className="pf-seller">
@@ -12740,32 +12863,143 @@ function AppInner() {
   };
 
   const SAMPLE_FORM_JSON = {
-    _schema_version: '1.0',
-    _instructions: 'CloudExport Pro – Custom Form Schema. Keep the fields you need, remove the rest. Give this JSON to an AI and say: "Create a form for me using this schema."',
-    name: 'Sample Form Name',
-    description: 'A short description shown below the form title.',
-    companyName: 'Your Company Name',
-    headerSubtitle: 'Department • Tagline',
-    logoUrl: 'https://example.com/your-logo.png',
-    headerBgColor: '#1e3a5f',
+    _schema_version: '1.1',
+    _about:
+      'CloudExport Pro — custom form JSON. The live page is an A4-style document (like the proforma invoice): white page, company block + logo on the right, thin accent stripe from headerBgColor, optional formNumber, then fields in light bordered cards.',
+    _for_ai_models:
+      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id (keep ids or replace with new slugs). Use section_title to group blocks. For customer photos use image_upload with accept "image/*". For PDFs/spreadsheets use file_upload with accept like ".pdf,.doc,.docx" and maxSizeMb. display_image = show a fixed image URL (catalog/spec); no upload. video_upload for short clips.',
+    _field_types:
+      'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
+    _root_keys:
+      'name (string), formNumber (optional string, shown as “Form no.”), description, companyName, headerSubtitle, logoUrl (https image), headerBgColor (hex, accent stripe), headerTextColor (hex, kept for presets/export), fields (array)',
+    name: 'Sample — Inquiry with photos & files',
+    formNumber: 'RFQ-2026-SAMPLE',
+    description:
+      'Demonstrates reference images (display_image), multiple customer photo uploads, PDF/Office uploads, and a video slot — same layout as your branded electronic forms.',
+    companyName: 'Your Company Ltd.',
+    headerSubtitle: 'Exports · International sales',
+    logoUrl: 'https://picsum.photos/seed/ceformlogo/200/80',
+    headerBgColor: '#0f172a',
     headerTextColor: '#ffffff',
     fields: [
-      { id: 's1', type: 'section_title', label: 'Personal Information', placeholder: 'Please fill in your contact details.' },
-      { id: 'f1', type: 'text', label: 'Full Name', placeholder: 'Enter your full name', required: true },
-      { id: 'f2', type: 'email', label: 'Email Address', placeholder: 'you@example.com', required: true },
-      { id: 'f3', type: 'phone', label: 'Phone Number', placeholder: '+1 (555) 000-0000', required: false },
-      { id: 'f4', type: 'number', label: 'Quantity Required', placeholder: 'e.g. 500', required: false },
-      { id: 'f5', type: 'date', label: 'Preferred Delivery Date', required: false },
-      { id: 'f6', type: 'textarea', label: 'Special Requirements', placeholder: 'Describe any special packaging, labeling, or handling requirements...', required: false },
-      { id: 'f7', type: 'select', label: 'Country', required: true, options: ['Iran', 'UAE', 'Turkey', 'Germany', 'USA', 'Other'] },
-      { id: 'f8', type: 'multiselect', label: 'Products of Interest', required: false, options: ['Product A', 'Product B', 'Product C', 'Product D'] },
-      { id: 'f9', type: 'checkbox', label: 'Terms & Conditions', placeholder: 'I agree to the terms and conditions', required: true },
-      { id: 'f10', type: 'rating', label: 'Rate Your Experience (1–5 stars)', required: false, maxRating: 5 },
-      { id: 's2', type: 'section_title', label: 'Documents & Media', placeholder: 'Upload any relevant files.' },
-      { id: 'f11', type: 'display_image', label: 'Reference Product Photo', imageUrl: 'https://example.com/product-sample.jpg', placeholder: 'This image is shown to the customer — no upload required.' },
-      { id: 'f12', type: 'image_upload', label: 'Your Product Photo', placeholder: 'Upload a clear photo (JPG, PNG, WebP) — max 5 MB', required: false, accept: 'image/*', maxSizeMb: 5 },
-      { id: 'f13', type: 'video_upload', label: 'Product Demo Video', placeholder: 'Upload a short demo video (MP4, MOV) — max 50 MB', required: false, accept: 'video/*', maxSizeMb: 50 },
-      { id: 'f14', type: 'file_upload', label: 'Supporting Document', placeholder: 'Upload PDF, Word, or Excel — max 10 MB', required: false, accept: '.pdf,.doc,.docx,.xls,.xlsx,.csv', maxSizeMb: 10 },
+      {
+        id: 'sec_contact',
+        type: 'section_title',
+        label: 'Contact & company',
+        placeholder: 'How we can reach you about this inquiry.',
+      },
+      { id: 'f_company', type: 'text', label: 'Company / organization', placeholder: 'Registered name', required: true },
+      { id: 'f_contact_name', type: 'text', label: 'Contact person', placeholder: 'Full name', required: true },
+      { id: 'f_email', type: 'email', label: 'Email', placeholder: 'you@company.com', required: true },
+      { id: 'f_phone', type: 'phone', label: 'Phone / WhatsApp', placeholder: '+98 …', required: false },
+      { id: 'f_country', type: 'select', label: 'Country', required: true, options: ['Iran', 'UAE', 'Turkey', 'Germany', 'India', 'Other'] },
+      {
+        id: 'sec_reference_images',
+        type: 'section_title',
+        label: 'Reference images (shown to customer)',
+        placeholder: 'Use display_image for catalog shots, packing examples, or diagrams — customer does not upload here.',
+      },
+      {
+        id: 'img_ref_product',
+        type: 'display_image',
+        label: 'Example product / grade',
+        imageUrl: 'https://picsum.photos/seed/ceformproduct/900/500',
+        placeholder: 'Replace imageUrl with your own hosted image.',
+      },
+      {
+        id: 'img_ref_packing',
+        type: 'display_image',
+        label: 'Example packing / pallet layout',
+        imageUrl: 'https://picsum.photos/seed/ceformpacking/900/450',
+        placeholder: 'Second reference image — optional.',
+      },
+      {
+        id: 'sec_customer_photos',
+        type: 'section_title',
+        label: 'Customer uploads — photos',
+        placeholder: 'Customers upload their own images (damage, label, cargo, etc.).',
+      },
+      {
+        id: 'up_photo_main',
+        type: 'image_upload',
+        label: 'Main situation photo',
+        placeholder: 'JPG / PNG / WebP — max 8 MB',
+        required: true,
+        accept: 'image/*',
+        maxSizeMb: 8,
+      },
+      {
+        id: 'up_photo_extra',
+        type: 'image_upload',
+        label: 'Second angle (optional)',
+        placeholder: 'Another clear photo — max 8 MB',
+        required: false,
+        accept: 'image/*',
+        maxSizeMb: 8,
+      },
+      {
+        id: 'sec_documents',
+        type: 'section_title',
+        label: 'Customer uploads — documents',
+        placeholder: 'PDF, Word, Excel, or combined photo+PDF accept strings.',
+      },
+      {
+        id: 'up_spec_pdf',
+        type: 'file_upload',
+        label: 'Specification / packing list (PDF)',
+        placeholder: 'PDF preferred — max 15 MB',
+        required: false,
+        accept: '.pdf',
+        maxSizeMb: 15,
+      },
+      {
+        id: 'up_mixed',
+        type: 'file_upload',
+        label: 'Photos or PDF (mixed)',
+        placeholder: 'Images or PDF — max 12 MB',
+        required: false,
+        accept: 'image/*,.pdf',
+        maxSizeMb: 12,
+      },
+      {
+        id: 'sec_video',
+        type: 'section_title',
+        label: 'Optional video',
+        placeholder: 'Short clip from phone is OK.',
+      },
+      {
+        id: 'up_video',
+        type: 'video_upload',
+        label: 'Short video (optional)',
+        placeholder: 'MP4 / MOV — max 50 MB',
+        required: false,
+        accept: 'video/*',
+        maxSizeMb: 50,
+      },
+      {
+        id: 'sec_order',
+        type: 'section_title',
+        label: 'Order details',
+        placeholder: 'Quantities and preferences.',
+      },
+      { id: 'f_qty', type: 'number', label: 'Quantity (units)', placeholder: 'e.g. 1200', required: false },
+      { id: 'f_delivery', type: 'date', label: 'Requested delivery window', required: false },
+      {
+        id: 'f_lines',
+        type: 'multiselect',
+        label: 'Product lines of interest',
+        required: false,
+        options: ['Grade A bulk', 'Retail packs', 'Private label', 'Samples only'],
+      },
+      { id: 'f_notes', type: 'textarea', label: 'Notes for seller', placeholder: 'HS code, port, certifications…', required: false },
+      { id: 'f_rating', type: 'rating', label: 'How clear was this form?', required: false, maxRating: 5 },
+      {
+        id: 'f_terms',
+        type: 'checkbox',
+        label: 'I confirm the information is accurate',
+        placeholder: 'Check to confirm',
+        required: true,
+      },
     ],
   };
 
@@ -12773,7 +13007,7 @@ function AppInner() {
     const blob = new Blob([JSON.stringify(SAMPLE_FORM_JSON, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'sample_form_schema.json'; a.click();
+    a.href = url; a.download = 'sample_form_schema_v1.1.json'; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -12788,12 +13022,19 @@ function AppInner() {
           try {
             const parsed = JSON.parse(ev.target?.result as string);
             const imported: CustomFormDef = {
-              id: '', name: parsed.name || 'Imported Form', description: parsed.description || '',
-              logoUrl: parsed.logoUrl || '', companyName: parsed.companyName || '',
-              headerSubtitle: parsed.headerSubtitle || '', headerBgColor: parsed.headerBgColor || '#1e3a5f',
+              id: '',
+              name: parsed.name || 'Imported Form',
+              formNumber: typeof parsed.formNumber === 'string' ? parsed.formNumber : '',
+              description: parsed.description || '',
+              logoUrl: parsed.logoUrl || '',
+              companyName: parsed.companyName || '',
+              headerSubtitle: parsed.headerSubtitle || '',
+              headerBgColor: parsed.headerBgColor || '#1e3a5f',
               headerTextColor: parsed.headerTextColor || '#ffffff',
               fields: Array.isArray(parsed.fields) ? parsed.fields : [],
-              createdAt: Date.now(), updatedAt: Date.now(), isPublished: false,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              isPublished: false,
             };
             setEditingForm(imported); setFormBuilderDraft(imported); setShowFormBuilder(true);
           } catch { alert('Invalid JSON file'); }
@@ -12804,7 +13045,17 @@ function AppInner() {
     };
 
     const handleExportJson = (form: CustomFormDef) => {
-      const exportData = { name: form.name, description: form.description, logoUrl: form.logoUrl, companyName: form.companyName, headerSubtitle: form.headerSubtitle, headerBgColor: form.headerBgColor, headerTextColor: form.headerTextColor, fields: form.fields };
+      const exportData = {
+        name: form.name,
+        formNumber: form.formNumber || '',
+        description: form.description,
+        logoUrl: form.logoUrl,
+        companyName: form.companyName,
+        headerSubtitle: form.headerSubtitle,
+        headerBgColor: form.headerBgColor,
+        headerTextColor: form.headerTextColor,
+        fields: form.fields,
+      };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `${form.name.replace(/\s+/g, '_')}.json`; a.click(); URL.revokeObjectURL(url);
@@ -12876,6 +13127,9 @@ function AppInner() {
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div>
                         <h3 className="font-semibold text-slate-800 text-sm">{form.name}</h3>
+                        {form.formNumber ? (
+                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">No. {form.formNumber}</p>
+                        ) : null}
                         {form.description && <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{form.description}</p>}
                       </div>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${form.isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -15162,6 +15416,9 @@ function AppInner() {
                       <div className="min-w-0">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mb-1.5">Electronic form</p>
                         <p className="text-base font-bold text-slate-900 leading-tight">{formBuilderDraft.name || 'Form title'}</p>
+                        {formBuilderDraft.formNumber ? (
+                          <p className="text-[10px] text-slate-500 mt-1 font-semibold">Form no. {formBuilderDraft.formNumber}</p>
+                        ) : null}
                         {formBuilderDraft.description ? (
                           <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-md">{formBuilderDraft.description}</p>
                         ) : null}
@@ -15202,6 +15459,14 @@ function AppInner() {
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
                 <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Form number (optional)</label>
+                  <input type="text" value={formBuilderDraft.formNumber || ''}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, formNumber: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                    placeholder="e.g. RFQ-2026-014" />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Shown on the published A4 page as “Form no.” (like a proforma reference).</p>
+                </div>
+                <div className="col-span-2">
                   <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Description</label>
                   <input type="text" value={formBuilderDraft.description || ''}
                     onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, description: e.target.value })}
@@ -15240,6 +15505,66 @@ function AppInner() {
                       onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, headerTextColor: e.target.value })}
                       className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h4 className="text-sm font-bold text-slate-800">Saved letterheads</h4>
+                  <span className="text-[10px] text-slate-500">Stored on this device</span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Save logo, company name, subtitle, and header colors to reuse on new forms. Import JSON does not include these presets.
+                </p>
+                <div className="flex flex-wrap gap-2 items-end">
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Load preset</label>
+                    <select
+                      value={selectedHeaderPresetId}
+                      onChange={(e) => setSelectedHeaderPresetId(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="">— Choose —</option>
+                      {formHeaderPresets.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!selectedHeaderPresetId}
+                    onClick={() => applyFormHeaderPresetToDraft(selectedHeaderPresetId)}
+                    className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedHeaderPresetId}
+                    onClick={() => deleteFormHeaderPresetById(selectedHeaderPresetId)}
+                    className="px-3 py-2 text-sm font-medium rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 items-end pt-1 border-t border-slate-200">
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Save current letterhead as</label>
+                    <input
+                      type="text"
+                      value={headerPresetSaveName}
+                      onChange={(e) => setHeaderPresetSaveName(e.target.value)}
+                      placeholder="e.g. Main export brand"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveFormHeaderPresetFromDraft}
+                    className="px-3 py-2 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+                  >
+                    Save preset
+                  </button>
                 </div>
               </div>
 
@@ -15439,6 +15764,9 @@ function AppInner() {
                     <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                       <div>
                         <h4 className="font-bold text-slate-800">{selectedFormSubmission.formName}</h4>
+                        {selectedFormSubmission.formNumber ? (
+                          <p className="text-xs text-slate-600 mt-0.5 font-mono">Form no. {selectedFormSubmission.formNumber}</p>
+                        ) : null}
                         <p className="text-xs text-slate-500">{new Date(selectedFormSubmission.submittedAt).toLocaleString()}</p>
                       </div>
                       <button onClick={() => handleDeleteFormSubmission(selectedFormSubmission.id)}
