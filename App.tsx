@@ -112,7 +112,7 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   box-sizing: border-box;
 }
 .public-form-doc {
-  width: 210mm;
+  width: min(100%, 210mm);
   max-width: 100%;
   min-height: 297mm;
   margin: 0 auto;
@@ -397,6 +397,167 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   color: #94a3b8;
   text-align: center;
   line-height: 1.5;
+}
+@media screen and (max-width: 640px) {
+  #public-form-root.public-form-page {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .public-form-toolbar {
+    top: max(10px, env(safe-area-inset-top, 0px)) !important;
+    right: max(10px, env(safe-area-inset-right, 0px)) !important;
+  }
+  .public-form-toolbar button {
+    min-height: 44px;
+    padding: 10px 16px;
+    touch-action: manipulation;
+  }
+  .public-form-doc-wrap {
+    max-width: 100%;
+    padding: 10px 10px 48px;
+    margin: 0;
+  }
+  .public-form-doc {
+    width: 100%;
+    min-height: auto;
+    padding: 18px 16px 24px;
+    border-radius: 12px;
+    font-size: 15px;
+    line-height: 1.5;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+  }
+  .public-form-doc .pf-kicker {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+  .public-form-doc h1.pf-doc-title {
+    font-size: 1.35rem;
+    line-height: 1.2;
+  }
+  .public-form-doc .pf-desc {
+    font-size: 14px;
+    max-width: none;
+  }
+  .public-form-doc .pf-meta {
+    font-size: 13px;
+  }
+  .public-form-doc .pf-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .public-form-doc .pf-seller {
+    max-width: none;
+    text-align: left;
+    padding-top: 14px;
+    margin-top: 2px;
+    border-top: 1px solid #e2e8f0;
+  }
+  .public-form-doc .pf-seller img {
+    margin-left: 0;
+    margin-right: auto;
+  }
+  .public-form-doc .pf-accent {
+    margin: 10px 0 16px;
+  }
+  .public-form-doc .pf-fields {
+    gap: 12px;
+  }
+  .public-form-doc .pf-field {
+    padding: 14px 14px;
+    border-radius: 10px;
+    background: #fff;
+    border-color: #e2e8f0;
+  }
+  .public-form-doc .pf-label {
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+  .public-form-doc .pf-input,
+  .public-form-doc .pf-textarea,
+  .public-form-doc .pf-select {
+    font-size: 16px;
+    padding: 12px 12px;
+    border-radius: 8px;
+  }
+  .public-form-doc .pf-textarea {
+    min-height: 100px;
+  }
+  .public-form-doc .pf-section {
+    padding-top: 16px;
+    margin-top: 6px;
+  }
+  .public-form-doc .pf-section h3,
+  .public-form-doc .pf-section .pf-bilingual-row h3 {
+    font-size: 1.05rem;
+  }
+  .public-form-doc .pf-bilingual-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .public-form-doc .pf-bilingual-ltr {
+    text-align: left;
+  }
+  .public-form-doc .pf-bilingual-rtl {
+    text-align: right;
+    padding-top: 6px;
+    border-top: 1px solid #f1f5f9;
+  }
+  .public-form-doc .pf-bilingual-row.pf-label-row .pf-bilingual-rtl {
+    border-top: 1px solid #f1f5f9;
+  }
+  .public-form-doc .pf-drop .pf-bilingual-row .pf-bilingual-rtl.pf-label--in-drop {
+    border-top: 1px solid #f1f5f9;
+    padding-top: 6px;
+  }
+  .public-form-doc .pf-drop {
+    padding: 16px 14px;
+    border-radius: 10px;
+    gap: 12px;
+  }
+  .public-form-doc .pf-drop-mid {
+    padding: 8px 0 4px;
+  }
+  .public-form-doc .pf-drop-icon {
+    min-height: 44px;
+    font-size: 32px;
+  }
+  .public-form-doc .pf-drop-line-ltr,
+  .public-form-doc .pf-drop-line-rtl {
+    font-size: 15px;
+    text-align: center;
+    width: 100%;
+  }
+  .public-form-doc .pf-drop .pf-bilingual-row {
+    align-items: stretch;
+  }
+  .public-form-doc .pf-drop-hint-row .pf-bilingual-rtl {
+    border-top: 1px solid #f1f5f9;
+    padding-top: 6px;
+  }
+  .public-form-doc .pf-star-btn {
+    font-size: 26px;
+    padding: 6px 8px;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .public-form-doc .pf-submit {
+    margin-top: 16px;
+    min-height: 48px;
+    font-size: 16px;
+    border-radius: 10px;
+    padding: 14px 16px;
+    touch-action: manipulation;
+  }
+  .public-form-doc .pf-img-display {
+    max-height: 220px;
+    width: 100%;
+  }
 }
 @media print {
   @page { size: A4 portrait; margin: 12mm; }
