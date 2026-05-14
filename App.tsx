@@ -105,6 +105,178 @@ function formFieldIsBilingual(f: FormField): boolean {
   return formFieldRtlTitle(f).length > 0 && formFieldLtrTitle(f).length > 0;
 }
 
+const CONTRACT_JSON_SCHEMA_VERSION = '1.0';
+
+function newContractPartId(): string {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Wraps a ContractDef for AI / round-trip export (same keys as app storage + metadata). */
+function buildContractAiExportEnvelope(c: ContractDef): Record<string, unknown> {
+  return {
+    _schema_version: CONTRACT_JSON_SCHEMA_VERSION,
+    _about:
+      'CloudExport Pro — bilingual contract JSON (English + RTL). Used by the Forms → Contracts editor and print preview.',
+    _for_ai_models:
+      'Return ONLY valid JSON. Use this envelope with a top-level "contract" object, OR return a single object with the same keys as "contract" (no _schema_version required). Preserve array order: clauses[] is the legal ladder order. Each clause needs articleNum (e.g. RECITALS, 1, 2), titleEn, titleRtl, contentEn, contentRtl. Each party, scheduleRows item, and addOns item needs a string id. You may omit id, createdAt, updatedAt on the contract root — the app assigns them on import.',
+    _root_keys:
+      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
+    contract: JSON.parse(JSON.stringify(c)) as ContractDef,
+  };
+}
+
+function extractContractJsonRoot(parsed: unknown): Record<string, unknown> | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const o = parsed as Record<string, unknown>;
+  if (o.contract && typeof o.contract === 'object' && !Array.isArray(o.contract)) {
+    return o.contract as Record<string, unknown>;
+  }
+  if (Array.isArray(o.clauses) || Array.isArray(o.parties)) return o;
+  return null;
+}
+
+function normalizeImportedContract(inner: Record<string, unknown>): ContractDef | null {
+  const nid = newContractPartId;
+  const clausesIn = inner.clauses;
+  if (!Array.isArray(clausesIn)) return null;
+
+  const normParty = (p: unknown): ContractParty => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      labelEn: String(x.labelEn ?? ''),
+      labelRtl: String(x.labelRtl ?? ''),
+      companyEn: String(x.companyEn ?? ''),
+      companyRtl: String(x.companyRtl ?? ''),
+      regNo: String(x.regNo ?? ''),
+      country: String(x.country ?? ''),
+      repNameEn: String(x.repNameEn ?? ''),
+      repNameRtl: String(x.repNameRtl ?? ''),
+      repTitleEn: String(x.repTitleEn ?? ''),
+      repTitleRtl: String(x.repTitleRtl ?? ''),
+      aliasEn: String(x.aliasEn ?? ''),
+      aliasRtl: String(x.aliasRtl ?? ''),
+    };
+  };
+
+  const normClause = (p: unknown): ContractClause => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      articleNum: String(x.articleNum ?? ''),
+      titleEn: String(x.titleEn ?? ''),
+      titleRtl: String(x.titleRtl ?? ''),
+      contentEn: String(x.contentEn ?? ''),
+      contentRtl: String(x.contentRtl ?? ''),
+    };
+  };
+
+  const normSchedule = (p: unknown): ContractScheduleRow => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      tierEn: String(x.tierEn ?? ''),
+      tierRtl: String(x.tierRtl ?? ''),
+      buildFee: String(x.buildFee ?? ''),
+      annualFee: String(x.annualFee ?? ''),
+      interpretation: String(x.interpretation ?? ''),
+      selected: Boolean(x.selected),
+    };
+  };
+
+  const normAddOn = (p: unknown): ContractAddOn => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      nameEn: String(x.nameEn ?? ''),
+      nameRtl: String(x.nameRtl ?? ''),
+      descEn: String(x.descEn ?? ''),
+      descRtl: String(x.descRtl ?? ''),
+      price: String(x.price ?? ''),
+      selected: Boolean(x.selected),
+    };
+  };
+
+  const partiesRaw = Array.isArray(inner.parties) ? inner.parties : [];
+  const scheduleRaw = Array.isArray(inner.scheduleRows) ? inner.scheduleRows : [];
+  const addOnsRaw = Array.isArray(inner.addOns) ? inner.addOns : [];
+
+  const rtlLanguage: ContractRtlLang = inner.rtlLanguage === 'ar' ? 'ar' : 'fa';
+  let status: ContractStatus = 'draft';
+  if (inner.status === 'final' || inner.status === 'signed') status = inner.status;
+
+  const y = new Date().getFullYear();
+  const refNo =
+    typeof inner.refNo === 'string' && inner.refNo.trim()
+      ? inner.refNo.trim()
+      : `REF-${y}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+
+  const now = Date.now();
+  return {
+    id: typeof inner.id === 'string' && inner.id ? inner.id : String(now),
+    refNo,
+    titleEn: String(inner.titleEn ?? 'SERVICES AGREEMENT'),
+    titleRtl: String(inner.titleRtl ?? ''),
+    subtitleEn: String(inner.subtitleEn ?? ''),
+    subtitleRtl: String(inner.subtitleRtl ?? ''),
+    effectiveDate:
+      typeof inner.effectiveDate === 'string' && inner.effectiveDate
+        ? inner.effectiveDate
+        : new Date().toISOString().split('T')[0],
+    logoUrl: typeof inner.logoUrl === 'string' ? inner.logoUrl : '',
+    companyName: typeof inner.companyName === 'string' ? inner.companyName : '',
+    parties: partiesRaw.length ? partiesRaw.map(normParty) : [
+      {
+        id: nid(),
+        labelEn: 'SERVICE PROVIDER',
+        labelRtl: 'ارائه‌دهنده‌ی خدمات',
+        companyEn: '',
+        companyRtl: '',
+        regNo: '',
+        country: '',
+        repNameEn: '',
+        repNameRtl: '',
+        repTitleEn: '',
+        repTitleRtl: '',
+        aliasEn: 'the Service Provider',
+        aliasRtl: 'ارائه‌دهنده‌ی خدمات',
+      },
+      {
+        id: nid(),
+        labelEn: 'CLIENT',
+        labelRtl: 'مشتری',
+        companyEn: '',
+        companyRtl: '',
+        regNo: '',
+        country: '',
+        repNameEn: '',
+        repNameRtl: '',
+        repTitleEn: '',
+        repTitleRtl: '',
+        aliasEn: 'the Client',
+        aliasRtl: 'مشتری',
+      },
+    ],
+    clauses: clausesIn.map(normClause),
+    scheduleRows: scheduleRaw.map(normSchedule),
+    addOns: addOnsRaw.map(normAddOn),
+    rtlLanguage,
+    status,
+    createdAt: typeof inner.createdAt === 'number' ? inner.createdAt : now,
+    updatedAt: now,
+  };
+}
+
+function downloadJsonFile(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Public custom forms (?form=KEY): A4 document look + print rules (mounts before the main App style block). */
 const PUBLIC_FORM_DOCUMENT_CSS = `
 #public-form-root.public-form-page {
@@ -13869,7 +14041,62 @@ function AppInner() {
             <h2 className="text-lg font-semibold text-slate-900">Contracts</h2>
             <p className="text-sm text-slate-500 mt-0.5">Bilingual export contracts with English & Persian/Arabic side-by-side layout</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                const tpl = makeExportContractTemplate();
+                downloadJsonFile('contract_schema_sample_export_template.json', buildContractAiExportEnvelope(tpl));
+              }}
+              className="flex items-center gap-2 text-sm border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg px-3 py-2 font-medium"
+              title="JSON with _schema_version + contract body — same shape as card Export. Give it to an AI to draft new contracts.">
+              <Download className="w-4 h-4" /> Sample JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,application/json';
+                input.onchange = (ev) => {
+                  const file = (ev.target as HTMLInputElement).files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    try {
+                      const parsed = JSON.parse(String(reader.result || ''));
+                      const root = extractContractJsonRoot(parsed);
+                      if (!root) {
+                        alert('Invalid contract JSON. Use the envelope with a "contract" key, or a root object with parties[] / clauses[].');
+                        return;
+                      }
+                      const normalized = normalizeImportedContract(root);
+                      if (!normalized) {
+                        alert('Invalid contract JSON: clauses[] is required.');
+                        return;
+                      }
+                      const fresh: ContractDef = {
+                        ...normalized,
+                        id: `${Date.now()}`,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                      };
+                      saveContractsList([...contracts, fresh]);
+                      setEditingContract(fresh);
+                      setContractEditorTab('info');
+                      setContractsSubView('editor');
+                    } catch {
+                      alert('Could not read or parse the JSON file.');
+                    }
+                  };
+                  reader.readAsText(file);
+                };
+                input.click();
+              }}
+              className="flex items-center gap-2 text-sm border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 rounded-lg px-3 py-2 font-medium"
+              title="Import JSON (envelope or flat). Opens as a new contract in the editor.">
+              <Upload className="w-4 h-4" /> Import JSON
+            </button>
             <button
               onClick={() => { setEditingContract(makeExportContractTemplate()); setContractEditorTab('info'); setContractsSubView('editor'); }}
               className="flex items-center gap-2 text-sm border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg px-3 py-2 font-medium">
@@ -13925,13 +14152,10 @@ function AppInner() {
                   </button>
                   <button
                     onClick={() => {
-                      const blob = new Blob([JSON.stringify(c, null, 2)], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url; a.download = `contract_${c.refNo || c.id}.json`; a.click();
-                      URL.revokeObjectURL(url);
+                      const safe = String(c.refNo || c.id).replace(/[^\w.-]+/g, '_') || 'contract';
+                      downloadJsonFile(`contract_${safe}.json`, buildContractAiExportEnvelope(c));
                     }}
-                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100" title="Export JSON">
+                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100" title="Export JSON (AI envelope + contract)">
                     <Download className="w-4 h-4" />
                   </button>
                   <button
@@ -14020,6 +14244,56 @@ function AppInner() {
             className="flex items-center gap-1 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
             <Printer className="w-4 h-4" /> Preview
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              const safe = String(c.refNo || c.id).replace(/[^\w.-]+/g, '_') || 'contract';
+              downloadJsonFile(`contract_${safe}.json`, buildContractAiExportEnvelope(c));
+            }}
+            className="flex items-center gap-1 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50"
+            title="Same JSON envelope as the list view — for AI or backup">
+            <Download className="w-4 h-4" /> JSON
+          </button>
+          <label className="flex items-center gap-1 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 cursor-pointer"
+            title="Replace editor content from JSON; keeps this contract’s id in your library">
+            <Upload className="w-4 h-4" /> Import
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(ev) => {
+                const file = ev.target.files?.[0];
+                ev.target.value = '';
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  try {
+                    const parsed = JSON.parse(String(reader.result || ''));
+                    const root = extractContractJsonRoot(parsed);
+                    if (!root) {
+                      alert('Invalid contract JSON. Use the envelope with "contract", or a root with clauses[].');
+                      return;
+                    }
+                    const normalized = normalizeImportedContract(root);
+                    if (!normalized) {
+                      alert('Invalid contract JSON: clauses[] is required.');
+                      return;
+                    }
+                    if (!window.confirm('Replace this contract’s text from the file? Unsaved edits in the editor will be overwritten.')) return;
+                    setEditingContract({
+                      ...normalized,
+                      id: c.id,
+                      createdAt: c.createdAt,
+                      updatedAt: Date.now(),
+                    });
+                  } catch {
+                    alert('Could not read or parse the JSON file.');
+                  }
+                };
+                reader.readAsText(file);
+              }}
+            />
+          </label>
           <button onClick={saveAndReturn}
             className="flex items-center gap-1 text-sm bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700">
             <Save className="w-4 h-4" /> Save
