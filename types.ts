@@ -635,13 +635,23 @@ export interface SavedProject {
   };
 }
 
+export type FormFieldType =
+  | 'text' | 'textarea' | 'number' | 'email' | 'phone' | 'date' | 'select'
+  | 'multiselect' | 'checkbox' | 'rating'
+  | 'image_upload' | 'video_upload' | 'file_upload'
+  | 'display_image' | 'section_title';
+
 export interface FormField {
   id: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'date' | 'email' | 'phone';
+  type: FormFieldType;
   label: string;
   placeholder?: string;
   required?: boolean;
-  options?: string[];
+  options?: string[];      // select / multiselect choices
+  accept?: string;         // file input accept attr, e.g. "image/*" or ".pdf,.docx"
+  maxSizeMb?: number;      // max upload size in MB
+  imageUrl?: string;       // for display_image type
+  maxRating?: number;      // for rating type (default 5)
 }
 
 export interface CustomFormDef {
@@ -665,6 +675,6 @@ export interface FormSubmission {
   formKey: string;
   formName: string;
   submittedAt: number;
-  data: Record<string, string | number | boolean>;
+  data: Record<string, string | number | boolean | string[]>;
   isRead: boolean;
 }

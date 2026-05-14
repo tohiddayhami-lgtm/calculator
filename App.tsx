@@ -81,6 +81,7 @@ import {
   InvoiceCustomsStyleLabels,
   InvoiceLineOverride,
   FormField,
+  FormFieldType,
   CustomFormDef,
   FormSubmission,
 } from './types';
@@ -2891,6 +2892,9 @@ function AppInner() {
   const [publicFormSubmitting, setPublicFormSubmitting] = useState(false);
   const [publicFormDone, setPublicFormDone] = useState(false);
   const [publicFormLoading, setPublicFormLoading] = useState(false);
+  const [publicFormFiles, setPublicFormFiles] = useState<Record<string, File>>({});
+  const [publicFormMulti, setPublicFormMulti] = useState<Record<string, string[]>>({});
+  const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
 
   // -- STATE: COMMUNITY HUB --
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
@@ -3746,11 +3750,29 @@ function AppInner() {
     setPublicFormSubmitting(true);
     try {
       const { key, form } = publicFormView;
-      const subRef = doc(collection(db, 'artifacts', form.appId, 'users', form.ownerUid, 'formSubmissions'));
-      await setDoc(subRef, {
-        formKey: key, formName: form.name,
-        submittedAt: Date.now(), data: publicFormData, isRead: false,
-      });
+      const subId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      // Merge all data types
+      const mergedData: Record<string, string | number | boolean | string[]> = { ...publicFormData };
+      // Ratings
+      (Object.entries(publicFormRatings) as [string, number][]).forEach(([fid, val]) => { mergedData[fid] = val; });
+      // Multi-select
+      (Object.entries(publicFormMulti) as [string, string[]][]).forEach(([fid, val]) => { mergedData[fid] = val; });
+      // File uploads → Storage
+      for (const [fid, file] of Object.entries(publicFormFiles) as [string, File][]) {
+        if (storage) {
+          try {
+            const path = `publicFormSubmissions/${key}/${subId}/${fid}_${file.name}`;
+            const sRef = storageRef(storage, path);
+            await uploadBytes(sRef, file);
+            const url = await getDownloadURL(sRef);
+            mergedData[fid] = url;
+          } catch (e) {
+            mergedData[fid] = `[Upload failed: ${(file as File).name}]`;
+          }
+        }
+      }
+      const subRef = doc(db, 'artifacts', form.appId, 'users', form.ownerUid, 'formSubmissions', subId);
+      await setDoc(subRef, { formKey: key, formName: form.name, submittedAt: Date.now(), data: mergedData, isRead: false });
       setPublicFormDone(true);
     } catch (err: any) {
       alert('Submit failed: ' + (err?.message || err));
@@ -12229,10 +12251,130 @@ function AppInner() {
         </div>
       </div>
     );
+    const renderField = (field: FormField) => {
+      const setVal = (v: string) => setPublicFormData((prev) => ({ ...prev, [field.id]: v }));
+      const val = publicFormData[field.id] || '';
+
+      // ── Section title ──────────────────────────────────
+      if (field.type === 'section_title') return (
+        <div className="border-t border-slate-200 pt-5 mt-2">
+          <h3 className="text-base font-bold text-slate-800">{field.label}</h3>
+          {field.placeholder && <p className="text-xs text-slate-500 mt-0.5">{field.placeholder}</p>}
+        </div>
+      );
+
+      // ── Display image ──────────────────────────────────
+      if (field.type === 'display_image') return (
+        <div>
+          <p className="block text-sm font-medium text-slate-700 mb-2">{field.label}</p>
+          {field.imageUrl ? (
+            <img src={field.imageUrl} alt={field.label} className="max-h-52 rounded-xl border border-slate-200 object-contain" />
+          ) : <p className="text-xs text-slate-400 italic">No image configured.</p>}
+          {field.placeholder && <p className="text-xs text-slate-400 mt-1">{field.placeholder}</p>}
+        </div>
+      );
+
+      const labelEl = (
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          {field.label}{field.required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+      );
+
+      // ── Textarea ───────────────────────────────────────
+      if (field.type === 'textarea') return <div>{labelEl}
+        <textarea rows={3} placeholder={field.placeholder} value={val} onChange={(e) => setVal(e.target.value)}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" /></div>;
+
+      // ── Select ─────────────────────────────────────────
+      if (field.type === 'select') return <div>{labelEl}
+        <select value={val} onChange={(e) => setVal(e.target.value)}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+          <option value="">— Select —</option>
+          {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select></div>;
+
+      // ── Multi-select ───────────────────────────────────
+      if (field.type === 'multiselect') return <div>{labelEl}
+        <div className="flex flex-col gap-2">
+          {(field.options || []).map((opt) => {
+            const checked = (publicFormMulti[field.id] || []).includes(opt);
+            return (
+              <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={checked} onChange={(e) => {
+                  const prev = publicFormMulti[field.id] || [];
+                  setPublicFormMulti((m) => ({ ...m, [field.id]: e.target.checked ? [...prev, opt] : prev.filter((x) => x !== opt) }));
+                }} className="rounded border-slate-300 text-blue-600" />
+                <span className="text-sm text-slate-700">{opt}</span>
+              </label>
+            );
+          })}
+        </div></div>;
+
+      // ── Checkbox ───────────────────────────────────────
+      if (field.type === 'checkbox') return <div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={!!val} onChange={(e) => setVal(e.target.checked ? 'true' : '')}
+            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4" />
+          <span className="text-sm font-medium text-slate-700">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</span>
+        </label>
+        {field.placeholder && <p className="text-xs text-slate-500 ml-6 mt-0.5">{field.placeholder}</p>}
+      </div>;
+
+      // ── Rating ─────────────────────────────────────────
+      if (field.type === 'rating') {
+        const maxR = field.maxRating || 5;
+        const cur = publicFormRatings[field.id] || 0;
+        return <div>{labelEl}
+          <div className="flex gap-1">
+            {Array.from({ length: maxR }, (_, i) => i + 1).map((star) => (
+              <button key={star} type="button" onClick={() => setPublicFormRatings((r) => ({ ...r, [field.id]: star }))}
+                className={`text-2xl transition-colors ${star <= cur ? 'text-yellow-400' : 'text-slate-300 hover:text-yellow-300'}`}>★</button>
+            ))}
+          </div>
+          {cur > 0 && <p className="text-xs text-slate-500 mt-1">{cur} / {maxR}</p>}
+        </div>;
+      }
+
+      // ── File uploads ───────────────────────────────────
+      if (['image_upload', 'video_upload', 'file_upload'].includes(field.type)) {
+        const fileObj = publicFormFiles[field.id];
+        const iconMap: Record<string, string> = { image_upload: '🖼️', video_upload: '🎬', file_upload: '📄' };
+        const maxMb = field.maxSizeMb || (field.type === 'video_upload' ? 50 : 10);
+        return <div>{labelEl}
+          <label className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-5 cursor-pointer transition-colors ${fileObj ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50/30'}`}>
+            <span className="text-3xl">{iconMap[field.type]}</span>
+            {fileObj ? (
+              <div className="text-center">
+                <p className="text-sm font-semibold text-emerald-700">{fileObj.name}</p>
+                <p className="text-xs text-slate-400">{(fileObj.size / 1024 / 1024).toFixed(2)} MB</p>
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-sm text-slate-600 font-medium">Click to upload</p>
+                <p className="text-xs text-slate-400">{field.placeholder || `Max ${maxMb} MB`}</p>
+              </div>
+            )}
+            <input type="file" accept={field.accept} className="hidden" onChange={(e) => {
+              const f = e.target.files?.[0]; if (!f) return;
+              if (f.size > maxMb * 1024 * 1024) { alert(`File too large. Max size: ${maxMb} MB`); return; }
+              setPublicFormFiles((prev) => ({ ...prev, [field.id]: f }));
+            }} />
+          </label>
+        </div>;
+      }
+
+      // ── Default text inputs ────────────────────────────
+      const inputType = field.type === 'phone' ? 'tel' : field.type;
+      return <div>{labelEl}
+        <input type={inputType} placeholder={field.placeholder} value={val} onChange={(e) => setVal(e.target.value)}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>;
+    };
+
     return (
       <div className="min-h-screen bg-slate-50">
         {/* Letterhead header */}
-        <div className="w-full py-6 px-6 flex items-center gap-4" style={{ backgroundColor: form.headerBgColor || '#1e3a5f' }}>
+        <div className="w-full py-6 px-6 flex items-center gap-4 print:py-4" style={{ backgroundColor: form.headerBgColor || '#1e3a5f' }}>
           {form.logoUrl && <img src={form.logoUrl} className="h-14 w-14 object-contain rounded-lg bg-white/10 p-1" alt="logo" />}
           <div>
             <h1 className="text-xl font-bold" style={{ color: form.headerTextColor || '#ffffff' }}>{form.companyName || form.name}</h1>
@@ -12246,45 +12388,55 @@ function AppInner() {
               {form.description && <p className="text-sm text-slate-500 mt-1">{form.description}</p>}
             </div>
             {fields.map((field: FormField) => (
-              <div key={field.id}>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {field.label}{field.required && <span className="text-red-500 ml-1">*</span>}
-                </label>
-                {field.type === 'textarea' ? (
-                  <textarea rows={3} placeholder={field.placeholder} value={publicFormData[field.id] || ''}
-                    onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-y" />
-                ) : field.type === 'select' ? (
-                  <select value={publicFormData[field.id] || ''}
-                    onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                    <option value="">— Select —</option>
-                    {(field.options || []).map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                ) : field.type === 'checkbox' ? (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={!!publicFormData[field.id]}
-                      onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.checked ? 'true' : '' })}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm text-slate-600">{field.placeholder || 'Yes'}</span>
-                  </label>
-                ) : (
-                  <input type={field.type === 'phone' ? 'tel' : field.type} placeholder={field.placeholder}
-                    value={publicFormData[field.id] || ''}
-                    onChange={(e) => setPublicFormData({ ...publicFormData, [field.id]: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                )}
-              </div>
+              <div key={field.id}>{renderField(field)}</div>
             ))}
             <button onClick={handleSubmitPublicForm} disabled={publicFormSubmitting}
               className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 flex items-center justify-center gap-2 mt-2">
               {publicFormSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              Submit
+              {publicFormSubmitting ? 'Uploading & Submitting…' : 'Submit'}
             </button>
           </div>
         </div>
       </div>
     );
+  };
+
+  const SAMPLE_FORM_JSON = {
+    _schema_version: '1.0',
+    _instructions: 'CloudExport Pro – Custom Form Schema. Keep the fields you need, remove the rest. Give this JSON to an AI and say: "Create a form for me using this schema."',
+    name: 'Sample Form Name',
+    description: 'A short description shown below the form title.',
+    companyName: 'Your Company Name',
+    headerSubtitle: 'Department • Tagline',
+    logoUrl: 'https://example.com/your-logo.png',
+    headerBgColor: '#1e3a5f',
+    headerTextColor: '#ffffff',
+    fields: [
+      { id: 's1', type: 'section_title', label: 'Personal Information', placeholder: 'Please fill in your contact details.' },
+      { id: 'f1', type: 'text', label: 'Full Name', placeholder: 'Enter your full name', required: true },
+      { id: 'f2', type: 'email', label: 'Email Address', placeholder: 'you@example.com', required: true },
+      { id: 'f3', type: 'phone', label: 'Phone Number', placeholder: '+1 (555) 000-0000', required: false },
+      { id: 'f4', type: 'number', label: 'Quantity Required', placeholder: 'e.g. 500', required: false },
+      { id: 'f5', type: 'date', label: 'Preferred Delivery Date', required: false },
+      { id: 'f6', type: 'textarea', label: 'Special Requirements', placeholder: 'Describe any special packaging, labeling, or handling requirements...', required: false },
+      { id: 'f7', type: 'select', label: 'Country', required: true, options: ['Iran', 'UAE', 'Turkey', 'Germany', 'USA', 'Other'] },
+      { id: 'f8', type: 'multiselect', label: 'Products of Interest', required: false, options: ['Product A', 'Product B', 'Product C', 'Product D'] },
+      { id: 'f9', type: 'checkbox', label: 'Terms & Conditions', placeholder: 'I agree to the terms and conditions', required: true },
+      { id: 'f10', type: 'rating', label: 'Rate Your Experience (1–5 stars)', required: false, maxRating: 5 },
+      { id: 's2', type: 'section_title', label: 'Documents & Media', placeholder: 'Upload any relevant files.' },
+      { id: 'f11', type: 'display_image', label: 'Reference Product Photo', imageUrl: 'https://example.com/product-sample.jpg', placeholder: 'This image is shown to the customer — no upload required.' },
+      { id: 'f12', type: 'image_upload', label: 'Your Product Photo', placeholder: 'Upload a clear photo (JPG, PNG, WebP) — max 5 MB', required: false, accept: 'image/*', maxSizeMb: 5 },
+      { id: 'f13', type: 'video_upload', label: 'Product Demo Video', placeholder: 'Upload a short demo video (MP4, MOV) — max 50 MB', required: false, accept: 'video/*', maxSizeMb: 50 },
+      { id: 'f14', type: 'file_upload', label: 'Supporting Document', placeholder: 'Upload PDF, Word, or Excel — max 10 MB', required: false, accept: '.pdf,.doc,.docx,.xls,.xlsx,.csv', maxSizeMb: 10 },
+    ],
+  };
+
+  const handleDownloadSampleJson = () => {
+    const blob = new Blob([JSON.stringify(SAMPLE_FORM_JSON, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'sample_form_schema.json'; a.click();
+    URL.revokeObjectURL(url);
   };
 
   const renderCustomFormsList = () => {
@@ -12329,7 +12481,12 @@ function AppInner() {
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <ListTodo className="w-5 h-5 text-blue-600" /> Custom Forms
           </h2>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={handleDownloadSampleJson}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-indigo-200 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+              title="Download a sample JSON template showing all available field types. Give it to an AI to generate forms.">
+              <Download className="w-4 h-4" /> Sample JSON
+            </button>
             <button onClick={handleImportJson} className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50">
               <Upload className="w-4 h-4" /> Import JSON
             </button>
@@ -14737,42 +14894,115 @@ function AppInner() {
                   <p className="text-xs text-slate-400 italic text-center py-4 border border-dashed border-slate-200 rounded-lg">No fields yet. Click "Add Field" to start.</p>
                 )}
                 <div className="space-y-3">
-                  {formBuilderDraft.fields.map((field, idx) => (
-                    <div key={field.id} className="border border-slate-200 rounded-xl p-3 bg-slate-50/60 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono w-5 flex-shrink-0">{idx + 1}</span>
-                        <select value={field.type}
-                          onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], type: e.target.value as FormField['type'] }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
-                          className="text-xs border border-slate-300 rounded px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                          {(['text','textarea','email','phone','number','date','select','checkbox'] as FormField['type'][]).map((t) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <input type="text" value={field.label} placeholder="Field label"
-                          onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], label: e.target.value }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
-                          className="flex-1 text-xs border border-slate-300 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none" />
-                        <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
-                          <input type="checkbox" checked={!!field.required}
-                            onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], required: e.target.checked }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
-                            className="rounded border-slate-300 text-blue-600" />
-                          Req
-                        </label>
-                        <button onClick={() => { const f = formBuilderDraft.fields.filter((_, i) => i !== idx); setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
-                          className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                      {field.type !== 'checkbox' && (
-                        <input type="text" value={field.placeholder || ''} placeholder="Placeholder text (optional)"
-                          onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], placeholder: e.target.value }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
-                          className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
-                      )}
-                      {field.type === 'select' && (
-                        <div>
-                          <input type="text" value={(field.options || []).join(', ')} placeholder="Option 1, Option 2, Option 3"
-                            onChange={(e) => { const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }; setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
-                            className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
-                          <p className="text-[10px] text-slate-400 mt-0.5">Comma-separated options</p>
+                  {formBuilderDraft.fields.map((field, idx) => {
+                    const upd = (patch: Partial<FormField>) => {
+                      const f = [...formBuilderDraft.fields]; f[idx] = { ...f[idx], ...patch };
+                      setFormBuilderDraft({ ...formBuilderDraft, fields: f });
+                    };
+                    const isFileType = ['image_upload', 'video_upload', 'file_upload'].includes(field.type);
+                    const isChoiceType = ['select', 'multiselect'].includes(field.type);
+                    const isDisplayOnly = ['section_title', 'display_image'].includes(field.type);
+                    const typeColors: Record<string, string> = {
+                      section_title: 'bg-slate-100 border-slate-300', display_image: 'bg-purple-50 border-purple-200',
+                      image_upload: 'bg-pink-50 border-pink-200', video_upload: 'bg-orange-50 border-orange-200',
+                      file_upload: 'bg-amber-50 border-amber-200', rating: 'bg-yellow-50 border-yellow-200',
+                    };
+                    return (
+                      <div key={field.id} className={`border rounded-xl p-3 space-y-2 ${typeColors[field.type] || 'border-slate-200 bg-slate-50/60'}`}>
+                        {/* Row 1: index, type, label, required, delete */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 font-mono w-5 flex-shrink-0">{idx + 1}</span>
+                          <select value={field.type} onChange={(e) => upd({ type: e.target.value as FormFieldType })}
+                            className="text-xs border border-slate-300 rounded px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none min-w-[120px]">
+                            <optgroup label="── Input Fields">
+                              {(['text','textarea','email','phone','number','date'] as FormFieldType[]).map((t) => <option key={t} value={t}>{t}</option>)}
+                            </optgroup>
+                            <optgroup label="── Choice Fields">
+                              {(['select','multiselect','checkbox','rating'] as FormFieldType[]).map((t) => <option key={t} value={t}>{t}</option>)}
+                            </optgroup>
+                            <optgroup label="── File Uploads">
+                              {(['image_upload','video_upload','file_upload'] as FormFieldType[]).map((t) => <option key={t} value={t}>{t}</option>)}
+                            </optgroup>
+                            <optgroup label="── Display / Layout">
+                              {(['section_title','display_image'] as FormFieldType[]).map((t) => <option key={t} value={t}>{t}</option>)}
+                            </optgroup>
+                          </select>
+                          <input type="text" value={field.label} placeholder="Label"
+                            onChange={(e) => upd({ label: e.target.value })}
+                            className="flex-1 text-xs border border-slate-300 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none" />
+                          {!isDisplayOnly && (
+                            <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer flex-shrink-0">
+                              <input type="checkbox" checked={!!field.required} onChange={(e) => upd({ required: e.target.checked })} className="rounded border-slate-300 text-blue-600" />
+                              Req
+                            </label>
+                          )}
+                          <button onClick={() => { const f = formBuilderDraft.fields.filter((_, i) => i !== idx); setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
+                            className="text-red-400 hover:text-red-600 p-0.5 flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        {/* Placeholder / hint text */}
+                        {!isDisplayOnly && field.type !== 'display_image' && (
+                          <input type="text" value={field.placeholder || ''} placeholder={field.type === 'checkbox' ? 'Checkbox label text' : 'Placeholder / hint text (optional)'}
+                            onChange={(e) => upd({ placeholder: e.target.value })}
+                            className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                        )}
+
+                        {/* Section title: description text */}
+                        {field.type === 'section_title' && (
+                          <input type="text" value={field.placeholder || ''} placeholder="Section subtitle / instructions (optional)"
+                            onChange={(e) => upd({ placeholder: e.target.value })}
+                            className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                        )}
+
+                        {/* Display image: image URL */}
+                        {field.type === 'display_image' && (
+                          <input type="url" value={field.imageUrl || ''} placeholder="Image URL to display in form (https://...)"
+                            onChange={(e) => upd({ imageUrl: e.target.value })}
+                            className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-purple-400 outline-none bg-white" />
+                        )}
+
+                        {/* Options for select / multiselect */}
+                        {isChoiceType && (
+                          <div>
+                            <input type="text" value={(field.options || []).join(', ')} placeholder="Option 1, Option 2, Option 3"
+                              onChange={(e) => upd({ options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                            <p className="text-[10px] text-slate-400 mt-0.5">Comma-separated options</p>
+                          </div>
+                        )}
+
+                        {/* Rating: max stars */}
+                        {field.type === 'rating' && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-slate-500">Max stars:</label>
+                            <select value={field.maxRating || 5} onChange={(e) => upd({ maxRating: Number(e.target.value) })}
+                              className="text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                              {[3, 4, 5, 6, 7, 10].map((n) => <option key={n} value={n}>{n} stars</option>)}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* File upload: accept + max size */}
+                        {isFileType && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-slate-500 block mb-0.5">Accept (file types)</label>
+                              <input type="text" value={field.accept || (field.type === 'image_upload' ? 'image/*' : field.type === 'video_upload' ? 'video/*' : '.pdf,.doc,.docx,.xls,.xlsx')}
+                                onChange={(e) => upd({ accept: e.target.value })}
+                                placeholder="e.g. image/* or .pdf,.docx"
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-500 block mb-0.5">Max size (MB)</label>
+                              <input type="number" value={field.maxSizeMb || (field.type === 'video_upload' ? 50 : 10)} min={1} max={200}
+                                onChange={(e) => upd({ maxSizeMb: Number(e.target.value) })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -14856,10 +15086,25 @@ function AppInner() {
                       {Object.entries(selectedFormSubmission.data).map(([key, val]) => {
                         const form = customForms.find((f) => f.publishedKey === selectedFormSubmission.formKey);
                         const field = form?.fields.find((f) => f.id === key);
+                        const isFileUrl = typeof val === 'string' && /^https?:\/\//.test(val);
+                        const isImage = isFileUrl && (field?.type === 'image_upload' || /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(val));
+                        const isVideo = isFileUrl && (field?.type === 'video_upload' || /\.(mp4|mov|avi|webm)(\?|$)/i.test(val));
                         return (
                           <div key={key} className="border border-slate-100 rounded-lg p-3 bg-slate-50/50">
                             <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">{field?.label || key}</div>
-                            <div className="text-sm text-slate-800 whitespace-pre-wrap">{String(val) || '—'}</div>
+                            {Array.isArray(val) ? (
+                              <div className="flex flex-wrap gap-1">{val.map((v) => <span key={v} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">{v}</span>)}</div>
+                            ) : isImage ? (
+                              <a href={val} target="_blank" rel="noreferrer"><img src={val} className="max-h-40 rounded-lg border border-slate-200 object-contain" alt="upload" /></a>
+                            ) : isVideo ? (
+                              <video src={val} controls className="max-h-40 rounded-lg border border-slate-200 w-full" />
+                            ) : isFileUrl ? (
+                              <a href={val} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1"><Download className="w-3 h-3" /> Download file</a>
+                            ) : field?.type === 'rating' ? (
+                              <div className="flex gap-0.5">{Array.from({ length: field.maxRating || 5 }, (_, i) => <span key={i} className={`text-lg ${i < Number(val) ? 'text-yellow-400' : 'text-slate-300'}`}>★</span>)}</div>
+                            ) : (
+                              <div className="text-sm text-slate-800 whitespace-pre-wrap">{String(val) || '—'}</div>
+                            )}
                           </div>
                         );
                       })}
