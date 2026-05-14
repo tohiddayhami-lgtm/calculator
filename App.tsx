@@ -86,6 +86,13 @@ import {
   FormAccessLevel,
   FormHeaderPreset,
   FormSubmission,
+  ContractDef,
+  ContractClause,
+  ContractParty,
+  ContractScheduleRow,
+  ContractAddOn,
+  ContractStatus,
+  ContractRtlLang,
 } from './types';
 
 function formFieldLtrTitle(f: Pick<FormField, 'label' | 'labelLtr'>): string {
@@ -756,6 +763,7 @@ function parseInvoiceTextPresetsFromStorage(raw: string | null): InvoiceTextPres
 
 const FORM_HEADER_PRESETS_STORAGE_KEY = 'exportcalc_form_header_presets_v1';
 const MAX_FORM_HEADER_PRESETS = 25;
+const CONTRACTS_STORAGE_KEY = 'exportcalc_contracts_v1';
 
 function parseFormHeaderPresetsFromStorage(raw: string | null): FormHeaderPreset[] {
   try {
@@ -3400,7 +3408,7 @@ function AppInner() {
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts'>('list');
   const [showFormBuilder, setShowFormBuilder] = useState(false);
   const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
   const [showFormSubmissions, setShowFormSubmissions] = useState(false);
@@ -3424,6 +3432,19 @@ function AppInner() {
   const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
   const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
   const [headerPresetSaveName, setHeaderPresetSaveName] = useState('');
+
+  // -- STATE: CONTRACTS --
+  const [contracts, setContracts] = useState<ContractDef[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(CONTRACTS_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  });
+  const [contractsSubView, setContractsSubView] = useState<'list' | 'editor' | 'preview'>('list');
+  const [editingContract, setEditingContract] = useState<ContractDef | null>(null);
+  const [contractEditorTab, setContractEditorTab] = useState<'info' | 'parties' | 'clauses' | 'schedule'>('info');
 
   // -- STATE: COMMUNITY HUB --
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
@@ -3557,6 +3578,11 @@ function AppInner() {
       /* ignore */
     }
   }, [formHeaderPresets, formHeaderPresetsReady]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { localStorage.setItem(CONTRACTS_STORAGE_KEY, JSON.stringify(contracts)); } catch { /* ignore */ }
+  }, [contracts]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
@@ -13651,6 +13677,855 @@ function AppInner() {
     );
   };
 
+  // ============================================================
+  // CONTRACTS
+  // ============================================================
+
+  const makeBlankContract = (): ContractDef => {
+    const ts = Date.now().toString();
+    return {
+      id: ts,
+      refNo: `REF-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      titleEn: 'SERVICES AGREEMENT',
+      titleRtl: 'قرارداد خدمات',
+      subtitleEn: '',
+      subtitleRtl: '',
+      effectiveDate: new Date().toISOString().split('T')[0],
+      logoUrl: '',
+      companyName: '',
+      parties: [
+        { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
+        { id: 'cl_' + ts, labelEn: 'CLIENT', labelRtl: 'مشتری', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Client', aliasRtl: 'مشتری' },
+      ],
+      clauses: [
+        { id: 'r_' + ts, articleNum: 'RECITALS', titleEn: 'RECITALS', titleRtl: 'مقدمه', contentEn: 'WHEREAS, the Service Provider operates...\n\nNOW, THEREFORE, the Parties agree as follows:', contentRtl: 'از آنجا که ارائه‌دهنده‌ی خدمات...\n\nبنا به مراتب فوق، طرفین توافق می‌نمایند:' },
+        { id: 'a1_' + ts, articleNum: '1', titleEn: 'ARTICLE 1 — DEFINITIONS', titleRtl: 'ماده ۱ — تعاریف', contentEn: '1.1 "..." means ...', contentRtl: '۱-۱ «...» به معنای ...' },
+        { id: 'a2_' + ts, articleNum: '2', titleEn: 'ARTICLE 2 — SCOPE OF SERVICES', titleRtl: 'ماده ۲ — موضوع و دامنه‌ی خدمات', contentEn: '2.1 The Service Provider shall...', contentRtl: '۲-۱ ارائه‌دهنده‌ی خدمات متعهد می‌گردد...' },
+      ],
+      scheduleRows: [],
+      addOns: [],
+      rtlLanguage: 'fa',
+      status: 'draft',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  };
+
+  const makeExportContractTemplate = (): ContractDef => {
+    const ts = Date.now().toString();
+    return {
+      id: ts,
+      refNo: `OM-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      titleEn: 'PAVILION SERVICES AGREEMENT',
+      titleRtl: 'قرارداد خدمات غرفه‌ی متاورسی',
+      subtitleEn: 'Tohid Meta Port — Metaverse Export Pavilions',
+      subtitleRtl: 'توحید متا پورت — غرفه‌های صادراتی متاورسی',
+      effectiveDate: new Date().toISOString().split('T')[0],
+      logoUrl: '',
+      companyName: 'Tohid Dayhami Business Solutions Center SPC',
+      parties: [
+        {
+          id: 'sp_' + ts,
+          labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات',
+          companyEn: 'Tohid Dayhami Business Solutions Center SPC', companyRtl: 'مرکز راهکارهای کسب‌وکار توحید دیهمی (شرکت تک‌نفره)',
+          regNo: '1617064', country: 'Sultanate of Oman',
+          repNameEn: 'Mr. Tohid Dayhami', repNameRtl: 'آقای توحید دیهمی',
+          repTitleEn: 'Founder & Lead Consultant', repTitleRtl: 'بنیانگذار و مشاور ارشد',
+          aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات',
+        },
+        {
+          id: 'cl_' + ts,
+          labelEn: 'CLIENT', labelRtl: 'مشتری',
+          companyEn: '[Client Company Name]', companyRtl: '[نام شرکت مشتری]',
+          regNo: '', country: '',
+          repNameEn: '', repNameRtl: '',
+          repTitleEn: '', repTitleRtl: '',
+          aliasEn: 'the Client', aliasRtl: 'مشتری',
+        },
+      ],
+      clauses: [
+        {
+          id: 'rec_' + ts, articleNum: 'RECITALS',
+          titleEn: 'RECITALS | مقدمه', titleRtl: 'مقدمه',
+          contentEn: 'WHEREAS, the Service Provider operates Tohid Meta Port, a metaverse-based export pavilion network rendered through a web-based 3D engine, accessible via desktop browsers, mobile applications, and virtual-reality headsets, organized into sector-specific virtual halls;\n\nWHEREAS, the Client wishes to establish a permanent or temporary digital export presence on the Tohid Meta Port platform in order to reach international buyers;\n\nNOW, THEREFORE, in consideration of the mutual covenants set forth herein, the Parties agree as follows:',
+          contentRtl: 'از آنجا که ارائه‌دهنده‌ی خدمات، پلتفرم «توحید متا پورت» را به عنوان شبکه‌ی غرفه‌های صادراتی متاورسی راه‌اندازی و اداره می‌نماید که بر بستر یک موتور سه‌بعدی تحت‌وب اجرا می‌شود و از طریق مرورگر دسکتاپ، اپلیکیشن‌های موبایل و هدست‌های واقعیت مجازی قابل بازدید است؛\n\nو از آنجا که مشتری مایل است حضور صادراتی دیجیتال خود را به صورت دائمی یا موقت در پلتفرم توحید متا پورت برقرار سازد؛\n\nبنا به مراتب فوق و با قصد التزام حقوقی، طرفین به شرح زیر توافق می‌نمایند:',
+        },
+        {
+          id: 'a1_' + ts, articleNum: '1',
+          titleEn: 'ARTICLE 1 — DEFINITIONS', titleRtl: 'ماده ۱ — تعاریف',
+          contentEn: '1.1 "Platform" means the Tohid Meta Port metaverse export environment, including all virtual halls, pavilions, booths, supporting software, and hosting infrastructure.\n\n1.2 "Pavilion" means a permanent, branded 3D storefront privately owned by the Client within a sector hall on the Platform.\n\n1.3 "Booth" means a branded space inside a shared Virtual Expo Hall, smaller in scale than a Pavilion.\n\n1.4 "Effective Date" means the date on which both Parties have signed this Agreement.\n\n1.5 "Launch Date" means the date on which the Pavilion or Booth is made publicly accessible after final acceptance by the Client.\n\n1.6 "Client Content" means all logos, trademarks, product images, 3D models, videos, technical sheets, and text supplied by the Client.\n\n1.7 "Confidential Information" means any non-public information disclosed by one Party to the other that a reasonable person would understand to be confidential.\n\n1.8 "OMR" means Omani Rial, the lawful currency of the Sultanate of Oman.',
+          contentRtl: '۱-۱ «پلتفرم» به معنای محیط صادراتی متاورسی توحید متا پورت است، شامل کلیه‌ی سالن‌های مجازی، پاویون‌ها، غرفه‌ها، نرم‌افزارهای پشتیبان و زیرساخت میزبانی.\n\n۱-۲ «پاویون» به معنای ویترین سه‌بعدی دائمی و برندشده‌ی اختصاصی مشتری در یکی از سالن‌های صنعتی پلتفرم است.\n\n۱-۳ «غرفه» به معنای فضای برندشده درون یکی از سالن‌های نمایشگاه مجازی مشترک است که کوچک‌تر از پاویون بوده و عمدتاً برای حضور کوتاه‌مدت به کار می‌رود.\n\n۱-۴ «تاریخ اجرا» به معنای تاریخی است که توسط هر دو طرف امضا گردیده است.\n\n۱-۵ «تاریخ راه‌اندازی» به معنای تاریخی است که پاویون یا غرفه پس از تأیید نهایی مشتری، به صورت عمومی در پلتفرم در دسترس قرار می‌گیرد.\n\n۱-۶ «محتوای مشتری» به معنای کلیه‌ی لوگوها، علائم تجاری، تصاویر محصولات، مدل‌های سه‌بعدی، ویدیوها و متون تأمین‌شده توسط مشتری است.\n\n۱-۷ «اطلاعات محرمانه» به معنای هرگونه اطلاعات غیرعمومی است که توسط یک طرف به طرف دیگر افشا می‌شود.\n\n۱-۸ «ریال عمانی (OMR)» به معنای واحد پول رسمی سلطنت عمان است.',
+        },
+        {
+          id: 'a2_' + ts, articleNum: '2',
+          titleEn: 'ARTICLE 2 — SCOPE OF SERVICES', titleRtl: 'ماده ۲ — موضوع و دامنه‌ی خدمات',
+          contentEn: '2.1 The Service Provider shall design, build, host, and operate for the Client the package selected in Article 4 and Schedule A (the "Services").\n\n2.2 The Services include: (a) design and 3D modeling of the Pavilion or Booth; (b) integration of product slots, video walls, inquiry forms, and live-chat; (c) listing in the relevant sector hall and search directory; (d) hosting and access via web browser, mobile application, and VR headset; (e) buyer-outreach activities; (f) live interpretation in Persian, English, and Arabic within the monthly allowance; (g) monthly traffic and lead reporting; (h) a dedicated account manager.\n\n2.3 Any service not expressly listed in this Agreement is excluded from the Services and shall be subject to a separate written agreement and additional fees.',
+          contentRtl: '۲-۱ ارائه‌دهنده‌ی خدمات متعهد می‌گردد بسته‌ی انتخابی مشتری را طراحی، ساخت، میزبانی و راهبری نماید («خدمات»).\n\n۲-۲ خدمات شامل: (الف) طراحی و مدل‌سازی سه‌بعدی؛ (ب) یکپارچه‌سازی جایگاه محصولات، دیوار ویدیو، فرم استعلام و گفتگوی زنده؛ (ج) ثبت در سالن صنعت مرتبط و فهرست جستجو؛ (د) میزبانی و دسترسی از طریق مرورگر، اپلیکیشن موبایل و هدست واقعیت مجازی؛ (ه) فعالیت‌های جذب خریدار؛ (و) ترجمه‌ی همزمان فارسی، انگلیسی و عربی؛ (ز) گزارش ماهانه‌ی ترافیک و سرنخ؛ (ح) یک کارشناس حساب اختصاصی.\n\n۲-۳ هر خدمتی که در این قرارداد به صراحت ذکر نشده باشد، از دامنه‌ی خدمات خارج بوده و مشمول توافق کتبی جداگانه خواهد بود.',
+        },
+        {
+          id: 'a3_' + ts, articleNum: '3',
+          titleEn: 'ARTICLE 3 — BUILD PROCESS & TIMELINE', titleRtl: 'ماده ۳ — فرایند ساخت و زمان‌بندی',
+          contentEn: '3.1 The Service Provider shall complete the build within thirty (30) working days from the Effective Date, in four phases: (a) Brand Intake (Days 1–5); (b) 3D Build (Days 6–18); (c) Integration (Days 19–25); (d) Launch (Days 26–30).\n\n3.2 The Client shall provide approval or written comments within three (3) working days of each deliverable. Failure to respond shall be deemed approval.\n\n3.3 Any delay caused by the Client shall extend the timeline by an equivalent period and shall not constitute a breach by the Service Provider.',
+          contentRtl: '۳-۱ ارائه‌دهنده‌ی خدمات متعهد می‌گردد ساخت پاویون یا غرفه را ظرف سی (۳۰) روز کاری از تاریخ اجرا، در چهار فاز به اتمام برساند: (الف) دریافت برند (روزهای ۱ تا ۵)؛ (ب) ساخت سه‌بعدی (روزهای ۶ تا ۱۸)؛ (ج) یکپارچه‌سازی (روزهای ۱۹ تا ۲۵)؛ (د) راه‌اندازی (روزهای ۲۶ تا ۳۰).\n\n۳-۲ مشتری متعهد است تأیید یا نظرات کتبی خود را ظرف سه (۳) روز کاری از دریافت هر تحویل‌شدنی اعلام نماید. عدم پاسخ در این مهلت به منزله‌ی تأیید تلقی می‌گردد.\n\n۳-۳ هرگونه تأخیر که منشأ آن مشتری باشد، زمان‌بندی ساخت را به همان میزان تمدید می‌کند و تخلف ارائه‌دهنده‌ی خدمات محسوب نمی‌شود.',
+        },
+        {
+          id: 'a4_' + ts, articleNum: '4',
+          titleEn: 'ARTICLE 4 — FEES & PAYMENT TERMS', titleRtl: 'ماده ۴ — حق‌الزحمه و شرایط پرداخت',
+          contentEn: '4.1 The Client shall pay the fees set out in Schedule A, comprising a one-time Build Fee and an Annual Operations Fee, in OMR, exclusive of taxes.\n\n4.2 The Build Fee is paid in two equal installments: (a) 50% upon execution; (b) 50% on the Launch Date.\n\n4.3 The Annual Operations Fee shall be invoiced from the Launch Date, payable annually in advance within fifteen (15) days.\n\n4.4 Late payments accrue interest at 1.5% per month. After 30 days of non-payment and written notice, the Service Provider may suspend access.\n\n4.5 Payment by bank transfer. All bank charges borne by the Client.',
+          contentRtl: '۴-۱ مشتری متعهد است حق‌الزحمه‌ی مندرج در پیوست «الف» را که شامل «هزینه‌ی یک‌باره‌ی ساخت» و «هزینه‌ی سالانه‌ی عملیات» می‌شود، به ریال عمانی، پرداخت نماید.\n\n۴-۲ هزینه‌ی ساخت در دو قسط مساوی پرداخت می‌گردد: (الف) پنجاه درصد (۵۰٪) هنگام انعقاد؛ (ب) پنجاه درصد (۵۰٪) در تاریخ راه‌اندازی.\n\n۴-۳ هزینه‌ی سالانه‌ی عملیات از تاریخ راه‌اندازی، به صورت سالانه و پیش‌پرداخت ظرف پانزده (۱۵) روز قابل پرداخت است.\n\n۴-۴ هر صورت‌حسابی که در سررسید پرداخت نشود، مشمول جریمه‌ی ۱٫۵٪ در ماه خواهد بود. پس از سی (۳۰) روز عدم پرداخت و با اخطار کتبی، دسترسی به حالت تعلیق درمی‌آید.\n\n۴-۵ پرداخت از طریق حواله‌ی بانکی. کلیه‌ی کارمزدهای بانکی بر عهده‌ی مشتری است.',
+        },
+        {
+          id: 'a5_' + ts, articleNum: '5',
+          titleEn: 'ARTICLE 5 — CLIENT OBLIGATIONS', titleRtl: 'ماده ۵ — تعهدات مشتری',
+          contentEn: '5.1 The Client shall provide all Client Content within five (5) working days of the Effective Date.\n\n5.2 The Client warrants it owns or has obtained all rights necessary to use Client Content on the Platform.\n\n5.3 The Client shall designate one primary contact person authorized to provide approvals and instructions.\n\n5.4 The Client shall respond to buyer inquiries in a timely and professional manner.\n\n5.5 The Client shall not publish unlawful, defamatory, or sanctions-violating content on the Platform.',
+          contentRtl: '۵-۱ مشتری متعهد است ظرف پنج (۵) روز کاری از تاریخ اجرا، کلیه‌ی محتوای مشتری را تأمین نماید.\n\n۵-۲ مشتری تضمین می‌کند که مالک محتوای مشتری بوده یا تمامی حقوق لازم برای استفاده از آن در پلتفرم را اخذ نموده است.\n\n۵-۳ مشتری متعهد است یک شخص رابط اصلی معرفی نماید که مجاز به ارائه‌ی تأیید و دستورات است.\n\n۵-۴ مشتری متعهد است به استعلام‌های دریافتی به موقع و حرفه‌ای پاسخ دهد.\n\n۵-۵ مشتری متعهد است هیچ محتوای غیرقانونی، توهین‌آمیز یا ناقض تحریم‌ها را در پلتفرم منتشر نکند.',
+        },
+        {
+          id: 'a6_' + ts, articleNum: '6',
+          titleEn: 'ARTICLE 6 — SERVICE PROVIDER OBLIGATIONS', titleRtl: 'ماده ۶ — تعهدات ارائه‌دهنده‌ی خدمات',
+          contentEn: '6.1 The Service Provider shall perform the Services with the standard of skill, care, and diligence reasonably expected of a professional operator of metaverse export platforms.\n\n6.2 The Service Provider shall use commercially reasonable efforts to maintain Platform availability of no less than ninety-eight percent (98%) on a calendar-month basis.\n\n6.3 The Service Provider shall deliver monthly traffic and lead reports.\n\n6.4 The Service Provider shall provide live interpretation within the monthly allowance of the selected tier.\n\n6.5 The Service Provider shall implement reasonable security measures to protect Client Content.',
+          contentRtl: '۶-۱ ارائه‌دهنده‌ی خدمات متعهد است خدمات را با سطح مهارت، دقت و کوشش متعارف یک اپراتور حرفه‌ای پلتفرم‌های صادراتی متاورسی ارائه نماید.\n\n۶-۲ ارائه‌دهنده‌ی خدمات تلاش متعارف تجاری خود را به کار خواهد گرفت تا در دسترس‌بودن پلتفرم را به صورت ماهانه در حداقل نود و هشت درصد (۹۸٪) حفظ نماید.\n\n۶-۳ ارائه‌دهنده‌ی خدمات متعهد است گزارش ماهانه‌ی ترافیک و سرنخ را ارائه نماید.\n\n۶-۴ ارائه‌دهنده‌ی خدمات متعهد است ترجمه‌ی همزمان را در سقف ماهانه‌ی سطح انتخابی مشتری ارائه دهد.\n\n۶-۵ ارائه‌دهنده‌ی خدمات متعهد است تدابیر امنیتی متعارف برای حفاظت از محتوای مشتری را به کار گیرد.',
+        },
+        {
+          id: 'a7_' + ts, articleNum: '7',
+          titleEn: 'ARTICLE 7 — INTELLECTUAL PROPERTY', titleRtl: 'ماده ۷ — مالکیت فکری',
+          contentEn: '7.1 The Client retains all rights in Client Content. The Client grants the Service Provider a non-exclusive, royalty-free license to use Client Content solely for providing the Services.\n\n7.2 The Service Provider retains all rights in the Platform, including the 3D engine, software, and hall designs. Nothing in this Agreement transfers ownership of the Platform to the Client.\n\n7.3 Bespoke assets created for the Client\'s Pavilion shall, upon full payment, be licensed to the Client on a perpetual, worldwide, royalty-free basis for use in connection with the Pavilion and its own marketing.',
+          contentRtl: '۷-۱ کلیه‌ی حقوق مربوط به محتوای مشتری متعلق به مشتری باقی می‌ماند. مشتری یک مجوز غیرانحصاری و رایگان برای استفاده از محتوا صرفاً به منظور ارائه‌ی خدمات اعطا می‌نماید.\n\n۷-۲ کلیه‌ی حقوق مربوط به پلتفرم، شامل موتور سه‌بعدی، نرم‌افزار و طراحی سالن‌ها، متعلق به ارائه‌دهنده‌ی خدمات است. هیچ‌یک از مفاد این قرارداد، مالکیت پلتفرم را به مشتری منتقل نمی‌کند.\n\n۷-۳ دارایی‌های اختصاصی ساخته‌شده برای پاویون مشتری، پس از پرداخت کامل، با مجوز دائمی و رایگان جهت استفاده در پاویون و اهداف بازاریابی مشتری اعطا می‌گردد.',
+        },
+        {
+          id: 'a8_' + ts, articleNum: '8',
+          titleEn: 'ARTICLE 8 — CONFIDENTIALITY', titleRtl: 'ماده ۸ — محرمانگی',
+          contentEn: '8.1 Each Party shall hold the other\'s Confidential Information in strict confidence and shall not disclose it to any third party except to officers, employees, and advisors who need to know and are bound by equivalent confidentiality obligations.\n\n8.2 Confidentiality obligations do not apply to information that is publicly available, was already known, independently developed, or required by law to be disclosed.\n\n8.3 Confidentiality obligations survive termination for three (3) years.\n\n8.4 The Service Provider may identify the Client by name and logo in its marketing materials unless the Client objects in writing.',
+          contentRtl: '۸-۱ هر یک از طرفین متعهد است اطلاعات محرمانه‌ی طرف دیگر را با رازداری کامل حفظ نماید و آن را جز به مدیران، کارکنان و مشاوران حرفه‌ای خود که نیاز به اطلاع دارند، در اختیار شخص ثالث قرار ندهد.\n\n۸-۲ تعهدات محرمانگی شامل اطلاعاتی که به صورت عمومی در دسترس است، قبلاً شناخته شده، یا به موجب قانون افشای آن الزامی است، نمی‌شود.\n\n۸-۳ تعهدات محرمانگی پس از فسخ قرارداد به مدت سه (۳) سال به قوت خود باقی می‌ماند.\n\n۸-۴ ارائه‌دهنده‌ی خدمات می‌تواند نام و لوگوی مشتری را در مطالب بازاریابی خود درج نماید، مگر آنکه مشتری کتباً اعتراض کند.',
+        },
+        {
+          id: 'a9_' + ts, articleNum: '9',
+          titleEn: 'ARTICLE 9 — LIMITATION OF LIABILITY', titleRtl: 'ماده ۹ — محدودیت مسئولیت',
+          contentEn: '9.1 Neither Party shall be liable for any indirect, incidental, consequential, special, or punitive damages arising out of or in connection with this Agreement.\n\n9.2 The aggregate liability of the Service Provider shall not exceed the total fees paid by the Client in the twelve (12) months immediately preceding the event giving rise to the claim.\n\n9.3 The limitations in this Article do not apply to: (a) fraud or willful misconduct; (b) the Client\'s payment obligations; or (c) breach of confidentiality obligations.',
+          contentRtl: '۹-۱ هیچ‌یک از طرفین در قبال طرف دیگر مسئول هیچ‌گونه خسارت غیرمستقیم، تبعی، اتفاقی، خاص یا تنبیهی ناشی از این قرارداد نخواهد بود.\n\n۹-۲ مسئولیت تجمیعی ارائه‌دهنده‌ی خدمات از مجموع حق‌الزحمه‌ی واقعاً پرداخت‌شده توسط مشتری در دوازده (۱۲) ماه پیش از وقوع رویداد منجر به ادعا، تجاوز نخواهد کرد.\n\n۹-۳ محدودیت‌های این ماده شامل: (الف) مسئولیت ناشی از تقلب یا سوءرفتار عمدی؛ (ب) تعهدات پرداختی مشتری؛ یا (ج) نقض تعهدات محرمانگی، نمی‌گردد.',
+        },
+        {
+          id: 'a10_' + ts, articleNum: '10',
+          titleEn: 'ARTICLE 10 — TERM & TERMINATION', titleRtl: 'ماده ۱۰ — مدت و فسخ',
+          contentEn: '10.1 This Agreement commences on the Effective Date and continues for one (1) year from the Launch Date, renewing automatically for successive one-year terms unless either Party gives sixty (60) days\' written notice of non-renewal.\n\n10.2 Either Party may terminate immediately by written notice if the other Party: (a) materially breaches and fails to cure within thirty (30) days; (b) becomes insolvent; or (c) ceases business operations.\n\n10.3 Upon termination: all unpaid fees become immediately due; the Service Provider shall take down the Pavilion within thirty (30) days; and the Service Provider shall return or destroy the Client\'s Confidential Information on written request.',
+          contentRtl: '۱۰-۱ این قرارداد از تاریخ اجرا آغاز می‌گردد و برای مدت یک (۱) سال از تاریخ راه‌اندازی ادامه می‌یابد و پس از آن به صورت خودکار برای دوره‌های یک‌ساله تمدید می‌گردد، مگر آنکه هر یک از طرفین حداقل شصت (۶۰) روز پیش از پایان دوره، اطلاعیه‌ی کتبی عدم تمدید ارائه نماید.\n\n۱۰-۲ هر یک از طرفین می‌تواند با اطلاعیه‌ی کتبی، این قرارداد را فوراً فسخ نماید چنانچه طرف دیگر: (الف) مرتکب نقض اساسی شود و ظرف سی (۳۰) روز رفع نکند؛ (ب) ورشکسته شود؛ یا (ج) فعالیت تجاری خود را متوقف سازد.\n\n۱۰-۳ پس از فسخ: کلیه‌ی حق‌الزحمه‌های پرداخت‌نشده فوراً مستحق می‌گردد؛ ارائه‌دهنده‌ی خدمات ظرف سی (۳۰) روز پاویون را از پلتفرم برمی‌دارد؛ و بر اساس درخواست کتبی مشتری، اطلاعات محرمانه مسترد یا منهدم می‌نماید.',
+        },
+        {
+          id: 'a11_' + ts, articleNum: '11',
+          titleEn: 'ARTICLE 11 — FORCE MAJEURE', titleRtl: 'ماده ۱۱ — قوه‌ی قاهره',
+          contentEn: '11.1 Neither Party shall be liable for failure or delay in performance (other than payment obligations) caused by an event beyond its reasonable control, including acts of God, war, terrorism, governmental orders, pandemic, internet failures, or major cyber-attacks ("Force Majeure").\n\n11.2 The affected Party shall promptly notify the other of the Force Majeure event and use reasonable efforts to mitigate its effects.\n\n11.3 If a Force Majeure event continues for more than ninety (90) consecutive days, either Party may terminate by written notice without further liability.',
+          contentRtl: '۱۱-۱ هیچ‌یک از طرفین در قبال عدم اجرا یا تأخیر در اجرای تعهدات خود (به استثنای تعهدات پرداختی) مسئولیتی نخواهد داشت چنانچه ناشی از رویدادی خارج از کنترل متعارف باشد، از جمله: حوادث طبیعی، جنگ، تروریسم، دستورات دولتی، همه‌گیری، اختلال در اینترنت یا حملات سایبری («قوه‌ی قاهره»).\n\n۱۱-۲ طرف متأثر متعهد است فوراً به صورت کتبی، وقوع رویداد قوه‌ی قاهره را به طرف دیگر اطلاع دهد.\n\n۱۱-۳ چنانچه رویداد قوه‌ی قاهره بیش از نود (۹۰) روز متوالی ادامه یابد، هر یک از طرفین می‌تواند با اطلاعیه‌ی کتبی این قرارداد را بدون مسئولیت بیشتر فسخ نماید.',
+        },
+        {
+          id: 'a12_' + ts, articleNum: '12',
+          titleEn: 'ARTICLE 12 — GOVERNING LAW & DISPUTE RESOLUTION', titleRtl: 'ماده ۱۲ — قانون حاکم و حل اختلاف',
+          contentEn: '12.1 This Agreement shall be governed by and construed in accordance with the laws of the Sultanate of Oman.\n\n12.2 The Parties shall first attempt in good faith to resolve any dispute through amicable negotiations within thirty (30) days of written notice of the dispute.\n\n12.3 Any unresolved dispute shall be referred to arbitration administered by the Oman International Commercial Arbitration Centre. The seat shall be Muscat; the language English; the tribunal shall consist of one (1) arbitrator. The award shall be final and binding.\n\n12.4 Either Party may seek interim or injunctive relief from any competent court to protect its intellectual-property rights or Confidential Information.',
+          contentRtl: '۱۲-۱ این قرارداد تابع قوانین سلطنت عمان بوده و مطابق با آن تفسیر می‌گردد.\n\n۱۲-۲ طرفین متعهد می‌گردند هرگونه اختلاف را ابتدا با حسن نیت و از طریق مذاکره‌ی دوستانه، ظرف سی (۳۰) روز از اطلاع کتبی اختلاف، حل و فصل کنند.\n\n۱۲-۳ هرگونه اختلافی که حل نگردد، به داوری مرکز داوری تجاری بین‌المللی عمان ارجاع داده می‌شود. مقر داوری مسقط، زبان داوری انگلیسی و هیأت داوری متشکل از یک (۱) داور خواهد بود. رأی داوری برای طرفین قطعی و الزام‌آور است.\n\n۱۲-۴ هر یک از طرفین می‌تواند از هر دادگاه صالحیت‌داری برای حفاظت از حقوق مالکیت فکری یا اطلاعات محرمانه، اقدامات احتیاطی درخواست نماید.',
+        },
+        {
+          id: 'a13_' + ts, articleNum: '13',
+          titleEn: 'ARTICLE 13 — GENERAL PROVISIONS', titleRtl: 'ماده ۱۳ — مقررات عمومی',
+          contentEn: '13.1 Notices: All notices shall be in writing, delivered by hand, courier, or email. Email notices are deemed received on the next business day.\n\n13.2 Assignment: Neither Party may assign this Agreement without the prior written consent of the other Party, except that the Service Provider may assign to an affiliate without consent.\n\n13.3 Entire Agreement: This Agreement, together with its Schedules, constitutes the entire agreement between the Parties and supersedes all prior negotiations and understandings.\n\n13.4 Amendments: No amendment shall be effective unless in writing and signed by authorized representatives of both Parties.\n\n13.5 Severability: If any provision is held invalid, the remaining provisions continue in full force.\n\n13.6 Language: This Agreement is executed in English and Persian. In case of discrepancy, the English version prevails.',
+          contentRtl: '۱۳-۱ ابلاغ‌ها: کلیه‌ی ابلاغ‌ها به صورت کتبی و از طریق تحویل حضوری، پیک یا ایمیل ارسال می‌گردد. ابلاغ‌های ایمیلی در روز کاری بعد از ارسال دریافت‌شده تلقی می‌شوند.\n\n۱۳-۲ انتقال: هیچ‌یک از طرفین مجاز به انتقال این قرارداد بدون رضایت کتبی قبلی طرف دیگر نمی‌باشد، با این حال ارائه‌دهنده‌ی خدمات می‌تواند بدون رضایت، به یک شرکت وابسته واگذار نماید.\n\n۱۳-۳ توافق کامل: این قرارداد به همراه پیوست‌هایش، مجموع توافق طرفین را تشکیل می‌دهد و جایگزین کلیه‌ی مذاکرات و تفاهم‌های قبلی می‌گردد.\n\n۱۳-۴ اصلاحات: هیچ اصلاحیه‌ای معتبر نخواهد بود مگر آنکه به صورت کتبی توسط نمایندگان مجاز هر دو طرف امضا شود.\n\n۱۳-۵ تفکیک‌پذیری: چنانچه هر یک از مفاد باطل تشخیص داده شود، سایر مفاد به قوت کامل خود باقی می‌ماند.\n\n۱۳-۶ زبان: این قرارداد به دو زبان انگلیسی و فارسی تنظیم شده است. در صورت تعارض، نسخه‌ی انگلیسی مالک خواهد بود.',
+        },
+      ],
+      scheduleRows: [
+        { id: 'sr1_' + ts, tierEn: 'Booth — Shared Hall', tierRtl: 'غرفه — سالن مشترک', buildFee: '1,500', annualFee: '2,400', interpretation: '4', selected: false },
+        { id: 'sr2_' + ts, tierEn: 'Pavilion — Standard', tierRtl: 'پاویون — استاندارد', buildFee: '4,500', annualFee: '6,000', interpretation: '10', selected: false },
+        { id: 'sr3_' + ts, tierEn: 'Pavilion — Premium', tierRtl: 'پاویون — ویژه', buildFee: '8,500', annualFee: '10,800', interpretation: '20', selected: false },
+        { id: 'sr4_' + ts, tierEn: 'Pavilion — Flagship', tierRtl: 'پاویون — پرچمدار', buildFee: '15,000', annualFee: '18,000', interpretation: '40', selected: false },
+      ],
+      addOns: [
+        { id: 'ao1_' + ts, nameEn: 'Hall Banner', nameRtl: 'بنر سالن', descEn: 'Branded banner at sector hall entrance', descRtl: 'بنر برند در ورودی سالن صنعتی', price: '350', selected: false },
+        { id: 'ao2_' + ts, nameEn: 'Featured Listing', nameRtl: 'نمایش ویژه', descEn: 'Top-of-search placement in sector', descRtl: 'جایگاه برتر در فهرست جستجو', price: '500', selected: false },
+        { id: 'ao3_' + ts, nameEn: 'Concierge Hours', nameRtl: 'ساعت همراه', descEn: 'Dedicated buyer concierge time, per 10 hrs', descRtl: 'ساعات اختصاصی همراه خریدار، هر ۱۰ ساعت', price: '250', selected: false },
+        { id: 'ao4_' + ts, nameEn: 'Outreach Campaign', nameRtl: 'کمپین جذب', descEn: 'Targeted buyer outreach campaign, per campaign', descRtl: 'کمپین جذب خریدار هدفمند، هر کمپین', price: '1,200', selected: false },
+      ],
+      rtlLanguage: 'fa',
+      status: 'draft',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  };
+
+  const saveContractsList = (updated: ContractDef[]) => {
+    setContracts(updated);
+    try { localStorage.setItem(CONTRACTS_STORAGE_KEY, JSON.stringify(updated)); } catch {}
+  };
+
+  const renderContractsList = () => {
+    const statusBadge = (s: ContractStatus) => {
+      const map: Record<ContractStatus, string> = {
+        draft: 'bg-amber-50 border-amber-200 text-amber-700',
+        final: 'bg-blue-50 border-blue-200 text-blue-700',
+        signed: 'bg-green-50 border-green-200 text-green-700',
+      };
+      return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${map[s]}`}>{s}</span>;
+    };
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Contracts</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Bilingual export contracts with English & Persian/Arabic side-by-side layout</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setEditingContract(makeExportContractTemplate()); setContractEditorTab('info'); setContractsSubView('editor'); }}
+              className="flex items-center gap-2 text-sm border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg px-3 py-2 font-medium">
+              <FileText className="w-4 h-4" /> Export Contract Template
+            </button>
+            <button
+              onClick={() => { setEditingContract(makeBlankContract()); setContractEditorTab('info'); setContractsSubView('editor'); }}
+              className="flex items-center gap-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg px-3 py-2 font-medium">
+              <Plus className="w-4 h-4" /> New Contract
+            </button>
+          </div>
+        </div>
+
+        {contracts.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
+            <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500 font-medium mb-1">No contracts yet</p>
+            <p className="text-sm text-slate-400 mb-4">Create a blank contract or load the export contract template</p>
+            <button onClick={() => { setEditingContract(makeExportContractTemplate()); setContractEditorTab('info'); setContractsSubView('editor'); }}
+              className="text-sm text-blue-600 hover:underline">Load Export Contract Template →</button>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {contracts.map(c => (
+              <div key={c.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-4 hover:shadow-sm transition-shadow">
+                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <FileText className="w-5 h-5 text-slate-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-slate-900 truncate">{c.titleEn || 'Untitled Contract'}</span>
+                    {statusBadge(c.status)}
+                    {c.refNo && <span className="text-xs text-slate-400 font-mono">{c.refNo}</span>}
+                  </div>
+                  {c.titleRtl && <div className="text-sm text-slate-500 mt-0.5" dir="rtl" style={{ textAlign: 'right' }}>{c.titleRtl}</div>}
+                  <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                    {c.effectiveDate && <span>Date: {c.effectiveDate}</span>}
+                    <span>{c.clauses.length} clauses</span>
+                    <span>{c.parties.length} parties</span>
+                    {c.scheduleRows.length > 0 && <span>Schedule A</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => { setEditingContract(c); setContractEditorTab('info'); setContractsSubView('preview'); }}
+                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100" title="Preview / Print">
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => { setEditingContract(JSON.parse(JSON.stringify(c))); setContractEditorTab('info'); setContractsSubView('editor'); }}
+                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100" title="Edit">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([JSON.stringify(c, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url; a.download = `contract_${c.refNo || c.id}.json`; a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100" title="Export JSON">
+                    <Download className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => { if (confirm('Delete this contract?')) saveContractsList(contracts.filter(x => x.id !== c.id)); }}
+                    className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Delete">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderContractEditor = () => {
+    if (!editingContract) return null;
+    const c = editingContract;
+    const upd = (patch: Partial<ContractDef>) => setEditingContract({ ...c, ...patch, updatedAt: Date.now() });
+
+    const updateClause = (id: string, patch: Partial<ContractClause>) =>
+      upd({ clauses: c.clauses.map(cl => cl.id === id ? { ...cl, ...patch } : cl) });
+
+    const addClause = () => upd({
+      clauses: [...c.clauses, {
+        id: Date.now().toString(),
+        articleNum: String(c.clauses.length + 1),
+        titleEn: '', titleRtl: '', contentEn: '', contentRtl: '',
+      }],
+    });
+
+    const deleteClause = (id: string) => upd({ clauses: c.clauses.filter(cl => cl.id !== id) });
+
+    const moveClause = (idx: number, dir: -1 | 1) => {
+      const arr = [...c.clauses];
+      const ni = idx + dir;
+      if (ni < 0 || ni >= arr.length) return;
+      [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
+      upd({ clauses: arr });
+    };
+
+    const updateParty = (id: string, patch: Partial<ContractParty>) =>
+      upd({ parties: c.parties.map(p => p.id === id ? { ...p, ...patch } : p) });
+
+    const saveAndReturn = () => {
+      const updated = contracts.some(x => x.id === c.id)
+        ? contracts.map(x => x.id === c.id ? c : x)
+        : [...contracts, c];
+      saveContractsList(updated);
+      setContractsSubView('list');
+      setEditingContract(null);
+    };
+
+    const saveAndPreview = () => {
+      const updated = contracts.some(x => x.id === c.id)
+        ? contracts.map(x => x.id === c.id ? c : x)
+        : [...contracts, c];
+      saveContractsList(updated);
+      setContractsSubView('preview');
+    };
+
+    const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300';
+    const labelCls = 'text-xs text-slate-500 font-medium mb-1 block';
+    const rtlInputCls = inputCls + ' text-right';
+
+    return (
+      <div className="space-y-4">
+        {/* Toolbar */}
+        <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3 sticky top-0 z-10">
+          <button onClick={() => { setContractsSubView('list'); setEditingContract(null); }}
+            className="flex items-center gap-1 text-slate-500 hover:text-slate-900 text-sm">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+          <div className="w-px h-5 bg-slate-200" />
+          <input value={c.titleEn} onChange={e => upd({ titleEn: e.target.value })}
+            className="flex-1 text-base font-semibold text-slate-900 bg-transparent border-none outline-none min-w-0"
+            placeholder="Contract Title (English)" />
+          <select value={c.status} onChange={e => upd({ status: e.target.value as ContractStatus })}
+            className={`text-xs px-2 py-1 rounded-full border font-medium ${c.status === 'draft' ? 'bg-amber-50 border-amber-200 text-amber-700' : c.status === 'final' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+            <option value="draft">Draft</option>
+            <option value="final">Final</option>
+            <option value="signed">Signed</option>
+          </select>
+          <button onClick={saveAndPreview}
+            className="flex items-center gap-1 text-sm text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
+            <Printer className="w-4 h-4" /> Preview
+          </button>
+          <button onClick={saveAndReturn}
+            className="flex items-center gap-1 text-sm bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700">
+            <Save className="w-4 h-4" /> Save
+          </button>
+        </div>
+
+        {/* Editor Tabs */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+          {(['info', 'parties', 'clauses', 'schedule'] as const).map(tab => (
+            <button key={tab} onClick={() => setContractEditorTab(tab)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${contractEditorTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>
+              {tab === 'info' ? 'Info' : tab === 'parties' ? 'Parties' : tab === 'clauses' ? 'Clauses' : 'Schedule A'}
+            </button>
+          ))}
+        </div>
+
+        {/* INFO TAB */}
+        {contractEditorTab === 'info' && (
+          <div className="bg-white rounded-xl border border-slate-200 p-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Reference Number</label>
+                <input value={c.refNo} onChange={e => upd({ refNo: e.target.value })} className={inputCls} placeholder="OM-2026-0001" />
+              </div>
+              <div>
+                <label className={labelCls}>Effective Date</label>
+                <input type="date" value={c.effectiveDate} onChange={e => upd({ effectiveDate: e.target.value })} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Title (English)</label>
+                <input value={c.titleEn} onChange={e => upd({ titleEn: e.target.value })} className={inputCls} placeholder="PAVILION SERVICES AGREEMENT" />
+              </div>
+              <div>
+                <label className={labelCls + ' text-right'}>عنوان (فارسی)</label>
+                <input value={c.titleRtl} onChange={e => upd({ titleRtl: e.target.value })} dir="rtl" className={rtlInputCls} placeholder="قرارداد خدمات غرفه" />
+              </div>
+              <div>
+                <label className={labelCls}>Subtitle (English)</label>
+                <input value={c.subtitleEn} onChange={e => upd({ subtitleEn: e.target.value })} className={inputCls} placeholder="e.g. Metaverse Export Pavilions" />
+              </div>
+              <div>
+                <label className={labelCls + ' text-right'}>زیرعنوان (فارسی)</label>
+                <input value={c.subtitleRtl} onChange={e => upd({ subtitleRtl: e.target.value })} dir="rtl" className={rtlInputCls} placeholder="غرفه‌های صادراتی متاورسی" />
+              </div>
+              <div>
+                <label className={labelCls}>Company Name</label>
+                <input value={c.companyName || ''} onChange={e => upd({ companyName: e.target.value })} className={inputCls} placeholder="Your company name" />
+              </div>
+              <div>
+                <label className={labelCls}>Logo URL</label>
+                <input value={c.logoUrl || ''} onChange={e => upd({ logoUrl: e.target.value })} className={inputCls} placeholder="https://..." />
+              </div>
+              <div>
+                <label className={labelCls}>RTL Column Language</label>
+                <select value={c.rtlLanguage} onChange={e => upd({ rtlLanguage: e.target.value as ContractRtlLang })} className={inputCls}>
+                  <option value="fa">Persian (فارسی)</option>
+                  <option value="ar">Arabic (عربي)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PARTIES TAB */}
+        {contractEditorTab === 'parties' && (
+          <div className="space-y-4">
+            {c.parties.map((party, pi) => (
+              <div key={party.id} className="bg-white rounded-xl border border-slate-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-slate-800">Party {pi + 1}</h3>
+                  {c.parties.length > 1 && (
+                    <button onClick={() => upd({ parties: c.parties.filter(p => p.id !== party.id) })}
+                      className="p-1 text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={labelCls}>Role Label (EN)</label>
+                    <input value={party.labelEn} onChange={e => updateParty(party.id, { labelEn: e.target.value })} className={inputCls} placeholder="SERVICE PROVIDER" /></div>
+                  <div><label className={labelCls + ' text-right'}>برچسب نقش (FA)</label>
+                    <input value={party.labelRtl} dir="rtl" onChange={e => updateParty(party.id, { labelRtl: e.target.value })} className={rtlInputCls} /></div>
+                  <div><label className={labelCls}>Company Name (EN)</label>
+                    <input value={party.companyEn} onChange={e => updateParty(party.id, { companyEn: e.target.value })} className={inputCls} /></div>
+                  <div><label className={labelCls + ' text-right'}>نام شرکت (FA)</label>
+                    <input value={party.companyRtl} dir="rtl" onChange={e => updateParty(party.id, { companyRtl: e.target.value })} className={rtlInputCls} /></div>
+                  <div><label className={labelCls}>Registration Number</label>
+                    <input value={party.regNo} onChange={e => updateParty(party.id, { regNo: e.target.value })} className={inputCls} /></div>
+                  <div><label className={labelCls}>Country</label>
+                    <input value={party.country} onChange={e => updateParty(party.id, { country: e.target.value })} className={inputCls} /></div>
+                  <div><label className={labelCls}>Rep. Name (EN)</label>
+                    <input value={party.repNameEn} onChange={e => updateParty(party.id, { repNameEn: e.target.value })} className={inputCls} /></div>
+                  <div><label className={labelCls + ' text-right'}>نام نماینده (FA)</label>
+                    <input value={party.repNameRtl} dir="rtl" onChange={e => updateParty(party.id, { repNameRtl: e.target.value })} className={rtlInputCls} /></div>
+                  <div><label className={labelCls}>Rep. Title (EN)</label>
+                    <input value={party.repTitleEn} onChange={e => updateParty(party.id, { repTitleEn: e.target.value })} className={inputCls} /></div>
+                  <div><label className={labelCls + ' text-right'}>سمت نماینده (FA)</label>
+                    <input value={party.repTitleRtl} dir="rtl" onChange={e => updateParty(party.id, { repTitleRtl: e.target.value })} className={rtlInputCls} /></div>
+                  <div><label className={labelCls}>Alias used in body (EN)</label>
+                    <input value={party.aliasEn} onChange={e => updateParty(party.id, { aliasEn: e.target.value })} className={inputCls} placeholder="the Service Provider" /></div>
+                  <div><label className={labelCls + ' text-right'}>نام مستعار در متن (FA)</label>
+                    <input value={party.aliasRtl} dir="rtl" onChange={e => updateParty(party.id, { aliasRtl: e.target.value })} className={rtlInputCls} /></div>
+                </div>
+              </div>
+            ))}
+            <button onClick={() => upd({ parties: [...c.parties, { id: Date.now().toString(), labelEn: 'PARTY', labelRtl: 'طرف', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: '', aliasRtl: '' }] })}
+              className="flex items-center gap-2 text-sm text-blue-600 border border-blue-200 rounded-lg px-4 py-2 hover:bg-blue-50">
+              <Plus className="w-4 h-4" /> Add Party
+            </button>
+          </div>
+        )}
+
+        {/* CLAUSES TAB */}
+        {contractEditorTab === 'clauses' && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 flex items-center gap-1">
+              <span>Each clause is displayed side-by-side in the preview. Use ▲▼ to reorder.</span>
+            </p>
+            {c.clauses.map((clause, idx) => (
+              <div key={clause.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <input value={clause.articleNum}
+                    onChange={e => updateClause(clause.id, { articleNum: e.target.value })}
+                    className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono bg-slate-50 text-center"
+                    placeholder="RECITALS / 1 / 1.1" />
+                  <span className="text-xs text-slate-400">Article / Section #</span>
+                  <div className="flex-1" />
+                  <button onClick={() => moveClause(idx, -1)} disabled={idx === 0}
+                    className="px-2 py-0.5 text-slate-400 hover:text-slate-700 disabled:opacity-25 text-base leading-none rounded">▲</button>
+                  <button onClick={() => moveClause(idx, 1)} disabled={idx === c.clauses.length - 1}
+                    className="px-2 py-0.5 text-slate-400 hover:text-slate-700 disabled:opacity-25 text-base leading-none rounded">▼</button>
+                  <button onClick={() => deleteClause(clause.id)}
+                    className="p-1 text-red-400 hover:text-red-600 rounded"><Trash2 className="w-4 h-4" /></button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>Title — English</label>
+                    <input value={clause.titleEn} onChange={e => updateClause(clause.id, { titleEn: e.target.value })}
+                      className={inputCls} placeholder="ARTICLE 1 — DEFINITIONS" />
+                  </div>
+                  <div>
+                    <label className={labelCls + ' text-right'}>عنوان — فارسی</label>
+                    <input value={clause.titleRtl} dir="rtl" onChange={e => updateClause(clause.id, { titleRtl: e.target.value })}
+                      className={rtlInputCls} placeholder="ماده ۱ — تعاریف" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Content — English</label>
+                    <textarea value={clause.contentEn} onChange={e => updateClause(clause.id, { contentEn: e.target.value })}
+                      rows={7} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-300 leading-relaxed" />
+                  </div>
+                  <div>
+                    <label className={labelCls + ' text-right'}>محتوا — فارسی</label>
+                    <textarea value={clause.contentRtl} dir="rtl" onChange={e => updateClause(clause.id, { contentRtl: e.target.value })}
+                      rows={7} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-y text-right focus:outline-none focus:ring-2 focus:ring-blue-300 leading-relaxed" />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button onClick={addClause}
+              className="flex items-center gap-2 text-sm text-blue-600 border border-blue-200 rounded-lg px-4 py-2 hover:bg-blue-50">
+              <Plus className="w-4 h-4" /> Add Clause
+            </button>
+          </div>
+        )}
+
+        {/* SCHEDULE A TAB */}
+        {contractEditorTab === 'schedule' && (
+          <div className="space-y-5">
+            {/* Fee Tiers */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-slate-800">Fee Tiers — Schedule A</h3>
+                <button onClick={() => upd({ scheduleRows: [...c.scheduleRows, { id: Date.now().toString(), tierEn: '', tierRtl: '', buildFee: '', annualFee: '', interpretation: '', selected: false }] })}
+                  className="flex items-center gap-1 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50">
+                  <Plus className="w-3 h-3" /> Add Tier
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-slate-200 text-xs text-slate-500 font-medium">
+                      <th className="text-left pb-2 pr-3 min-w-[160px]">Tier (EN)</th>
+                      <th className="text-right pb-2 pr-3 min-w-[140px]">سطح (FA)</th>
+                      <th className="text-center pb-2 pr-3">Build Fee (OMR)</th>
+                      <th className="text-center pb-2 pr-3">Annual Fee (OMR)</th>
+                      <th className="text-center pb-2 pr-3">Interp. hrs/mo</th>
+                      <th className="text-center pb-2 pr-3 w-16">Selected</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {c.scheduleRows.map(row => (
+                      <tr key={row.id} className={`border-b border-slate-100 ${row.selected ? 'bg-blue-50' : ''}`}>
+                        <td className="py-2 pr-2">
+                          <input value={row.tierEn} onChange={e => upd({ scheduleRows: c.scheduleRows.map(r => r.id === row.id ? { ...r, tierEn: e.target.value } : r) })}
+                            className="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                        </td>
+                        <td className="py-2 pr-2">
+                          <input value={row.tierRtl} dir="rtl" onChange={e => upd({ scheduleRows: c.scheduleRows.map(r => r.id === row.id ? { ...r, tierRtl: e.target.value } : r) })}
+                            className="w-full border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                        </td>
+                        <td className="py-2 pr-2 text-center">
+                          <input value={row.buildFee} onChange={e => upd({ scheduleRows: c.scheduleRows.map(r => r.id === row.id ? { ...r, buildFee: e.target.value } : r) })}
+                            className="w-24 border border-slate-200 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                        </td>
+                        <td className="py-2 pr-2 text-center">
+                          <input value={row.annualFee} onChange={e => upd({ scheduleRows: c.scheduleRows.map(r => r.id === row.id ? { ...r, annualFee: e.target.value } : r) })}
+                            className="w-24 border border-slate-200 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                        </td>
+                        <td className="py-2 pr-2 text-center">
+                          <input value={row.interpretation} onChange={e => upd({ scheduleRows: c.scheduleRows.map(r => r.id === row.id ? { ...r, interpretation: e.target.value } : r) })}
+                            className="w-16 border border-slate-200 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                        </td>
+                        <td className="py-2 pr-2 text-center">
+                          <input type="checkbox" checked={row.selected} onChange={e => upd({ scheduleRows: c.scheduleRows.map(r => r.id === row.id ? { ...r, selected: e.target.checked } : r) })}
+                            className="w-4 h-4 accent-blue-600" />
+                        </td>
+                        <td className="py-2">
+                          <button onClick={() => upd({ scheduleRows: c.scheduleRows.filter(r => r.id !== row.id) })}
+                            className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Add-ons */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-slate-800">Visibility Add-Ons (Monthly)</h3>
+                <button onClick={() => upd({ addOns: [...c.addOns, { id: Date.now().toString(), nameEn: '', nameRtl: '', descEn: '', descRtl: '', price: '', selected: false }] })}
+                  className="flex items-center gap-1 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-50">
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+              </div>
+              {c.addOns.length === 0 && <p className="text-sm text-slate-400">No add-ons. Click "Add" to create one.</p>}
+              <div className="space-y-2">
+                {c.addOns.map(ao => (
+                  <div key={ao.id} className="grid grid-cols-[1fr_1fr_100px_50px_32px] gap-2 items-center">
+                    <input value={ao.nameEn} onChange={e => upd({ addOns: c.addOns.map(a => a.id === ao.id ? { ...a, nameEn: e.target.value } : a) })}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" placeholder="Name (EN)" />
+                    <input value={ao.nameRtl} dir="rtl" onChange={e => upd({ addOns: c.addOns.map(a => a.id === ao.id ? { ...a, nameRtl: e.target.value } : a) })}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-300" placeholder="نام (FA)" />
+                    <input value={ao.price} onChange={e => upd({ addOns: c.addOns.map(a => a.id === ao.id ? { ...a, price: e.target.value } : a) })}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-300" placeholder="Price OMR" />
+                    <label className="flex items-center gap-1 text-xs text-slate-500 justify-center cursor-pointer">
+                      <input type="checkbox" checked={ao.selected} onChange={e => upd({ addOns: c.addOns.map(a => a.id === ao.id ? { ...a, selected: e.target.checked } : a) })} className="w-4 h-4 accent-blue-600" />
+                      Sel.
+                    </label>
+                    <button onClick={() => upd({ addOns: c.addOns.filter(a => a.id !== ao.id) })}
+                      className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderContractPreview = () => {
+    if (!editingContract) return null;
+    const c = editingContract;
+    const isInList = contracts.some(x => x.id === c.id);
+
+    const cellCls = 'p-3 align-top text-sm leading-relaxed';
+    const rtlFont = c.rtlLanguage === 'fa'
+      ? 'Vazirmatn, Tahoma, "Segoe UI", sans-serif'
+      : '"Noto Naskh Arabic", Tahoma, "Segoe UI", sans-serif';
+
+    return (
+      <div>
+        {/* Toolbar (hidden on print) */}
+        <div className="flex items-center gap-3 mb-4 print:hidden">
+          <button onClick={() => setContractsSubView(isInList ? 'editor' : 'list')}
+            className="flex items-center gap-1 text-slate-500 hover:text-slate-900 text-sm">
+            <ArrowLeft className="w-4 h-4" /> Back to Editor
+          </button>
+          <span className="text-slate-300">|</span>
+          <span className="text-sm text-slate-500 font-mono">{c.refNo}</span>
+          <div className="flex-1" />
+          <button onClick={() => { window.print(); }}
+            className="flex items-center gap-2 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700">
+            <Printer className="w-4 h-4" /> Print / Export PDF
+          </button>
+        </div>
+
+        {/* Contract Document */}
+        <style>{`
+          @media print {
+            body > *:not(#contract-preview-root) { display: none !important; }
+            #contract-preview-root { display: block !important; }
+            .print\\:hidden { display: none !important; }
+            @page { size: A4; margin: 15mm; }
+          }
+        `}</style>
+        <div id="contract-preview-root"
+          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden"
+          style={{ maxWidth: '210mm', fontFamily: 'Georgia, "Times New Roman", serif', fontSize: '9.5pt', lineHeight: '1.65', color: '#1e293b' }}>
+
+          {/* Header */}
+          <div className="border-b-2 border-slate-800 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              {c.logoUrl && <img src={c.logoUrl} alt="Logo" className="h-12 object-contain flex-shrink-0" />}
+              <div className="flex-1 text-center">
+                <div className="text-[11pt] font-bold tracking-wide mb-0.5">{c.titleEn}</div>
+                {c.titleRtl && <div className="text-[10.5pt] font-semibold text-slate-700" dir="rtl" style={{ fontFamily: rtlFont }}>{c.titleRtl}</div>}
+                {c.subtitleEn && <div className="text-[9pt] italic text-slate-500 mt-1">{c.subtitleEn}</div>}
+                {c.subtitleRtl && <div className="text-[9pt] italic text-slate-500" dir="rtl" style={{ fontFamily: rtlFont }}>{c.subtitleRtl}</div>}
+              </div>
+            </div>
+            <div className="text-center text-[8.5pt] text-slate-500 mt-3 space-x-2">
+              {c.refNo && <span>Ref. No. {c.refNo}</span>}
+              {c.refNo && c.effectiveDate && <span>|</span>}
+              {c.effectiveDate && <span>Date: {new Date(c.effectiveDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>}
+            </div>
+          </div>
+
+          {/* Parties */}
+          {c.parties.length > 0 && (
+            <div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th colSpan={2} style={{ background: '#1e293b', color: '#fff', padding: '6px 12px', fontSize: '9pt', fontWeight: 700, letterSpacing: '0.05em' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>THE PARTIES</span>
+                        <span dir="rtl" style={{ fontFamily: rtlFont }}>طرفین قرارداد</span>
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.parties.map((party, pi) => (
+                    <tr key={party.id} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                      <td style={{ width: '50%', padding: '10px 12px', verticalAlign: 'top', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>{pi + 1}. {party.labelEn}:</div>
+                        {party.companyEn && <div>{party.companyEn}</div>}
+                        {party.regNo && <div>Reg. No.: {party.regNo}</div>}
+                        {party.country && <div>Country: {party.country}</div>}
+                        {party.repNameEn && <div style={{ marginTop: 4 }}>Represented by: {party.repNameEn}</div>}
+                        {party.repTitleEn && <div>Capacity: {party.repTitleEn}</div>}
+                        {party.aliasEn && <div style={{ marginTop: 4, color: '#64748b', fontStyle: 'italic' }}>(hereinafter "{party.aliasEn}")</div>}
+                      </td>
+                      <td style={{ width: '50%', padding: '10px 12px', verticalAlign: 'top', fontSize: '9pt', direction: 'rtl', fontFamily: rtlFont, textAlign: 'right' }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>{pi + 1}. {party.labelRtl}:</div>
+                        {party.companyRtl && <div>{party.companyRtl}</div>}
+                        {party.regNo && <div>شماره ثبت: {party.regNo}</div>}
+                        {party.country && <div>کشور: {party.country}</div>}
+                        {party.repNameRtl && <div style={{ marginTop: 4 }}>با نمایندگی: {party.repNameRtl}</div>}
+                        {party.repTitleRtl && <div>به عنوان: {party.repTitleRtl}</div>}
+                        {party.aliasRtl && <div style={{ marginTop: 4, color: '#64748b', fontStyle: 'italic' }}>(که از این پس «{party.aliasRtl}» نامیده می‌شود)</div>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Clauses */}
+          {c.clauses.map(clause => (
+            <div key={clause.id}>
+              {(clause.titleEn || clause.titleRtl) && (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <tbody>
+                    <tr style={{ background: '#f1f5f9', borderTop: '1px solid #cbd5e1', borderBottom: '1px solid #cbd5e1' }}>
+                      <td style={{ width: '50%', padding: '6px 12px', fontWeight: 700, fontSize: '9pt', borderRight: '1px solid #cbd5e1' }}>{clause.titleEn}</td>
+                      <td style={{ width: '50%', padding: '6px 12px', fontWeight: 700, fontSize: '9pt', textAlign: 'right', direction: 'rtl', fontFamily: rtlFont }}>{clause.titleRtl}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ width: '50%', padding: '10px 12px', verticalAlign: 'top', borderRight: '1px solid #cbd5e1', fontSize: '9pt', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                      {clause.contentEn}
+                    </td>
+                    <td style={{ width: '50%', padding: '10px 12px', verticalAlign: 'top', fontSize: '9pt', lineHeight: 1.7, direction: 'rtl', fontFamily: rtlFont, textAlign: 'right', whiteSpace: 'pre-wrap' }}>
+                      {clause.contentRtl}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+          {/* Schedule A */}
+          {c.scheduleRows.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th colSpan={5} style={{ background: '#1e293b', color: '#fff', padding: '6px 12px', fontSize: '9pt', fontWeight: 700 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>SCHEDULE A — FEES &amp; SELECTED PACKAGE</span>
+                        <span dir="rtl" style={{ fontFamily: rtlFont }}>پیوست الف — حق‌الزحمه و بسته‌ی انتخاب‌شده</span>
+                      </div>
+                    </th>
+                  </tr>
+                  <tr style={{ background: '#f1f5f9', fontSize: '8.5pt', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #cbd5e1' }}>Tier / سطح</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Build Fee (OMR)</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Annual Ops Fee (OMR)</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Interp. hrs/mo</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Select</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.scheduleRows.map(row => (
+                    <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', background: row.selected ? '#eff6ff' : 'transparent' }}>
+                      <td style={{ padding: '6px 8px', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>
+                        <div>{row.tierEn}</div>
+                        {row.tierRtl && <div dir="rtl" style={{ textAlign: 'right', fontSize: '8.5pt', color: '#64748b', fontFamily: rtlFont }}>{row.tierRtl}</div>}
+                      </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.buildFee}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.annualFee}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.interpretation}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '13pt' }}>{row.selected ? '☑' : '☐'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {c.addOns.length > 0 && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 0 }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', borderTop: '1px solid #cbd5e1' }}>
+                      <th colSpan={3} style={{ padding: '5px 8px', textAlign: 'left', fontSize: '8.5pt', fontWeight: 600 }}>
+                        Visibility Add-Ons (Monthly) | <span dir="rtl" style={{ fontFamily: rtlFont }}>افزونه‌های دیده‌شدن (ماهانه)</span>
+                      </th>
+                    </tr>
+                    <tr style={{ background: '#f8fafc', fontSize: '8pt', borderBottom: '1px solid #cbd5e1' }}>
+                      <th style={{ padding: '5px 8px', textAlign: 'left', borderRight: '1px solid #cbd5e1' }}>Add-On / افزونه</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Price (OMR)</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'center' }}>Select</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {c.addOns.map(ao => (
+                      <tr key={ao.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '5px 8px', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>
+                          <span style={{ fontWeight: 600 }}>{ao.nameEn}</span>
+                          {ao.nameRtl && <span dir="rtl" style={{ fontFamily: rtlFont, color: '#475569' }}> / {ao.nameRtl}</span>}
+                          {ao.descEn && <div style={{ fontSize: '8.5pt', color: '#64748b' }}>{ao.descEn}</div>}
+                        </td>
+                        <td style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{ao.price}</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: '13pt' }}>{ao.selected ? '☑' : '☐'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* Signature Block */}
+          <div style={{ marginTop: 20, borderTop: '2px solid #1e293b' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th colSpan={c.parties.length || 2} style={{ background: '#1e293b', color: '#fff', padding: '6px 12px', fontSize: '9pt', fontWeight: 700 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>IN WITNESS WHEREOF</span>
+                      <span dir="rtl" style={{ fontFamily: rtlFont }}>امضای طرفین</span>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {(c.parties.length > 0 ? c.parties : [{ id: 'sp', labelEn: 'SERVICE PROVIDER', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: '', aliasRtl: '' }, { id: 'cl', labelEn: 'CLIENT', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: '', aliasRtl: '' }]).map((party, pi, arr) => (
+                    <td key={party.id} style={{ width: `${100 / arr.length}%`, padding: '14px 14px', verticalAlign: 'top', borderRight: pi < arr.length - 1 ? '1px solid #cbd5e1' : 'none', fontSize: '9pt' }}>
+                      <div style={{ fontWeight: 700, marginBottom: 6 }}>FOR {party.labelEn.toUpperCase()}</div>
+                      {party.companyEn && <div style={{ marginBottom: 4 }}>{party.companyEn}</div>}
+                      {party.repNameEn && <div>Name: {party.repNameEn}</div>}
+                      {party.repTitleEn && <div>Title: {party.repTitleEn}</div>}
+                      <div style={{ marginTop: 20 }}>
+                        <div style={{ fontSize: '8.5pt', color: '#475569' }}>Signature / امضا:</div>
+                        <div style={{ borderBottom: '1px solid #94a3b8', marginTop: 28, marginBottom: 8, width: '85%' }}></div>
+                        <div style={{ fontSize: '8.5pt', color: '#475569' }}>Date / تاریخ: ____________________</div>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div style={{ borderTop: '1px solid #e2e8f0', padding: '8px 14px', textAlign: 'center', fontSize: '8pt', color: '#94a3b8' }}>
+            {c.titleEn}{c.refNo ? ` | Ref. ${c.refNo}` : ''}{c.effectiveDate ? ` | ${c.effectiveDate}` : ''}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderContracts = () => {
+    if (contractsSubView === 'editor' && editingContract) return renderContractEditor();
+    if (contractsSubView === 'preview' && editingContract) return renderContractPreview();
+    return renderContractsList();
+  };
+
   const renderForms = () => (
     <div className="space-y-4">
       <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
@@ -13659,12 +14534,18 @@ function AppInner() {
           <ListTodo className="w-4 h-4" /> Custom Forms
         </button>
         <div className="w-px bg-slate-200" />
+        <button onClick={() => { setFormsSubView('contracts'); setContractsSubView('list'); }}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'contracts' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <FileText className="w-4 h-4" /> Contracts
+        </button>
+        <div className="w-px bg-slate-200" />
         <button onClick={() => setFormsSubView('packinglist')}
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'packinglist' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
           <ClipboardList className="w-4 h-4" /> Packing List
         </button>
       </div>
       {formsSubView === 'list' && renderCustomFormsList()}
+      {formsSubView === 'contracts' && renderContracts()}
       {formsSubView === 'packinglist' && renderPackingList()}
     </div>
   );

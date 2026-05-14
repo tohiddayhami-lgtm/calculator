@@ -710,3 +710,74 @@ export interface FormSubmission {
   data: Record<string, string | number | boolean | string[]>;
   isRead: boolean;
 }
+
+// ---- CONTRACTS ----
+
+export interface ContractClause {
+  id: string;
+  /** e.g. "RECITALS", "1", "1.1", "ARTICLE 2" */
+  articleNum: string;
+  titleEn: string;
+  titleRtl: string;
+  contentEn: string;
+  contentRtl: string;
+}
+
+export interface ContractParty {
+  id: string;
+  labelEn: string;
+  labelRtl: string;
+  companyEn: string;
+  companyRtl: string;
+  regNo: string;
+  country: string;
+  repNameEn: string;
+  repNameRtl: string;
+  repTitleEn: string;
+  repTitleRtl: string;
+  aliasEn: string;
+  aliasRtl: string;
+}
+
+export interface ContractScheduleRow {
+  id: string;
+  tierEn: string;
+  tierRtl: string;
+  buildFee: string;
+  annualFee: string;
+  interpretation: string;
+  selected: boolean;
+}
+
+export interface ContractAddOn {
+  id: string;
+  nameEn: string;
+  nameRtl: string;
+  descEn: string;
+  descRtl: string;
+  price: string;
+  selected: boolean;
+}
+
+export type ContractStatus = 'draft' | 'final' | 'signed';
+export type ContractRtlLang = 'fa' | 'ar';
+
+export interface ContractDef {
+  id: string;
+  refNo: string;
+  titleEn: string;
+  titleRtl: string;
+  subtitleEn: string;
+  subtitleRtl: string;
+  effectiveDate: string;
+  logoUrl?: string;
+  companyName?: string;
+  parties: ContractParty[];
+  clauses: ContractClause[];
+  scheduleRows: ContractScheduleRow[];
+  addOns: ContractAddOn[];
+  rtlLanguage: ContractRtlLang;
+  status: ContractStatus;
+  createdAt: number;
+  updatedAt: number;
+}
