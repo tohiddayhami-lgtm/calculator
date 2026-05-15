@@ -46,7 +46,8 @@ import {
   Sparkles, Instagram, Linkedin, Facebook, Twitter, Youtube, MessageCircle, 
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
-  AlignJustify, ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo
+  AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 
 // Types
@@ -4571,6 +4572,17 @@ function AppInner() {
     } finally {
       setFormBuilderSaving(false);
     }
+  };
+
+  const moveFormBuilderField = (idx: number, dir: -1 | 1) => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const arr = [...draft.fields];
+      const ni = idx + dir;
+      if (ni < 0 || ni >= arr.length) return draft;
+      [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
+      return { ...draft, fields: arr };
+    });
   };
 
   const handleDeleteForm = async (formId: string) => {
@@ -17523,7 +17535,10 @@ function AppInner() {
               {/* Fields */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-bold text-slate-700">Form Fields</h4>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-700">Form Fields</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">↑ ↓ on each box to move it up or down</p>
+                  </div>
                   <button onClick={() => {
                     const newField: FormField = { id: `f_${Date.now()}`, type: 'text', label: 'New Field', required: false };
                     setFormBuilderDraft({ ...formBuilderDraft, fields: [...formBuilderDraft.fields, newField] });
@@ -17577,6 +17592,26 @@ function AppInner() {
                               Req
                             </label>
                           )}
+                          <div className="flex flex-col flex-shrink-0 border border-slate-200 rounded overflow-hidden bg-white">
+                            <button
+                              type="button"
+                              onClick={() => moveFormBuilderField(idx, -1)}
+                              disabled={idx === 0}
+                              title="Move up"
+                              className="p-0.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-25 disabled:pointer-events-none"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveFormBuilderField(idx, 1)}
+                              disabled={idx === formBuilderDraft.fields.length - 1}
+                              title="Move down"
+                              className="p-0.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-25 disabled:pointer-events-none border-t border-slate-200"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                           <button onClick={() => { const f = formBuilderDraft.fields.filter((_, i) => i !== idx); setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
                             className="text-red-400 hover:text-red-600 p-0.5 flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
