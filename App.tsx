@@ -1795,6 +1795,62 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+/** Print layout preview while editing a form (not shown to respondents). */
+function printCustomFormBuilderPreview(form: CustomFormDef): void {
+  const accent = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test((form.headerBgColor || '').trim())
+    ? form.headerBgColor!.trim()
+    : '#0f172a';
+  const fieldsHtml = (form.fields || [])
+    .map((f) => {
+      const label = escapeHtml(formFieldDisplayLabel(f));
+      const req = f.required ? ' <span style="color:#dc2626">*</span>' : '';
+      if (f.type === 'section_title') {
+        return `<div class="pf-section"><h3>${label}</h3></div>`;
+      }
+      if (f.type === 'display_image') {
+        const img = f.imageUrl
+          ? `<img src="${escapeAttr(f.imageUrl)}" alt="" class="pf-img-display" />`
+          : '<p class="pf-section-note">No image URL configured</p>';
+        return `<div class="pf-field"><span class="pf-label">${label}</span>${img}</div>`;
+      }
+      const typeHint = escapeHtml(String(f.type).replace(/_/g, ' '));
+      return `<div class="pf-field"><span class="pf-label">${label}${req}</span><div class="pf-input" style="min-height:28px;color:#94a3b8;font-size:9pt;line-height:28px;">[${typeHint}]</div></div>`;
+    })
+    .join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(form.name || 'Form')}</title><style>${PUBLIC_FORM_DOCUMENT_CSS}</style></head><body>
+<div id="public-form-root" class="public-form-page" style="padding:16px;">
+<div class="public-form-doc-wrap"><div class="public-form-doc">
+<div class="pf-header">
+<div style="min-width:0">
+<p class="pf-kicker">Electronic form — builder preview</p>
+<h1 class="pf-doc-title">${escapeHtml(form.name || 'Form')}</h1>
+${form.formNumber ? `<p class="pf-meta"><b>Form no.</b> ${escapeHtml(form.formNumber)}</p>` : ''}
+${form.description ? `<p class="pf-desc">${escapeHtml(form.description)}</p>` : ''}
+</div>
+<div class="pf-seller">
+${form.logoUrl ? `<img src="${escapeAttr(form.logoUrl)}" alt="" />` : ''}
+<div class="pf-co">${escapeHtml(form.companyName || form.name || 'Company')}</div>
+${form.headerSubtitle ? `<div class="pf-sub">${escapeHtml(form.headerSubtitle)}</div>` : ''}
+</div>
+</div>
+<div class="pf-accent" style="background:linear-gradient(90deg, ${escapeAttr(accent)} 0%, #64748b 100%);"></div>
+<div class="pf-fields">${fieldsHtml || '<p class="pf-section-note">No fields yet.</p>'}</div>
+<p class="pf-section-note" style="margin-top:12px;text-align:center;">Layout preview — respondents submit online; they cannot print this form.</p>
+</div></div></div>
+<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},300);};</script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) {
+    alert('Please allow pop-ups to print the form preview.');
+    return;
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
 /** Word opens this HTML as an editable document (Save as .doc / Open in Word). */
 function buildContractWordHtml(c: ContractDef): string {
   const rtlFont = c.rtlLanguage === 'fa'
@@ -4700,28 +4756,36 @@ function AppInner() {
       const now = Date.now();
       const isExisting = !!formDef.id && customForms.some((f) => f.id === formDef.id);
       if (isExisting) {
+        const payload = stripUndefinedDeep({ ...formDef, updatedAt: now });
         await withTimeout(
-          setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formDef.id), { ...formDef, updatedAt: now }),
+          setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formDef.id), payload),
           10000, 'Save form'
         );
         // Also refresh public definition if published
         if (formDef.publishedKey && formDef.isPublished) {
           await withTimeout(
-            updateDoc(doc(db, 'publicForms', formDef.publishedKey), {
-              name: formDef.name,
-              formNumber: formDef.formNumber || '',
-              accessLevel: formDef.accessLevel === 'internal' ? 'internal' : 'public',
-              companyName: formDef.companyName || '', logoUrl: formDef.logoUrl || '',
-              headerBgColor: formDef.headerBgColor || '#1e3a5f', headerTextColor: formDef.headerTextColor || '#ffffff',
-              headerSubtitle: formDef.headerSubtitle || '', description: formDef.description || '',
-              fields: formDef.fields, updatedAt: now,
-            }),
+            updateDoc(
+              doc(db, 'publicForms', formDef.publishedKey),
+              stripUndefinedDeep({
+                name: formDef.name,
+                formNumber: formDef.formNumber || '',
+                accessLevel: formDef.accessLevel === 'internal' ? 'internal' : 'public',
+                companyName: formDef.companyName || '',
+                logoUrl: formDef.logoUrl || '',
+                headerBgColor: formDef.headerBgColor || '#1e3a5f',
+                headerTextColor: formDef.headerTextColor || '#ffffff',
+                headerSubtitle: formDef.headerSubtitle || '',
+                description: formDef.description || '',
+                fields: formDef.fields,
+                updatedAt: now,
+              })
+            ),
             10000, 'Sync public form'
           ).catch(() => {});
         }
       } else {
         const newId = `form_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const newForm = { ...formDef, id: newId, createdAt: now, updatedAt: now };
+        const newForm = stripUndefinedDeep({ ...formDef, id: newId, createdAt: now, updatedAt: now });
         await withTimeout(
           setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', newId), newForm),
           10000, 'Save form'
@@ -4785,18 +4849,28 @@ function AppInner() {
     setFormPublishing(formId);
     try {
       const key = form.publishedKey || `f_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
-      const publicData = {
-        ownerUid: user.uid, appId: dataAppId, name: form.name,
+      const publicData = stripUndefinedDeep({
+        ownerUid: user.uid,
+        appId: dataAppId,
+        name: form.name,
         formNumber: form.formNumber || '',
         accessLevel: form.accessLevel === 'internal' ? 'internal' : 'public',
-        companyName: form.companyName || '', logoUrl: form.logoUrl || '',
-        headerBgColor: form.headerBgColor || '#1e3a5f', headerTextColor: form.headerTextColor || '#ffffff',
-        headerSubtitle: form.headerSubtitle || '', description: form.description || '',
-        fields: form.fields, isActive: true, updatedAt: Date.now(),
-      };
+        companyName: form.companyName || '',
+        logoUrl: form.logoUrl || '',
+        headerBgColor: form.headerBgColor || '#1e3a5f',
+        headerTextColor: form.headerTextColor || '#ffffff',
+        headerSubtitle: form.headerSubtitle || '',
+        description: form.description || '',
+        fields: form.fields,
+        isActive: true,
+        updatedAt: Date.now(),
+      });
       await withTimeout(setDoc(doc(db, 'publicForms', key), publicData), 10000, 'Publish form');
       await withTimeout(
-        setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId), { ...form, publishedKey: key, isPublished: true, updatedAt: Date.now() }),
+        setDoc(
+          doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId),
+          stripUndefinedDeep({ ...form, publishedKey: key, isPublished: true, updatedAt: Date.now() })
+        ),
         10000, 'Update form'
       );
     } catch (err: any) {
@@ -13936,16 +14010,6 @@ function AppInner() {
       <>
         <style>{PUBLIC_FORM_DOCUMENT_CSS}</style>
         <div id="public-form-root" className="public-form-page">
-          <div className="public-form-toolbar print:hidden" style={{ position: 'fixed', top: 12, right: 12, zIndex: 50 }}>
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
-            >
-              <Printer className="h-4 w-4" /> Print
-            </button>
-          </div>
-
           <div className="public-form-doc-wrap">
             <div className="public-form-doc">
               <div className="pf-header">
@@ -13974,7 +14038,6 @@ function AppInner() {
                 {publicFormSubmitting ? 'Uploading & Submitting…' : 'Submit'}
               </button>
 
-              <p className="pf-doc-footer pf-print-hide">Print hides the toolbar and submit button for a clean document.</p>
             </div>
           </div>
         </div>
@@ -17839,7 +17902,26 @@ function AppInner() {
                 <ListTodo className="w-5 h-5 text-blue-600" />
                 <h3 className="font-bold text-slate-800">{formBuilderDraft.id ? 'Edit Form' : 'New Form'}</h3>
               </div>
-              <button onClick={() => { setShowFormBuilder(false); setEditingForm(null); setFormBuilderDraft(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => printCustomFormBuilderPreview(formBuilderDraft)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50"
+                  title="Print layout preview (only while building the form)"
+                >
+                  <Printer className="w-4 h-4" /> Print
+                </button>
+                <button
+                  onClick={() => {
+                    setShowFormBuilder(false);
+                    setEditingForm(null);
+                    setFormBuilderDraft(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
               {/* Header Preview — matches published A4 / proforma-style letterhead */}
@@ -17874,7 +17956,7 @@ function AppInner() {
                     />
                   </div>
                   <p className="px-4 py-2 text-[10px] text-slate-400 bg-slate-50/80 border-t border-slate-100">
-                    A4-style layout for respondents. “Header background” sets the accent stripe; open the share link and use Print for a clean paper copy.
+                    A4-style layout for respondents. “Header background” sets the accent stripe. Use Print in this editor to preview the paper layout — respondents cannot print the live form.
                   </p>
                 </div>
               </div>
