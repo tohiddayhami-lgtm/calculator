@@ -1204,6 +1204,29 @@ async function preparePublicFormUploadFile(
   }
 }
 
+const PUBLIC_FORM_UPLOAD_UNAVAILABLE_MSG =
+  'در حال حاضر امکان دریافت فایل روی این فرم فعال نیست. لطفاً با فروشنده تماس بگیرید.\n\nFile upload is not available. Please contact the seller.';
+
+/** Customer-facing upload error — never expose Firebase codes or config hints. */
+function formUploadErrorForCustomer(fileName: string): string {
+  const name = (fileName || 'file').trim() || 'file';
+  return `«${name}» — آپلود انجام نشد. لطفاً تصویر دیگری انتخاب کنید یا اتصال اینترنت را بررسی و دوباره ارسال کنید.`;
+}
+
+function logFormUploadError(context: Record<string, unknown>, err: unknown): void {
+  const code =
+    err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : '';
+  const message = err instanceof Error ? err.message : String(err);
+  console.error('Public form file upload failed:', { ...context, code, message }, err);
+}
+
+function sanitizeFormStorageSegment(s: string, maxLen = 80): string {
+  return String(s || '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, maxLen) || 'x';
+}
+
 async function uploadPublicFormSubmissionFile(
   formKey: string,
   subId: string,
@@ -1212,13 +1235,27 @@ async function uploadPublicFormSubmissionFile(
   file: File
 ): Promise<string> {
   if (!storage) {
-    throw new Error('Firebase Storage is not configured. Enable Storage in Firebase and set VITE_FIREBASE_STORAGE_BUCKET.');
+    const e = new Error('STORAGE_NOT_CONFIGURED');
+    throw e;
   }
   const prepared = await preparePublicFormUploadFile(file);
-  const path = `publicFormSubmissions/${formKey}/${subId}/${fieldId}_${index}_${prepared.fileName}`;
-  const sRef = storageRef(storage, path);
-  await uploadBytes(sRef, prepared.blob, { contentType: prepared.contentType });
-  return await getDownloadURL(sRef);
+  const path = `publicFormSubmissions/${sanitizeFormStorageSegment(formKey)}/${sanitizeFormStorageSegment(subId, 64)}/${sanitizeFormStorageSegment(fieldId, 48)}_${index}_${prepared.fileName}`;
+  const metadata = { contentType: prepared.contentType };
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const sRef = storageRef(storage, path);
+      await uploadBytes(sRef, prepared.blob, metadata);
+      return await getDownloadURL(sRef);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastErr;
 }
 
 function parseResearchEntriesFromProject(raw: unknown): DashboardResearchEntry[] {
@@ -1605,7 +1642,11 @@ try {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = getFirestore(app);
-      storage = getStorage(app);
+      const bucket = String(firebaseConfig.storageBucket || '').trim();
+      storage =
+        bucket && !bucket.includes('%VITE_')
+          ? getStorage(app, bucket.startsWith('gs://') ? bucket : `gs://${bucket}`)
+          : getStorage(app);
       if (window.__app_id) {
         appId = window.__app_id;
       }
@@ -5056,53 +5097,58 @@ function AppInner() {
     }
     const hasFileUploads = Object.values(publicFormFiles).some((list) => list?.length > 0);
     if (hasFileUploads && !storage) {
-      alert(
-        'File upload is not available on this site (Firebase Storage is not configured). The form owner must add VITE_FIREBASE_STORAGE_BUCKET and deploy storage rules.'
-      );
+      alert(PUBLIC_FORM_UPLOAD_UNAVAILABLE_MSG);
       return;
     }
 
     setPublicFormSubmitting(true);
     try {
       const subId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      // Merge all data types
-      const mergedData: Record<string, string | number | boolean | string[]> = { ...publicFormData };
-      // Ratings
-      (Object.entries(publicFormRatings) as [string, number][]).forEach(([fid, val]) => { mergedData[fid] = val; });
-      // Multi-select
-      (Object.entries(publicFormMulti) as [string, string[]][]).forEach(([fid, val]) => { mergedData[fid] = val; });
-      // File uploads → Storage
       const formFields = form.fields || [];
-      const uploadErrors: string[] = [];
+      const uploadedByField: Record<string, string | string[]> = {};
+      const uploadFailedMessages: string[] = [];
+
       for (const [fid, fileList] of Object.entries(publicFormFiles) as [string, File[]][]) {
         if (!fileList?.length) continue;
         const fieldDef = formFields.find((f: FormField) => f.id === fid);
-        const isMultiImage = fieldDef?.type === 'image_upload' && fileList.length > 0;
+        const isMultiImage = fieldDef?.type === 'image_upload';
         const urls: string[] = [];
         for (let i = 0; i < fileList.length; i++) {
           const file = fileList[i];
           try {
             urls.push(await uploadPublicFormSubmissionFile(key, subId, fid, i, file));
           } catch (err: unknown) {
-            console.error('Public form file upload failed:', { formKey: key, subId, fid, fileName: file.name }, err);
-            const msg = err instanceof Error ? err.message : String(err);
-            uploadErrors.push(`${file.name}: ${msg}`);
-            urls.push(`[Upload failed: ${file.name}]`);
+            logFormUploadError({ formKey: key, subId, fid, fileName: file.name }, err);
+            uploadFailedMessages.push(formUploadErrorForCustomer(file.name));
           }
         }
-        if (isMultiImage) {
-          mergedData[fid] = urls.length === 1 ? urls[0] : urls;
-        } else {
-          mergedData[fid] = urls[0] ?? `[Upload failed: ${fileList[0]?.name}]`;
+        if (urls.length !== fileList.length) {
+          continue;
         }
+        uploadedByField[fid] = isMultiImage && urls.length === 1 ? urls[0] : urls;
       }
-      if (uploadErrors.length > 0) {
-        const preview = uploadErrors.slice(0, 3).join('\n');
-        const more = uploadErrors.length > 3 ? `\n…and ${uploadErrors.length - 3} more.` : '';
+
+      if (uploadFailedMessages.length > 0) {
+        const preview = uploadFailedMessages.slice(0, 4).join('\n');
+        const more =
+          uploadFailedMessages.length > 4
+            ? `\n\nو ${uploadFailedMessages.length - 4} فایل دیگر.`
+            : '';
         alert(
-          `Some files could not be uploaded:\n\n${preview}${more}\n\nIf this keeps happening, the site owner must deploy Firebase Storage rules (publicFormSubmissions) from storage.rules.`
+          `برخی فایل‌ها آپلود نشدند. فرم ذخیره نشد.\n\n${preview}${more}\n\nلطفاً دوباره تلاش کنید.\n\nSome files could not be uploaded. The form was not saved. Please try again.`
         );
+        return;
       }
+
+      const mergedData: Record<string, string | number | boolean | string[]> = { ...publicFormData };
+      (Object.entries(publicFormRatings) as [string, number][]).forEach(([fid, val]) => {
+        mergedData[fid] = val;
+      });
+      (Object.entries(publicFormMulti) as [string, string[]][]).forEach(([fid, val]) => {
+        mergedData[fid] = val;
+      });
+      Object.assign(mergedData, uploadedByField);
+
       const subRef = doc(db, 'artifacts', form.appId, 'users', form.ownerUid, 'formSubmissions', subId);
       await setDoc(subRef, {
         formKey: key,
@@ -5113,8 +5159,11 @@ function AppInner() {
         isRead: false,
       });
       setPublicFormDone(true);
-    } catch (err: any) {
-      alert('Submit failed: ' + (err?.message || err));
+    } catch (err: unknown) {
+      logFormUploadError({ phase: 'submit' }, err);
+      alert(
+        'ارسال فرم انجام نشد. لطفاً اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.\n\nCould not submit the form. Please check your connection and try again.'
+      );
     } finally {
       setPublicFormSubmitting(false);
     }

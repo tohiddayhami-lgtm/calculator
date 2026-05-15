@@ -9,7 +9,18 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
-      plugins: [react()],
+      plugins: [
+        react(),
+        {
+          name: 'html-firebase-env',
+          transformIndexHtml(html: string) {
+            return html.replace(/%VITE_(\w+)%/g, (_match, key: string) => {
+              const val = env[`VITE_${key}`];
+              return val != null && val !== '' ? val : _match;
+            });
+          },
+        },
+      ],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

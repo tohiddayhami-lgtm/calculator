@@ -18,11 +18,12 @@ service firebase.storage {
     match /users/{userId}/{allPaths=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    // Public form submission file uploads — anyone can upload (no auth required); owner reads via download URL
-    match /publicFormSubmissions/{formKey}/{allPaths=**} {
+    // Public form submission uploads — anonymous respondents (no sign-in)
+    match /publicFormSubmissions/{formKey}/{subId}/{filePath=**} {
       allow read: if true;
-      // uploadBytes needs write (create alone is not always enough for anonymous clients)
-      allow write: if request.resource != null && request.resource.size < 50 * 1024 * 1024;
+      allow create: if request.resource.size < 50 * 1024 * 1024;
+      allow write: if request.resource.size < 50 * 1024 * 1024;
+      allow update, delete: if false;
     }
   }
 }

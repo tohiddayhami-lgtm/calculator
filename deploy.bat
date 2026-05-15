@@ -12,8 +12,8 @@ if errorlevel 1 (
 )
 echo Build SUCCESS.
 echo.
-echo Step 2: Deploying to Firebase Hosting...
-call firebase deploy --only hosting
+echo Step 2: Deploying Hosting + Storage rules + Firestore rules...
+call firebase deploy --only hosting,storage,firestore
 if errorlevel 1 (
     echo Deploy FAILED. Make sure you ran: firebase login
     pause
