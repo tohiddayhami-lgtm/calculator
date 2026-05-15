@@ -661,7 +661,9 @@ export interface FormField {
   required?: boolean;
   options?: string[];      // select / multiselect choices
   accept?: string;         // file input accept attr, e.g. "image/*" or ".pdf,.docx"
-  maxSizeMb?: number;      // max upload size in MB
+  maxSizeMb?: number;      // max upload size in MB (per file)
+  /** image_upload only: max number of images (default 5). */
+  maxFiles?: number;
   imageUrl?: string;       // for display_image type
   maxRating?: number;      // for rating type (default 5)
 }

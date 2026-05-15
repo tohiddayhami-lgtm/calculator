@@ -105,6 +105,9 @@ function formFieldIsBilingual(f: FormField): boolean {
   return formFieldRtlTitle(f).length > 0 && formFieldLtrTitle(f).length > 0;
 }
 
+const FORM_IMAGE_UPLOAD_MAX_FILES = 5;
+const FORM_IMAGE_UPLOAD_MAX_MB = 5;
+
 const CONTRACT_JSON_SCHEMA_VERSION = '1.0';
 
 function newContractPartId(): string {
@@ -3744,7 +3747,7 @@ function AppInner() {
     const k = new URLSearchParams(window.location.search).get('form');
     return !!(k && k.length >= 8);
   });
-  const [publicFormFiles, setPublicFormFiles] = useState<Record<string, File>>({});
+  const [publicFormFiles, setPublicFormFiles] = useState<Record<string, File[]>>({});
   const [publicFormMulti, setPublicFormMulti] = useState<Record<string, string[]>>({});
   const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
   const [formHeaderPresets, setFormHeaderPresets] = useState<FormHeaderPreset[]>([]);
@@ -4710,16 +4713,28 @@ function AppInner() {
       // Multi-select
       (Object.entries(publicFormMulti) as [string, string[]][]).forEach(([fid, val]) => { mergedData[fid] = val; });
       // File uploads → Storage
-      for (const [fid, file] of Object.entries(publicFormFiles) as [string, File][]) {
+      const formFields = form.fields || [];
+      for (const [fid, fileList] of Object.entries(publicFormFiles) as [string, File[]][]) {
+        if (!fileList?.length) continue;
+        const fieldDef = formFields.find((f: FormField) => f.id === fid);
+        const isMultiImage = fieldDef?.type === 'image_upload' && fileList.length > 0;
         if (storage) {
-          try {
-            const path = `publicFormSubmissions/${key}/${subId}/${fid}_${file.name}`;
-            const sRef = storageRef(storage, path);
-            await uploadBytes(sRef, file);
-            const url = await getDownloadURL(sRef);
-            mergedData[fid] = url;
-          } catch (e) {
-            mergedData[fid] = `[Upload failed: ${(file as File).name}]`;
+          const urls: string[] = [];
+          for (let i = 0; i < fileList.length; i++) {
+            const file = fileList[i];
+            try {
+              const path = `publicFormSubmissions/${key}/${subId}/${fid}_${i}_${file.name}`;
+              const sRef = storageRef(storage, path);
+              await uploadBytes(sRef, file);
+              urls.push(await getDownloadURL(sRef));
+            } catch {
+              urls.push(`[Upload failed: ${file.name}]`);
+            }
+          }
+          if (isMultiImage) {
+            mergedData[fid] = urls.length === 1 ? urls[0] : urls;
+          } else {
+            mergedData[fid] = urls[0] ?? `[Upload failed: ${fileList[0]?.name}]`;
           }
         }
       }
@@ -13502,14 +13517,69 @@ function AppInner() {
       }
 
       if (['image_upload', 'video_upload', 'file_upload'].includes(field.type)) {
-        const fileObj = publicFormFiles[field.id];
+        const fileList = publicFormFiles[field.id] || [];
+        const isMultiImage = field.type === 'image_upload';
+        const fileObj = isMultiImage ? null : fileList[0];
+        const hasFiles = fileList.length > 0;
         const iconMap: Record<string, string> = { image_upload: '🖼', video_upload: '🎬', file_upload: '📄' };
-        const maxMb = field.maxSizeMb || (field.type === 'video_upload' ? 50 : 10);
-        const hintClickL = String(field.uploadHintLtr ?? '').trim() || 'Click to upload';
+        const maxMb =
+          field.maxSizeMb ??
+          (field.type === 'image_upload' ? FORM_IMAGE_UPLOAD_MAX_MB : field.type === 'video_upload' ? 50 : 10);
+        const maxFiles = field.maxFiles ?? FORM_IMAGE_UPLOAD_MAX_FILES;
+        const hintClickL =
+          String(field.uploadHintLtr ?? '').trim() ||
+          (isMultiImage ? 'Click to add images' : 'Click to upload');
         const hintClickR =
-          String(field.uploadHintRtl ?? '').trim() || (bi ? 'برای بارگذاری کلیک کنید' : '');
+          String(field.uploadHintRtl ?? '').trim() ||
+          (bi ? (isMultiImage ? 'برای افزودن عکس کلیک کنید' : 'برای بارگذاری کلیک کنید') : '');
         const specL = phLtr || phSingle;
         const specR = phRtl;
+        const defaultSizeHint = isMultiImage
+          ? `Up to ${maxFiles} images · max ${maxMb} MB each`
+          : `Max ${maxMb} MB`;
+
+        const removeImageAt = (idx: number) => {
+          setPublicFormFiles((prev) => {
+            const cur = [...(prev[field.id] || [])];
+            cur.splice(idx, 1);
+            if (!cur.length) {
+              const next = { ...prev };
+              delete next[field.id];
+              return next;
+            }
+            return { ...prev, [field.id]: cur };
+          });
+        };
+
+        const handleFilePick = (picked: FileList | null) => {
+          if (!picked?.length) return;
+          if (isMultiImage) {
+            const next = [...fileList];
+            for (const f of Array.from(picked)) {
+              if (!f.type.startsWith('image/')) {
+                alert(`"${f.name}" is not an image.`);
+                continue;
+              }
+              if (f.size > maxMb * 1024 * 1024) {
+                alert(`"${f.name}" is too large. Max ${maxMb} MB per image.`);
+                continue;
+              }
+              if (next.length >= maxFiles) {
+                alert(`Maximum ${maxFiles} images allowed.`);
+                break;
+              }
+              next.push(f);
+            }
+            if (next.length) setPublicFormFiles((prev) => ({ ...prev, [field.id]: next }));
+          } else {
+            const f = picked[0];
+            if (f.size > maxMb * 1024 * 1024) {
+              alert(`File too large. Max size: ${maxMb} MB`);
+              return;
+            }
+            setPublicFormFiles((prev) => ({ ...prev, [field.id]: [f] }));
+          }
+        };
 
         return (
           <div key={field.id} className="pf-field">
@@ -13519,7 +13589,54 @@ function AppInner() {
                 {reqMark}
               </span>
             ) : null}
-            <label className={`pf-drop ${fileObj ? 'pf-drop--ok' : ''}`}>
+            {isMultiImage && hasFiles ? (
+              <ul className="pf-image-list" style={{ margin: '0 0 8px', padding: 0, listStyle: 'none' }}>
+                {fileList.map((f, idx) => (
+                  <li
+                    key={`${f.name}-${f.size}-${idx}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      padding: '6px 10px',
+                      marginBottom: 4,
+                      border: '1px solid #d1fae5',
+                      borderRadius: 8,
+                      background: '#ecfdf5',
+                      fontSize: '9pt',
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, color: '#047857', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {f.name}{' '}
+                      <span style={{ fontWeight: 400, color: '#64748b' }}>
+                        ({(f.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="pf-print-hide"
+                      onClick={() => removeImageAt(idx)}
+                      style={{
+                        flexShrink: 0,
+                        fontSize: '8.5pt',
+                        color: '#b91c1c',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <label
+              className={`pf-drop ${hasFiles ? 'pf-drop--ok' : ''}`}
+              style={isMultiImage && fileList.length >= maxFiles ? { opacity: 0.55, pointerEvents: 'none' } : undefined}
+            >
               {bi ? (
                 <div className="pf-bilingual-row">
                   <span className="pf-label pf-bilingual-ltr pf-label--in-drop">
@@ -13533,11 +13650,20 @@ function AppInner() {
               ) : null}
               <div className="pf-drop-mid">
                 <div className="pf-drop-icon" aria-hidden>{iconMap[field.type]}</div>
-                {fileObj ? (
+                {!isMultiImage && fileObj ? (
                   <div style={{ textAlign: 'center', width: '100%' }}>
                     <div style={{ fontWeight: 600, fontSize: '9.5pt', color: '#047857' }}>{fileObj.name}</div>
                     <div className="pf-section-note" style={{ marginTop: 4 }}>
                       {(fileObj.size / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  </div>
+                ) : isMultiImage && hasFiles ? (
+                  <div style={{ textAlign: 'center', width: '100%' }}>
+                    <div style={{ fontWeight: 600, fontSize: '9.5pt', color: '#047857' }}>
+                      {fileList.length} / {maxFiles} images
+                    </div>
+                    <div className="pf-section-note" style={{ marginTop: 4 }}>
+                      {(fileList.reduce((s, f) => s + f.size, 0) / 1024 / 1024).toFixed(2)} MB total
                     </div>
                   </div>
                 ) : bi ? (
@@ -13554,28 +13680,26 @@ function AppInner() {
                     ) : specL || specR ? (
                       <p className="pf-section-note" style={{ textAlign: 'center' }}>{specL || specR}</p>
                     ) : (
-                      <p className="pf-section-note" style={{ textAlign: 'center' }}>{`Max ${maxMb} MB`}</p>
+                      <p className="pf-section-note" style={{ textAlign: 'center' }}>{defaultSizeHint}</p>
                     )}
                   </>
                 ) : (
                   <>
-                    <div className="pf-drop-line-ltr">Click to upload</div>
-                    <div className="pf-section-note">{phSingle || `Max ${maxMb} MB`}</div>
+                    <div className="pf-drop-line-ltr">
+                      {isMultiImage ? 'Click to add images' : 'Click to upload'}
+                    </div>
+                    <div className="pf-section-note">{phSingle || defaultSizeHint}</div>
                   </>
                 )}
               </div>
               <input
                 type="file"
-                accept={field.accept}
+                accept={field.accept || (isMultiImage ? 'image/*' : undefined)}
+                multiple={isMultiImage}
                 className="hidden"
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > maxMb * 1024 * 1024) {
-                    alert(`File too large. Max size: ${maxMb} MB`);
-                    return;
-                  }
-                  setPublicFormFiles((prev) => ({ ...prev, [field.id]: f }));
+                  handleFilePick(e.target.files);
+                  e.target.value = '';
                 }}
               />
             </label>
@@ -13655,7 +13779,7 @@ function AppInner() {
     _about:
       'CloudExport Pro — custom form JSON. The live page is an A4-style document (like the proforma invoice): white page, company block + logo on the right, thin accent stripe from headerBgColor, optional formNumber, then fields in light bordered cards.',
     _for_ai_models:
-      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload. display_image = fixed image URL.',
+      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload (multiple images: maxFiles default 5, maxSizeMb default 5 per image). display_image = fixed image URL.',
     _field_types:
       'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
     _root_keys:
@@ -13711,22 +13835,14 @@ function AppInner() {
         placeholder: 'Customers upload their own images (damage, label, cargo, etc.).',
       },
       {
-        id: 'up_photo_main',
+        id: 'up_photos',
         type: 'image_upload',
-        label: 'Main situation photo',
-        placeholder: 'JPG / PNG / WebP — max 8 MB',
+        label: 'Situation photos',
+        placeholder: 'JPG / PNG / WebP — up to 5 images, max 5 MB each',
         required: true,
         accept: 'image/*',
-        maxSizeMb: 8,
-      },
-      {
-        id: 'up_photo_extra',
-        type: 'image_upload',
-        label: 'Second angle (optional)',
-        placeholder: 'Another clear photo — max 8 MB',
-        required: false,
-        accept: 'image/*',
-        maxSizeMb: 8,
+        maxSizeMb: 5,
+        maxFiles: 5,
       },
       {
         id: 'sec_attachments_bi',
@@ -17646,7 +17762,7 @@ function AppInner() {
 
                         {/* File upload: accept + max size */}
                         {isFileType && (
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className={`grid gap-2 ${field.type === 'image_upload' ? 'grid-cols-3' : 'grid-cols-2'}`}>
                             <div>
                               <label className="text-[10px] text-slate-500 block mb-0.5">Accept (file types)</label>
                               <input type="text" value={field.accept || (field.type === 'image_upload' ? 'image/*' : field.type === 'video_upload' ? 'video/*' : '.pdf,.doc,.docx,.xls,.xlsx')}
@@ -17655,11 +17771,31 @@ function AppInner() {
                                 className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
                             </div>
                             <div>
-                              <label className="text-[10px] text-slate-500 block mb-0.5">Max size (MB)</label>
-                              <input type="number" value={field.maxSizeMb || (field.type === 'video_upload' ? 50 : 10)} min={1} max={200}
+                              <label className="text-[10px] text-slate-500 block mb-0.5">Max size (MB per file)</label>
+                              <input type="number" value={field.maxSizeMb || (field.type === 'image_upload' ? FORM_IMAGE_UPLOAD_MAX_MB : field.type === 'video_upload' ? 50 : 10)} min={1} max={200}
                                 onChange={(e) => upd({ maxSizeMb: Number(e.target.value) })}
                                 className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
                             </div>
+                            {field.type === 'image_upload' ? (
+                              <div>
+                                <label className="text-[10px] text-slate-500 block mb-0.5">Max images</label>
+                                <input
+                                  type="number"
+                                  value={field.maxFiles ?? FORM_IMAGE_UPLOAD_MAX_FILES}
+                                  min={1}
+                                  max={FORM_IMAGE_UPLOAD_MAX_FILES}
+                                  onChange={(e) =>
+                                    upd({
+                                      maxFiles: Math.min(
+                                        FORM_IMAGE_UPLOAD_MAX_FILES,
+                                        Math.max(1, Number(e.target.value) || FORM_IMAGE_UPLOAD_MAX_FILES)
+                                      ),
+                                    })
+                                  }
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -17752,15 +17888,47 @@ function AppInner() {
                         const form = customForms.find((f) => f.publishedKey === selectedFormSubmission.formKey);
                         const field = form?.fields.find((f) => f.id === key);
                         const isFileUrl = typeof val === 'string' && /^https?:\/\//.test(val);
-                        const isImage = isFileUrl && (field?.type === 'image_upload' || /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(val));
-                        const isVideo = isFileUrl && (field?.type === 'video_upload' || /\.(mp4|mov|avi|webm)(\?|$)/i.test(val));
+                        const isImage =
+                          isFileUrl && (field?.type === 'image_upload' || /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(val));
+                        const isVideo =
+                          isFileUrl && (field?.type === 'video_upload' || /\.(mp4|mov|avi|webm)(\?|$)/i.test(val));
+                        const imageUrls: string[] = Array.isArray(val)
+                          ? (val as unknown[]).filter(
+                              (v): v is string =>
+                                typeof v === 'string' &&
+                                /^https?:\/\//.test(v) &&
+                                (field?.type === 'image_upload' || /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(v))
+                            )
+                          : isImage
+                            ? [val]
+                            : [];
                         return (
                           <div key={key} className="border border-slate-100 rounded-lg p-3 bg-slate-50/50">
                             <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">{field?.label || key}</div>
-                            {Array.isArray(val) ? (
-                              <div className="flex flex-wrap gap-1">{val.map((v) => <span key={v} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">{v}</span>)}</div>
+                            {imageUrls.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {imageUrls.map((url) => (
+                                  <a key={url} href={url} target="_blank" rel="noreferrer">
+                                    <img
+                                      src={url}
+                                      className="max-h-40 rounded-lg border border-slate-200 object-contain"
+                                      alt="upload"
+                                    />
+                                  </a>
+                                ))}
+                              </div>
+                            ) : Array.isArray(val) ? (
+                              <div className="flex flex-wrap gap-1">
+                                {val.map((v) => (
+                                  <span key={String(v)} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                                    {String(v)}
+                                  </span>
+                                ))}
+                              </div>
                             ) : isImage ? (
-                              <a href={val} target="_blank" rel="noreferrer"><img src={val} className="max-h-40 rounded-lg border border-slate-200 object-contain" alt="upload" /></a>
+                              <a href={val} target="_blank" rel="noreferrer">
+                                <img src={val} className="max-h-40 rounded-lg border border-slate-200 object-contain" alt="upload" />
+                              </a>
                             ) : isVideo ? (
                               <video src={val} controls className="max-h-40 rounded-lg border border-slate-200 w-full" />
                             ) : isFileUrl ? (
