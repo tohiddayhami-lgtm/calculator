@@ -509,35 +509,59 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 }
 .public-form-doc .pf-header {
   display: flex;
+  flex-direction: row-reverse;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 20px;
+  gap: 24px;
 }
+.public-form-doc .pf-brand,
 .public-form-doc .pf-seller {
-  text-align: right;
+  flex-shrink: 0;
+  max-width: 42%;
+  text-align: left;
   font-size: 8.5pt;
   line-height: 1.55;
   color: #334155;
-  flex-shrink: 0;
-  max-width: 240px;
 }
+.public-form-doc .pf-brand .pf-co,
 .public-form-doc .pf-seller .pf-co {
   font-size: 11pt;
   font-weight: 700;
   color: #0f172a;
+  line-height: 1.25;
 }
+.public-form-doc .pf-brand .pf-sub,
 .public-form-doc .pf-seller .pf-sub {
-  margin-top: 2px;
+  margin-top: 4px;
   color: #475569;
 }
+.public-form-doc .pf-brand img,
 .public-form-doc .pf-seller img {
   display: block;
-  margin-left: auto;
+  margin: 0 0 8px 0;
   max-height: 52px;
   max-width: 180px;
   object-fit: contain;
-  object-position: right center;
-  margin-bottom: 6px;
+  object-position: left center;
+}
+.public-form-doc .pf-doc-info {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+.public-form-doc .pf-doc-info .pf-kicker {
+  text-align: right;
+}
+.public-form-doc .pf-doc-info h1.pf-doc-title {
+  text-align: right;
+}
+.public-form-doc .pf-doc-info .pf-meta {
+  text-align: right;
+}
+.public-form-doc .pf-doc-info .pf-desc {
+  margin-left: auto;
+  text-align: right;
+  max-width: 100%;
 }
 .public-form-doc .pf-accent {
   height: 3px;
@@ -792,16 +816,19 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
     align-items: stretch;
     gap: 14px;
   }
+  .public-form-doc .pf-brand,
   .public-form-doc .pf-seller {
     max-width: none;
-    text-align: left;
+  }
+  .public-form-doc .pf-brand img,
+  .public-form-doc .pf-seller img {
+    margin-bottom: 8px;
+  }
+  .public-form-doc .pf-doc-info {
+    text-align: right;
     padding-top: 14px;
     margin-top: 2px;
     border-top: 1px solid #e2e8f0;
-  }
-  .public-form-doc .pf-seller img {
-    margin-left: 0;
-    margin-right: auto;
   }
   .public-form-doc .pf-accent {
     margin: 10px 0 16px;
@@ -1932,7 +1959,7 @@ function printCustomFormBuilderPreview(form: CustomFormDef): void {
 <div id="public-form-root" class="public-form-page" style="padding:16px;">
 <div class="public-form-doc-wrap"><div class="public-form-doc">
 <div class="pf-header">
-<div style="min-width:0">
+<div class="pf-doc-info">
 <p class="pf-kicker">Electronic form — builder preview</p>
 <h1 class="pf-doc-title">${escapeHtml(form.name || 'Form')}</h1>
 ${form.formNumber ? `<p class="pf-meta"><b>Form no.</b> ${escapeHtml(form.formNumber)}</p>` : ''}
@@ -14145,7 +14172,7 @@ function AppInner() {
           <div className="public-form-doc-wrap">
             <div className="public-form-doc">
               <div className="pf-header">
-                <div style={{ minWidth: 0 }}>
+                <div className="pf-doc-info">
                   <p className="pf-kicker">Electronic form</p>
                   <h1 className="pf-doc-title">{form.name}</h1>
                   {form.formNumber ? (
@@ -14434,13 +14461,20 @@ function AppInner() {
               return (
                 <div key={form.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
                 <div className="border-b border-slate-100 bg-white px-4 pt-3 pb-2">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="min-w-0 flex-1">
+                  <div className="flex justify-between items-start gap-2 flex-row-reverse">
+                    <div className="min-w-0 flex-1 text-right">
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Form</p>
-                      <div className="text-xs font-bold text-slate-800 truncate">{form.companyName || form.name}</div>
-                      {form.headerSubtitle && <div className="text-[10px] text-slate-500 truncate mt-0.5">{form.headerSubtitle}</div>}
+                      {form.formNumber ? (
+                        <p className="text-[10px] text-slate-500 font-semibold mt-0.5">No. {form.formNumber}</p>
+                      ) : null}
                     </div>
-                    {form.logoUrl ? <img src={form.logoUrl} className="h-7 max-w-[72px] object-contain shrink-0" alt="" /> : null}
+                    <div className="flex items-start gap-2 shrink-0 text-left max-w-[70%]">
+                      {form.logoUrl ? <img src={form.logoUrl} className="h-7 max-w-[72px] object-contain shrink-0" alt="" /> : null}
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-800 truncate">{form.companyName || form.name}</div>
+                        {form.headerSubtitle && <div className="text-[10px] text-slate-500 truncate mt-0.5">{form.headerSubtitle}</div>}
+                      </div>
+                    </div>
                   </div>
                   <div
                     className="h-0.5 rounded-full mt-2"
@@ -18061,20 +18095,20 @@ function AppInner() {
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Published form preview</p>
                 <div className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm">
                   <div className="p-4 border-b border-slate-100">
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="min-w-0">
+                    <div className="flex justify-between items-start gap-4 flex-row-reverse">
+                      <div className="min-w-0 flex-1 text-right">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mb-1.5">Electronic form</p>
                         <p className="text-base font-bold text-slate-900 leading-tight">{formBuilderDraft.name || 'Form title'}</p>
                         {formBuilderDraft.formNumber ? (
                           <p className="text-[10px] text-slate-500 mt-1 font-semibold">Form no. {formBuilderDraft.formNumber}</p>
                         ) : null}
                         {formBuilderDraft.description ? (
-                          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-md">{formBuilderDraft.description}</p>
+                          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed ml-auto max-w-md">{formBuilderDraft.description}</p>
                         ) : null}
                       </div>
-                      <div className="text-right text-[11px] text-slate-600 max-w-[46%] shrink-0">
+                      <div className="text-left text-[11px] text-slate-600 max-w-[46%] shrink-0">
                         {formBuilderDraft.logoUrl ? (
-                          <img src={formBuilderDraft.logoUrl} alt="" className="max-h-11 max-w-[140px] object-contain ml-auto mb-1" />
+                          <img src={formBuilderDraft.logoUrl} alt="" className="max-h-11 max-w-[140px] object-contain mb-1" />
                         ) : null}
                         <div className="text-sm font-bold text-slate-900">{formBuilderDraft.companyName || formBuilderDraft.name || 'Company'}</div>
                         {formBuilderDraft.headerSubtitle ? (
