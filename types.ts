@@ -724,52 +724,6 @@ export interface FormSubmission {
   isRead: boolean;
 }
 
-// ---- SERVICE CATALOG BUILDER (Forms tab) ----
-
-/** Product or service row for JSON-driven graphic catalogs. */
-export interface ServiceCatalogItem {
-  id: string;
-  name: string;
-  catalogName?: string;
-  group?: string;
-  category?: string;
-  description?: string;
-  catalogDescription?: string;
-  sku?: string;
-  image?: string;
-  images?: string[];
-  gallery?: string[];
-  videos?: string[];
-  galleryVideos?: string[];
-  unitPrice?: number;
-  price?: number;
-  currency?: string;
-  /** Per-incoterm prices, e.g. { "FOB": 12.5, "CIF": 14 } */
-  prices?: Record<string, number>;
-  moq?: string;
-  unit?: string;
-  itemsPerPack?: number;
-  targetPrice?: number;
-  targetPriceCurrency?: string;
-  active?: boolean;
-}
-
-/** Saved catalog project (import from JSON or built in UI). */
-export interface ServiceCatalogDef {
-  id: string;
-  name: string;
-  description?: string;
-  catalogConfig: CatalogConfig;
-  items: ServiceCatalogItem[];
-  createdAt: number;
-  updatedAt: number;
-  publishedKey?: string;
-  isPublished: boolean;
-  /** Full Storage URL after publish */
-  publishedUrl?: string;
-  shortUrl?: string;
-}
-
 // ---- CONTRACTS ----
 
 export interface ContractClause {

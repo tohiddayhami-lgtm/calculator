@@ -95,10 +95,7 @@ import {
   ContractAddOn,
   ContractStatus,
   ContractRtlLang,
-  ServiceCatalogDef,
 } from './types';
-import { serviceCatalogItemsToProducts } from './serviceCatalog';
-import { ServiceCatalogBuilderPanel, type ServiceCatalogShareInfo } from './serviceCatalogUi';
 
 function formFieldLtrTitle(f: Pick<FormField, 'label' | 'labelLtr'>): string {
   return String(f.labelLtr ?? f.label ?? '').trim();
@@ -4310,13 +4307,7 @@ function AppInner() {
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
-  const [formsSubView, setFormsSubView] = useState<
-    'packinglist' | 'list' | 'contracts' | 'archive' | 'catalogbuilder'
-  >('list');
-  const [serviceCatalogs, setServiceCatalogs] = useState<ServiceCatalogDef[]>([]);
-  const [serviceCatalogSaving, setServiceCatalogSaving] = useState(false);
-  const [serviceCatalogPublishing, setServiceCatalogPublishing] = useState<string | null>(null);
-  const [serviceCatalogShareInfo, setServiceCatalogShareInfo] = useState<ServiceCatalogShareInfo | null>(null);
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'archive'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
   const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
@@ -4905,33 +4896,6 @@ function AppInner() {
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId]);
 
-  // Service catalogs (Forms → Catalog Builder)
-  useEffect(() => {
-    if (authLoading) return;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
-    if (!isRealCloudUser) {
-      setServiceCatalogs([]);
-      return;
-    }
-    let q: any;
-    try {
-      q = query(
-        collection(db, 'artifacts', dataAppId, 'users', user.uid, 'serviceCatalogs'),
-        orderBy('createdAt', 'desc')
-      );
-    } catch {
-      q = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'serviceCatalogs');
-    }
-    const unsub = onSnapshot(
-      q,
-      (snap: any) => {
-        setServiceCatalogs(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) as ServiceCatalogDef[]);
-      },
-      (err: any) => console.error('Service catalogs listener failed:', err)
-    );
-    return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId]);
-
   // Form submissions listener
   useEffect(() => {
     if (authLoading) return;
@@ -4980,30 +4944,6 @@ function AppInner() {
         }
       } catch (e) {
         console.error('Catalog short link redirect failed:', e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [db]);
-
-  // Service catalog public link ?svc=KEY → redirect to hosted HTML
-  useEffect(() => {
-    if (!db || typeof window === 'undefined') return;
-    const sp = new URLSearchParams(window.location.search);
-    const svc = sp.get('svc');
-    if (!svc || svc.length < 8) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, 'publicServiceCatalogs', svc));
-        if (cancelled || !snap.exists()) return;
-        const target = snap.data()?.publishedUrl;
-        if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
-          window.location.replace(target);
-        }
-      } catch (e) {
-        console.error('Service catalog redirect failed:', e);
       }
     })();
     return () => {
@@ -5363,240 +5303,6 @@ function AppInner() {
       );
     } catch (err: any) {
       alert('Failed to unpublish: ' + (err?.message || err));
-    }
-  };
-
-  const buildServiceCatalogHtml = (def: ServiceCatalogDef): string => {
-    const cc = def.catalogConfig || createDefaultCatalogConfig();
-    const priceTerms = cc.priceTerms?.length ? cc.priceTerms : ['FOB'];
-    const products = serviceCatalogItemsToProducts(def.items || [], {
-      outputCurrency: config.outputCurrency,
-      priceTerms,
-    });
-    const inquiryEndpoint =
-      user && firebaseConfig && firebaseConfig.apiKey
-        ? { firebaseConfig, appId: dataAppId, ownerId: user.uid }
-        : null;
-    return buildCatalogHtml({
-      products,
-      config,
-      catalogConfig: {
-        ...cc,
-        includedProductIds: products.map((p) => Number((p as { id: number }).id)),
-      },
-      qrDataUrl: '',
-      tCombined: ((key: string) => key) as (key: string) => string,
-      inquiryEndpoint,
-    });
-  };
-
-  const handleSaveServiceCatalog = async (def: ServiceCatalogDef): Promise<string | null> => {
-    if (!user || !db) return null;
-    setServiceCatalogSaving(true);
-    try {
-      const now = Date.now();
-      const isExisting = !!def.id && serviceCatalogs.some((c) => c.id === def.id);
-      if (isExisting) {
-        const payload = stripUndefinedDeep({ ...def, updatedAt: now });
-        await withTimeout(
-          setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'serviceCatalogs', def.id), payload),
-          10000,
-          'Save catalog'
-        );
-        if (def.publishedKey && def.isPublished) {
-          await withTimeout(
-            setDoc(
-              doc(db, 'publicServiceCatalogs', def.publishedKey),
-              stripUndefinedDeep({
-                ownerUid: user.uid,
-                appId: dataAppId,
-                name: def.name,
-                description: def.description || '',
-                catalogConfig: def.catalogConfig,
-                items: def.items,
-                isActive: true,
-                updatedAt: now,
-              }),
-              { merge: true }
-            ),
-            10000,
-            'Sync public catalog'
-          ).catch(() => {});
-        }
-        return def.id;
-      }
-      const newId = `scat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const newCat = stripUndefinedDeep({ ...def, id: newId, createdAt: now, updatedAt: now });
-      await withTimeout(
-        setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'serviceCatalogs', newId), newCat),
-        10000,
-        'Save catalog'
-      );
-      return newId;
-    } catch (err: any) {
-      alert('Failed to save catalog: ' + (err?.message || err));
-      return null;
-    } finally {
-      setServiceCatalogSaving(false);
-    }
-  };
-
-  const handlePublishServiceCatalog = async (def: ServiceCatalogDef) => {
-    if (!user || !db || !storage) {
-      alert('Sign in and configure Firebase to publish online.');
-      return;
-    }
-    if (!def.items?.length) {
-      alert('Add at least one item before publishing.');
-      return;
-    }
-    const pubId = def.id || 'new';
-    setServiceCatalogPublishing(pubId);
-    setServiceCatalogShareInfo({ catalogId: def.id || 'draft', url: '', uploading: true });
-    try {
-      let catalogId = def.id;
-      let working = { ...def };
-      if (!catalogId) {
-        catalogId = (await handleSaveServiceCatalog(def)) || '';
-        if (!catalogId) throw new Error('Save failed');
-        working = { ...working, id: catalogId };
-      } else {
-        await handleSaveServiceCatalog(def);
-      }
-      const html = buildServiceCatalogHtml(working);
-      const safeTitle = (working.catalogConfig.title || working.name || 'catalog')
-        .replace(/[^a-z0-9-_]+/gi, '-')
-        .replace(/^-+|-+$/g, '') || 'catalog';
-      const path = `users/${user.uid}/serviceCatalogs/${catalogId}/${safeTitle}-${Date.now()}.html`;
-      const ref = storageRef(storage, path);
-      await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
-      const publishedUrl = await getDownloadURL(ref);
-      let shortUrl: string | undefined;
-      if (!isDemoMode && user.uid !== DEMO_USER_ID) {
-        for (let attempt = 0; attempt < 24; attempt++) {
-          const shortCode = generateCatalogShortCode(10);
-          const pubRef = doc(db, 'catalog_short_links', shortCode);
-          const existing = await getDoc(pubRef);
-          if (existing.exists()) continue;
-          shortUrl = new URL(`?c=${encodeURIComponent(shortCode)}`, window.location.href).href;
-          await setDoc(pubRef, {
-            url: publishedUrl,
-            ownerUserId: user.uid,
-            storagePath: path,
-            createdAt: serverTimestamp(),
-          });
-          break;
-        }
-      }
-      const key =
-        working.publishedKey || `sc_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
-      const now = Date.now();
-      const publicData = stripUndefinedDeep({
-        ownerUid: user.uid,
-        appId: dataAppId,
-        name: working.name,
-        description: working.description || '',
-        catalogConfig: working.catalogConfig,
-        items: working.items,
-        publishedUrl,
-        shortUrl: shortUrl || '',
-        isActive: true,
-        updatedAt: now,
-      });
-      await withTimeout(setDoc(doc(db, 'publicServiceCatalogs', key), publicData), 10000, 'Publish catalog');
-      const ownerPayload = stripUndefinedDeep({
-        ...working,
-        publishedKey: key,
-        isPublished: true,
-        publishedUrl,
-        shortUrl,
-        updatedAt: now,
-      });
-      await withTimeout(
-        setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'serviceCatalogs', catalogId), ownerPayload),
-        10000,
-        'Update catalog'
-      );
-      let qr = '';
-      try {
-        qr = await QRCode.toDataURL(shortUrl || publishedUrl, { margin: 1, width: 280, errorCorrectionLevel: 'M' });
-      } catch {}
-      setServiceCatalogShareInfo({
-        catalogId,
-        url: publishedUrl,
-        shortUrl,
-        qr,
-        uploading: false,
-      });
-      alert('Catalog published. Share the link from the list or Publish tab.');
-    } catch (err: any) {
-      setServiceCatalogShareInfo({
-        catalogId: def.id || 'draft',
-        url: '',
-        uploading: false,
-        error: err?.message || String(err),
-      });
-      alert('Publish failed: ' + (err?.message || err));
-    } finally {
-      setServiceCatalogPublishing(null);
-    }
-  };
-
-  const handleUnpublishServiceCatalog = async (catalogId: string) => {
-    if (!user || !db) return;
-    const cat = serviceCatalogs.find((c) => c.id === catalogId);
-    if (!cat?.publishedKey) return;
-    try {
-      await withTimeout(
-        updateDoc(doc(db, 'publicServiceCatalogs', cat.publishedKey), { isActive: false }),
-        10000,
-        'Unpublish'
-      );
-      await withTimeout(
-        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'serviceCatalogs', catalogId), {
-          isPublished: false,
-          updatedAt: Date.now(),
-        }),
-        10000,
-        'Update catalog'
-      );
-    } catch (err: any) {
-      alert('Unpublish failed: ' + (err?.message || err));
-    }
-  };
-
-  const handleDeleteServiceCatalog = async (catalogId: string) => {
-    if (!user || !db) return;
-    const cat = serviceCatalogs.find((c) => c.id === catalogId);
-    if (cat?.publishedKey) {
-      try {
-        await deleteDoc(doc(db, 'publicServiceCatalogs', cat.publishedKey));
-      } catch {}
-    }
-    try {
-      await withTimeout(
-        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'serviceCatalogs', catalogId)),
-        10000,
-        'Delete catalog'
-      );
-    } catch (err: any) {
-      alert('Delete failed: ' + (err?.message || err));
-    }
-  };
-
-  const handlePreviewServiceCatalog = (def: ServiceCatalogDef) => {
-    try {
-      const html = buildServiceCatalogHtml(def);
-      const w = window.open('', '_blank');
-      if (!w) {
-        alert('Allow pop-ups to preview the catalog.');
-        return;
-      }
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-    } catch (err: any) {
-      alert('Preview failed: ' + (err?.message || err));
     }
   };
 
@@ -16428,13 +16134,6 @@ function AppInner() {
         </button>
         <div className="w-px bg-slate-200" />
         <button
-          onClick={() => setFormsSubView('catalogbuilder')}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'catalogbuilder' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-          <BookOpen className="w-4 h-4" /> Catalog Builder
-        </button>
-        <div className="w-px bg-slate-200" />
-        <button
           onClick={() => {
             setFormsSubView('archive');
             setFormArchiveOpenId(null);
@@ -16452,21 +16151,6 @@ function AppInner() {
       {formsSubView === 'list' && renderCustomFormsList()}
       {formsSubView === 'contracts' && renderContracts()}
       {formsSubView === 'packinglist' && renderPackingList()}
-      {formsSubView === 'catalogbuilder' && (
-        <ServiceCatalogBuilderPanel
-          catalogs={serviceCatalogs}
-          outputCurrency={config.outputCurrency}
-          saving={serviceCatalogSaving}
-          publishingId={serviceCatalogPublishing}
-          shareInfo={serviceCatalogShareInfo}
-          onSave={handleSaveServiceCatalog}
-          onPublish={handlePublishServiceCatalog}
-          onUnpublish={handleUnpublishServiceCatalog}
-          onDelete={handleDeleteServiceCatalog}
-          onPreview={handlePreviewServiceCatalog}
-          onClearShare={() => setServiceCatalogShareInfo(null)}
-        />
-      )}
       {formsSubView === 'archive' && renderFormArchive()}
     </div>
   );

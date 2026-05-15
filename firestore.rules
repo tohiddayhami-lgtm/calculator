@@ -82,22 +82,6 @@ service cloud.firestore {
       allow read, update, delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Service catalog builder — owner read/write
-    match /artifacts/{appId}/users/{userId}/serviceCatalogs/{catalogId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Published service catalogs (JSON + link metadata) — public read
-    match /publicServiceCatalogs/{key} {
-      allow read: if true;
-      allow create: if request.auth != null
-                    && request.resource.data.ownerUid == request.auth.uid
-                    && request.resource.data.keys().hasAll(['ownerUid', 'appId', 'name', 'catalogConfig', 'items', 'isActive'])
-                    && request.resource.data.items is list
-                    && request.resource.data.items.size() < 500;
-      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
-    }
-
     // Public form definitions — anyone can read; owner creates/updates/deletes
     match /publicForms/{key} {
       allow read: if true;
