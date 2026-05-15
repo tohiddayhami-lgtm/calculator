@@ -156,6 +156,121 @@ function getMissingRequiredPublicFormFields(
 const FORM_IMAGE_UPLOAD_MAX_FILES = 5;
 const FORM_IMAGE_UPLOAD_MAX_MB = 5;
 
+type FormArchiveFolder = {
+  id: string;
+  name: string;
+  formNumber?: string;
+  formDef?: CustomFormDef;
+  submissions: FormSubmission[];
+};
+
+function sanitizeFormExportFileName(name: string): string {
+  return name.replace(/[/\\?%*:|"<>]/g, '_').replace(/\s+/g, '_').slice(0, 80) || 'form';
+}
+
+function formatFormSubmissionExportValue(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  if (Array.isArray(val)) return val.map((x) => String(x)).join('; ');
+  if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  return String(val);
+}
+
+function escapeCsvCell(s: string): string {
+  const t = s.replace(/\r?\n/g, ' ').replace(/"/g, '""');
+  return /[",\n]/.test(t) ? `"${t}"` : t;
+}
+
+function downloadFormSubmissionsExcel(
+  folderName: string,
+  formDef: CustomFormDef | undefined,
+  submissions: FormSubmission[]
+): void {
+  if (!submissions.length) {
+    alert('No submissions to export for this form.');
+    return;
+  }
+  const inputFields = (formDef?.fields || []).filter(
+    (f) => f.type !== 'section_title' && f.type !== 'display_image'
+  );
+  const knownIds = new Set(inputFields.map((f) => f.id));
+  const extraKeys: string[] = [];
+  const extraSeen = new Set<string>();
+  for (const sub of submissions) {
+    for (const k of Object.keys(sub.data || {})) {
+      if (!knownIds.has(k) && !extraSeen.has(k)) {
+        extraSeen.add(k);
+        extraKeys.push(k);
+      }
+    }
+  }
+  const headers = [
+    'Submitted At',
+    'Submission ID',
+    'Form No.',
+    ...inputFields.map((f) => formFieldDisplayLabel(f)),
+    ...extraKeys,
+  ];
+  const sorted = [...submissions].sort((a, b) => b.submittedAt - a.submittedAt);
+  const rows = sorted.map((sub) => {
+    const cells = [
+      new Date(sub.submittedAt).toLocaleString(),
+      sub.id,
+      sub.formNumber || formDef?.formNumber || '',
+      ...inputFields.map((f) => formatFormSubmissionExportValue(sub.data?.[f.id])),
+      ...extraKeys.map((k) => formatFormSubmissionExportValue(sub.data?.[k])),
+    ];
+    return cells.map((c) => escapeCsvCell(String(c))).join(',');
+  });
+  const csv = '\uFEFF' + [headers.map((h) => escapeCsvCell(h)).join(','), ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sanitizeFormExportFileName(folderName)}_submissions.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildFormArchiveFolders(
+  customForms: CustomFormDef[],
+  formSubmissions: FormSubmission[]
+): FormArchiveFolder[] {
+  const folders: FormArchiveFolder[] = customForms.map((form) => ({
+    id: form.id,
+    name: form.name,
+    formNumber: form.formNumber,
+    formDef: form,
+    submissions: form.publishedKey
+      ? formSubmissions
+          .filter((s) => s.formKey === form.publishedKey)
+          .sort((a, b) => b.submittedAt - a.submittedAt)
+      : [],
+  }));
+
+  const coveredKeys = new Set(
+    customForms.map((f) => f.publishedKey).filter((k): k is string => !!k)
+  );
+  const orphanMap = new Map<string, FormSubmission[]>();
+  for (const sub of formSubmissions) {
+    if (sub.formKey && coveredKeys.has(sub.formKey)) continue;
+    const key = sub.formKey || `orphan_${sub.formName || 'unknown'}`;
+    const list = orphanMap.get(key) || [];
+    list.push(sub);
+    orphanMap.set(key, list);
+  }
+  for (const [key, subs] of orphanMap) {
+    const sorted = [...subs].sort((a, b) => b.submittedAt - a.submittedAt);
+    folders.push({
+      id: `orphan_${key}`,
+      name: sorted[0]?.formName || 'Archived form',
+      formNumber: sorted[0]?.formNumber,
+      submissions: sorted,
+    });
+  }
+
+  return folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
 const CONTRACT_JSON_SCHEMA_VERSION = '1.0';
 
 function newContractPartId(): string {
@@ -3778,7 +3893,8 @@ function AppInner() {
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'archive'>('list');
+  const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
   const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
   const [showFormSubmissions, setShowFormSubmissions] = useState(false);
@@ -15192,6 +15308,284 @@ function AppInner() {
     );
   };
 
+  const renderFormArchive = () => {
+    const folders = buildFormArchiveFolders(customForms, formSubmissions);
+    const totalSubs = formSubmissions.length;
+    const openFolder = folders.find((f) => f.id === formArchiveOpenId) || null;
+    const archiveSelectedSub =
+      openFolder && selectedFormSubmission?.id
+        ? openFolder.submissions.find((s) => s.id === selectedFormSubmission.id) || selectedFormSubmission
+        : selectedFormSubmission;
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Archive className="w-5 h-5 text-indigo-600" />
+              بایگانی فرم‌های ثبت‌شده
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Each form has its own folder. Open a folder to view entries or export to Excel.
+            </p>
+          </div>
+          <span className="text-xs px-3 py-1.5 bg-slate-100 rounded-full font-medium text-slate-600">
+            {totalSubs} submission{totalSubs !== 1 ? 's' : ''} · {folders.length} folder{folders.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {!user ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+            <Archive className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+            <p className="text-slate-500 text-sm">Sign in to view submitted form archives.</p>
+          </div>
+        ) : folders.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
+            <Folder className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+            <p className="text-slate-600 font-medium mb-1">No forms yet</p>
+            <p className="text-slate-400 text-sm">Create and publish a form — submissions will appear here in folders named after each form.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="lg:w-[min(420px,100%)] space-y-2 flex-shrink-0">
+              {folders.map((folder) => {
+                const isOpen = formArchiveOpenId === folder.id;
+                const unread = folder.submissions.filter((s) => !s.isRead).length;
+                return (
+                  <div
+                    key={folder.id}
+                    className={`bg-white border rounded-xl overflow-hidden transition-shadow ${isOpen ? 'border-indigo-300 shadow-md ring-1 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}
+                  >
+                    <div className="flex items-center gap-2 p-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormArchiveOpenId(isOpen ? null : folder.id);
+                          if (!isOpen && folder.submissions[0]) {
+                            setSelectedFormSubmission(folder.submissions[0]);
+                            if (!folder.submissions[0].isRead) {
+                              handleMarkFormSubmission(folder.submissions[0].id, true);
+                            }
+                          } else if (isOpen) {
+                            setSelectedFormSubmission(null);
+                          }
+                        }}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${isOpen ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-50 text-amber-700'}`}
+                        >
+                          <Folder className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-slate-800 truncate">{folder.name}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 flex flex-wrap gap-2">
+                            <span>{folder.submissions.length} record{folder.submissions.length !== 1 ? 's' : ''}</span>
+                            {folder.formNumber ? <span className="font-mono">No. {folder.formNumber}</span> : null}
+                            {unread > 0 ? (
+                              <span className="text-red-600 font-semibold">{unread} new</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <ChevronRight
+                          className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={folder.submissions.length === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadFormSubmissionsExcel(folder.name, folder.formDef, folder.submissions);
+                        }}
+                        className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold border border-emerald-200 bg-emerald-50 text-emerald-800 rounded-lg hover:bg-emerald-100 disabled:opacity-40 disabled:pointer-events-none flex-shrink-0"
+                        title="Export all submissions in this folder to Excel (CSV)"
+                      >
+                        <Download className="w-3 h-3" /> Excel
+                      </button>
+                    </div>
+                    {isOpen ? (
+                      <div className="border-t border-slate-100 bg-slate-50/80 max-h-64 overflow-y-auto">
+                        {folder.submissions.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic p-4 text-center">No submissions in this folder yet.</p>
+                        ) : (
+                          folder.submissions.map((sub) => {
+                            const sel = selectedFormSubmission?.id === sub.id;
+                            return (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedFormSubmission(sub);
+                                  if (!sub.isRead) handleMarkFormSubmission(sub.id, true);
+                                }}
+                                className={`w-full text-left px-3 py-2.5 border-b border-slate-100 last:border-0 hover:bg-indigo-50/60 ${sel ? 'bg-indigo-50' : ''}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {!sub.isRead ? (
+                                    <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
+                                  ) : (
+                                    <span className="w-2 flex-shrink-0" />
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-xs font-medium text-slate-800">
+                                      {new Date(sub.submittedAt).toLocaleString()}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 truncate font-mono">{sub.id}</div>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex-1 min-h-[320px] bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col">
+              {!openFolder ? (
+                <div className="flex-1 flex items-center justify-center text-slate-400 text-sm p-8 text-center">
+                  <div>
+                    <FolderOpen className="w-12 h-12 mx-auto text-slate-200 mb-3" />
+                    <p className="font-medium text-slate-600">Select a form folder</p>
+                    <p className="text-xs text-slate-400 mt-1">Open a folder on the left to browse submissions or export Excel.</p>
+                  </div>
+                </div>
+              ) : !archiveSelectedSub || !openFolder.submissions.some((s) => s.id === archiveSelectedSub.id) ? (
+                <div className="flex-1 flex items-center justify-center text-slate-400 text-sm p-8 text-center">
+                  <div>
+                    <Mail className="w-10 h-10 mx-auto text-slate-200 mb-2" />
+                    <p>Select a submission from «{openFolder.name}»</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-start gap-3 bg-gradient-to-r from-indigo-50/80 to-white">
+                    <div>
+                      <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">{openFolder.name}</p>
+                      <h4 className="font-bold text-slate-800 mt-0.5">
+                        {new Date(archiveSelectedSub.submittedAt).toLocaleString()}
+                      </h4>
+                      {archiveSelectedSub.formNumber ? (
+                        <p className="text-xs text-slate-600 mt-0.5 font-mono">Form no. {archiveSelectedSub.formNumber}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadFormSubmissionsExcel(openFolder.name, openFolder.formDef, openFolder.submissions)
+                        }
+                        className="px-2.5 py-1 text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded hover:bg-emerald-100 flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3" /> Excel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFormSubmission(archiveSelectedSub.id)}
+                        className="px-2.5 py-1 text-xs bg-red-50 border border-red-200 text-red-700 rounded hover:bg-red-100 flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {Object.entries(archiveSelectedSub.data || {}).map(([key, val]) => {
+                      const field = openFolder.formDef?.fields.find((f) => f.id === key);
+                      const isFileUrl = typeof val === 'string' && /^https?:\/\//.test(val);
+                      const isImage =
+                        isFileUrl &&
+                        (field?.type === 'image_upload' || /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(val));
+                      const isVideo =
+                        isFileUrl &&
+                        (field?.type === 'video_upload' || /\.(mp4|mov|avi|webm)(\?|$)/i.test(val));
+                      const imageUrls: string[] = Array.isArray(val)
+                        ? (val as unknown[]).filter(
+                            (v): v is string =>
+                              typeof v === 'string' &&
+                              /^https?:\/\//.test(v) &&
+                              (field?.type === 'image_upload' || /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(v))
+                          )
+                        : isImage
+                          ? [val]
+                          : [];
+                      return (
+                        <div key={key} className="border border-slate-100 rounded-lg p-3 bg-slate-50/50">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                            {field ? formFieldDisplayLabel(field) : key}
+                          </div>
+                          {imageUrls.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {imageUrls.map((url) => (
+                                <a key={url} href={url} target="_blank" rel="noreferrer">
+                                  <img
+                                    src={url}
+                                    className="max-h-32 rounded-lg border border-slate-200 object-contain"
+                                    alt=""
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : Array.isArray(val) ? (
+                            <div className="flex flex-wrap gap-1">
+                              {val.map((v) => (
+                                <span
+                                  key={String(v)}
+                                  className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full"
+                                >
+                                  {String(v)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : isImage ? (
+                            <a href={val} target="_blank" rel="noreferrer">
+                              <img
+                                src={val}
+                                className="max-h-32 rounded-lg border border-slate-200 object-contain"
+                                alt=""
+                              />
+                            </a>
+                          ) : isVideo ? (
+                            <video src={val} controls className="max-h-32 rounded-lg border border-slate-200 w-full" />
+                          ) : isFileUrl ? (
+                            <a
+                              href={val}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <Download className="w-3 h-3" /> Download file
+                            </a>
+                          ) : field?.type === 'rating' ? (
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: field.maxRating || 5 }, (_, i) => (
+                                <span
+                                  key={i}
+                                  className={`text-lg ${i < Number(val) ? 'text-yellow-400' : 'text-slate-300'}`}
+                                >
+                                  ★
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-800 whitespace-pre-wrap">{String(val) || '—'}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderContracts = () => {
     if (contractsSubView === 'editor' && editingContract) return renderContractEditor();
     if (contractsSubView === 'preview' && editingContract) return renderContractPreview();
@@ -15215,10 +15609,26 @@ function AppInner() {
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'packinglist' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
           <ClipboardList className="w-4 h-4" /> Packing List
         </button>
+        <div className="w-px bg-slate-200" />
+        <button
+          onClick={() => {
+            setFormsSubView('archive');
+            setFormArchiveOpenId(null);
+          }}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'archive' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+          <Archive className="w-4 h-4" /> بایگانی
+          {formSubmissions.filter((s) => !s.isRead).length > 0 ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">
+              {formSubmissions.filter((s) => !s.isRead).length}
+            </span>
+          ) : null}
+        </button>
       </div>
       {formsSubView === 'list' && renderCustomFormsList()}
       {formsSubView === 'contracts' && renderContracts()}
       {formsSubView === 'packinglist' && renderPackingList()}
+      {formsSubView === 'archive' && renderFormArchive()}
     </div>
   );
 
