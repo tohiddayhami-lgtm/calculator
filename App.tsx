@@ -106,6 +106,53 @@ function formFieldIsBilingual(f: FormField): boolean {
   return formFieldRtlTitle(f).length > 0 && formFieldLtrTitle(f).length > 0;
 }
 
+function formFieldDisplayLabel(f: FormField): string {
+  const ltr = formFieldLtrTitle(f);
+  const rtl = formFieldRtlTitle(f);
+  if (ltr && rtl) return `${ltr} / ${rtl}`;
+  return ltr || rtl || f.label || f.id;
+}
+
+function isPublicFormFieldFilled(
+  field: FormField,
+  data: Record<string, string>,
+  multi: Record<string, string[]>,
+  ratings: Record<string, number>,
+  files: Record<string, File[]>
+): boolean {
+  switch (field.type) {
+    case 'section_title':
+    case 'display_image':
+      return true;
+    case 'multiselect':
+      return (multi[field.id] || []).length > 0;
+    case 'checkbox':
+      return data[field.id] === 'true';
+    case 'rating':
+      return (ratings[field.id] || 0) > 0;
+    case 'image_upload':
+    case 'video_upload':
+    case 'file_upload':
+      return (files[field.id] || []).length > 0;
+    case 'number': {
+      const raw = String(data[field.id] ?? '').trim();
+      return raw.length > 0 && Number.isFinite(Number(raw));
+    }
+    default:
+      return String(data[field.id] ?? '').trim().length > 0;
+  }
+}
+
+function getMissingRequiredPublicFormFields(
+  fields: FormField[],
+  data: Record<string, string>,
+  multi: Record<string, string[]>,
+  ratings: Record<string, number>,
+  files: Record<string, File[]>
+): FormField[] {
+  return fields.filter((f) => f.required && !isPublicFormFieldFilled(f, data, multi, ratings, files));
+}
+
 const FORM_IMAGE_UPLOAD_MAX_FILES = 5;
 const FORM_IMAGE_UPLOAD_MAX_MB = 5;
 
@@ -4730,9 +4777,26 @@ function AppInner() {
 
   const handleSubmitPublicForm = async () => {
     if (!db || !publicFormView) return;
+    const { key, form } = publicFormView;
+    const missingRequired = getMissingRequiredPublicFormFields(
+      form.fields || [],
+      publicFormData,
+      publicFormMulti,
+      publicFormRatings,
+      publicFormFiles
+    );
+    if (missingRequired.length > 0) {
+      const preview = missingRequired
+        .slice(0, 6)
+        .map((f) => `• ${formFieldDisplayLabel(f)}`)
+        .join('\n');
+      const more =
+        missingRequired.length > 6 ? `\n…and ${missingRequired.length - 6} more required field(s).` : '';
+      alert(`Please complete all required fields before submitting:\n\n${preview}${more}`);
+      return;
+    }
     setPublicFormSubmitting(true);
     try {
-      const { key, form } = publicFormView;
       const subId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       // Merge all data types
       const mergedData: Record<string, string | number | boolean | string[]> = { ...publicFormData };
