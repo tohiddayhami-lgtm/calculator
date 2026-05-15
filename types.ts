@@ -682,6 +682,12 @@ export interface FormHeaderPreset {
 
 export type FormAccessLevel = 'public' | 'internal';
 
+/** One step in the compact process guide (flowchart) below the form header. */
+export interface FormWorkflowStep {
+  label: string;
+  labelRtl?: string;
+}
+
 export interface CustomFormDef {
   id: string;
   name: string;
@@ -695,6 +701,11 @@ export interface CustomFormDef {
   headerSubtitle?: string;
   headerBgColor?: string;
   headerTextColor?: string;
+  /** Compact step guide below header on the public form (reassures customers). */
+  showWorkflowGuide?: boolean;
+  workflowGuideTitle?: string;
+  workflowGuideTitleRtl?: string;
+  workflowSteps?: FormWorkflowStep[];
   fields: FormField[];
   createdAt: number;
   updatedAt: number;

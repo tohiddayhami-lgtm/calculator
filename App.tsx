@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, Fragment } from 'react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -84,6 +84,7 @@ import {
   FormField,
   FormFieldType,
   CustomFormDef,
+  FormWorkflowStep,
   FormAccessLevel,
   FormHeaderPreset,
   FormSubmission,
@@ -566,7 +567,112 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 .public-form-doc .pf-accent {
   height: 3px;
   border-radius: 2px;
-  margin: 12px 0 18px;
+  margin: 12px 0 14px;
+}
+.pf-workflow {
+  margin: 0 0 16px;
+  padding: 9px 10px 10px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.pf-workflow-title {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+  text-align: center;
+  margin: 0 0 7px;
+  line-height: 1.35;
+}
+.pf-workflow-title-en {
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #94a3b8;
+}
+.pf-workflow-track {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2px 0;
+}
+.pf-workflow-track--scroll {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.pf-workflow--dense .pf-workflow-node { max-width: 76px; }
+.pf-workflow--dense .pf-workflow-label { font-size: 6.25pt; }
+.pf-workflow--dense .pf-workflow-label-rtl { font-size: 5.75pt; }
+.pf-workflow--dense .pf-workflow-connector { width: 10px; }
+.pf-workflow--dense .pf-workflow-num { width: 17px; height: 17px; font-size: 7pt; }
+.pf-workflow-step {
+  display: flex;
+  align-items: center;
+}
+.pf-workflow-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  max-width: 104px;
+  padding: 0 3px;
+}
+.pf-workflow-num {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--pf-accent, #0f172a);
+  color: #fff;
+  font-size: 7.5pt;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 3px;
+  flex-shrink: 0;
+}
+.pf-workflow-label {
+  font-size: 6.75pt;
+  line-height: 1.35;
+  color: #1e293b;
+  font-weight: 600;
+}
+.pf-workflow-label-rtl {
+  font-size: 6.25pt;
+  color: #64748b;
+  margin-top: 1px;
+  line-height: 1.25;
+  font-weight: 500;
+}
+.pf-workflow-connector {
+  flex-shrink: 0;
+  width: 16px;
+  height: 1px;
+  background: #cbd5e1;
+  margin: 9px 1px 0;
+  position: relative;
+}
+.pf-workflow-connector::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  border: 3px solid transparent;
+  border-left-color: #94a3b8;
+}
+@media (max-width: 520px) {
+  .pf-workflow-node { max-width: 70px; }
+  .pf-workflow-connector { width: 8px; }
 }
 .public-form-doc .pf-fields { display: flex; flex-direction: column; gap: 11px; }
 .public-form-doc .pf-field {
@@ -1932,6 +2038,120 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+const FORM_WORKFLOW_MAX_STEPS = 20;
+
+const DEFAULT_FORM_WORKFLOW_STEPS: FormWorkflowStep[] = [
+  { label: 'Fill the form', labelRtl: 'تکمیل فرم' },
+  { label: 'Upload files', labelRtl: 'بارگذاری فایل‌ها' },
+  { label: 'We review', labelRtl: 'بررسی توسط ما' },
+  { label: 'We contact you', labelRtl: 'تماس با شما' },
+];
+
+function parseFormWorkflowSteps(raw: unknown): FormWorkflowStep[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FormWorkflowStep[] = [];
+  for (const x of raw) {
+    if (typeof x === 'string') {
+      const t = x.trim();
+      if (t) out.push({ label: t });
+      continue;
+    }
+    if (!x || typeof x !== 'object') continue;
+    const o = x as Record<string, unknown>;
+    const label = String(o.label ?? o.en ?? '').trim();
+    const labelRtl = String(o.labelRtl ?? o.fa ?? o.rtl ?? '').trim();
+    if (!label && !labelRtl) continue;
+    out.push({ label: label || labelRtl, ...(labelRtl ? { labelRtl } : {}) });
+  }
+  return out.slice(0, FORM_WORKFLOW_MAX_STEPS);
+}
+
+function getFormWorkflowSteps(form: {
+  showWorkflowGuide?: boolean;
+  workflowSteps?: FormWorkflowStep[];
+}): FormWorkflowStep[] {
+  if (!form.showWorkflowGuide) return [];
+  const steps = parseFormWorkflowSteps(form.workflowSteps);
+  return steps.length ? steps : DEFAULT_FORM_WORKFLOW_STEPS;
+}
+
+function buildFormWorkflowGuideHtml(
+  form: {
+    showWorkflowGuide?: boolean;
+    workflowSteps?: FormWorkflowStep[];
+    workflowGuideTitle?: string;
+    workflowGuideTitleRtl?: string;
+  },
+  accent: string
+): string {
+  const steps = getFormWorkflowSteps(form);
+  if (!steps.length) return '';
+  const titleMain = (form.workflowGuideTitleRtl || form.workflowGuideTitle || '').trim();
+  const titleEn = (form.workflowGuideTitle || '').trim();
+  let titlePart = '';
+  if (titleMain) {
+    const sub =
+      titleEn && titleEn !== titleMain
+        ? `<span class="pf-workflow-title-en"> · ${escapeHtml(titleEn)}</span>`
+        : '';
+    titlePart = `<p class="pf-workflow-title">${escapeHtml(titleMain)}${sub}</p>`;
+  }
+  const nodes = steps
+    .map((step, i) => {
+      const primary = escapeHtml(step.labelRtl || step.label);
+      const secondary =
+        step.labelRtl && step.label && step.label !== step.labelRtl
+          ? `<span class="pf-workflow-label-rtl">${escapeHtml(step.label)}</span>`
+          : '';
+      const conn = i > 0 ? '<span class="pf-workflow-connector" aria-hidden="true"></span>' : '';
+      return `${conn}<div class="pf-workflow-step" role="listitem"><div class="pf-workflow-node"><span class="pf-workflow-num">${i + 1}</span><span class="pf-workflow-label">${primary}</span>${secondary}</div></div>`;
+    })
+    .join('');
+  const dense = steps.length >= 8;
+  const scroll = steps.length >= 6;
+  const wfClass = `pf-workflow${dense ? ' pf-workflow--dense' : ''}`;
+  const trackClass = `pf-workflow-track${scroll ? ' pf-workflow-track--scroll' : ''}`;
+  return `<div class="${wfClass}" style="--pf-accent:${escapeAttr(accent)}">${titlePart}<div class="${trackClass}" role="list">${nodes}</div></div>`;
+}
+
+function renderFormWorkflowGuide(form: CustomFormDef, accentHex: string): React.ReactNode {
+  const steps = getFormWorkflowSteps(form);
+  if (!steps.length) return null;
+  const dense = steps.length >= 8;
+  const scroll = steps.length >= 6;
+  const titleMain = (form.workflowGuideTitleRtl || form.workflowGuideTitle || '').trim();
+  const titleEn = (form.workflowGuideTitle || '').trim();
+  return (
+    <div
+      className={`pf-workflow${dense ? ' pf-workflow--dense' : ''}`}
+      style={{ ['--pf-accent' as string]: accentHex }}
+    >
+      {titleMain ? (
+        <p className="pf-workflow-title">
+          {titleMain}
+          {titleEn && titleEn !== titleMain ? <span className="pf-workflow-title-en"> · {titleEn}</span> : null}
+        </p>
+      ) : null}
+      <div className={`pf-workflow-track${scroll ? ' pf-workflow-track--scroll' : ''}`} role="list">
+        {steps.map((step, i) => (
+          <Fragment key={`wf-${i}`}>
+            {i > 0 ? <span className="pf-workflow-connector" aria-hidden /> : null}
+            <div className="pf-workflow-step" role="listitem">
+              <div className="pf-workflow-node">
+                <span className="pf-workflow-num">{i + 1}</span>
+                <span className="pf-workflow-label">{step.labelRtl || step.label}</span>
+                {step.labelRtl && step.label && step.label !== step.labelRtl ? (
+                  <span className="pf-workflow-label-rtl">{step.label}</span>
+                ) : null}
+              </div>
+            </div>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Print layout preview while editing a form (not shown to respondents). */
 function printCustomFormBuilderPreview(form: CustomFormDef): void {
   const accent = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test((form.headerBgColor || '').trim())
@@ -1972,6 +2192,7 @@ ${form.headerSubtitle ? `<div class="pf-sub">${escapeHtml(form.headerSubtitle)}<
 </div>
 </div>
 <div class="pf-accent" style="background:linear-gradient(90deg, ${escapeAttr(accent)} 0%, #64748b 100%);"></div>
+${buildFormWorkflowGuideHtml(form, accent)}
 <div class="pf-fields">${fieldsHtml || '<p class="pf-section-note">No fields yet.</p>'}</div>
 <p class="pf-section-note" style="margin-top:12px;text-align:center;">Layout preview — respondents submit online; they cannot print this form.</p>
 </div></div></div>
@@ -4880,6 +5101,10 @@ function AppInner() {
     headerSubtitle: '',
     headerBgColor: '#1e3a5f',
     headerTextColor: '#ffffff',
+    showWorkflowGuide: false,
+    workflowGuideTitle: 'How it works',
+    workflowGuideTitleRtl: 'مراحل کار',
+    workflowSteps: [],
     fields: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -4913,6 +5138,10 @@ function AppInner() {
                 headerTextColor: formDef.headerTextColor || '#ffffff',
                 headerSubtitle: formDef.headerSubtitle || '',
                 description: formDef.description || '',
+                showWorkflowGuide: !!formDef.showWorkflowGuide,
+                workflowGuideTitle: formDef.workflowGuideTitle || '',
+                workflowGuideTitleRtl: formDef.workflowGuideTitleRtl || '',
+                workflowSteps: formDef.workflowSteps || [],
                 fields: formDef.fields,
                 updatedAt: now,
               })
@@ -4965,6 +5194,47 @@ function AppInner() {
     });
   };
 
+  const moveFormBuilderWorkflowStep = (idx: number, dir: -1 | 1) => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const steps = [...(draft.workflowSteps || [])];
+      const ni = idx + dir;
+      if (ni < 0 || ni >= steps.length) return draft;
+      [steps[idx], steps[ni]] = [steps[ni], steps[idx]];
+      return { ...draft, workflowSteps: steps };
+    });
+  };
+
+  const updateFormBuilderWorkflowStep = (idx: number, patch: Partial<FormWorkflowStep>) => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const steps = [...(draft.workflowSteps || DEFAULT_FORM_WORKFLOW_STEPS)];
+      if (!steps[idx]) return draft;
+      steps[idx] = { ...steps[idx], ...patch };
+      return { ...draft, workflowSteps: steps };
+    });
+  };
+
+  const addFormBuilderWorkflowStep = () => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const steps = [...(draft.workflowSteps || DEFAULT_FORM_WORKFLOW_STEPS)];
+      if (steps.length >= FORM_WORKFLOW_MAX_STEPS) return draft;
+      steps.push({ label: 'Next step', labelRtl: 'مرحله بعد' });
+      return { ...draft, workflowSteps: steps };
+    });
+  };
+
+  const removeFormBuilderWorkflowStep = (idx: number) => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const steps = [...(draft.workflowSteps || [])];
+      if (steps.length <= 2) return draft;
+      steps.splice(idx, 1);
+      return { ...draft, workflowSteps: steps };
+    });
+  };
+
   const handleDeleteForm = async (formId: string) => {
     if (!user || !db) return;
     if (!window.confirm('Delete this form? This cannot be undone.')) return;
@@ -4998,6 +5268,10 @@ function AppInner() {
         headerTextColor: form.headerTextColor || '#ffffff',
         headerSubtitle: form.headerSubtitle || '',
         description: form.description || '',
+        showWorkflowGuide: !!form.showWorkflowGuide,
+        workflowGuideTitle: form.workflowGuideTitle || '',
+        workflowGuideTitleRtl: form.workflowGuideTitleRtl || '',
+        workflowSteps: form.workflowSteps || [],
         fields: form.fields,
         isActive: true,
         updatedAt: Date.now(),
@@ -14189,6 +14463,7 @@ function AppInner() {
                 </div>
               </div>
               <div className="pf-accent" style={{ background: `linear-gradient(90deg, ${accentHex} 0%, #64748b 100%)` }} />
+              {renderFormWorkflowGuide(form, accentHex)}
 
               <div className="pf-fields">{fields.map((field) => renderField(field))}</div>
 
@@ -14213,7 +14488,9 @@ function AppInner() {
     _field_types:
       'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
     _root_keys:
-      'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, fields',
+      'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, showWorkflowGuide, workflowGuideTitle, workflowGuideTitleRtl, workflowSteps[], fields',
+    _workflow_guide:
+      'Optional compact flowchart below header: showWorkflowGuide true, workflowSteps: [{ label, labelRtl }], max 20 steps. Titles: workflowGuideTitle (EN), workflowGuideTitleRtl (FA).',
     _bilingual_layout:
       'When labelRtl is set and label (or labelLtr) has text, the form shows English/LTR on the LEFT and RTL (Farsi, Arabic, …) on the RIGHT for titles and helper rows. Keys: labelLtr (optional), labelRtl, placeholderLtr, placeholderRtl, uploadHintLtr, uploadHintRtl (file fields).',
     name: 'Sample — Inquiry with photos & files',
@@ -14226,6 +14503,15 @@ function AppInner() {
     logoUrl: 'https://picsum.photos/seed/ceformlogo/200/80',
     headerBgColor: '#0f172a',
     headerTextColor: '#ffffff',
+    showWorkflowGuide: true,
+    workflowGuideTitle: 'How it works',
+    workflowGuideTitleRtl: 'مراحل کار',
+    workflowSteps: [
+      { label: 'Fill the form', labelRtl: 'تکمیل فرم' },
+      { label: 'Upload files', labelRtl: 'بارگذاری فایل‌ها' },
+      { label: 'We review', labelRtl: 'بررسی توسط ما' },
+      { label: 'We contact you', labelRtl: 'تماس با شما' },
+    ],
     fields: [
       {
         id: 'sec_contact',
@@ -14381,6 +14667,10 @@ function AppInner() {
               headerSubtitle: parsed.headerSubtitle || '',
               headerBgColor: parsed.headerBgColor || '#1e3a5f',
               headerTextColor: parsed.headerTextColor || '#ffffff',
+              showWorkflowGuide: !!parsed.showWorkflowGuide,
+              workflowGuideTitle: typeof parsed.workflowGuideTitle === 'string' ? parsed.workflowGuideTitle : '',
+              workflowGuideTitleRtl: typeof parsed.workflowGuideTitleRtl === 'string' ? parsed.workflowGuideTitleRtl : '',
+              workflowSteps: parseFormWorkflowSteps(parsed.workflowSteps),
               fields: Array.isArray(parsed.fields) ? parsed.fields : [],
               createdAt: Date.now(),
               updatedAt: Date.now(),
@@ -14405,6 +14695,10 @@ function AppInner() {
         headerSubtitle: form.headerSubtitle,
         headerBgColor: form.headerBgColor,
         headerTextColor: form.headerTextColor,
+        showWorkflowGuide: form.showWorkflowGuide,
+        workflowGuideTitle: form.workflowGuideTitle,
+        workflowGuideTitleRtl: form.workflowGuideTitleRtl,
+        workflowSteps: form.workflowSteps,
         fields: form.fields,
       };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -18120,9 +18414,14 @@ function AppInner() {
                       className="h-0.5 rounded-full mt-3"
                       style={{ background: `linear-gradient(90deg, ${formBuilderDraft.headerBgColor || '#0f172a'}, #94a3b8)` }}
                     />
+                    {formBuilderDraft.showWorkflowGuide ? (
+                      <div className="mt-3 public-form-doc">
+                        {renderFormWorkflowGuide(formBuilderDraft, formBuilderDraft.headerBgColor || '#0f172a')}
+                      </div>
+                    ) : null}
                   </div>
                   <p className="px-4 py-2 text-[10px] text-slate-400 bg-slate-50/80 border-t border-slate-100">
-                    A4-style layout for respondents. “Header background” sets the accent stripe. Use Print in this editor to preview the paper layout — respondents cannot print the live form.
+                    A4-style layout for respondents. “Header background” sets the accent stripe. Optional process guide appears below the stripe. Use Print in this editor to preview the paper layout — respondents cannot print the live form.
                   </p>
                 </div>
               </div>
@@ -18208,6 +18507,135 @@ function AppInner() {
                       className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
                   </div>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    checked={!!formBuilderDraft.showWorkflowGuide}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setFormBuilderDraft({
+                        ...formBuilderDraft,
+                        showWorkflowGuide: on,
+                        workflowSteps:
+                          on && (!formBuilderDraft.workflowSteps || formBuilderDraft.workflowSteps.length === 0)
+                            ? [...DEFAULT_FORM_WORKFLOW_STEPS]
+                            : formBuilderDraft.workflowSteps,
+                        workflowGuideTitle: formBuilderDraft.workflowGuideTitle || 'How it works',
+                        workflowGuideTitleRtl: formBuilderDraft.workflowGuideTitleRtl || 'مراحل کار',
+                      });
+                    }}
+                  />
+                  <span>
+                    <span className="text-sm font-bold text-slate-800 block">Process guide (compact flowchart)</span>
+                    <span className="text-[10px] text-slate-500 leading-relaxed">
+                      Shown below the header on the live form — explains what happens next without taking much space.
+                    </span>
+                  </span>
+                </label>
+                {formBuilderDraft.showWorkflowGuide ? (
+                  <div className="space-y-3 pt-1 border-t border-emerald-100/80">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Guide title (EN)</label>
+                        <input
+                          type="text"
+                          value={formBuilderDraft.workflowGuideTitle || ''}
+                          onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, workflowGuideTitle: e.target.value })}
+                          className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white"
+                          placeholder="How it works"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Guide title (FA)</label>
+                        <input
+                          type="text"
+                          dir="rtl"
+                          value={formBuilderDraft.workflowGuideTitleRtl || ''}
+                          onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, workflowGuideTitleRtl: e.target.value })}
+                          className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white text-right"
+                          placeholder="مراحل کار"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-semibold text-slate-500 uppercase">Steps (max {FORM_WORKFLOW_MAX_STEPS})</span>
+                        <button
+                          type="button"
+                          disabled={(formBuilderDraft.workflowSteps || []).length >= FORM_WORKFLOW_MAX_STEPS}
+                          onClick={addFormBuilderWorkflowStep}
+                          className="text-xs font-medium text-emerald-700 hover:text-emerald-900 disabled:opacity-40"
+                        >
+                          + Add step
+                        </button>
+                      </div>
+                      {(formBuilderDraft.workflowSteps?.length
+                        ? formBuilderDraft.workflowSteps
+                        : DEFAULT_FORM_WORKFLOW_STEPS
+                      ).map((step, idx, arr) => (
+                        <div key={`wf-edit-${idx}`} className="flex gap-2 items-start bg-white rounded-lg border border-slate-200 p-2">
+                          <span className="shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-[10px] font-bold flex items-center justify-center mt-5">
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1 grid grid-cols-2 gap-2 min-w-0">
+                            <div>
+                              <label className="text-[9px] text-slate-400 uppercase">English</label>
+                              <input
+                                type="text"
+                                value={step.label}
+                                onChange={(e) => updateFormBuilderWorkflowStep(idx, { label: e.target.value })}
+                                className="w-full border border-slate-200 rounded px-2 py-1 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] text-slate-400 uppercase">فارسی</label>
+                              <input
+                                type="text"
+                                dir="rtl"
+                                value={step.labelRtl || ''}
+                                onChange={(e) => updateFormBuilderWorkflowStep(idx, { labelRtl: e.target.value })}
+                                className="w-full border border-slate-200 rounded px-2 py-1 text-xs text-right"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-0.5 shrink-0 mt-4">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => moveFormBuilderWorkflowStep(idx, -1)}
+                              className="p-1 rounded border border-slate-200 bg-white disabled:opacity-30"
+                              title="Move up"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === arr.length - 1}
+                              onClick={() => moveFormBuilderWorkflowStep(idx, 1)}
+                              className="p-1 rounded border border-slate-200 bg-white disabled:opacity-30"
+                              title="Move down"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={arr.length <= 2}
+                              onClick={() => removeFormBuilderWorkflowStep(idx)}
+                              className="p-1 rounded border border-red-100 bg-red-50 text-red-600 disabled:opacity-30"
+                              title="Remove"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
