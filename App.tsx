@@ -47,7 +47,7 @@ import {
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, Copy
 } from 'lucide-react';
 
 // Types
@@ -4581,6 +4581,22 @@ function AppInner() {
       const ni = idx + dir;
       if (ni < 0 || ni >= arr.length) return draft;
       [arr[idx], arr[ni]] = [arr[ni], arr[idx]];
+      return { ...draft, fields: arr };
+    });
+  };
+
+  const duplicateFormBuilderField = (idx: number) => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const src = draft.fields[idx];
+      if (!src) return draft;
+      const copy: FormField = {
+        ...src,
+        id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        options: src.options ? [...src.options] : undefined,
+      };
+      const arr = [...draft.fields];
+      arr.splice(idx + 1, 0, copy);
       return { ...draft, fields: arr };
     });
   };
@@ -17537,7 +17553,7 @@ function AppInner() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h4 className="text-sm font-bold text-slate-700">Form Fields</h4>
-                    <p className="text-[10px] text-slate-400 mt-0.5">↑ ↓ on each box to move it up or down</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">↑ ↓ reorder · copy icon duplicates a box below it</p>
                   </div>
                   <button onClick={() => {
                     const newField: FormField = { id: `f_${Date.now()}`, type: 'text', label: 'New Field', required: false };
@@ -17612,6 +17628,14 @@ function AppInner() {
                               <ChevronDown className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => duplicateFormBuilderField(idx)}
+                            title="Duplicate"
+                            className="text-slate-400 hover:text-blue-600 p-0.5 flex-shrink-0"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
                           <button onClick={() => { const f = formBuilderDraft.fields.filter((_, i) => i !== idx); setFormBuilderDraft({ ...formBuilderDraft, fields: f }); }}
                             className="text-red-400 hover:text-red-600 p-0.5 flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
