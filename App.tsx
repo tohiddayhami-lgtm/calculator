@@ -1152,6 +1152,75 @@ function sanitizeResearchFileName(name: string): string {
   return (t.slice(0, 180) || 'file');
 }
 
+function sanitizeFormUploadFileName(name: string): string {
+  const t = name
+    .replace(/[/\\#?[\]]/g, '_')
+    .replace(/[\x00-\x1f]/g, '')
+    .trim();
+  return (t.slice(0, 160) || 'file');
+}
+
+/** Resize/compress images in-browser so public respondents can upload reliably (incl. large phone photos). */
+async function preparePublicFormUploadFile(
+  file: File
+): Promise<{ blob: Blob; contentType: string; fileName: string }> {
+  const safeName = sanitizeFormUploadFileName(file.name);
+  if (!file.type.startsWith('image/')) {
+    return {
+      blob: file,
+      contentType: file.type || 'application/octet-stream',
+      fileName: safeName,
+    };
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxW = 1920;
+    let w = bitmap.width;
+    let h = bitmap.height;
+    if (w > maxW) {
+      h = Math.round((h * maxW) / w);
+      w = maxW;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return { blob: file, contentType: file.type || 'image/jpeg', fileName: safeName };
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const jpeg = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.88)
+    );
+    if (!jpeg) {
+      return { blob: file, contentType: file.type || 'image/jpeg', fileName: safeName };
+    }
+    const base = safeName.replace(/\.[^.]+$/i, '') || 'image';
+    return { blob: jpeg, contentType: 'image/jpeg', fileName: `${base}.jpg` };
+  } catch {
+    return { blob: file, contentType: file.type || 'image/jpeg', fileName: safeName };
+  }
+}
+
+async function uploadPublicFormSubmissionFile(
+  formKey: string,
+  subId: string,
+  fieldId: string,
+  index: number,
+  file: File
+): Promise<string> {
+  if (!storage) {
+    throw new Error('Firebase Storage is not configured. Enable Storage in Firebase and set VITE_FIREBASE_STORAGE_BUCKET.');
+  }
+  const prepared = await preparePublicFormUploadFile(file);
+  const path = `publicFormSubmissions/${formKey}/${subId}/${fieldId}_${index}_${prepared.fileName}`;
+  const sRef = storageRef(storage, path);
+  await uploadBytes(sRef, prepared.blob, { contentType: prepared.contentType });
+  return await getDownloadURL(sRef);
+}
+
 function parseResearchEntriesFromProject(raw: unknown): DashboardResearchEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -4985,6 +5054,14 @@ function AppInner() {
       alert(`Please complete all required fields before submitting:\n\n${preview}${more}`);
       return;
     }
+    const hasFileUploads = Object.values(publicFormFiles).some((list) => list?.length > 0);
+    if (hasFileUploads && !storage) {
+      alert(
+        'File upload is not available on this site (Firebase Storage is not configured). The form owner must add VITE_FIREBASE_STORAGE_BUCKET and deploy storage rules.'
+      );
+      return;
+    }
+
     setPublicFormSubmitting(true);
     try {
       const subId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -4996,29 +5073,35 @@ function AppInner() {
       (Object.entries(publicFormMulti) as [string, string[]][]).forEach(([fid, val]) => { mergedData[fid] = val; });
       // File uploads → Storage
       const formFields = form.fields || [];
+      const uploadErrors: string[] = [];
       for (const [fid, fileList] of Object.entries(publicFormFiles) as [string, File[]][]) {
         if (!fileList?.length) continue;
         const fieldDef = formFields.find((f: FormField) => f.id === fid);
         const isMultiImage = fieldDef?.type === 'image_upload' && fileList.length > 0;
-        if (storage) {
-          const urls: string[] = [];
-          for (let i = 0; i < fileList.length; i++) {
-            const file = fileList[i];
-            try {
-              const path = `publicFormSubmissions/${key}/${subId}/${fid}_${i}_${file.name}`;
-              const sRef = storageRef(storage, path);
-              await uploadBytes(sRef, file);
-              urls.push(await getDownloadURL(sRef));
-            } catch {
-              urls.push(`[Upload failed: ${file.name}]`);
-            }
-          }
-          if (isMultiImage) {
-            mergedData[fid] = urls.length === 1 ? urls[0] : urls;
-          } else {
-            mergedData[fid] = urls[0] ?? `[Upload failed: ${fileList[0]?.name}]`;
+        const urls: string[] = [];
+        for (let i = 0; i < fileList.length; i++) {
+          const file = fileList[i];
+          try {
+            urls.push(await uploadPublicFormSubmissionFile(key, subId, fid, i, file));
+          } catch (err: unknown) {
+            console.error('Public form file upload failed:', { formKey: key, subId, fid, fileName: file.name }, err);
+            const msg = err instanceof Error ? err.message : String(err);
+            uploadErrors.push(`${file.name}: ${msg}`);
+            urls.push(`[Upload failed: ${file.name}]`);
           }
         }
+        if (isMultiImage) {
+          mergedData[fid] = urls.length === 1 ? urls[0] : urls;
+        } else {
+          mergedData[fid] = urls[0] ?? `[Upload failed: ${fileList[0]?.name}]`;
+        }
+      }
+      if (uploadErrors.length > 0) {
+        const preview = uploadErrors.slice(0, 3).join('\n');
+        const more = uploadErrors.length > 3 ? `\n…and ${uploadErrors.length - 3} more.` : '';
+        alert(
+          `Some files could not be uploaded:\n\n${preview}${more}\n\nIf this keeps happening, the site owner must deploy Firebase Storage rules (publicFormSubmissions) from storage.rules.`
+        );
       }
       const subRef = doc(db, 'artifacts', form.appId, 'users', form.ownerUid, 'formSubmissions', subId);
       await setDoc(subRef, {
