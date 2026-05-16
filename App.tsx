@@ -5378,6 +5378,36 @@ function AppInner() {
     }
   };
 
+  const publishFormSubmissionReportOnline = async (
+    html: string,
+    _fileName: string,
+    submissionId: string
+  ) => {
+    if (!user || !storage) return null;
+    const path = `users/${user.uid}/formReports/${submissionId}-${Date.now()}.html`;
+    const ref = storageRef(storage, path);
+    await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
+    const url = await getDownloadURL(ref);
+    let shortUrl: string | undefined;
+    if (db && !isDemoMode && user.uid !== DEMO_USER_ID) {
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const shortCode = generateCatalogShortCode(10);
+        const pubRef = doc(db, 'catalog_short_links', shortCode);
+        const existing = await getDoc(pubRef);
+        if (existing.exists()) continue;
+        shortUrl = new URL(`?c=${encodeURIComponent(shortCode)}`, window.location.href).href;
+        await setDoc(pubRef, {
+          url,
+          ownerUserId: user.uid,
+          storagePath: path,
+          createdAt: serverTimestamp(),
+        });
+        break;
+      }
+    }
+    return { url, shortUrl };
+  };
+
   const handleExportSubmissionWhatsApp = async (
     folderName: string,
     formDef: CustomFormDef | undefined,
@@ -5386,18 +5416,31 @@ function AppInner() {
     if (formWhatsAppExporting) return;
     setFormWhatsAppExporting(true);
     try {
-      const result = await exportFormSubmissionForWhatsApp({
-        folderName,
-        formDef,
-        submission,
-      });
-      if (result.sharedNative) {
+      const publishOnline =
+        user && storage
+          ? (html: string, fileName: string) =>
+              publishFormSubmissionReportOnline(html, fileName, submission.id)
+          : undefined;
+      const result = await exportFormSubmissionForWhatsApp(
+        { folderName, formDef, submission },
+        publishOnline
+      );
+      if (result.onlineReportUrl) {
+        const link = result.onlineReportUrl;
+        if (result.sharedNative) {
+          alert(`گزارش آنلاین آماده است.\n\n${link}\n\nواتساپ را از منوی اشتراک‌گذاری انتخاب کنید. با باز کردن لینک، تصاویر در مرورگر دیده می‌شوند.`);
+        } else {
+          alert(
+            `گزارش آنلاین منتشر شد و واتساپ باز شد.\n\n${link}\n\nاین لینک را ارسال کنید — گیرنده با باز کردن آن در مرورگر، همه فیلدها و تصاویر را می‌بیند.`
+          );
+        }
+      } else if (result.sharedNative) {
         alert(
           'گزارش از طریق منوی اشتراک‌گذاری آماده است. واتساپ را انتخاب کنید تا فایل HTML با تصاویر و مستندات ارسال شود.'
         );
       } else {
         alert(
-          `فایل «${result.fileName}» دانلود شد و واتساپ باز شد.\n\nمتن خلاصه در واتساپ آماده است — همان فایل HTML را با دکمه پیوست (📎) بفرستید تا تصاویر و جزئیات کامل دیده شوند.`
+          `اتصال ابری برقرار نشد؛ فایل «${result.fileName}» دانلود شد.\n\nمتن در واتساپ آماده است — فایل HTML را با پیوست (📎) بفرستید یا دوباره با اتصال اینترنت امتحان کنید.`
         );
       }
     } catch (err: any) {
@@ -16039,7 +16082,7 @@ function AppInner() {
                           )
                         }
                         className="px-2.5 py-1 text-xs bg-[#25D366]/10 border border-[#25D366]/40 text-[#128C7E] rounded hover:bg-[#25D366]/20 disabled:opacity-50 flex items-center gap-1"
-                        title="دانلود گزارش HTML + باز کردن واتساپ (با تصاویر و مستندات)"
+                        title="انتشار گزارش آنلاین + ارسال لینک در واتساپ (با تصاویر)"
                       >
                         {formWhatsAppExporting ? (
                           <Loader2 className="w-3 h-3 animate-spin" />

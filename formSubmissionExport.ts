@@ -117,9 +117,17 @@ function getOrderedFieldRows(ctx: FormSubmissionExportContext): OrderedFieldRow[
   return rows;
 }
 
-export function buildFormSubmissionWhatsAppText(ctx: FormSubmissionExportContext): string {
+export function buildFormSubmissionWhatsAppText(
+  ctx: FormSubmissionExportContext,
+  onlineReportUrl?: string
+): string {
   const { folderName, formDef, submission } = ctx;
   const lines: string[] = [];
+  if (onlineReportUrl) {
+    lines.push('🔗 گزارش آنلاین (تصاویر و مستندات):');
+    lines.push(onlineReportUrl);
+    lines.push('');
+  }
   lines.push(`📋 ${folderName}`);
   const formNo = submission.formNumber || formDef?.formNumber;
   if (formNo) lines.push(`شماره فرم: ${formNo}`);
@@ -150,9 +158,27 @@ export function buildFormSubmissionWhatsAppText(ctx: FormSubmissionExportContext
     }
   }
 
-  lines.push('');
-  lines.push('📎 گزارش کامل با تصاویر: فایل HTML دانلودشده را در واتساپ پیوست کنید.');
+  if (!onlineReportUrl) {
+    lines.push('');
+    lines.push('📎 گزارش کامل با تصاویر: فایل HTML دانلودشده را در واتساپ پیوست کنید.');
+  }
   return lines.join('\n');
+}
+
+export type FormSubmissionOnlinePublishResult = {
+  url: string;
+  shortUrl?: string;
+};
+
+export type FormSubmissionOnlinePublisher = (
+  html: string,
+  fileName: string
+) => Promise<FormSubmissionOnlinePublishResult | null>;
+
+function openWhatsAppWithText(text: string): void {
+  const trimmed = text.length > 3500 ? `${text.slice(0, 3400)}\n…` : text;
+  const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(trimmed)}`;
+  window.open(waUrl, '_blank', 'noopener,noreferrer');
 }
 
 export async function buildFormSubmissionReportHtml(
@@ -338,23 +364,57 @@ function buildExportFileName(ctx: FormSubmissionExportContext): string {
 export type WhatsAppExportResult = {
   fileName: string;
   sharedNative: boolean;
+  onlineReportUrl?: string;
 };
 
-/** Build HTML report, download or native-share, then open WhatsApp with summary text. */
+/** Build HTML report, publish online when possible, then open WhatsApp with summary + public link. */
 export async function exportFormSubmissionForWhatsApp(
-  ctx: FormSubmissionExportContext
+  ctx: FormSubmissionExportContext,
+  publishOnline?: FormSubmissionOnlinePublisher
 ): Promise<WhatsAppExportResult> {
+  const fileName = buildExportFileName(ctx);
+  let onlineReportUrl: string | undefined;
+
+  if (publishOnline) {
+    const htmlForCloud = await buildFormSubmissionReportHtml(ctx, false);
+    try {
+      const published = await publishOnline(htmlForCloud, fileName);
+      if (published) onlineReportUrl = published.shortUrl || published.url;
+    } catch (err) {
+      console.warn('Form report online publish failed:', err);
+    }
+  }
+
+  const summary = buildFormSubmissionWhatsAppText(ctx, onlineReportUrl);
+
+  if (onlineReportUrl) {
+    const nav = typeof navigator !== 'undefined' ? navigator : ({} as Navigator);
+    if (typeof nav.share === 'function') {
+      try {
+        await nav.share({
+          title: ctx.folderName,
+          text: summary.slice(0, 1200),
+          url: onlineReportUrl,
+        });
+        return { fileName, sharedNative: true, onlineReportUrl };
+      } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') {
+          return { fileName, sharedNative: true, onlineReportUrl };
+        }
+      }
+    }
+    openWhatsAppWithText(summary);
+    return { fileName, sharedNative: false, onlineReportUrl };
+  }
+
   const html = await buildFormSubmissionReportHtml(ctx, true);
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const fileName = buildExportFileName(ctx);
   const file =
     typeof File !== 'undefined'
       ? new File([blob], fileName, { type: 'text/html;charset=utf-8' })
       : null;
 
-  const summary = buildFormSubmissionWhatsAppText(ctx);
   let sharedNative = false;
-
   const nav = typeof navigator !== 'undefined' ? navigator : ({} as Navigator);
   if (file && typeof nav.share === 'function' && typeof nav.canShare === 'function') {
     try {
@@ -383,10 +443,7 @@ export async function exportFormSubmissionForWhatsApp(
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-
-    const waText = summary.length > 3500 ? `${summary.slice(0, 3400)}\n…` : summary;
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(waText)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    openWhatsAppWithText(summary);
   }
 
   return { fileName, sharedNative };
