@@ -96,6 +96,7 @@ import {
   ContractStatus,
   ContractRtlLang,
 } from './types';
+import { exportFormSubmissionForWhatsApp } from './formSubmissionExport';
 
 function formFieldLtrTitle(f: Pick<FormField, 'label' | 'labelLtr'>): string {
   return String(f.labelLtr ?? f.label ?? '').trim();
@@ -4309,6 +4310,7 @@ function AppInner() {
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
   const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'archive'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
+  const [formWhatsAppExporting, setFormWhatsAppExporting] = useState(false);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
   const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
   const [showFormSubmissions, setShowFormSubmissions] = useState(false);
@@ -5373,6 +5375,35 @@ function AppInner() {
       if (selectedFormSubmission?.id === subId) setSelectedFormSubmission(null);
     } catch (err: any) {
       alert('Failed to delete: ' + (err?.message || err));
+    }
+  };
+
+  const handleExportSubmissionWhatsApp = async (
+    folderName: string,
+    formDef: CustomFormDef | undefined,
+    submission: FormSubmission
+  ) => {
+    if (formWhatsAppExporting) return;
+    setFormWhatsAppExporting(true);
+    try {
+      const result = await exportFormSubmissionForWhatsApp({
+        folderName,
+        formDef,
+        submission,
+      });
+      if (result.sharedNative) {
+        alert(
+          'گزارش از طریق منوی اشتراک‌گذاری آماده است. واتساپ را انتخاب کنید تا فایل HTML با تصاویر و مستندات ارسال شود.'
+        );
+      } else {
+        alert(
+          `فایل «${result.fileName}» دانلود شد و واتساپ باز شد.\n\nمتن خلاصه در واتساپ آماده است — همان فایل HTML را با دکمه پیوست (📎) بفرستید تا تصاویر و جزئیات کامل دیده شوند.`
+        );
+      }
+    } catch (err: any) {
+      alert('خروجی واتساپ ناموفق بود: ' + (err?.message || err));
+    } finally {
+      setFormWhatsAppExporting(false);
     }
   };
 
@@ -15996,7 +16027,27 @@ function AppInner() {
                         <p className="text-xs text-slate-600 mt-0.5 font-mono">Form no. {archiveSelectedSub.formNumber}</p>
                       ) : null}
                     </div>
-                    <div className="flex gap-1.5 flex-shrink-0">
+                    <div className="flex gap-1.5 flex-shrink-0 flex-wrap justify-end">
+                      <button
+                        type="button"
+                        disabled={formWhatsAppExporting}
+                        onClick={() =>
+                          handleExportSubmissionWhatsApp(
+                            openFolder.name,
+                            openFolder.formDef,
+                            archiveSelectedSub
+                          )
+                        }
+                        className="px-2.5 py-1 text-xs bg-[#25D366]/10 border border-[#25D366]/40 text-[#128C7E] rounded hover:bg-[#25D366]/20 disabled:opacity-50 flex items-center gap-1"
+                        title="دانلود گزارش HTML + باز کردن واتساپ (با تصاویر و مستندات)"
+                      >
+                        {formWhatsAppExporting ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <MessageCircle className="w-3 h-3" />
+                        )}
+                        WhatsApp
+                      </button>
                       <button
                         type="button"
                         onClick={() =>
