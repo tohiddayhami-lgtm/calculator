@@ -6,11 +6,6 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
-    // Published form submission reports (WhatsApp / share links)
-    match /users/{userId}/formReports/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
     // Community shared files — all authenticated users can read; any authenticated user can upload; no overwrite
     match /community/{allPaths=**} {
       allow read: if request.auth != null;
