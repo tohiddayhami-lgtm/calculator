@@ -109,6 +109,11 @@ import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import { BuyersPanel } from './buyersUi';
 import {
+  CONTRACT_LETTERHEAD_FIT_DEFAULT,
+  CONTRACT_LETTERHEAD_FIT_MODES,
+  CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT,
+  CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MAX,
+  CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MIN,
   CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
   CONTRACT_LETTERHEAD_MARGIN_MAX,
   CONTRACT_LETTERHEAD_MARGIN_MIN,
@@ -118,12 +123,18 @@ import {
   CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
   CONTRACT_LETTERHEAD_OPACITY_MAX,
   CONTRACT_LETTERHEAD_OPACITY_MIN,
+  CONTRACT_LETTERHEAD_SCALE_DEFAULT,
+  CONTRACT_LETTERHEAD_SCALE_MAX,
+  CONTRACT_LETTERHEAD_SCALE_MIN,
   contractDocumentBodyPaddingStyle,
   contractLetterheadActive,
   contractLetterheadContentPaddingCss,
   contractLetterheadLayerStyle,
+  contractLetterheadBackgroundPosition,
+  contractLetterheadPrintBackgroundSize,
   contractLetterheadWordHtml,
   normalizeContractLetterheadFields,
+  type ContractLetterheadFitMode,
 } from './contractLetterhead';
 import {
   buyerFromInvoiceCustomer,
@@ -328,7 +339,7 @@ function buildContractAiExportEnvelope(c: ContractDef): Record<string, unknown> 
     _for_ai_models:
       'Return ONLY valid JSON. Use this envelope with a top-level "contract" object, OR return a single object with the same keys as "contract" (no _schema_version required). Preserve array order: clauses[] is the legal ladder order. Each clause needs articleNum (e.g. RECITALS, 1, 2), titleEn, titleRtl, contentEn, contentRtl. Each party, scheduleRows item, and addOns item needs a string id. You may omit id, createdAt, updatedAt on the contract root — the app assigns them on import.',
     _root_keys:
-      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, letterheadEnabled?, letterheadUrl?, letterheadOpacity? (3-45), letterheadContentMarginMm? (8-30), letterheadContentMarginTopExtraMm? (0-55), parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
+      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, letterheadEnabled?, letterheadUrl?, letterheadOpacity? (3-45), letterheadContentMarginMm? (8-30), letterheadContentMarginTopExtraMm? (0-55), letterheadContentMarginBottomExtraMm? (0-55), letterheadFitMode? ("fill"|"cover"|"contain"), letterheadScalePercent? (85-120), parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
     contract: JSON.parse(JSON.stringify(c)) as ContractDef,
   };
 }
@@ -7265,6 +7276,11 @@ function AppInner() {
                 prev.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
               letterheadContentMarginTopExtraMm:
                 prev.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
+              letterheadContentMarginBottomExtraMm:
+                prev.letterheadContentMarginBottomExtraMm ??
+                CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT,
+              letterheadFitMode: prev.letterheadFitMode ?? CONTRACT_LETTERHEAD_FIT_DEFAULT,
+              letterheadScalePercent: prev.letterheadScalePercent ?? CONTRACT_LETTERHEAD_SCALE_DEFAULT,
               updatedAt: Date.now(),
             }
           : prev
@@ -15216,6 +15232,9 @@ function AppInner() {
       letterheadOpacity: CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
       letterheadContentMarginMm: CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
       letterheadContentMarginTopExtraMm: CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
+      letterheadContentMarginBottomExtraMm: CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT,
+      letterheadFitMode: CONTRACT_LETTERHEAD_FIT_DEFAULT,
+      letterheadScalePercent: CONTRACT_LETTERHEAD_SCALE_DEFAULT,
       parties: [
         { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
         { id: 'cl_' + ts, labelEn: 'CLIENT', labelRtl: 'مشتری', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Client', aliasRtl: 'مشتری' },
@@ -15766,10 +15785,45 @@ function AppInner() {
                       Tip: 8–15% is typical for a subtle official watermark behind contract text.
                     </p>
                   </div>
-                  <div className="md:col-span-2 space-y-4">
+                  <div className="md:col-span-2 space-y-4 border-t border-slate-100 pt-4">
+                    <div>
+                      <label className={labelCls}>Letterhead on page</label>
+                      <select
+                        value={c.letterheadFitMode ?? CONTRACT_LETTERHEAD_FIT_DEFAULT}
+                        onChange={(e) =>
+                          upd({ letterheadFitMode: e.target.value as ContractLetterheadFitMode })
+                        }
+                        className={inputCls}
+                      >
+                        {CONTRACT_LETTERHEAD_FIT_MODES.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.labelEn} — {opt.labelFa}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
+                        «تمام صفحه» سربرگ را روی کل A4 می‌کشد.
+                      </p>
+                    </div>
                     <div>
                       <label className={labelCls}>
-                        Text margin ({c.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT} mm)
+                        Letterhead size ({c.letterheadScalePercent ?? CONTRACT_LETTERHEAD_SCALE_DEFAULT}%)
+                      </label>
+                      <input
+                        type="range"
+                        min={CONTRACT_LETTERHEAD_SCALE_MIN}
+                        max={CONTRACT_LETTERHEAD_SCALE_MAX}
+                        value={c.letterheadScalePercent ?? CONTRACT_LETTERHEAD_SCALE_DEFAULT}
+                        onChange={(e) => upd({ letterheadScalePercent: Number(e.target.value) })}
+                        className="w-full accent-blue-600"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
+                        اگر لبه سفید می‌ماند، بیش از ۱۰۰٪ بگذارید.
+                      </p>
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        Side margin ({c.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT} mm)
                       </label>
                       <input
                         type="range"
@@ -15780,12 +15834,12 @@ function AppInner() {
                         className="w-full accent-blue-600"
                       />
                       <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
-                        فاصله متن از لبه صفحه — سربرگ کل A4 را می‌پوشاند.
+                        حاشیه چپ و راست متن
                       </p>
                     </div>
                     <div>
                       <label className={labelCls}>
-                        Extra top margin ({c.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT} mm)
+                        Top margin ({c.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT} mm extra)
                       </label>
                       <input
                         type="range"
@@ -15796,7 +15850,28 @@ function AppInner() {
                         className="w-full accent-blue-600"
                       />
                       <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
-                        فاصله اضافه از بالا برای قرارگیری متن زیر هدر سربرگ.
+                        فاصله اضافه از بالا (علاوه بر حاشیه کناری)
+                      </p>
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        Bottom margin ({c.letterheadContentMarginBottomExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT} mm extra)
+                      </label>
+                      <input
+                        type="range"
+                        min={CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MIN}
+                        max={CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MAX}
+                        value={
+                          c.letterheadContentMarginBottomExtraMm ??
+                          CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT
+                        }
+                        onChange={(e) =>
+                          upd({ letterheadContentMarginBottomExtraMm: Number(e.target.value) })
+                        }
+                        className="w-full accent-blue-600"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
+                        فاصله اضافه از پایین (علاوه بر حاشیه کناری)
                       </p>
                     </div>
                   </div>
@@ -16016,6 +16091,8 @@ function AppInner() {
     const showLetterhead = contractLetterheadActive(c);
     const bodyPadStyle = contractDocumentBodyPaddingStyle(c);
     const lhLayerStyle = contractLetterheadLayerStyle(c);
+    const lhPrintBgSize = contractLetterheadPrintBackgroundSize(c);
+    const lhBgPos = contractLetterheadBackgroundPosition(c);
 
     return (
       <div>
@@ -16089,9 +16166,9 @@ function AppInner() {
               width: 100% !important;
               height: 100% !important;
               min-height: 0 !important;
-              background-size: 100% 100% !important;
+              background-size: var(--contract-lh-print-bg-size, 100% 100%) !important;
               background-repeat: no-repeat !important;
-              background-position: center center !important;
+              background-position: var(--contract-lh-print-bg-pos, top center) !important;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
@@ -16100,6 +16177,7 @@ function AppInner() {
         <div id="contract-preview-root"
           className={`bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none relative${showLetterhead ? ' contract-with-letterhead' : ''}`}
           style={{
+            width: showLetterhead ? '210mm' : undefined,
             maxWidth: '210mm',
             minHeight: '297mm',
             fontFamily: 'Georgia, "Times New Roman", serif',
@@ -16108,6 +16186,12 @@ function AppInner() {
             color: '#1e293b',
             WebkitPrintColorAdjust: 'exact',
             printColorAdjust: 'exact',
+            ...(showLetterhead
+              ? ({
+                  ['--contract-lh-print-bg-size' as string]: lhPrintBgSize,
+                  ['--contract-lh-print-bg-pos' as string]: lhBgPos,
+                } as React.CSSProperties)
+              : {}),
           }}>
           {showLetterhead && lhLayerStyle && (
             <div

@@ -838,10 +838,16 @@ export interface ContractDef {
   letterheadUrl?: string;
   /** Watermark strength: image opacity % (3–45). Lower = more transparent background. */
   letterheadOpacity?: number;
-  /** Text inset from page edges (mm) when letterhead is on — sides and bottom. */
+  /** Text inset from left/right page edges (mm) when letterhead is on. */
   letterheadContentMarginMm?: number;
   /** Extra top inset (mm) below letterhead header area. */
   letterheadContentMarginTopExtraMm?: number;
+  /** Extra bottom inset (mm) above page footer / letterhead footer art. */
+  letterheadContentMarginBottomExtraMm?: number;
+  /** How the letterhead image fills each A4 page: fill | cover | contain. */
+  letterheadFitMode?: 'fill' | 'cover' | 'contain';
+  /** Letterhead scale on page (%). 100 = default; use with fit mode. */
+  letterheadScalePercent?: number;
   parties: ContractParty[];
   clauses: ContractClause[];
   scheduleRows: ContractScheduleRow[];
