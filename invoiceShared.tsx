@@ -34,10 +34,17 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
   } = props;
 
   return (
-    <div className="invoice-header">
-      <div className="invoice-header__doc">
-        <h1>{invoiceTitle}</h1>
-        <div className="invoice-meta" style={{ marginTop: 8 }}>
+    <div className="invoice-header" dir="ltr" style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr minmax(140px, 300px)',
+      gap: 24,
+      alignItems: 'start',
+      width: '100%',
+      direction: 'ltr',
+    }}>
+      <div className="invoice-header__doc" style={{ gridColumn: 1, textAlign: 'left', justifySelf: 'start' }}>
+        <h1 style={{ textAlign: 'left', margin: 0 }}>{invoiceTitle}</h1>
+        <div className="invoice-meta" style={{ marginTop: 8, textAlign: 'left' }}>
           <div>
             <b>Invoice no.</b> {invoiceRef || '—'}
           </div>
@@ -52,7 +59,10 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
           {extraMeta}
         </div>
       </div>
-      <div className="invoice-header__seller seller-block">
+      <div
+        className="invoice-header__seller seller-block"
+        style={{ gridColumn: 2, textAlign: 'right', justifySelf: 'end', width: '100%' }}
+      >
         {invoiceLogo ? (
           <img
             src={invoiceLogo}
@@ -64,6 +74,7 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
               objectPosition: 'right center',
               display: 'block',
               marginLeft: 'auto',
+              marginRight: 0,
             }}
           />
         ) : null}

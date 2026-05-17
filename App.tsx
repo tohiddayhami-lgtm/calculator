@@ -12402,12 +12402,21 @@ function AppInner() {
         <table className="invoice-welte-t">
           <tbody>
             <tr>
-              <td rowSpan={3} style={{ verticalAlign: 'top', width: '46%' }}>
+              <td style={{ width: '27%' }}>{L.invoiceNoLabel}</td>
+              <td style={{ width: '27%', fontWeight: 700 }}>{invoiceRef || '—'}</td>
+              <td rowSpan={3} style={{ verticalAlign: 'top', width: '46%', textAlign: 'right' }}>
                 {invoiceLogo ? (
                   <img
                     src={invoiceLogo}
                     alt=""
-                    style={{ maxHeight: 48, maxWidth: 180, objectFit: 'contain', display: 'block', marginBottom: 4 }}
+                    style={{
+                      maxHeight: 48,
+                      maxWidth: 180,
+                      objectFit: 'contain',
+                      display: 'block',
+                      marginBottom: 4,
+                      marginLeft: 'auto',
+                    }}
                   />
                 ) : null}
                 <div>{L.sellerCaption}</div>
@@ -12422,8 +12431,6 @@ function AppInner() {
                   </div>
                 )}
               </td>
-              <td style={{ width: '27%' }}>{L.invoiceNoLabel}</td>
-              <td style={{ width: '27%', fontWeight: 700 }}>{invoiceRef || '—'}</td>
             </tr>
             <tr>
               <td>
@@ -17233,18 +17240,24 @@ function AppInner() {
         .invoice-doc .small { font-size: 8.5pt; color: #64748b; }
         .invoice-doc .muted { color: #64748b; }
         .invoice-doc .invoice-header {
-            display: flex;
-            flex-direction: row;
-            justify-content: space-between;
-            align-items: flex-start;
+            display: grid;
+            grid-template-columns: 1fr minmax(140px, 300px);
             gap: 24px;
+            align-items: start;
+            width: 100%;
             direction: ltr;
         }
-        .invoice-doc .invoice-header__doc { flex: 1; min-width: 0; text-align: left; }
+        .invoice-doc .invoice-header__doc {
+            grid-column: 1;
+            min-width: 0;
+            text-align: left;
+            justify-self: start;
+        }
         .invoice-doc .invoice-header__seller {
-            flex-shrink: 0;
-            max-width: 280px;
+            grid-column: 2;
+            max-width: 300px;
             text-align: right;
+            justify-self: end;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
