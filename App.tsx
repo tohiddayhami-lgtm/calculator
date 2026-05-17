@@ -88,6 +88,8 @@ import {
   FormAccessLevel,
   FormHeaderPreset,
   FormSubmission,
+  ServiceInvoiceLine,
+  SavedService,
   ContractDef,
   ContractClause,
   ContractParty,
@@ -96,6 +98,8 @@ import {
   ContractStatus,
   ContractRtlLang,
 } from './types';
+import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
+import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 
 function formFieldLtrTitle(f: Pick<FormField, 'label' | 'labelLtr'>): string {
   return String(f.labelLtr ?? f.label ?? '').trim();
@@ -1211,6 +1215,21 @@ const MAX_LOGISTICS_PRESETS = 30;
 
 const INVOICE_TEXT_PRESETS_STORAGE_KEY = 'exportcalc_invoice_text_presets_v1';
 const MAX_INVOICE_TEXT_PRESETS = 40;
+const SAVED_SERVICES_STORAGE_KEY = 'exportcalc_saved_services_v1';
+const MAX_SAVED_SERVICES = 200;
+
+function mergeSavedServicesLists(...lists: SavedService[][]): SavedService[] {
+  const map = new Map<string, SavedService>();
+  for (const list of lists) {
+    for (const s of list) {
+      const prev = map.get(s.id);
+      if (!prev || (s.updatedAt || 0) >= (prev.updatedAt || 0)) map.set(s.id, s);
+    }
+  }
+  return Array.from(map.values())
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, MAX_SAVED_SERVICES);
+}
 
 function parseInvoiceTextPresetsFromStorage(raw: string | null): InvoiceTextPreset[] {
   try {
@@ -4303,6 +4322,10 @@ function AppInner() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
+  const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
+  const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
+  const [savedServices, setSavedServices] = useState<SavedService[]>([]);
+  const [savedServicesReady, setSavedServicesReady] = useState(false);
 
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
@@ -4458,6 +4481,26 @@ function AppInner() {
       /* ignore */
     }
   }, [invoiceTextPresets, invoiceTextPresetsReady]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(SAVED_SERVICES_STORAGE_KEY);
+      setSavedServices(parseSavedServices(raw ? JSON.parse(raw) : []));
+    } catch {
+      setSavedServices([]);
+    }
+    setSavedServicesReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!savedServicesReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(SAVED_SERVICES_STORAGE_KEY, JSON.stringify(savedServices));
+    } catch {
+      /* ignore */
+    }
+  }, [savedServices, savedServicesReady]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -6469,7 +6512,10 @@ function AppInner() {
         invoiceDueDateMs,
         editingArchiveInvoiceId,
         researchEntries,
-        dashboardTodos
+        dashboardTodos,
+        invoiceDocKind,
+        serviceInvoiceLines,
+        savedServices
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -6663,6 +6709,12 @@ function AppInner() {
     setResearchEntries(parseResearchEntriesFromProject((project.data as any).researchEntries));
     setDashboardTodos(parseDashboardTodosFromProject((project.data as any).dashboardTodos));
     setSelectedBuyerId('');
+    const loadedKind = (project.data as any).invoiceDocKind;
+    setInvoiceDocKind(loadedKind === 'services' ? 'services' : 'products');
+    setServiceInvoiceLines(parseServiceInvoiceLines((project.data as any).serviceInvoiceLines));
+    setSavedServices((prev) =>
+      mergeSavedServicesLists(prev, parseSavedServices((project.data as any).savedServices))
+    );
 
     const packRaw = (project.data as any).packingListConfig ?? (project.data as any).priceListConfig;
     setPackingListConfig(migrateToPackingListConfig(packRaw));
@@ -7684,7 +7736,10 @@ function AppInner() {
             invoiceDueDateMs,
             editingArchiveInvoiceId,
             researchEntries,
-            dashboardTodos
+            dashboardTodos,
+            invoiceDocKind,
+            serviceInvoiceLines,
+            savedServices
           }
         };
         sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
@@ -7748,7 +7803,10 @@ function AppInner() {
     invoiceDueDateMs,
     editingArchiveInvoiceId,
     researchEntries,
-    dashboardTodos
+    dashboardTodos,
+    invoiceDocKind,
+    serviceInvoiceLines,
+    savedServices
   ]);
 
 
@@ -8034,6 +8092,8 @@ function AppInner() {
     setInvoiceOrientation('portrait');
     setInvoiceLayout('standard');
     setInvoiceWelteTrade(createDefaultInvoiceWelteTrade());
+    setInvoiceDocKind('products');
+    setServiceInvoiceLines([]);
     setPackingListConfig(createDefaultPackingListConfig());
     setCatalogConfig(createDefaultCatalogConfig());
     setImportCandidateProject(null);
@@ -12004,6 +12064,62 @@ function AppInner() {
   };
 
   const renderInvoice = () => {
+    if (invoiceDocKind === 'services') {
+      return (
+        <ServiceInvoicePanel
+          invoiceDocKind={invoiceDocKind}
+          setInvoiceDocKind={setInvoiceDocKind}
+          formatMoney={formatMoney}
+          triggerPrint={triggerPrint}
+          onOpenArchive={() => setShowArchiveModal(true)}
+          archiveCount={archivedInvoices.length}
+          lines={serviceInvoiceLines}
+          setLines={setServiceInvoiceLines}
+          savedServices={savedServices}
+          setSavedServices={setSavedServices}
+          defaultCurrency={config.outputCurrency || 'USD'}
+          invoiceTitle={invoiceTitle}
+          setInvoiceTitle={setInvoiceTitle}
+          invoiceRef={invoiceRef}
+          setInvoiceRef={setInvoiceRef}
+          invoiceIssueDateMs={invoiceIssueDateMs}
+          setInvoiceIssueDateMs={setInvoiceIssueDateMs}
+          invoiceDueDateMs={invoiceDueDateMs}
+          setInvoiceDueDateMs={setInvoiceDueDateMs}
+          formatMsForDatetimeLocal={formatMsForDatetimeLocal}
+          parseDatetimeLocalToMs={parseDatetimeLocalToMs}
+          customerName={customerName}
+          setCustomerName={setCustomerName}
+          customerAddress={customerAddress}
+          setCustomerAddress={setCustomerAddress}
+          billedFrom={billedFrom}
+          setBilledFrom={setBilledFrom}
+          billedFromDetails={billedFromDetails}
+          setBilledFromDetails={setBilledFromDetails}
+          invoiceLogo={invoiceLogo}
+          setInvoiceLogo={setInvoiceLogo}
+          invoiceSellerEmail={invoiceSellerEmail}
+          setInvoiceSellerEmail={setInvoiceSellerEmail}
+          invoiceSellerPhone={invoiceSellerPhone}
+          setInvoiceSellerPhone={setInvoiceSellerPhone}
+          invoiceSellerWebsite={invoiceSellerWebsite}
+          setInvoiceSellerWebsite={setInvoiceSellerWebsite}
+          invoiceSellerTaxId={invoiceSellerTaxId}
+          setInvoiceSellerTaxId={setInvoiceSellerTaxId}
+          paymentTerms={paymentTerms}
+          setPaymentTerms={setPaymentTerms}
+          bankDetails={bankDetails}
+          setBankDetails={setBankDetails}
+          notes={notes}
+          setNotes={setNotes}
+          invoiceOrientation={invoiceOrientation}
+          onManageSellerProfiles={() => setShowSellerProfilesModal(true)}
+          onArchiveIssued={() => void handleArchiveCurrentInvoice('issued')}
+          onArchiveDraft={() => void handleArchiveCurrentInvoice('draft')}
+        />
+      );
+    }
+
     const showPackCol = invoiceBasis === 'pack' || invoiceBasis === 'both';
     const colsPerTermFooter = invoiceBasis === 'both' ? 3 : 2;
     const fixedLeadCols = 1 + (showImages ? 1 : 0) + 1 + (showPackCol ? 1 : 0) + 2;
@@ -12476,6 +12592,7 @@ function AppInner() {
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
           {/* Controls */}
           <div className="w-full lg:w-80 bg-white border border-slate-200 rounded-lg p-4 overflow-y-auto print:hidden">
+               <InvoiceDocKindTabs kind={invoiceDocKind} setKind={setInvoiceDocKind} />
                <div className="flex items-center justify-between mb-4 gap-2">
                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-600"/> Invoice Settings</h3>
                    <button

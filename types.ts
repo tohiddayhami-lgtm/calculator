@@ -117,6 +117,26 @@ export interface InvoiceTextPreset {
   updatedAt: number;
 }
 
+/** Line on a service proforma (multi-currency). */
+export interface ServiceInvoiceLine {
+  id: string;
+  description: string;
+  qty: number;
+  unitPrice: number;
+  currency: string;
+  savedServiceId?: string;
+}
+
+/** Reusable service catalog entry for service proforma invoices. */
+export interface SavedService {
+  id: string;
+  name: string;
+  description?: string;
+  defaultUnitPrice?: number;
+  defaultCurrency?: string;
+  updatedAt: number;
+}
+
 export interface ProfitFlags {
   [key: string]: boolean;
   exw: boolean;
@@ -632,6 +652,10 @@ export interface SavedProject {
     researchEntries?: DashboardResearchEntry[];
     /** Dashboard: compact linear todo list (tasks with dates + optional file). */
     dashboardTodos?: DashboardTodoItem[];
+    /** Proforma sub-mode: goods (default) vs service invoice editor. */
+    invoiceDocKind?: 'products' | 'services';
+    serviceInvoiceLines?: ServiceInvoiceLine[];
+    savedServices?: SavedService[];
   };
 }
 
