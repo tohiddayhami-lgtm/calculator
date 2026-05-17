@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import React, { type CSSProperties, type ReactNode } from 'react';
 import type { ContractDef } from './types';
 
 export type ContractHeaderLogoLayout = 'title-left' | 'title-right' | 'banner-top' | 'corners';
@@ -293,6 +293,110 @@ export function ContractHeaderBlock({ c, rtlFont }: HeaderBlockProps): ReactNode
         {logos}
         {title}
       </div>
+    </div>
+  );
+}
+
+export type ContractLogosEditorProps = {
+  c: ContractDef;
+  onChange: (patch: Partial<ContractDef>) => void;
+  inputCls: string;
+  labelCls: string;
+};
+
+/** Contract editor: two logo URLs + placement on the printed header. */
+export function ContractLogosEditor({ c, onChange, inputCls, labelCls }: ContractLogosEditorProps) {
+  const n = normalizeContractLogoFields(c);
+  const showAlign = n.layout === 'banner-top';
+
+  return (
+    <div className="col-span-2 space-y-3 p-4 rounded-xl border border-indigo-100 bg-indigo-50/40">
+      <p className="text-xs font-bold text-indigo-900 uppercase tracking-wide" dir="rtl">
+        لوگوهای قرارداد (حداکثر ۲ لینک)
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Logo 1 URL</label>
+          <input
+            type="url"
+            value={c.logoUrl || ''}
+            onChange={(e) => onChange({ logoUrl: e.target.value })}
+            className={inputCls}
+            placeholder="https://…"
+          />
+          {n.logo1Url ? (
+            <img src={n.logo1Url} alt="" className="mt-2 h-10 object-contain max-w-[160px] border border-slate-200 rounded bg-white p-1" />
+          ) : null}
+        </div>
+        <div>
+          <label className={labelCls}>Logo 2 URL</label>
+          <input
+            type="url"
+            value={c.logo2Url || ''}
+            onChange={(e) => onChange({ logo2Url: e.target.value })}
+            className={inputCls}
+            placeholder="https://… (optional)"
+          />
+          {n.logo2Url ? (
+            <img src={n.logo2Url} alt="" className="mt-2 h-10 object-contain max-w-[160px] border border-slate-200 rounded bg-white p-1" />
+          ) : null}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label className={labelCls} dir="rtl">
+            جایگاه لوگو
+          </label>
+          <select
+            value={n.layout}
+            onChange={(e) => onChange({ contractLogoLayout: e.target.value as ContractHeaderLogoLayout })}
+            className={inputCls}
+          >
+            {CONTRACT_LOGO_LAYOUT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.labelFa}
+              </option>
+            ))}
+          </select>
+        </div>
+        {showAlign ? (
+          <div>
+            <label className={labelCls} dir="rtl">
+              تراز ردیف لوگو
+            </label>
+            <select
+              value={n.align}
+              onChange={(e) => onChange({ contractLogoAlign: e.target.value as ContractLogoAlign })}
+              className={inputCls}
+            >
+              {CONTRACT_LOGO_ALIGN_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.labelFa}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="hidden sm:block" />
+        )}
+        <div>
+          <label className={labelCls}>Logo size</label>
+          <select
+            value={n.size}
+            onChange={(e) => onChange({ contractLogoSize: e.target.value as ContractLogoSize })}
+            className={inputCls}
+          >
+            {CONTRACT_LOGO_SIZE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.labelEn} ({o.heightPx}px)
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-600 leading-snug" dir="rtl">
+        در حالت «لوگو ۱ چپ — لوگو ۲ راست» هر لوگو در گوشه‌ی سربرگ قرار می‌گیرد. پیش‌نمایش و چاپ/Word از همین تنظیمات پیروی می‌کنند.
+      </p>
     </div>
   );
 }

@@ -109,6 +109,11 @@ import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import { BuyersPanel } from './buyersUi';
 import {
+  buildContractHeaderHtml,
+  ContractHeaderBlock,
+  ContractLogosEditor,
+} from './contractLogos';
+import {
   buyerFromInvoiceCustomer,
   buyerDisplayLabel,
   buyerKindShort,
@@ -311,7 +316,7 @@ function buildContractAiExportEnvelope(c: ContractDef): Record<string, unknown> 
     _for_ai_models:
       'Return ONLY valid JSON. Use this envelope with a top-level "contract" object, OR return a single object with the same keys as "contract" (no _schema_version required). Preserve array order: clauses[] is the legal ladder order. Each clause needs articleNum (e.g. RECITALS, 1, 2), titleEn, titleRtl, contentEn, contentRtl. Each party, scheduleRows item, and addOns item needs a string id. You may omit id, createdAt, updatedAt on the contract root — the app assigns them on import.',
     _root_keys:
-      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
+      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, logo2Url?, contractLogoLayout ("title-left"|"title-right"|"banner-top"|"corners"), contractLogoAlign?, contractLogoSize?, companyName?, parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
     contract: JSON.parse(JSON.stringify(c)) as ContractDef,
   };
 }
@@ -415,6 +420,19 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
         ? inner.effectiveDate
         : new Date().toISOString().split('T')[0],
     logoUrl: typeof inner.logoUrl === 'string' ? inner.logoUrl : '',
+    logo2Url: typeof inner.logo2Url === 'string' ? inner.logo2Url : '',
+    contractLogoLayout:
+      inner.contractLogoLayout === 'title-right' ||
+      inner.contractLogoLayout === 'banner-top' ||
+      inner.contractLogoLayout === 'corners'
+        ? inner.contractLogoLayout
+        : 'title-left',
+    contractLogoAlign:
+      inner.contractLogoAlign === 'left' || inner.contractLogoAlign === 'right'
+        ? inner.contractLogoAlign
+        : 'center',
+    contractLogoSize:
+      inner.contractLogoSize === 'sm' || inner.contractLogoSize === 'lg' ? inner.contractLogoSize : 'md',
     companyName: typeof inner.companyName === 'string' ? inner.companyName : '',
     parties: partiesRaw.length ? partiesRaw.map(normParty) : [
       {
@@ -2250,10 +2268,12 @@ function buildContractWordHtml(c: ContractDef): string {
   const rtlFont = c.rtlLanguage === 'fa'
     ? 'Vazirmatn,Tahoma,Segoe UI,sans-serif'
     : 'Noto Naskh Arabic,Tahoma,Segoe UI,sans-serif';
-  const eff = c.effectiveDate
-    ? new Date(c.effectiveDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-    : '';
-  const logoSrc = c.logoUrl && safeCatalogMediaUrl(c.logoUrl) ? escapeAttr(c.logoUrl) : '';
+  const cForMedia: ContractDef = {
+    ...c,
+    logoUrl: c.logoUrl && safeCatalogMediaUrl(c.logoUrl) ? c.logoUrl : '',
+    logo2Url: c.logo2Url && safeCatalogMediaUrl(c.logo2Url) ? c.logo2Url : '',
+  };
+  const headerHtml = buildContractHeaderHtml(cForMedia, rtlFont);
 
   const partiesRows = c.parties
     .map(
@@ -2362,16 +2382,7 @@ function buildContractWordHtml(c: ContractDef): string {
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
 <style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6}</style>
 </head><body>
-<div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:12px">
-  ${logoSrc ? `<img src="${logoSrc}" alt="" style="max-height:48px;margin-bottom:8px"/>` : ''}
-  <div style="font-size:13pt;font-weight:bold">${escapeHtml(c.titleEn)}</div>
-  ${c.titleRtl ? `<div style="font-size:12pt;font-weight:600;color:#334155" dir="rtl">${escapeHtml(c.titleRtl)}</div>` : ''}
-  ${c.subtitleEn ? `<div style="font-size:10pt;font-style:italic;color:#64748b;margin-top:4px">${escapeHtml(c.subtitleEn)}</div>` : ''}
-  ${c.subtitleRtl ? `<div style="font-size:10pt;font-style:italic;color:#64748b" dir="rtl">${escapeHtml(c.subtitleRtl)}</div>` : ''}
-  <div style="font-size:9pt;color:#64748b;margin-top:8px">
-    ${c.refNo ? `Ref. ${escapeHtml(c.refNo)}` : ''}${c.refNo && eff ? ' | ' : ''}${eff ? `Date: ${escapeHtml(eff)}` : ''}
-  </div>
-</div>
+${headerHtml}
 ${c.parties.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr><th colspan="2" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">THE PARTIES / طرفین قرارداد</th></tr></thead><tbody>${partiesRows}</tbody></table>` : ''}
 ${clauseBlocks}
 ${scheduleHtml}
@@ -15146,6 +15157,10 @@ function AppInner() {
       subtitleRtl: '',
       effectiveDate: new Date().toISOString().split('T')[0],
       logoUrl: '',
+      logo2Url: '',
+      contractLogoLayout: 'title-left',
+      contractLogoAlign: 'center',
+      contractLogoSize: 'md',
       companyName: '',
       parties: [
         { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
@@ -15176,6 +15191,10 @@ function AppInner() {
       subtitleRtl: 'توحید متا پورت — غرفه‌های صادراتی متاورسی',
       effectiveDate: new Date().toISOString().split('T')[0],
       logoUrl: '',
+      logo2Url: '',
+      contractLogoLayout: 'corners',
+      contractLogoAlign: 'center',
+      contractLogoSize: 'md',
       companyName: 'Tohid Dayhami Business Solutions Center SPC',
       parties: [
         {
@@ -15624,10 +15643,7 @@ function AppInner() {
                 <label className={labelCls}>Company Name</label>
                 <input value={c.companyName || ''} onChange={e => upd({ companyName: e.target.value })} className={inputCls} placeholder="Your company name" />
               </div>
-              <div>
-                <label className={labelCls}>Logo URL</label>
-                <input value={c.logoUrl || ''} onChange={e => upd({ logoUrl: e.target.value })} className={inputCls} placeholder="https://..." />
-              </div>
+              <ContractLogosEditor c={c} onChange={upd} inputCls={inputCls} labelCls={labelCls} />
               <div>
                 <label className={labelCls}>RTL Column Language</label>
                 <select value={c.rtlLanguage} onChange={e => upd({ rtlLanguage: e.target.value as ContractRtlLang })} className={inputCls}>
@@ -15921,22 +15937,7 @@ function AppInner() {
           }}>
 
           {/* Header */}
-          <div className="border-b-2 border-slate-800 p-6 pb-4">
-            <div className="flex items-start gap-4">
-              {c.logoUrl && <img src={c.logoUrl} alt="Logo" className="h-12 object-contain flex-shrink-0" />}
-              <div className="flex-1 text-center">
-                <div className="text-[11pt] font-bold tracking-wide mb-0.5">{c.titleEn}</div>
-                {c.titleRtl && <div className="text-[10.5pt] font-semibold text-slate-700" dir="rtl" style={{ fontFamily: rtlFont }}>{c.titleRtl}</div>}
-                {c.subtitleEn && <div className="text-[9pt] italic text-slate-500 mt-1">{c.subtitleEn}</div>}
-                {c.subtitleRtl && <div className="text-[9pt] italic text-slate-500" dir="rtl" style={{ fontFamily: rtlFont }}>{c.subtitleRtl}</div>}
-              </div>
-            </div>
-            <div className="text-center text-[8.5pt] text-slate-500 mt-3 space-x-2">
-              {c.refNo && <span>Ref. No. {c.refNo}</span>}
-              {c.refNo && c.effectiveDate && <span>|</span>}
-              {c.effectiveDate && <span>Date: {new Date(c.effectiveDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>}
-            </div>
-          </div>
+          <ContractHeaderBlock c={c} rtlFont={rtlFont} />
 
           {/* Parties */}
           {c.parties.length > 0 && (

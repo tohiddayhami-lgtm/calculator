@@ -831,7 +831,15 @@ export interface ContractDef {
   subtitleEn: string;
   subtitleRtl: string;
   effectiveDate: string;
+  /** Logo 1 image URL (link). */
   logoUrl?: string;
+  /** Logo 2 image URL (link). */
+  logo2Url?: string;
+  /** Header logo placement relative to contract title. */
+  contractLogoLayout?: 'title-left' | 'title-right' | 'banner-top' | 'corners';
+  /** Row alignment when logos are above the title. */
+  contractLogoAlign?: 'left' | 'center' | 'right';
+  contractLogoSize?: 'sm' | 'md' | 'lg';
   companyName?: string;
   parties: ContractParty[];
   clauses: ContractClause[];
