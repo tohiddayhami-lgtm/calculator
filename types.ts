@@ -833,6 +833,11 @@ export interface ContractDef {
   effectiveDate: string;
   logoUrl?: string;
   companyName?: string;
+  /** Optional full-page A4 letterhead image behind contract pages (print / preview). */
+  letterheadEnabled?: boolean;
+  letterheadUrl?: string;
+  /** Watermark strength: image opacity % (3–45). Lower = more transparent background. */
+  letterheadOpacity?: number;
   parties: ContractParty[];
   clauses: ContractClause[];
   scheduleRows: ContractScheduleRow[];

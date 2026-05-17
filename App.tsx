@@ -109,6 +109,15 @@ import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import { BuyersPanel } from './buyersUi';
 import {
+  CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
+  CONTRACT_LETTERHEAD_OPACITY_MAX,
+  CONTRACT_LETTERHEAD_OPACITY_MIN,
+  contractLetterheadActive,
+  contractLetterheadOpacityCss,
+  contractLetterheadWordHtml,
+  normalizeContractLetterheadFields,
+} from './contractLetterhead';
+import {
   buyerFromInvoiceCustomer,
   buyerDisplayLabel,
   buyerKindShort,
@@ -311,7 +320,7 @@ function buildContractAiExportEnvelope(c: ContractDef): Record<string, unknown> 
     _for_ai_models:
       'Return ONLY valid JSON. Use this envelope with a top-level "contract" object, OR return a single object with the same keys as "contract" (no _schema_version required). Preserve array order: clauses[] is the legal ladder order. Each clause needs articleNum (e.g. RECITALS, 1, 2), titleEn, titleRtl, contentEn, contentRtl. Each party, scheduleRows item, and addOns item needs a string id. You may omit id, createdAt, updatedAt on the contract root — the app assigns them on import.',
     _root_keys:
-      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
+      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, letterheadEnabled?, letterheadUrl?, letterheadOpacity? (3-45), parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
     contract: JSON.parse(JSON.stringify(c)) as ContractDef,
   };
 }
@@ -403,7 +412,7 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
       : `REF-${y}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
 
   const now = Date.now();
-  return {
+  const merged: ContractDef = {
     id: typeof inner.id === 'string' && inner.id ? inner.id : String(now),
     refNo,
     titleEn: String(inner.titleEn ?? 'SERVICES AGREEMENT'),
@@ -416,6 +425,12 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
         : new Date().toISOString().split('T')[0],
     logoUrl: typeof inner.logoUrl === 'string' ? inner.logoUrl : '',
     companyName: typeof inner.companyName === 'string' ? inner.companyName : '',
+    letterheadEnabled: inner.letterheadEnabled === true,
+    letterheadUrl: typeof inner.letterheadUrl === 'string' ? inner.letterheadUrl : '',
+    letterheadOpacity:
+      inner.letterheadOpacity !== undefined && inner.letterheadOpacity !== null
+        ? Number(inner.letterheadOpacity)
+        : CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
     parties: partiesRaw.length ? partiesRaw.map(normParty) : [
       {
         id: nid(),
@@ -456,6 +471,7 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
     createdAt: typeof inner.createdAt === 'number' ? inner.createdAt : now,
     updatedAt: now,
   };
+  return { ...merged, ...normalizeContractLetterheadFields(merged) };
 }
 
 function downloadJsonFile(filename: string, data: unknown) {
@@ -2356,12 +2372,16 @@ function buildContractWordHtml(c: ContractDef): string {
     )
     .join('');
 
+  const letterheadBg = contractLetterheadWordHtml(c);
+
   return `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="en">
 <head><meta charset="utf-8"><title>${escapeHtml(c.titleEn)}</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6}</style>
+<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6;position:relative}</style>
 </head><body>
+${letterheadBg}
+<div style="position:relative;z-index:1">
 <div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:12px">
   ${logoSrc ? `<img src="${logoSrc}" alt="" style="max-height:48px;margin-bottom:8px"/>` : ''}
   <div style="font-size:13pt;font-weight:bold">${escapeHtml(c.titleEn)}</div>
@@ -2377,6 +2397,7 @@ ${clauseBlocks}
 ${scheduleHtml}
 <table style="width:100%;border-collapse:collapse;margin-top:20px"><thead><tr><th colspan="${sigParties.length}" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">IN WITNESS WHEROF / امضای طرفین</th></tr></thead><tbody><tr>${sigCells}</tr></tbody></table>
 <p style="text-align:center;font-size:9pt;color:#94a3b8;margin-top:16px">${escapeHtml(c.titleEn)}${c.refNo ? ` | Ref. ${escapeHtml(c.refNo)}` : ''}</p>
+</div>
 </body></html>`;
 }
 
@@ -7208,6 +7229,32 @@ function AppInner() {
         };
         reader.readAsDataURL(file);
     }
+  };
+
+  const handleContractLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) {
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const raw = reader.result as string;
+      const compressed = await compressImage(raw, 1240, 0.88);
+      setEditingContract((prev) =>
+        prev
+          ? {
+              ...prev,
+              letterheadUrl: compressed,
+              letterheadEnabled: true,
+              letterheadOpacity: prev.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
+              updatedAt: Date.now(),
+            }
+          : prev
+      );
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleInvoiceLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -15147,6 +15194,9 @@ function AppInner() {
       effectiveDate: new Date().toISOString().split('T')[0],
       logoUrl: '',
       companyName: '',
+      letterheadEnabled: false,
+      letterheadUrl: '',
+      letterheadOpacity: CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
       parties: [
         { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
         { id: 'cl_' + ts, labelEn: 'CLIENT', labelRtl: 'مشتری', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Client', aliasRtl: 'مشتری' },
@@ -15636,6 +15686,70 @@ function AppInner() {
                 </select>
               </div>
             </div>
+
+            <div className="mt-6 pt-5 border-t border-slate-200">
+              <label className="flex items-start gap-2 cursor-pointer mb-3">
+                <input
+                  type="checkbox"
+                  checked={!!c.letterheadEnabled}
+                  onChange={(e) => upd({ letterheadEnabled: e.target.checked })}
+                  className="mt-0.5 rounded border-slate-300 text-blue-600"
+                />
+                <span>
+                  <span className="text-sm font-semibold text-slate-800 block">A4 letterhead background (optional)</span>
+                  <span className="text-xs text-slate-500" dir="rtl">
+                    تصویر سربرگ A4 در پشت صفحه — برای چاپ و پیش‌نمایش رسمی‌تر
+                  </span>
+                </span>
+              </label>
+              {c.letterheadEnabled && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                  <div>
+                    <label className={labelCls}>Letterhead image (PNG/JPG, A4 ratio)</label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold border border-slate-200 rounded-lg px-3 py-2 bg-white hover:bg-slate-50 cursor-pointer">
+                        <Upload className="w-3.5 h-3.5" /> Upload
+                        <input type="file" accept="image/*" className="hidden" onChange={handleContractLetterheadUpload} />
+                      </label>
+                      {c.letterheadUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => upd({ letterheadUrl: '', letterheadEnabled: false })}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                    {c.letterheadUrl ? (
+                      <img
+                        src={c.letterheadUrl}
+                        alt="Letterhead preview"
+                        className="mt-2 max-h-28 w-full object-contain border border-slate-200 rounded bg-slate-50"
+                      />
+                    ) : (
+                      <p className="text-[11px] text-amber-700 mt-2">Upload an image to enable the watermark in preview/print.</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className={labelCls}>
+                      Background strength ({c.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT}% — lower = more transparent)
+                    </label>
+                    <input
+                      type="range"
+                      min={CONTRACT_LETTERHEAD_OPACITY_MIN}
+                      max={CONTRACT_LETTERHEAD_OPACITY_MAX}
+                      value={c.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT}
+                      onChange={(e) => upd({ letterheadOpacity: Number(e.target.value) })}
+                      className="w-full accent-blue-600"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Tip: 8–15% is typical for a subtle official watermark behind contract text.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -15846,6 +15960,8 @@ function AppInner() {
     const rtlFont = c.rtlLanguage === 'fa'
       ? 'Vazirmatn, Tahoma, "Segoe UI", sans-serif'
       : '"Noto Naskh Arabic", Tahoma, "Segoe UI", sans-serif';
+    const showLetterhead = contractLetterheadActive(c);
+    const letterheadOp = contractLetterheadOpacityCss(c);
 
     return (
       <div>
@@ -15906,12 +16022,34 @@ function AppInner() {
               visibility: hidden !important;
             }
             @page { size: A4; margin: 15mm; }
+            .contract-letterhead-watermark {
+              position: fixed !important;
+              left: 0;
+              top: 0;
+              width: 100%;
+              height: 100%;
+              z-index: 0;
+              pointer-events: none;
+              display: flex !important;
+              align-items: center;
+              justify-content: center;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .contract-letterhead-watermark img {
+              width: 100%;
+              height: 100%;
+              max-width: 210mm;
+              object-fit: contain;
+              object-position: center center;
+            }
           }
         `}</style>
         <div id="contract-preview-root"
-          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none"
+          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none relative"
           style={{
             maxWidth: '210mm',
+            minHeight: '297mm',
             fontFamily: 'Georgia, "Times New Roman", serif',
             fontSize: '9.5pt',
             lineHeight: '1.65',
@@ -15919,7 +16057,19 @@ function AppInner() {
             WebkitPrintColorAdjust: 'exact',
             printColorAdjust: 'exact',
           }}>
-
+          {showLetterhead && c.letterheadUrl && (
+            <div
+              className="contract-letterhead-watermark print:block absolute inset-0 flex items-center justify-center pointer-events-none z-0"
+              aria-hidden
+            >
+              <img
+                src={c.letterheadUrl}
+                alt=""
+                style={{ opacity: letterheadOp, width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            </div>
+          )}
+          <div className="relative z-[1]">
           {/* Header */}
           <div className="border-b-2 border-slate-800 p-6 pb-4">
             <div className="flex items-start gap-4">
@@ -16113,6 +16263,7 @@ function AppInner() {
           {/* Footer */}
           <div style={{ borderTop: '1px solid #e2e8f0', padding: '8px 14px', textAlign: 'center', fontSize: '8pt', color: '#94a3b8' }}>
             {c.titleEn}{c.refNo ? ` | Ref. ${c.refNo}` : ''}{c.effectiveDate ? ` | ${c.effectiveDate}` : ''}
+          </div>
           </div>
         </div>
       </div>
