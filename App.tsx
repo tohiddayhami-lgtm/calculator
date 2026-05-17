@@ -424,7 +424,8 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
     contractLogoLayout:
       inner.contractLogoLayout === 'title-right' ||
       inner.contractLogoLayout === 'banner-top' ||
-      inner.contractLogoLayout === 'corners'
+      inner.contractLogoLayout === 'corners' ||
+      inner.contractLogoLayout === 'corners-mirror'
         ? inner.contractLogoLayout
         : 'title-left',
     contractLogoAlign:
@@ -433,6 +434,23 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
         : 'center',
     contractLogoSize:
       inner.contractLogoSize === 'sm' || inner.contractLogoSize === 'lg' ? inner.contractLogoSize : 'md',
+    contractLogoSpread: inner.contractLogoSpread === 'compact' ? 'compact' : 'wide',
+    contractLogoGapPx:
+      typeof inner.contractLogoGapPx === 'number' && Number.isFinite(inner.contractLogoGapPx)
+        ? Math.round(inner.contractLogoGapPx)
+        : undefined,
+    contractLogoInsetPx:
+      typeof inner.contractLogoInsetPx === 'number' && Number.isFinite(inner.contractLogoInsetPx)
+        ? Math.round(inner.contractLogoInsetPx)
+        : undefined,
+    contractLogo1Side:
+      inner.contractLogo1Side === 'left' || inner.contractLogo1Side === 'center' || inner.contractLogo1Side === 'right'
+        ? inner.contractLogo1Side
+        : 'left',
+    contractLogo2Side:
+      inner.contractLogo2Side === 'left' || inner.contractLogo2Side === 'center' || inner.contractLogo2Side === 'right'
+        ? inner.contractLogo2Side
+        : 'right',
     companyName: typeof inner.companyName === 'string' ? inner.companyName : '',
     parties: partiesRaw.length ? partiesRaw.map(normParty) : [
       {
@@ -15161,6 +15179,11 @@ function AppInner() {
       contractLogoLayout: 'title-left',
       contractLogoAlign: 'center',
       contractLogoSize: 'md',
+      contractLogoSpread: 'wide',
+      contractLogoGapPx: 32,
+      contractLogoInsetPx: 0,
+      contractLogo1Side: 'left',
+      contractLogo2Side: 'right',
       companyName: '',
       parties: [
         { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
@@ -15922,10 +15945,17 @@ function AppInner() {
               visibility: hidden !important;
             }
             @page { size: A4; margin: 15mm; }
+            #contract-preview-root .contract-clause-table {
+              page-break-inside: auto !important;
+              break-inside: auto !important;
+            }
+            #contract-preview-root .contract-clause-table thead {
+              display: table-header-group;
+            }
           }
         `}</style>
         <div id="contract-preview-root"
-          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none"
+          className="bg-white mx-auto shadow-lg rounded-xl overflow-visible print:shadow-none print:rounded-none"
           style={{
             maxWidth: '210mm',
             fontFamily: 'Georgia, "Times New Roman", serif',

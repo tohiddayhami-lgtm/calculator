@@ -836,10 +836,20 @@ export interface ContractDef {
   /** Logo 2 image URL (link). */
   logo2Url?: string;
   /** Header logo placement relative to contract title. */
-  contractLogoLayout?: 'title-left' | 'title-right' | 'banner-top' | 'corners';
+  contractLogoLayout?: 'title-left' | 'title-right' | 'banner-top' | 'corners' | 'corners-mirror';
   /** Row alignment when logos are above the title. */
   contractLogoAlign?: 'left' | 'center' | 'right';
   contractLogoSize?: 'sm' | 'md' | 'lg';
+  /** When two logos: compact row vs opposite page edges. */
+  contractLogoSpread?: 'compact' | 'wide';
+  /** Gap between logos in compact mode (px). */
+  contractLogoGapPx?: number;
+  /** Padding from left/right page edge for logo row (px). */
+  contractLogoInsetPx?: number;
+  /** Horizontal placement of logo 1 in compact banner row. */
+  contractLogo1Side?: 'left' | 'center' | 'right';
+  /** Horizontal placement of logo 2 in compact banner row. */
+  contractLogo2Side?: 'left' | 'center' | 'right';
   companyName?: string;
   parties: ContractParty[];
   clauses: ContractClause[];
