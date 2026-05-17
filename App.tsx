@@ -13397,6 +13397,7 @@ function AppInner() {
                                ? 'invoice-landscape-page invoice-doc--landscape'
                                : 'invoice-doc--portrait'
                    }`}
+                   dir="ltr"
                    style={{ display: 'flex', flexDirection: 'column', ...invoiceThemeStyle(invoiceAccentColor) }}
                >
                    {invoiceLayout === 'welte' ? (
@@ -17239,29 +17240,36 @@ function AppInner() {
         .invoice-doc h3 { font-size: 7.5pt; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #64748b; margin: 0 0 4px; }
         .invoice-doc .small { font-size: 8.5pt; color: #64748b; }
         .invoice-doc .muted { color: #64748b; }
+        .invoice-doc {
+            direction: ltr;
+            unicode-bidi: isolate;
+        }
         .invoice-doc .invoice-header {
-            display: grid;
-            grid-template-columns: 1fr minmax(140px, 300px);
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: flex-start;
             gap: 24px;
-            align-items: start;
             width: 100%;
             direction: ltr;
+            unicode-bidi: isolate;
         }
         .invoice-doc .invoice-header__doc {
-            grid-column: 1;
+            flex: 1 1 auto;
             min-width: 0;
             text-align: left;
-            justify-self: start;
+            order: 1;
         }
         .invoice-doc .invoice-header__seller {
-            grid-column: 2;
+            flex: 0 0 auto;
             max-width: 300px;
             text-align: right;
-            justify-self: end;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
             gap: 6px;
+            order: 2;
+            margin-left: auto;
         }
         .invoice-doc .accent-bar {
             height: 3px;

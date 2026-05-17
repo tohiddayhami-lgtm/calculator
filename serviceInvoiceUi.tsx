@@ -526,6 +526,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
           className={`invoice-doc shadow-md mx-auto print:shadow-none invoice-doc--portrait ${
             invoiceOrientation === 'landscape' ? 'invoice-landscape-page invoice-doc--landscape' : ''
           }`}
+          dir="ltr"
           style={{ display: 'flex', flexDirection: 'column', ...invoiceThemeStyle(invoiceAccentColor) }}
         >
           <InvoiceHeaderRow

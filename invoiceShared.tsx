@@ -17,6 +17,9 @@ export type InvoiceHeaderProps = {
   invoiceSellerTaxId: string;
 };
 
+/**
+ * Fixed LTR header: invoice title & meta on the LEFT, logo & seller on the RIGHT.
+ */
 export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
   const {
     invoiceTitle,
@@ -34,15 +37,21 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
   } = props;
 
   return (
-    <div className="invoice-header" dir="ltr" style={{
-      display: 'grid',
-      gridTemplateColumns: '1fr minmax(140px, 300px)',
-      gap: 24,
-      alignItems: 'start',
-      width: '100%',
-      direction: 'ltr',
-    }}>
-      <div className="invoice-header__doc" style={{ gridColumn: 1, textAlign: 'left', justifySelf: 'start' }}>
+    <div
+      className="invoice-header"
+      dir="ltr"
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: 24,
+        width: '100%',
+        direction: 'ltr',
+        unicodeBidi: 'isolate',
+      }}
+    >
+      <div className="invoice-header__doc" style={{ flex: '1 1 auto', minWidth: 0, textAlign: 'left' }}>
         <h1 style={{ textAlign: 'left', margin: 0 }}>{invoiceTitle}</h1>
         <div className="invoice-meta" style={{ marginTop: 8, textAlign: 'left' }}>
           <div>
@@ -59,9 +68,10 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
           {extraMeta}
         </div>
       </div>
+
       <div
         className="invoice-header__seller seller-block"
-        style={{ gridColumn: 2, textAlign: 'right', justifySelf: 'end', width: '100%' }}
+        style={{ flex: '0 0 auto', maxWidth: 300, textAlign: 'right', marginLeft: 24 }}
       >
         {invoiceLogo ? (
           <img
@@ -189,3 +199,4 @@ export function InvoiceCustomerEditor({
     </div>
   );
 }
+
