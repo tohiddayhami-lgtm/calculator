@@ -17,9 +17,7 @@ export type InvoiceHeaderProps = {
   invoiceSellerTaxId: string;
 };
 
-/**
- * Fixed LTR header: invoice title & meta on the LEFT, logo & seller on the RIGHT.
- */
+/** Logo & seller LEFT, invoice title & meta RIGHT. */
 export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
   const {
     invoiceTitle,
@@ -51,27 +49,9 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
         unicodeBidi: 'isolate',
       }}
     >
-      <div className="invoice-header__doc" style={{ flex: '1 1 auto', minWidth: 0, textAlign: 'left' }}>
-        <h1 style={{ textAlign: 'left', margin: 0 }}>{invoiceTitle}</h1>
-        <div className="invoice-meta" style={{ marginTop: 8, textAlign: 'left' }}>
-          <div>
-            <b>Invoice no.</b> {invoiceRef || '—'}
-          </div>
-          <div>
-            <b>Date</b> {new Date(invoiceIssueDateMs || Date.now()).toLocaleString()}
-          </div>
-          {invoiceDueDateMs ? (
-            <div>
-              <b>Due</b> {new Date(invoiceDueDateMs).toLocaleString()}
-            </div>
-          ) : null}
-          {extraMeta}
-        </div>
-      </div>
-
       <div
         className="invoice-header__seller seller-block"
-        style={{ flex: '0 0 auto', maxWidth: 300, textAlign: 'right', marginLeft: 24 }}
+        style={{ flex: '0 0 auto', maxWidth: 300, textAlign: 'left', order: 1 }}
       >
         {invoiceLogo ? (
           <img
@@ -81,10 +61,10 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
               maxHeight: 56,
               maxWidth: 200,
               objectFit: 'contain',
-              objectPosition: 'right center',
+              objectPosition: 'left center',
               display: 'block',
-              marginLeft: 'auto',
-              marginRight: 0,
+              marginLeft: 0,
+              marginRight: 'auto',
             }}
           />
         ) : null}
@@ -100,6 +80,24 @@ export function InvoiceHeaderRow(props: InvoiceHeaderProps) {
         {invoiceSellerTaxId ? (
           <div style={{ marginTop: 2, color: '#0f172a', fontWeight: 600 }}>Tax / VAT: {invoiceSellerTaxId}</div>
         ) : null}
+      </div>
+
+      <div className="invoice-header__doc" style={{ flex: '1 1 auto', minWidth: 0, textAlign: 'right', order: 2 }}>
+        <h1 style={{ textAlign: 'right', margin: 0 }}>{invoiceTitle}</h1>
+        <div className="invoice-meta" style={{ marginTop: 8, textAlign: 'right' }}>
+          <div>
+            <b>Invoice no.</b> {invoiceRef || '—'}
+          </div>
+          <div>
+            <b>Date</b> {new Date(invoiceIssueDateMs || Date.now()).toLocaleString()}
+          </div>
+          {invoiceDueDateMs ? (
+            <div>
+              <b>Due</b> {new Date(invoiceDueDateMs).toLocaleString()}
+            </div>
+          ) : null}
+          {extraMeta}
+        </div>
       </div>
     </div>
   );
@@ -199,4 +197,6 @@ export function InvoiceCustomerEditor({
     </div>
   );
 }
+
+
 

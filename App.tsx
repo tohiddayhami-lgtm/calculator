@@ -12402,9 +12402,7 @@ function AppInner() {
         <table className="invoice-welte-t">
           <tbody>
             <tr>
-              <td style={{ width: '27%' }}>{L.invoiceNoLabel}</td>
-              <td style={{ width: '27%', fontWeight: 700 }}>{invoiceRef || '—'}</td>
-              <td rowSpan={3} style={{ verticalAlign: 'top', width: '46%', textAlign: 'right' }}>
+              <td rowSpan={3} style={{ verticalAlign: 'top', width: '46%', textAlign: 'left' }}>
                 {invoiceLogo ? (
                   <img
                     src={invoiceLogo}
@@ -12415,7 +12413,6 @@ function AppInner() {
                       objectFit: 'contain',
                       display: 'block',
                       marginBottom: 4,
-                      marginLeft: 'auto',
                     }}
                   />
                 ) : null}
@@ -12431,12 +12428,14 @@ function AppInner() {
                   </div>
                 )}
               </td>
+              <td style={{ width: '27%', textAlign: 'right' }}>{L.invoiceNoLabel}</td>
+              <td style={{ width: '27%', fontWeight: 700, textAlign: 'right' }}>{invoiceRef || '—'}</td>
             </tr>
             <tr>
-              <td>
+              <td style={{ textAlign: 'right' }}>
                 {L.invoiceDateLabel} {formatWelteDate(invoiceIssueDateMs) || '—'}
               </td>
-              <td>
+              <td style={{ textAlign: 'right' }}>
                 {L.invoiceValidityLabel} {invoiceDueDateMs ? formatWelteDate(invoiceDueDateMs) : '—'}
               </td>
             </tr>
@@ -17254,20 +17253,20 @@ function AppInner() {
             direction: ltr;
             unicode-bidi: isolate;
         }
-        .invoice-doc .invoice-header__doc {
-            flex: 1 1 auto;
-            min-width: 0;
-            text-align: left;
-            order: 1;
-        }
         .invoice-doc .invoice-header__seller {
             flex: 0 0 auto;
             max-width: 300px;
-            text-align: right;
+            text-align: left;
             display: flex;
             flex-direction: column;
-            align-items: flex-end;
+            align-items: flex-start;
             gap: 6px;
+            order: 1;
+        }
+        .invoice-doc .invoice-header__doc {
+            flex: 1 1 auto;
+            min-width: 0;
+            text-align: right;
             order: 2;
             margin-left: auto;
         }
@@ -17335,7 +17334,7 @@ function AppInner() {
         }
         .invoice-doc .info-card h3 { margin-bottom: 3px; }
         .invoice-doc .seller-block {
-            text-align: right;
+            text-align: left;
             font-size: 8.5pt;
             line-height: 1.5;
             color: #334155;
