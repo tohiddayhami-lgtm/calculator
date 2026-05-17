@@ -4351,6 +4351,9 @@ function AppInner() {
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
   const [savedServices, setSavedServices] = useState<SavedService[]>([]);
   const [savedServicesReady, setSavedServicesReady] = useState(false);
+  const [buyers, setBuyers] = useState<Buyer[]>([]);
+  const [buyersReady, setBuyersReady] = useState(false);
+  const [selectedBuyerId, setSelectedBuyerId] = useState<number | ''>('');
 
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
@@ -4573,8 +4576,6 @@ function AppInner() {
   }, [contracts]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [buyers, setBuyers] = useState<Buyer[]>([]);
-  const [selectedBuyerId, setSelectedBuyerId] = useState<number | ''>('');
 
   // -- STATE: DOCUMENT SETTINGS (INVOICE/CATALOG/PRICELIST) --
   const [selectedTerms, setSelectedTerms] = useState<string[]>(['FOB', 'DDP']); 
@@ -4596,7 +4597,6 @@ function AppInner() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [invoiceAccentColor, setInvoiceAccentColor] = useState('#0f172a');
-  const [buyersReady, setBuyersReady] = useState(false);
   const [billedFrom, setBilledFrom] = useState('');
   const [billedFromDetails, setBilledFromDetails] = useState('');
   const [invoiceLogo, setInvoiceLogo] = useState('');
@@ -5859,6 +5859,23 @@ function AppInner() {
     setSelectedBuyerId('');
   };
 
+  /** Fill the Proforma Invoice fields from a saved Buyer. */
+  const applyBuyerToInvoice = (buyer: Buyer | undefined | null) => {
+      if (!buyer) return;
+      const b = normalizeBuyerRecord(buyer);
+      applyInvoiceCustomerToState(invoiceCustomerFromBuyer(b));
+      setSelectedBuyerId(b.id);
+      if (buyer.paymentTerms) setPaymentTerms(buyer.paymentTerms);
+      if (buyer.incoterm) {
+          const term = String(buyer.incoterm).toUpperCase().trim();
+          if (['EXW', 'FOB', 'CIF', 'DDP', 'FCA'].includes(term)) {
+              setInvoiceTerms((prev) => (prev.includes(term) ? prev : [term, ...prev]));
+              setSelectedTerms((prev) => (prev.includes(term) ? prev : [...prev, term]));
+          }
+      }
+      setBuyers((prev) => prev.map((b) => (b.id === buyer.id ? { ...b, lastOrderAt: Date.now() } : b)));
+  };
+
   const renderInvoiceBuyerPicker = () =>
     buyers.length > 0 ? (
       <div className="mb-2 flex gap-1">
@@ -5896,23 +5913,6 @@ function AppInner() {
         </button>
       </div>
     ) : null;
-
-  /** Fill the Proforma Invoice fields from a saved Buyer. */
-  const applyBuyerToInvoice = (buyer: Buyer | undefined | null) => {
-      if (!buyer) return;
-      const b = normalizeBuyerRecord(buyer);
-      applyInvoiceCustomerToState(invoiceCustomerFromBuyer(b));
-      setSelectedBuyerId(b.id);
-      if (buyer.paymentTerms) setPaymentTerms(buyer.paymentTerms);
-      if (buyer.incoterm) {
-          const term = String(buyer.incoterm).toUpperCase().trim();
-          if (['EXW', 'FOB', 'CIF', 'DDP', 'FCA'].includes(term)) {
-              setInvoiceTerms((prev) => (prev.includes(term) ? prev : [term, ...prev]));
-              setSelectedTerms((prev) => (prev.includes(term) ? prev : [...prev, term]));
-          }
-      }
-      setBuyers((prev) => prev.map((b) => (b.id === buyer.id ? { ...b, lastOrderAt: Date.now() } : b)));
-  };
 
   /** Snapshot current invoice "Bill To" form values into a new Buyer record. */
   const handleSaveCurrentBuyer = () => {
