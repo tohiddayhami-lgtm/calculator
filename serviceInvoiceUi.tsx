@@ -9,12 +9,17 @@ import {
   Trash2,
   Layers,
   Package,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   SERVICE_INVOICE_CURRENCIES,
   createEmptyServiceLine,
   lineFromSavedService,
+  normalizeServiceLine,
   savedServiceFromLine,
+  serviceLineHasDetailNotes,
+  serviceLineInvoiceDescription,
   serviceLineTotal,
   totalsByCurrency,
   type SavedService,
@@ -175,7 +180,17 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
   const sortedCurrencies = Object.keys(currencyTotals).sort();
 
   const updateLine = (id: string, patch: Partial<ServiceInvoiceLine>) => {
-    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+    setLines((prev) => prev.map((l) => (l.id === id ? normalizeServiceLine({ ...l, ...patch }) : l)));
+  };
+
+  const toggleLineDetails = (id: string) => {
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l;
+        const n = normalizeServiceLine(l);
+        return { ...n, detailsOpen: !n.detailsOpen };
+      })
+    );
   };
 
   const removeLine = (id: string) => {
@@ -343,8 +358,12 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
           </div>
 
           {lines.length > 0 && (
-            <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-100 rounded-lg p-2">
-              {lines.map((line, idx) => (
+            <div className="space-y-2 max-h-72 overflow-y-auto border border-slate-100 rounded-lg p-2">
+              {lines.map((line, idx) => {
+                const row = normalizeServiceLine(line);
+                const notesOpen = !!row.detailsOpen;
+                const hasNotes = serviceLineHasDetailNotes(row);
+                return (
                 <div key={line.id} className="text-[10px] border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                   <div className="flex justify-between gap-1 mb-1">
                     <span className="font-semibold text-slate-600">#{idx + 1}</span>
@@ -367,13 +386,34 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                       </button>
                     </div>
                   </div>
-                  <textarea
-                    rows={2}
-                    value={line.description}
+                  <input
+                    type="text"
+                    value={row.description}
                     onChange={(e) => updateLine(line.id, { description: e.target.value })}
                     className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 mb-1"
-                    placeholder="Service description"
+                    placeholder="نام / عنوان خدمت"
                   />
+                  <button
+                    type="button"
+                    onClick={() => toggleLineDetails(line.id)}
+                    className={`w-full flex items-center justify-center gap-1 py-1 mb-1 rounded border text-[10px] font-semibold transition-colors ${
+                      notesOpen || hasNotes
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {notesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    توضیحات {hasNotes && !notesOpen ? '(دارد)' : ''}
+                  </button>
+                  {notesOpen ? (
+                    <textarea
+                      rows={3}
+                      value={row.detailNotes ?? ''}
+                      onChange={(e) => updateLine(line.id, { detailNotes: e.target.value })}
+                      className="w-full text-xs border border-indigo-200 rounded px-1.5 py-1 mb-1 bg-indigo-50/40 resize-y min-h-[52px]"
+                      placeholder="جزئیات، محدوده کار، شرایط، یادداشت برای مشتری…"
+                    />
+                  ) : null}
                   <div className="grid grid-cols-3 gap-1">
                     <input
                       type="number"
@@ -406,7 +446,8 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                     </select>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -593,7 +634,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                     <td className="center">{i + 1}</td>
                     <td className="item-cell">
                       <div className="name" style={{ whiteSpace: 'pre-line' }}>
-                        {line.description || '—'}
+                        {serviceLineInvoiceDescription(normalizeServiceLine(line)) || '—'}
                       </div>
                     </td>
                     <td className="center">{line.qty}</td>

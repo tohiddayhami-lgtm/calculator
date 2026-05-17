@@ -1,6 +1,11 @@
 export interface ServiceInvoiceLine {
   id: string;
+  /** Service title (shown as main line on invoice). */
   description: string;
+  /** Optional extra details; shown below title when present. */
+  detailNotes?: string;
+  /** Sidebar UI: expanded notes editor. */
+  detailsOpen?: boolean;
   qty: number;
   unitPrice: number;
   currency: string;
@@ -41,10 +46,54 @@ export function newSavedServiceId(): string {
   return `svc_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+export function splitLegacyServiceDescription(raw: string): { title: string; detailNotes: string } {
+  const text = String(raw ?? '').trim();
+  if (!text) return { title: '', detailNotes: '' };
+  const nl = text.indexOf('\n');
+  if (nl < 0) return { title: text, detailNotes: '' };
+  return {
+    title: text.slice(0, nl).trim(),
+    detailNotes: text.slice(nl + 1).trim(),
+  };
+}
+
+export function normalizeServiceLine(line: ServiceInvoiceLine): ServiceInvoiceLine {
+  if (line.detailNotes !== undefined || !String(line.description ?? '').includes('\n')) {
+    return {
+      ...line,
+      description: String(line.description ?? '').trim(),
+      detailNotes: String(line.detailNotes ?? '').trim(),
+      detailsOpen: !!line.detailsOpen,
+    };
+  }
+  const split = splitLegacyServiceDescription(line.description);
+  return {
+    ...line,
+    description: split.title,
+    detailNotes: split.detailNotes,
+    detailsOpen: !!line.detailsOpen || !!split.detailNotes,
+  };
+}
+
+/** Text shown in invoice table (title + optional notes). */
+export function serviceLineInvoiceDescription(line: ServiceInvoiceLine): string {
+  const n = normalizeServiceLine(line);
+  const title = n.description.trim();
+  const notes = String(n.detailNotes ?? '').trim();
+  if (title && notes) return `${title}\n${notes}`;
+  return title || notes;
+}
+
+export function serviceLineHasDetailNotes(line: ServiceInvoiceLine): boolean {
+  return !!String(normalizeServiceLine(line).detailNotes ?? '').trim();
+}
+
 export function createEmptyServiceLine(defaultCurrency = 'USD'): ServiceInvoiceLine {
   return {
     id: newServiceLineId(),
     description: '',
+    detailNotes: '',
+    detailsOpen: false,
     qty: 1,
     unitPrice: 0,
     currency: defaultCurrency || 'USD',
@@ -73,7 +122,11 @@ export function parseServiceInvoiceLines(raw: unknown): ServiceInvoiceLine[] {
       if (!row || typeof row !== 'object') return null;
       const r = row as Record<string, unknown>;
       const id = typeof r.id === 'string' && r.id ? r.id : newServiceLineId();
-      const description = String(r.description ?? '').slice(0, 2000);
+      const legacyDesc = String(r.description ?? '').slice(0, 2000);
+      const explicitNotes =
+        r.detailNotes !== undefined && r.detailNotes !== null
+          ? String(r.detailNotes).slice(0, 2000)
+          : undefined;
       const qty = Math.max(0, Number(r.qty) || 0);
       const unitPrice = Math.max(0, Number(r.unitPrice) || 0);
       const currency = String(r.currency ?? 'USD')
@@ -82,7 +135,17 @@ export function parseServiceInvoiceLines(raw: unknown): ServiceInvoiceLine[] {
         .slice(0, 8) || 'USD';
       const savedServiceId =
         typeof r.savedServiceId === 'string' && r.savedServiceId ? r.savedServiceId : undefined;
-      return { id, description, qty, unitPrice, currency, savedServiceId };
+      const base: ServiceInvoiceLine = {
+        id,
+        description: legacyDesc,
+        detailNotes: explicitNotes,
+        detailsOpen: r.detailsOpen === true,
+        qty,
+        unitPrice,
+        currency,
+        savedServiceId,
+      };
+      return normalizeServiceLine(base);
     })
     .filter((x): x is ServiceInvoiceLine => !!x);
 }
@@ -113,9 +176,12 @@ export function parseSavedServices(raw: unknown): SavedService[] {
 }
 
 export function lineFromSavedService(svc: SavedService, defaultCurrency: string): ServiceInvoiceLine {
+  const catalogNotes = String(svc.description ?? '').trim();
   return {
     id: newServiceLineId(),
-    description: svc.description?.trim() ? `${svc.name}\n${svc.description}` : svc.name,
+    description: svc.name,
+    detailNotes: catalogNotes,
+    detailsOpen: !!catalogNotes,
     qty: 1,
     unitPrice: svc.defaultUnitPrice ?? 0,
     currency: svc.defaultCurrency || defaultCurrency || 'USD',
@@ -124,15 +190,14 @@ export function lineFromSavedService(svc: SavedService, defaultCurrency: string)
 }
 
 export function savedServiceFromLine(line: ServiceInvoiceLine): SavedService | null {
-  const name = line.description.split('\n')[0]?.trim() || line.description.trim();
+  const n = normalizeServiceLine(line);
+  const name = n.description.trim();
   if (!name) return null;
-  const rest = line.description.includes('\n')
-    ? line.description.slice(line.description.indexOf('\n') + 1).trim()
-    : '';
+  const notes = String(n.detailNotes ?? '').trim();
   return {
     id: newSavedServiceId(),
     name: name.slice(0, 200),
-    description: rest || undefined,
+    description: notes || undefined,
     defaultUnitPrice: line.unitPrice,
     defaultCurrency: line.currency,
     updatedAt: Date.now(),

@@ -121,6 +121,8 @@ export interface InvoiceTextPreset {
 export interface ServiceInvoiceLine {
   id: string;
   description: string;
+  detailNotes?: string;
+  detailsOpen?: boolean;
   qty: number;
   unitPrice: number;
   currency: string;
