@@ -424,7 +424,8 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
     contractLogoLayout:
       inner.contractLogoLayout === 'title-right' ||
       inner.contractLogoLayout === 'banner-top' ||
-      inner.contractLogoLayout === 'corners'
+      inner.contractLogoLayout === 'corners' ||
+      inner.contractLogoLayout === 'corners-mirror'
         ? inner.contractLogoLayout
         : 'title-left',
     contractLogoAlign:
@@ -15925,7 +15926,7 @@ function AppInner() {
           }
         `}</style>
         <div id="contract-preview-root"
-          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none"
+          className="bg-white mx-auto shadow-lg rounded-xl overflow-visible print:shadow-none print:rounded-none"
           style={{
             maxWidth: '210mm',
             fontFamily: 'Georgia, "Times New Roman", serif',

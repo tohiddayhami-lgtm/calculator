@@ -1,7 +1,12 @@
 import React, { type CSSProperties, type ReactNode } from 'react';
 import type { ContractDef } from './types';
 
-export type ContractHeaderLogoLayout = 'title-left' | 'title-right' | 'banner-top' | 'corners';
+export type ContractHeaderLogoLayout =
+  | 'title-left'
+  | 'title-right'
+  | 'banner-top'
+  | 'corners'
+  | 'corners-mirror';
 export type ContractLogoAlign = 'left' | 'center' | 'right';
 export type ContractLogoSize = 'sm' | 'md' | 'lg';
 
@@ -14,6 +19,11 @@ export const CONTRACT_LOGO_LAYOUT_OPTIONS: {
   { value: 'title-right', labelEn: 'Logos on the right', labelFa: 'لوگوها سمت راست عنوان' },
   { value: 'banner-top', labelEn: 'Logos above title', labelFa: 'لوگوها بالای عنوان' },
   { value: 'corners', labelEn: 'Logo 1 left, Logo 2 right', labelFa: 'لوگو ۱ چپ — لوگو ۲ راست' },
+  {
+    value: 'corners-mirror',
+    labelEn: 'Logo 1 right, Logo 2 left',
+    labelFa: 'لوگو ۱ راست — لوگو ۲ چپ',
+  },
 ];
 
 export const CONTRACT_LOGO_ALIGN_OPTIONS: { value: ContractLogoAlign; labelEn: string; labelFa: string }[] = [
@@ -23,9 +33,9 @@ export const CONTRACT_LOGO_ALIGN_OPTIONS: { value: ContractLogoAlign; labelEn: s
 ];
 
 export const CONTRACT_LOGO_SIZE_OPTIONS: { value: ContractLogoSize; labelEn: string; heightPx: number }[] = [
-  { value: 'sm', labelEn: 'Small', heightPx: 36 },
-  { value: 'md', labelEn: 'Medium', heightPx: 48 },
-  { value: 'lg', labelEn: 'Large', heightPx: 64 },
+  { value: 'sm', labelEn: 'Small', heightPx: 44 },
+  { value: 'md', labelEn: 'Medium', heightPx: 58 },
+  { value: 'lg', labelEn: 'Large', heightPx: 76 },
 ];
 
 export const CONTRACT_LOGO_LAYOUT_DEFAULT: ContractHeaderLogoLayout = 'title-left';
@@ -48,7 +58,10 @@ export function normalizeContractLogoFields(
   const logo2Url = typeof c.logo2Url === 'string' ? c.logo2Url.trim() : '';
   const layoutRaw = c.contractLogoLayout;
   const layout: ContractHeaderLogoLayout =
-    layoutRaw === 'title-right' || layoutRaw === 'banner-top' || layoutRaw === 'corners'
+    layoutRaw === 'title-right' ||
+    layoutRaw === 'banner-top' ||
+    layoutRaw === 'corners' ||
+    layoutRaw === 'corners-mirror'
       ? layoutRaw
       : CONTRACT_LOGO_LAYOUT_DEFAULT;
   const alignRaw = c.contractLogoAlign;
@@ -139,15 +152,11 @@ export function buildContractHeaderHtml(c: ContractDef, _rtlFont: string): strin
   }
 
   if (n.layout === 'corners') {
-    const left = n.logo1Url ? logoImgHtml(n.logo1Url, h) : '';
-    const right = n.logo2Url ? logoImgHtml(n.logo2Url, h) : '';
-    return `<div style="${border}">
-      <table style="width:100%;border-collapse:collapse"><tr>
-        <td style="width:28%;vertical-align:middle;text-align:left">${left}</td>
-        <td style="width:44%;vertical-align:middle">${title.replace('flex:1;', '')}</td>
-        <td style="width:28%;vertical-align:middle;text-align:right">${right}</td>
-      </tr></table>
-    </div>`;
+    return cornersHeaderHtml(c, false);
+  }
+
+  if (n.layout === 'corners-mirror') {
+    return cornersHeaderHtml(c, true);
   }
 
   const logos = logosColumnHtml(urls, h, gap);
@@ -185,9 +194,28 @@ function LogoImg({ url, heightPx }: { url: string; heightPx: number }) {
   );
 }
 
-function TitleBlock({ c, rtlFont }: HeaderBlockProps) {
+function cornersHeaderHtml(c: ContractDef, mirror: boolean): string {
+  const n = normalizeContractLogoFields(c);
+  const h = n.logoHeightPx;
+  const title = buildContractTitleBlockHtml(c, { fontTitlePt: 12, fontSubPt: 9 });
+  const border = 'border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:12px';
+  const leftUrl = mirror ? n.logo2Url : n.logo1Url;
+  const rightUrl = mirror ? n.logo1Url : n.logo2Url;
+  const left = leftUrl ? logoImgHtml(leftUrl, h) : '&nbsp;';
+  const right = rightUrl ? logoImgHtml(rightUrl, h) : '&nbsp;';
+
+  return `<div style="${border}">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed"><tr>
+      <td style="width:30%;min-width:108px;vertical-align:middle;text-align:left;padding-right:8px">${left}</td>
+      <td style="width:40%;vertical-align:middle;text-align:center;padding:0 6px">${title.replace('flex:1;text-align:center;min-width:0', 'text-align:center')}</td>
+      <td style="width:30%;min-width:108px;vertical-align:middle;text-align:right;padding-left:8px">${right}</td>
+    </tr></table>
+  </div>`;
+}
+
+function TitleBlock({ c, rtlFont, className = '' }: HeaderBlockProps & { className?: string }) {
   return (
-    <div className="flex-1 text-center min-w-0">
+    <div className={`text-center min-w-0 ${className}`.trim()}>
       <div className="text-[11pt] font-bold tracking-wide mb-0.5">{c.titleEn}</div>
       {c.titleRtl && (
         <div className="text-[10.5pt] font-semibold text-slate-700" dir="rtl" style={{ fontFamily: rtlFont }}>
@@ -218,10 +246,55 @@ function TitleBlock({ c, rtlFont }: HeaderBlockProps) {
   );
 }
 
+function LogoSlot({
+  url,
+  heightPx,
+  side,
+}: {
+  url: string;
+  heightPx: number;
+  side: 'left' | 'right';
+}) {
+  return (
+    <div
+      className={`flex shrink-0 min-w-[108px] max-w-[34%] ${
+        side === 'left' ? 'justify-start' : 'justify-end'
+      }`}
+    >
+      {url ? (
+        <LogoImg url={url} heightPx={heightPx} />
+      ) : (
+        <div style={{ height: heightPx, width: 1 }} className="opacity-0" aria-hidden />
+      )}
+    </div>
+  );
+}
+
+function CornersHeader({
+  c,
+  rtlFont,
+  mirror,
+}: HeaderBlockProps & { mirror?: boolean }) {
+  const n = normalizeContractLogoFields(c);
+  const wrapCls = `${contractHeaderBorderClass()} ${contractHeaderPaddingClass()}`;
+  const leftUrl = mirror ? n.logo2Url : n.logo1Url;
+  const rightUrl = mirror ? n.logo1Url : n.logo2Url;
+
+  return (
+    <div className={wrapCls}>
+      <div className="flex items-center justify-between gap-4 w-full">
+        <LogoSlot url={leftUrl} heightPx={n.logoHeightPx} side="left" />
+        <TitleBlock c={c} rtlFont={rtlFont} className="flex-1 px-2" />
+        <LogoSlot url={rightUrl} heightPx={n.logoHeightPx} side="right" />
+      </div>
+    </div>
+  );
+}
+
 function LogosColumn({ urls, heightPx }: { urls: string[]; heightPx: number }) {
   if (!urls.length) return null;
   return (
-    <div className="flex flex-col items-center gap-2 flex-shrink-0">
+    <div className="flex flex-col items-center gap-2 shrink-0 min-w-[80px]">
       {urls.map((url, i) => (
         <LogoImg key={`${url.slice(0, 24)}-${i}`} url={url} heightPx={heightPx} />
       ))}
@@ -266,25 +339,15 @@ export function ContractHeaderBlock({ c, rtlFont }: HeaderBlockProps): ReactNode
   }
 
   if (n.layout === 'corners') {
-    return (
-      <div className={wrapCls}>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 w-full">
-          <div className="flex justify-start">
-            {n.logo1Url ? <LogoImg url={n.logo1Url} heightPx={n.logoHeightPx} /> : null}
-          </div>
-          <div className="min-w-0">
-            <TitleBlock c={c} rtlFont={rtlFont} />
-          </div>
-          <div className="flex justify-end">
-            {n.logo2Url ? <LogoImg url={n.logo2Url} heightPx={n.logoHeightPx} /> : null}
-          </div>
-        </div>
-      </div>
-    );
+    return <CornersHeader c={c} rtlFont={rtlFont} />;
+  }
+
+  if (n.layout === 'corners-mirror') {
+    return <CornersHeader c={c} rtlFont={rtlFont} mirror />;
   }
 
   const logos = <LogosColumn urls={urls} heightPx={n.logoHeightPx} />;
-  const title = <TitleBlock c={c} rtlFont={rtlFont} />;
+  const title = <TitleBlock c={c} rtlFont={rtlFont} className="flex-1" />;
   const flexDir = n.layout === 'title-right' ? 'flex-row-reverse' : 'flex-row';
 
   return (
@@ -305,9 +368,18 @@ export type ContractLogosEditorProps = {
 };
 
 /** Contract editor: two logo URLs + placement on the printed header. */
+function contractLayoutSelectValue(c: ContractDef): ContractHeaderLogoLayout {
+  const raw = c.contractLogoLayout;
+  if (raw && CONTRACT_LOGO_LAYOUT_OPTIONS.some((o) => o.value === raw)) {
+    return raw;
+  }
+  return normalizeContractLogoFields(c).layout;
+}
+
 export function ContractLogosEditor({ c, onChange, inputCls, labelCls }: ContractLogosEditorProps) {
   const n = normalizeContractLogoFields(c);
-  const showAlign = n.layout === 'banner-top';
+  const layoutValue = contractLayoutSelectValue(c);
+  const showAlign = layoutValue === 'banner-top';
 
   return (
     <div className="col-span-2 space-y-3 p-4 rounded-xl border border-indigo-100 bg-indigo-50/40">
@@ -348,7 +420,7 @@ export function ContractLogosEditor({ c, onChange, inputCls, labelCls }: Contrac
             جایگاه لوگو
           </label>
           <select
-            value={n.layout}
+            value={layoutValue}
             onChange={(e) => onChange({ contractLogoLayout: e.target.value as ContractHeaderLogoLayout })}
             className={inputCls}
           >
@@ -394,8 +466,14 @@ export function ContractLogosEditor({ c, onChange, inputCls, labelCls }: Contrac
           </select>
         </div>
       </div>
+      <div className="rounded-lg border border-slate-200 bg-white p-3 overflow-visible">
+        <p className="text-[10px] text-slate-500 mb-2" dir="rtl">
+          پیش‌نمایش سربرگ
+        </p>
+        <ContractHeaderBlock c={c} rtlFont="Tahoma, Arial, sans-serif" />
+      </div>
       <p className="text-[10px] text-slate-600 leading-snug" dir="rtl">
-        در حالت «لوگو ۱ چپ — لوگو ۲ راست» هر لوگو در گوشه‌ی سربرگ قرار می‌گیرد. پیش‌نمایش و چاپ/Word از همین تنظیمات پیروی می‌کنند.
+        در حالت‌های گوشه‌ای، لوگو ۱ و ۲ در دو طرف عنوان با عرض ثابت نمایش داده می‌شوند. گزینه «لوگو ۱ راست — لوگو ۲ چپ» جای هر دو را معکوس می‌کند.
       </p>
     </div>
   );

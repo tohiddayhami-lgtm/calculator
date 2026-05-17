@@ -836,7 +836,7 @@ export interface ContractDef {
   /** Logo 2 image URL (link). */
   logo2Url?: string;
   /** Header logo placement relative to contract title. */
-  contractLogoLayout?: 'title-left' | 'title-right' | 'banner-top' | 'corners';
+  contractLogoLayout?: 'title-left' | 'title-right' | 'banner-top' | 'corners' | 'corners-mirror';
   /** Row alignment when logos are above the title. */
   contractLogoAlign?: 'left' | 'center' | 'right';
   contractLogoSize?: 'sm' | 'md' | 'lg';
