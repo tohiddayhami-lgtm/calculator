@@ -20,6 +20,9 @@ import {
   type SavedService,
   type ServiceInvoiceLine,
 } from './serviceInvoice';
+import type { InvoiceCustomerFields } from './invoiceCustomer';
+import { InvoiceAccentColorPicker, invoiceThemeStyle } from './invoiceTheme';
+import { InvoiceBillToBlock, InvoiceCustomerEditor, InvoiceHeaderRow } from './invoiceShared';
 
 export type InvoiceDocKind = 'products' | 'services';
 
@@ -45,10 +48,13 @@ export type ServiceInvoicePanelProps = {
   setInvoiceDueDateMs: (v: number | undefined) => void;
   formatMsForDatetimeLocal: (ms: number) => string;
   parseDatetimeLocalToMs: (v: string) => number | undefined;
-  customerName: string;
-  setCustomerName: (v: string) => void;
-  customerAddress: string;
-  setCustomerAddress: (v: string) => void;
+  customerFields: InvoiceCustomerFields;
+  onCustomerChange: (patch: Partial<InvoiceCustomerFields>) => void;
+  invoiceAccentColor: string;
+  onInvoiceAccentColorChange: (c: string) => void;
+  renderTextPresetToolbar?: (kind: 'note' | 'paymentTerms' | 'bankDetails') => React.ReactNode;
+  buyersSlot?: React.ReactNode;
+  onSaveBuyer?: () => void;
   billedFrom: string;
   setBilledFrom: (v: string) => void;
   billedFromDetails: string;
@@ -133,10 +139,13 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
     setInvoiceDueDateMs,
     formatMsForDatetimeLocal,
     parseDatetimeLocalToMs,
-    customerName,
-    setCustomerName,
-    customerAddress,
-    setCustomerAddress,
+    customerFields,
+    onCustomerChange,
+    invoiceAccentColor,
+    onInvoiceAccentColorChange,
+    renderTextPresetToolbar,
+    buyersSlot,
+    onSaveBuyer,
     billedFrom,
     setBilledFrom,
     billedFromDetails,
@@ -253,6 +262,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
               placeholder="Service Proforma Invoice"
             />
           </div>
+          <InvoiceAccentColorPicker value={invoiceAccentColor} onChange={onInvoiceAccentColorChange} />
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Invoice #</label>
             <input
@@ -459,39 +469,33 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
               type="text"
               value={paymentTerms}
               onChange={(e) => setPaymentTerms(e.target.value)}
-              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 mb-2"
+              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 mb-1"
             />
-            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Bank details</label>
+            {renderTextPresetToolbar?.('paymentTerms')}
+            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1 mt-2">Bank details</label>
             <textarea
               rows={3}
               value={bankDetails}
               onChange={(e) => setBankDetails(e.target.value)}
-              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none mb-2"
+              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none mb-1"
             />
-            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Notes</label>
+            {renderTextPresetToolbar?.('bankDetails')}
+            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1 mt-2">Notes</label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none mb-2"
+              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none mb-1"
             />
+            {renderTextPresetToolbar?.('note')}
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Customer</label>
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 mb-1"
-            />
-            <textarea
-              rows={2}
-              value={customerAddress}
-              onChange={(e) => setCustomerAddress(e.target.value)}
-              className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 resize-none"
-            />
-          </div>
+          <InvoiceCustomerEditor
+            {...customerFields}
+            onChange={onCustomerChange}
+            buyersSlot={buyersSlot}
+            onSaveBuyer={onSaveBuyer}
+          />
 
           <div className="space-y-2 mt-2">
             {onArchiveIssued && (
@@ -522,53 +526,22 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
           className={`invoice-doc shadow-md mx-auto print:shadow-none invoice-doc--portrait ${
             invoiceOrientation === 'landscape' ? 'invoice-landscape-page invoice-doc--landscape' : ''
           }`}
-          style={{ display: 'flex', flexDirection: 'column' }}
+          style={{ display: 'flex', flexDirection: 'column', ...invoiceThemeStyle(invoiceAccentColor) }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24 }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <h1>{invoiceTitle || 'Service Proforma Invoice'}</h1>
-              <div className="invoice-meta" style={{ marginTop: 8 }}>
-                <div>
-                  <b>Invoice no.</b> {invoiceRef || '—'}
-                </div>
-                <div>
-                  <b>Date</b> {new Date(invoiceIssueDateMs || Date.now()).toLocaleString()}
-                </div>
-                {invoiceDueDateMs ? (
-                  <div>
-                    <b>Due</b> {new Date(invoiceDueDateMs).toLocaleString()}
-                  </div>
-                ) : null}
-                <div>
-                  <b>Type</b> Services
-                </div>
-              </div>
-            </div>
-            <div
-              className="seller-block"
-              style={{ maxWidth: 280, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}
-            >
-              {invoiceLogo ? (
-                <img
-                  src={invoiceLogo}
-                  alt=""
-                  style={{ maxHeight: 56, maxWidth: 200, objectFit: 'contain', objectPosition: 'right' }}
-                />
-              ) : null}
-              <div className="name">{billedFrom || 'Your Company Name'}</div>
-              {billedFromDetails && <div style={{ whiteSpace: 'pre-line' }}>{billedFromDetails}</div>}
-              {(invoiceSellerPhone || invoiceSellerEmail || invoiceSellerWebsite) && (
-                <div style={{ marginTop: 2 }}>
-                  {invoiceSellerPhone ? <div>{invoiceSellerPhone}</div> : null}
-                  {invoiceSellerEmail ? <div>{invoiceSellerEmail}</div> : null}
-                  {invoiceSellerWebsite ? <div>{invoiceSellerWebsite}</div> : null}
-                </div>
-              )}
-              {invoiceSellerTaxId ? (
-                <div style={{ marginTop: 2, color: '#0f172a', fontWeight: 600 }}>Tax / VAT: {invoiceSellerTaxId}</div>
-              ) : null}
-            </div>
-          </div>
+          <InvoiceHeaderRow
+            invoiceTitle={invoiceTitle || 'Service Proforma Invoice'}
+            invoiceRef={invoiceRef}
+            invoiceIssueDateMs={invoiceIssueDateMs}
+            invoiceDueDateMs={invoiceDueDateMs}
+            extraMeta={<div><b>Type</b> Services</div>}
+            billedFrom={billedFrom}
+            billedFromDetails={billedFromDetails}
+            invoiceLogo={invoiceLogo}
+            invoiceSellerPhone={invoiceSellerPhone}
+            invoiceSellerEmail={invoiceSellerEmail}
+            invoiceSellerWebsite={invoiceSellerWebsite}
+            invoiceSellerTaxId={invoiceSellerTaxId}
+          />
 
           <div className="accent-bar" style={{ marginTop: 10, marginBottom: 14 }} />
 
@@ -582,10 +555,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
           >
             <div className="info-card">
               <h3>Bill To</h3>
-              <div style={{ fontSize: '10pt', fontWeight: 700, color: '#0f172a' }}>{customerName || 'Customer Name'}</div>
-              <div className="small" style={{ whiteSpace: 'pre-line', marginTop: 2 }}>
-                {customerAddress || '—'}
-              </div>
+              <InvoiceBillToBlock customer={customerFields} />
             </div>
             <div className="info-card">
               <h3>Payment Terms</h3>
@@ -601,11 +571,8 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                 <th className="center" style={{ width: 56 }}>
                   Qty
                 </th>
-                <th className="num" style={{ width: 88 }}>
+                <th className="num" style={{ width: 100 }}>
                   Unit Price
-                </th>
-                <th className="center" style={{ width: 52 }}>
-                  Curr.
                 </th>
                 <th className="num" style={{ width: 96 }}>
                   Amount
@@ -615,7 +582,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="center muted" style={{ padding: 16, color: '#94a3b8' }}>
+                  <td colSpan={5} className="center muted" style={{ padding: 16, color: '#94a3b8' }}>
                     No service lines — add services in the panel on the left
                   </td>
                 </tr>
@@ -630,7 +597,6 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                     </td>
                     <td className="center">{line.qty}</td>
                     <td className="num">{formatMoney(line.unitPrice, line.currency)}</td>
-                    <td className="center">{line.currency}</td>
                     <td className="num line-total">{formatMoney(serviceLineTotal(line), line.currency)}</td>
                   </tr>
                 ))
@@ -640,7 +606,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
               <tfoot>
                 {sortedCurrencies.map((ccy) => (
                   <tr key={ccy} className="total">
-                    <td colSpan={5} className="num">
+                    <td colSpan={4} className="num">
                       Subtotal ({ccy})
                     </td>
                     <td className="num">{formatMoney(currencyTotals[ccy] || 0, ccy)}</td>

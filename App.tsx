@@ -100,6 +100,17 @@ import {
 } from './types';
 import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
+import {
+  buyerFromInvoiceCustomer,
+  buyerDisplayLabel,
+  customerDisplayName,
+  invoiceCustomerFromBuyer,
+  normalizeBuyerRecord,
+  parseBuyersFromStorage,
+  type InvoiceCustomerFields,
+} from './invoiceCustomer';
+import { InvoiceAccentColorPicker, invoiceThemeStyle, normalizeInvoiceAccentColor } from './invoiceTheme';
+import { InvoiceBillToBlock, InvoiceCustomerEditor, InvoiceHeaderRow } from './invoiceShared';
 
 function formFieldLtrTitle(f: Pick<FormField, 'label' | 'labelLtr'>): string {
   return String(f.labelLtr ?? f.label ?? '').trim();
@@ -1217,6 +1228,20 @@ const INVOICE_TEXT_PRESETS_STORAGE_KEY = 'exportcalc_invoice_text_presets_v1';
 const MAX_INVOICE_TEXT_PRESETS = 40;
 const SAVED_SERVICES_STORAGE_KEY = 'exportcalc_saved_services_v1';
 const MAX_SAVED_SERVICES = 200;
+const BUYERS_STORAGE_KEY = 'exportcalc_buyers_v1';
+const MAX_BUYERS = 500;
+
+function mergeBuyersLists(...lists: Buyer[][]): Buyer[] {
+  const map = new Map<number, Buyer>();
+  for (const list of lists) {
+    for (const b of list.map(normalizeBuyerRecord)) {
+      map.set(b.id, b);
+    }
+  }
+  return Array.from(map.values())
+    .sort((a, b) => (b.lastOrderAt || 0) - (a.lastOrderAt || 0))
+    .slice(0, MAX_BUYERS);
+}
 
 function mergeSavedServicesLists(...lists: SavedService[][]): SavedService[] {
   const map = new Map<string, SavedService>();
@@ -4505,6 +4530,26 @@ function AppInner() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      const raw = localStorage.getItem(BUYERS_STORAGE_KEY);
+      setBuyers(parseBuyersFromStorage(raw ? JSON.parse(raw) : []));
+    } catch {
+      setBuyers([]);
+    }
+    setBuyersReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!buyersReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(BUYERS_STORAGE_KEY, JSON.stringify(buyers.map(normalizeBuyerRecord)));
+    } catch {
+      /* ignore */
+    }
+  }, [buyers, buyersReady]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
       const raw = localStorage.getItem(FORM_HEADER_PRESETS_STORAGE_KEY);
       setFormHeaderPresets(parseFormHeaderPresetsFromStorage(raw));
     } catch {
@@ -4544,7 +4589,14 @@ function AppInner() {
 
   // Invoice Specific
   const [customerName, setCustomerName] = useState('');
+  const [customerFirstName, setCustomerFirstName] = useState('');
+  const [customerLastName, setCustomerLastName] = useState('');
+  const [customerCompany, setCustomerCompany] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [invoiceAccentColor, setInvoiceAccentColor] = useState('#0f172a');
+  const [buyersReady, setBuyersReady] = useState(false);
   const [billedFrom, setBilledFrom] = useState('');
   const [billedFromDetails, setBilledFromDetails] = useState('');
   const [invoiceLogo, setInvoiceLogo] = useState('');
@@ -5782,11 +5834,75 @@ function AppInner() {
       return lines.join('\n');
   };
 
+  const getInvoiceCustomerFields = (): InvoiceCustomerFields => ({
+    firstName: customerFirstName,
+    lastName: customerLastName,
+    company: customerCompany,
+    email: customerEmail,
+    phone: customerPhone,
+    address: customerAddress,
+  });
+
+  const applyInvoiceCustomerToState = (fields: InvoiceCustomerFields) => {
+    setCustomerFirstName(fields.firstName);
+    setCustomerLastName(fields.lastName);
+    setCustomerCompany(fields.company);
+    setCustomerEmail(fields.email);
+    setCustomerPhone(fields.phone);
+    setCustomerAddress(fields.address);
+    setCustomerName(customerDisplayName(fields) || fields.company || '');
+  };
+
+  const patchInvoiceCustomer = (patch: Partial<InvoiceCustomerFields>) => {
+    const next = { ...getInvoiceCustomerFields(), ...patch };
+    applyInvoiceCustomerToState(next);
+    setSelectedBuyerId('');
+  };
+
+  const renderInvoiceBuyerPicker = () =>
+    buyers.length > 0 ? (
+      <div className="mb-2 flex gap-1">
+        <select
+          value={selectedBuyerId}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) {
+              setSelectedBuyerId('');
+              return;
+            }
+            const id = parseInt(v, 10);
+            setSelectedBuyerId(id);
+            const b = buyers.find((x) => x.id === id);
+            if (b) applyBuyerToInvoice(b);
+          }}
+          className="flex-1 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500"
+        >
+          <option value="">— انتخاب مشتری ذخیره‌شده —</option>
+          {buyers
+            .slice()
+            .sort((a, b) => (b.lastOrderAt || 0) - (a.lastOrderAt || 0))
+            .map((b) => (
+              <option key={b.id} value={b.id}>
+                {buyerDisplayLabel(b)}
+              </option>
+            ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => setView('buyers')}
+          className="px-2 py-1.5 text-[11px] font-semibold border border-slate-300 text-slate-700 rounded hover:bg-slate-100"
+        >
+          Manage
+        </button>
+      </div>
+    ) : null;
+
   /** Fill the Proforma Invoice fields from a saved Buyer. */
   const applyBuyerToInvoice = (buyer: Buyer | undefined | null) => {
       if (!buyer) return;
-      setCustomerName(buyer.name || buyer.company || 'Customer');
-      setCustomerAddress(buildBuyerAddressBlock(buyer));
+      const b = normalizeBuyerRecord(buyer);
+      applyInvoiceCustomerToState(invoiceCustomerFromBuyer(b));
+      setSelectedBuyerId(b.id);
       if (buyer.paymentTerms) setPaymentTerms(buyer.paymentTerms);
       if (buyer.incoterm) {
           const term = String(buyer.incoterm).toUpperCase().trim();
@@ -5800,36 +5916,48 @@ function AppInner() {
 
   /** Snapshot current invoice "Bill To" form values into a new Buyer record. */
   const handleSaveCurrentBuyer = () => {
-      const trimmedName = (customerName || '').trim();
-      if (!trimmedName) {
-          alert('Enter a customer name in the invoice first.');
+      const fields = getInvoiceCustomerFields();
+      const label = customerDisplayName(fields) || fields.company.trim();
+      if (!label) {
+          alert('حداقل نام، نام خانوادگی یا نام شرکت را وارد کنید.');
           return;
       }
-      const dup = buyers.find(
-          (b) => b.name.trim().toLowerCase() === trimmedName.toLowerCase()
-      );
-      if (dup && !window.confirm(`A buyer named "${dup.name}" already exists. Save as a new entry anyway?`)) {
+      const emailKey = fields.email.trim().toLowerCase();
+      let dup =
+          (emailKey ? buyers.find((b) => b.email.trim().toLowerCase() === emailKey) : undefined) ||
+          buyers.find(
+              (b) => buyerDisplayLabel(normalizeBuyerRecord(b)).toLowerCase() === label.toLowerCase()
+          );
+      const base = buyerFromInvoiceCustomer(fields, {
+        incoterm: invoiceTerms[0] || '',
+        paymentTerms: paymentTerms || '',
+      });
+      if (dup) {
+        if (
+          window.confirm(
+            `مشتری «${buyerDisplayLabel(normalizeBuyerRecord(dup))}» از قبل وجود دارد.\n\nبه‌روزرسانی با اطلاعات فعلی فاکتور؟`
+          )
+        ) {
+          setBuyers((prev) =>
+            prev.map((b) =>
+              b.id === dup!.id
+                ? normalizeBuyerRecord({ ...b, ...base, id: b.id, lastOrderAt: Date.now() })
+                : b
+            )
+          );
+          setSelectedBuyerId(dup.id);
+          alert(`مشتری «${label}» به‌روزرسانی شد.`);
+          return;
+        }
+        if (!window.confirm('به‌عنوان مشتری جدید ذخیره شود؟')) {
           setSelectedBuyerId(dup.id);
           return;
+        }
       }
-      const newBuyer: Buyer = {
-          id: Date.now(),
-          name: trimmedName,
-          company: '',
-          email: '',
-          phone: '',
-          country: '',
-          destinationPort: '',
-          incoterm: invoiceTerms[0] || '',
-          paymentTerms: paymentTerms || '',
-          address: (customerAddress || '').trim(),
-          notes: '',
-          vatId: '',
-          lastOrderAt: Date.now()
-      };
+      const newBuyer = normalizeBuyerRecord({ ...base, id: Date.now() });
       setBuyers((prev) => [newBuyer, ...prev]);
       setSelectedBuyerId(newBuyer.id);
-      alert(`Saved "${trimmedName}" to Buyers. Open the Buyers tab to add more contact details.`);
+      alert(`مشتری «${label}» در پایگاه داده ذخیره شد.`);
   };
 
   // ─── SELLER PROFILES ──────────────────────────────────────────────────────────
@@ -6009,7 +6137,7 @@ function AppInner() {
       issueDate: Number.isFinite(invoiceIssueDateMs) && invoiceIssueDateMs > 0 ? invoiceIssueDateMs : Date.now(),
       dueDate: invoiceDueDateMs,
       status,
-      customerName,
+      customerName: customerDisplayName(getInvoiceCustomerFields()) || customerName,
       customerAddress,
       selectedTerm,
       invoiceTerms: [...invoiceTerms],
@@ -6498,7 +6626,8 @@ function AppInner() {
     
     const projectDataPayloadRaw = {
         config, rates, products, logistics, selectedTerms, notes, visibleScenarioTerms, invoiceTerms,
-        customerName, customerAddress, invoiceRef,
+        customerName, customerAddress, customerFirstName, customerLastName, customerCompany, customerEmail, customerPhone,
+        invoiceRef, invoiceAccentColor,
         billedFrom, billedFromDetails, invoiceLogo, invoiceSellerEmail, invoiceSellerPhone, invoiceSellerWebsite, invoiceSellerTaxId,
         paymentTerms, showImages, showPackInfo,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, packingListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
@@ -6659,7 +6788,23 @@ function AppInner() {
     setNotes(project.data.notes || '');
     
     setCustomerName(project.data.customerName || '');
+    setCustomerFirstName(String((project.data as any).customerFirstName ?? ''));
+    setCustomerLastName(String((project.data as any).customerLastName ?? ''));
+    setCustomerCompany(String((project.data as any).customerCompany ?? ''));
+    setCustomerEmail(String((project.data as any).customerEmail ?? ''));
+    setCustomerPhone(String((project.data as any).customerPhone ?? ''));
+    if (!(project.data as any).customerFirstName && !(project.data as any).customerLastName && project.data.customerName) {
+      const legacy = String(project.data.customerName).trim();
+      const parts = legacy.split(/\s+/);
+      if (parts.length >= 2) {
+        setCustomerFirstName(parts[0]);
+        setCustomerLastName(parts.slice(1).join(' '));
+      } else {
+        setCustomerFirstName(legacy);
+      }
+    }
     setCustomerAddress(project.data.customerAddress || '');
+    setInvoiceAccentColor(normalizeInvoiceAccentColor((project.data as any).invoiceAccentColor));
     setBilledFrom(project.data.billedFrom || '');
     setBilledFromDetails(project.data.billedFromDetails || '');
     setInvoiceLogo((project.data as any).invoiceLogo || '');
@@ -6705,7 +6850,9 @@ function AppInner() {
     if ((project.data as any).containerType) setContainerType((project.data as any).containerType);
 
     setSuppliers(project.data.suppliers || []);
-    setBuyers(((project.data as any).buyers || []) as Buyer[]);
+    setBuyers((prev) =>
+      mergeBuyersLists(prev, parseBuyersFromStorage((project.data as any).buyers))
+    );
     setResearchEntries(parseResearchEntriesFromProject((project.data as any).researchEntries));
     setDashboardTodos(parseDashboardTodosFromProject((project.data as any).dashboardTodos));
     setSelectedBuyerId('');
@@ -7701,7 +7848,13 @@ function AppInner() {
             invoiceTerms,
             customerName,
             customerAddress,
+            customerFirstName,
+            customerLastName,
+            customerCompany,
+            customerEmail,
+            customerPhone,
             invoiceRef,
+            invoiceAccentColor,
             billedFrom,
             billedFromDetails,
             invoiceLogo,
@@ -7768,6 +7921,12 @@ function AppInner() {
     invoiceTerms,
     customerName,
     customerAddress,
+    customerFirstName,
+    customerLastName,
+    customerCompany,
+    customerEmail,
+    customerPhone,
+    invoiceAccentColor,
     invoiceRef,
     billedFrom,
     billedFromDetails,
@@ -8055,7 +8214,13 @@ function AppInner() {
     setContainerCapacity(1000);
     setContainerType('20ft');
     setCustomerName('');
+    setCustomerFirstName('');
+    setCustomerLastName('');
+    setCustomerCompany('');
+    setCustomerEmail('');
+    setCustomerPhone('');
     setCustomerAddress('');
+    setInvoiceAccentColor(normalizeInvoiceAccentColor(undefined));
     setBilledFrom('');
     setBilledFromDetails('');
     setInvoiceLogo('');
@@ -12088,10 +12253,13 @@ function AppInner() {
           setInvoiceDueDateMs={setInvoiceDueDateMs}
           formatMsForDatetimeLocal={formatMsForDatetimeLocal}
           parseDatetimeLocalToMs={parseDatetimeLocalToMs}
-          customerName={customerName}
-          setCustomerName={setCustomerName}
-          customerAddress={customerAddress}
-          setCustomerAddress={setCustomerAddress}
+          customerFields={getInvoiceCustomerFields()}
+          onCustomerChange={patchInvoiceCustomer}
+          invoiceAccentColor={invoiceAccentColor}
+          onInvoiceAccentColorChange={setInvoiceAccentColor}
+          renderTextPresetToolbar={(kind) => <InvoiceTextPresetToolbar kind={kind} />}
+          buyersSlot={renderInvoiceBuyerPicker()}
+          onSaveBuyer={handleSaveCurrentBuyer}
           billedFrom={billedFrom}
           setBilledFrom={setBilledFrom}
           billedFromDetails={billedFromDetails}
@@ -12650,6 +12818,7 @@ function AppInner() {
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Document Title</label>
                        <input type="text" value={invoiceTitle} onChange={(e) => setInvoiceTitle(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
                    </div>
+                   <InvoiceAccentColorPicker value={invoiceAccentColor} onChange={setInvoiceAccentColor} />
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Proforma layout</label>
                        <select
@@ -12844,53 +13013,13 @@ function AppInner() {
 
                    <hr className="border-slate-100"/>
 
-                   <div>
-                       <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Buyer (Billed To)</label>
-                       {buyers.length > 0 && (
-                           <div className="mb-2 flex gap-1">
-                               <select
-                                   value={selectedBuyerId}
-                                   onChange={(e) => {
-                                       const v = e.target.value;
-                                       if (!v) { setSelectedBuyerId(''); return; }
-                                       const id = parseInt(v, 10);
-                                       setSelectedBuyerId(id);
-                                       const b = buyers.find((x) => x.id === id);
-                                       if (b) applyBuyerToInvoice(b);
-                                   }}
-                                   className="flex-1 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500"
-                                   title="Pick a saved buyer to auto-fill this invoice"
-                               >
-                                   <option value="">— Pick saved buyer —</option>
-                                   {buyers
-                                       .slice()
-                                       .sort((a, b) => (b.lastOrderAt || 0) - (a.lastOrderAt || 0))
-                                       .map((b) => (
-                                           <option key={b.id} value={b.id}>
-                                               {b.name}{b.company ? ` · ${b.company}` : ''}{b.country ? ` (${b.country})` : ''}
-                                           </option>
-                                       ))}
-                               </select>
-                               <button
-                                   type="button"
-                                   onClick={() => setView('buyers')}
-                                   className="px-2 py-1.5 text-[11px] font-semibold border border-slate-300 text-slate-700 rounded hover:bg-slate-100"
-                                   title="Go to Buyers tab to edit / add"
-                               >
-                                   Manage
-                               </button>
-                           </div>
-                       )}
-                       <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => { setCustomerName(e.target.value); setSelectedBuyerId(''); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 mb-2" />
-                       <textarea rows={3} placeholder="Address..." value={customerAddress} onChange={(e) => { setCustomerAddress(e.target.value); setSelectedBuyerId(''); }} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none mb-2" />
-                       <button
-                           type="button"
-                           onClick={handleSaveCurrentBuyer}
-                           className="w-full text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded px-2 py-1.5 transition-colors"
-                       >
-                           + Save current customer to Buyers
-                       </button>
-                   </div>
+                   <InvoiceCustomerEditor
+                       {...getInvoiceCustomerFields()}
+                       onChange={patchInvoiceCustomer}
+                       buyersSlot={renderInvoiceBuyerPicker()}
+                       onSaveBuyer={handleSaveCurrentBuyer}
+                   />
+
 
                    <hr className="border-slate-100"/>
 
@@ -13261,53 +13390,30 @@ function AppInner() {
                                ? 'invoice-landscape-page invoice-doc--landscape'
                                : 'invoice-doc--portrait'
                    }`}
-                   style={{ display: 'flex', flexDirection: 'column' }}
+                   style={{ display: 'flex', flexDirection: 'column', ...invoiceThemeStyle(invoiceAccentColor) }}
                >
                    {invoiceLayout === 'welte' ? (
                        welteBody
                    ) : (
                    <>
-                   {/* ── HEADER ────────────────────────────────────────────── */}
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24 }}>
-                       <div style={{ minWidth: 0, flex: 1 }}>
-                           <h1>{invoiceTitle}</h1>
-                           <div className="invoice-meta" style={{ marginTop: 8 }}>
-                               <div><b>Invoice no.</b> {invoiceRef || '—'}</div>
-                               <div><b>Date</b> {new Date(invoiceIssueDateMs || Date.now()).toLocaleString()}</div>
-                               {invoiceDueDateMs ? (
-                                   <div><b>Due</b> {new Date(invoiceDueDateMs).toLocaleString()}</div>
-                               ) : null}
-                               {invoiceTerms.length > 0 && (
-                                   <div><b>Incoterms</b> {invoiceTerms.join(' · ')}</div>
-                               )}
-                           </div>
-                       </div>
-                       <div className="seller-block" style={{ maxWidth: 280, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                           {invoiceLogo ? (
-                               <img
-                                   src={invoiceLogo}
-                                   alt=""
-                                   style={{ maxHeight: 56, maxWidth: 200, objectFit: 'contain', objectPosition: 'right' }}
-                               />
-                           ) : null}
-                           <div className="name">{billedFrom || 'Your Company Name'}</div>
-                           {billedFromDetails && (
-                               <div style={{ whiteSpace: 'pre-line' }}>{billedFromDetails}</div>
-                           )}
-                           {(invoiceSellerPhone || invoiceSellerEmail || invoiceSellerWebsite) && (
-                               <div style={{ marginTop: 2 }}>
-                                   {invoiceSellerPhone ? <div>{invoiceSellerPhone}</div> : null}
-                                   {invoiceSellerEmail ? <div>{invoiceSellerEmail}</div> : null}
-                                   {invoiceSellerWebsite ? <div>{invoiceSellerWebsite}</div> : null}
-                               </div>
-                           )}
-                           {invoiceSellerTaxId ? (
-                               <div style={{ marginTop: 2, color: '#0f172a', fontWeight: 600 }}>
-                                   Tax / VAT: {invoiceSellerTaxId}
-                               </div>
-                           ) : null}
-                       </div>
-                   </div>
+                   <InvoiceHeaderRow
+                     invoiceTitle={invoiceTitle}
+                     invoiceRef={invoiceRef}
+                     invoiceIssueDateMs={invoiceIssueDateMs}
+                     invoiceDueDateMs={invoiceDueDateMs}
+                     extraMeta={
+                       invoiceTerms.length > 0 ? (
+                         <div><b>Incoterms</b> {invoiceTerms.join(' · ')}</div>
+                       ) : null
+                     }
+                     billedFrom={billedFrom}
+                     billedFromDetails={billedFromDetails}
+                     invoiceLogo={invoiceLogo}
+                     invoiceSellerPhone={invoiceSellerPhone}
+                     invoiceSellerEmail={invoiceSellerEmail}
+                     invoiceSellerWebsite={invoiceSellerWebsite}
+                     invoiceSellerTaxId={invoiceSellerTaxId}
+                   />
 
                    <div className="accent-bar" style={{ marginTop: 10, marginBottom: 14 }}></div>
 
@@ -13322,12 +13428,7 @@ function AppInner() {
                    >
                        <div className="info-card">
                            <h3>Bill To</h3>
-                           <div style={{ fontSize: '10pt', fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>
-                               {customerName || 'Customer Name'}
-                           </div>
-                           <div className="small" style={{ whiteSpace: 'pre-line', marginTop: 2 }}>
-                               {customerAddress || '—'}
-                           </div>
+                           <InvoiceBillToBlock customer={getInvoiceCustomerFields()} />
                        </div>
                        <div className="info-card">
                            <h3>Payment Terms</h3>
@@ -16276,6 +16377,8 @@ function AppInner() {
       const newBlankBuyer = (): Buyer => ({
           id: Date.now(),
           name: '',
+          firstName: '',
+          lastName: '',
           company: '',
           email: '',
           phone: '',
@@ -16324,12 +16427,26 @@ function AppInner() {
                   {buyers.map((b) => (
                       <div key={b.id} className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-all group bg-white space-y-3">
                           <div className="flex justify-between items-start">
-                              <input
-                                  value={b.name}
-                                  onChange={(e) => updateBuyer(b.id, { name: e.target.value })}
-                                  className="font-bold text-base text-slate-800 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-emerald-500 outline-none w-full mr-2"
-                                  placeholder="Full Name"
-                              />
+                              <div className="grid grid-cols-2 gap-2 flex-1 mr-2">
+                                <input
+                                  value={b.firstName ?? ''}
+                                  onChange={(e) => {
+                                    const fn = e.target.value;
+                                    updateBuyer(b.id, { firstName: fn, name: `${fn} ${b.lastName ?? ''}`.trim() });
+                                  }}
+                                  className="font-bold text-sm text-slate-800 bg-transparent border-b border-slate-200 focus:border-emerald-500 outline-none"
+                                  placeholder="First name"
+                                />
+                                <input
+                                  value={b.lastName ?? ''}
+                                  onChange={(e) => {
+                                    const ln = e.target.value;
+                                    updateBuyer(b.id, { lastName: ln, name: `${b.firstName ?? ''} ${ln}`.trim() });
+                                  }}
+                                  className="font-bold text-sm text-slate-800 bg-transparent border-b border-slate-200 focus:border-emerald-500 outline-none"
+                                  placeholder="Last name"
+                                />
+                              </div>
                               <button onClick={() => removeBuyer(b.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1" title="Delete">
                                   <Trash2 className="w-4 h-4" />
                               </button>
@@ -17115,7 +17232,29 @@ function AppInner() {
         .invoice-doc h3 { font-size: 7.5pt; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #64748b; margin: 0 0 4px; }
         .invoice-doc .small { font-size: 8.5pt; color: #64748b; }
         .invoice-doc .muted { color: #64748b; }
-        .invoice-doc .accent-bar { height: 3px; background: linear-gradient(90deg, #0f172a 0%, #334155 100%); border-radius: 2px; }
+        .invoice-doc .invoice-header {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 24px;
+            direction: ltr;
+        }
+        .invoice-doc .invoice-header__doc { flex: 1; min-width: 0; text-align: left; }
+        .invoice-doc .invoice-header__seller {
+            flex-shrink: 0;
+            max-width: 280px;
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+        .invoice-doc .accent-bar {
+            height: 3px;
+            background: linear-gradient(90deg, var(--invoice-accent, #0f172a) 0%, var(--invoice-accent-mid, #334155) 100%);
+            border-radius: 2px;
+        }
         .invoice-doc table.items {
             width: 100%;
             border-collapse: collapse;
@@ -17127,9 +17266,9 @@ function AppInner() {
             letter-spacing: .06em;
             text-transform: uppercase;
             color: #475569;
-            background: #f1f5f9;
-            border-top: 1px solid #cbd5e1;
-            border-bottom: 1px solid #cbd5e1;
+            background: var(--invoice-accent-soft, #f1f5f9);
+            border-top: 1px solid color-mix(in srgb, var(--invoice-accent, #0f172a) 22%, #cbd5e1);
+            border-bottom: 1px solid color-mix(in srgb, var(--invoice-accent, #0f172a) 22%, #cbd5e1);
             padding: 7px 8px;
             text-align: left;
             white-space: nowrap;
@@ -17160,7 +17299,7 @@ function AppInner() {
         .invoice-doc table.items tfoot tr.vat td { color: #334155; }
         .invoice-doc table.items tfoot tr.extra td { background: #fafafa; color: #334155; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
         .invoice-doc table.items tfoot tr.total td {
-            background: #0f172a;
+            background: var(--invoice-accent, #0f172a);
             color: #ffffff;
             font-weight: 700;
             padding: 10px 8px;
@@ -17168,10 +17307,10 @@ function AppInner() {
             letter-spacing: .02em;
         }
         .invoice-doc .info-card {
-            border: 1px solid #e2e8f0;
+            border: 1px solid color-mix(in srgb, var(--invoice-accent, #0f172a) 18%, #e2e8f0);
             border-radius: 6px;
             padding: 9px 11px;
-            background: #fafafa;
+            background: var(--invoice-accent-softer, #fafafa);
         }
         .invoice-doc .info-card h3 { margin-bottom: 3px; }
         .invoice-doc .seller-block {

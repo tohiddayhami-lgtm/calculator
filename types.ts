@@ -321,7 +321,10 @@ export interface SupplierAttachment {
 // New Interface for Buyers (saved customers for repeat orders)
 export interface Buyer {
   id: number;
-  name: string; // Contact full name
+  /** Legacy / display — synced from firstName + lastName when set */
+  name: string;
+  firstName?: string;
+  lastName?: string;
   company: string;
   email: string;
   phone: string;
@@ -656,6 +659,12 @@ export interface SavedProject {
     invoiceDocKind?: 'products' | 'services';
     serviceInvoiceLines?: ServiceInvoiceLine[];
     savedServices?: SavedService[];
+    invoiceAccentColor?: string;
+    customerFirstName?: string;
+    customerLastName?: string;
+    customerCompany?: string;
+    customerEmail?: string;
+    customerPhone?: string;
   };
 }
 
