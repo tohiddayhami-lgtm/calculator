@@ -1,4 +1,16 @@
-import type { Buyer } from './types';
+import type { Buyer, BuyerCustomerKind } from './types';
+
+export function normalizeBuyerKind(raw: unknown): BuyerCustomerKind {
+  return raw === 'services' ? 'services' : 'export';
+}
+
+export function buyerKindLabel(kind: BuyerCustomerKind | undefined): string {
+  return kind === 'services' ? 'خدمات / Services' : 'صادرات / Export';
+}
+
+export function buyerKindShort(kind: BuyerCustomerKind | undefined): string {
+  return kind === 'services' ? 'Services' : 'Export';
+}
 
 export type InvoiceCustomerFields = {
   firstName: string;
@@ -40,7 +52,13 @@ export function normalizeBuyerRecord(b: Buyer): Buyer {
   } else if (fn || ln) {
     name = [fn, ln].filter(Boolean).join(' ');
   }
-  return { ...b, firstName: fn, lastName: ln, name };
+  return {
+    ...b,
+    firstName: fn,
+    lastName: ln,
+    name,
+    customerKind: normalizeBuyerKind(b.customerKind),
+  };
 }
 
 export function parseBuyersFromStorage(raw: unknown): Buyer[] {
@@ -63,6 +81,7 @@ export function parseBuyersFromStorage(raw: unknown): Buyer[] {
         address: String(x.address ?? ''),
         notes: String(x.notes ?? ''),
         vatId: x.vatId ? String(x.vatId) : undefined,
+        customerKind: normalizeBuyerKind(x.customerKind),
         lastOrderAt: x.lastOrderAt !== undefined ? Number(x.lastOrderAt) : undefined,
       })
     );
@@ -109,6 +128,7 @@ export function buyerFromInvoiceCustomer(
     paymentTerms: extra.paymentTerms ?? '',
     notes: extra.notes ?? '',
     vatId: extra.vatId,
+    customerKind: normalizeBuyerKind(extra.customerKind),
     lastOrderAt: Date.now(),
   };
 }

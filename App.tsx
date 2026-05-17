@@ -107,9 +107,11 @@ import {
 } from './invoiceAdjustments';
 import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
+import { BuyersPanel } from './buyersUi';
 import {
   buyerFromInvoiceCustomer,
   buyerDisplayLabel,
+  buyerKindShort,
   customerDisplayName,
   invoiceCustomerFromBuyer,
   normalizeBuyerRecord,
@@ -5776,8 +5778,9 @@ function AppInner() {
               setBuyers((prev) => prev.map((b) => b.id === existing.id ? { ...b, lastOrderAt: Date.now() } : b));
               setSelectedBuyerId(existing.id);
           } else {
-              const newBuyer: Buyer = {
+              const newBuyer: Buyer = normalizeBuyerRecord({
                   id: Date.now() + Math.floor(Math.random() * 1000),
+                  customerKind: 'export',
                   name: fullName || company || 'Customer',
                   company,
                   email: cust.email || '',
@@ -5790,7 +5793,7 @@ function AppInner() {
                   notes: cust.notes || '',
                   vatId: '',
                   lastOrderAt: Date.now()
-              };
+              });
               setBuyers((prev) => [newBuyer, ...prev]);
               setSelectedBuyerId(newBuyer.id);
           }
@@ -5855,6 +5858,7 @@ function AppInner() {
   const applyBuyerToInvoice = (buyer: Buyer | undefined | null) => {
       if (!buyer) return;
       const b = normalizeBuyerRecord(buyer);
+      setInvoiceDocKind(b.customerKind === 'services' ? 'services' : 'products');
       applyInvoiceCustomerToState(invoiceCustomerFromBuyer(b));
       setSelectedBuyerId(b.id);
       if (buyer.paymentTerms) setPaymentTerms(buyer.paymentTerms);
@@ -5868,8 +5872,13 @@ function AppInner() {
       setBuyers((prev) => prev.map((b) => (b.id === buyer.id ? { ...b, lastOrderAt: Date.now() } : b)));
   };
 
-  const renderInvoiceBuyerPicker = () =>
-    buyers.length > 0 ? (
+  const renderInvoiceBuyerPicker = () => {
+    const kindForDoc = invoiceDocKind === 'services' ? 'services' : 'export';
+    const matchingBuyers = buyers
+      .map(normalizeBuyerRecord)
+      .filter((b) => b.customerKind === kindForDoc)
+      .sort((a, b) => (b.lastOrderAt || 0) - (a.lastOrderAt || 0));
+    return matchingBuyers.length > 0 ? (
       <div className="mb-2 flex gap-1">
         <select
           value={selectedBuyerId}
@@ -5886,15 +5895,14 @@ function AppInner() {
           }}
           className="flex-1 text-xs bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500"
         >
-          <option value="">— انتخاب مشتری ذخیره‌شده —</option>
-          {buyers
-            .slice()
-            .sort((a, b) => (b.lastOrderAt || 0) - (a.lastOrderAt || 0))
-            .map((b) => (
-              <option key={b.id} value={b.id}>
-                {buyerDisplayLabel(b)}
-              </option>
-            ))}
+          <option value="">
+            — {kindForDoc === 'services' ? 'مشتری خدمات' : 'مشتری صادرات'} —
+          </option>
+          {matchingBuyers.map((b) => (
+            <option key={b.id} value={b.id}>
+              [{buyerKindShort(b.customerKind)}] {buyerDisplayLabel(b)}
+            </option>
+          ))}
         </select>
         <button
           type="button"
@@ -5905,6 +5913,7 @@ function AppInner() {
         </button>
       </div>
     ) : null;
+  };
 
   /** Snapshot current invoice "Bill To" form values into a new Buyer record. */
   const handleSaveCurrentBuyer = () => {
@@ -5923,6 +5932,7 @@ function AppInner() {
       const base = buyerFromInvoiceCustomer(fields, {
         incoterm: invoiceTerms[0] || '',
         paymentTerms: paymentTerms || '',
+        customerKind: invoiceDocKind === 'services' ? 'services' : 'export',
       });
       if (dup) {
         if (
@@ -16433,160 +16443,17 @@ function AppInner() {
     </div>
   );
 
-  const renderBuyers = () => {
-      const newBlankBuyer = (): Buyer => ({
-          id: Date.now(),
-          name: '',
-          firstName: '',
-          lastName: '',
-          company: '',
-          email: '',
-          phone: '',
-          country: '',
-          destinationPort: '',
-          incoterm: '',
-          paymentTerms: '',
-          address: '',
-          notes: '',
-          vatId: '',
-          lastOrderAt: undefined
-      });
-      const updateBuyer = (id: number, patch: Partial<Buyer>) =>
-          setBuyers((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-      const removeBuyer = (id: number) => {
-          if (!window.confirm('Delete this buyer permanently?')) return;
-          setBuyers((prev) => prev.filter((b) => b.id !== id));
-          if (selectedBuyerId === id) setSelectedBuyerId('');
-      };
-      return (
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden min-h-[500px]">
-              <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                  <div>
-                      <h2 className="font-semibold text-slate-700 flex items-center gap-2">
-                          <Users className="w-5 h-5 text-emerald-600" />
-                          Buyers / Customers
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">Save your customers&apos; contact details so you can drop them straight into a Proforma Invoice next time.</p>
-                  </div>
-                  <button
-                      onClick={() => setBuyers([newBlankBuyer(), ...buyers])}
-                      className="text-sm bg-emerald-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-emerald-700 flex items-center gap-2 shadow-sm"
-                  >
-                      <Plus className="w-4 h-4" /> Add Buyer
-                  </button>
-              </div>
-
-              <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {buyers.length === 0 && (
-                      <div className="col-span-full py-12 text-center text-slate-400 italic bg-slate-50/50 rounded-xl border-2 border-dashed border-slate-200">
-                          <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                          <p>No buyers saved yet.</p>
-                          <p className="text-xs text-slate-500 mt-1">Click &quot;Add Buyer&quot; or save the current invoice customer from the Proforma Invoice tab.</p>
-                      </div>
-                  )}
-                  {buyers.map((b) => (
-                      <div key={b.id} className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-all group bg-white space-y-3">
-                          <div className="flex justify-between items-start">
-                              <div className="grid grid-cols-2 gap-2 flex-1 mr-2">
-                                <input
-                                  value={b.firstName ?? ''}
-                                  onChange={(e) => {
-                                    const fn = e.target.value;
-                                    updateBuyer(b.id, { firstName: fn, name: `${fn} ${b.lastName ?? ''}`.trim() });
-                                  }}
-                                  className="font-bold text-sm text-slate-800 bg-transparent border-b border-slate-200 focus:border-emerald-500 outline-none"
-                                  placeholder="First name"
-                                />
-                                <input
-                                  value={b.lastName ?? ''}
-                                  onChange={(e) => {
-                                    const ln = e.target.value;
-                                    updateBuyer(b.id, { lastName: ln, name: `${b.firstName ?? ''} ${ln}`.trim() });
-                                  }}
-                                  className="font-bold text-sm text-slate-800 bg-transparent border-b border-slate-200 focus:border-emerald-500 outline-none"
-                                  placeholder="Last name"
-                                />
-                              </div>
-                              <button onClick={() => removeBuyer(b.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1" title="Delete">
-                                  <Trash2 className="w-4 h-4" />
-                              </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                              <div className="col-span-2">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Company</label>
-                                  <input value={b.company} onChange={(e) => updateBuyer(b.id, { company: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Company / Importer" />
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Email</label>
-                                  <input type="email" value={b.email} onChange={(e) => updateBuyer(b.id, { email: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="name@company.com" />
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Phone (WhatsApp)</label>
-                                  <input value={b.phone} onChange={(e) => updateBuyer(b.id, { phone: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="+1 …" />
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Country</label>
-                                  <input value={b.country} onChange={(e) => updateBuyer(b.id, { country: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Germany" />
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Destination Port</label>
-                                  <input value={b.destinationPort} onChange={(e) => updateBuyer(b.id, { destinationPort: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Hamburg" />
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Incoterm</label>
-                                  <select value={b.incoterm} onChange={(e) => updateBuyer(b.id, { incoterm: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none">
-                                      <option value="">Select…</option>
-                                      {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].map((t) => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                              </div>
-                              <div>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Payment Terms</label>
-                                  <input value={b.paymentTerms} onChange={(e) => updateBuyer(b.id, { paymentTerms: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="T/T 30/70" />
-                              </div>
-                              <div className="col-span-2">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Tax / VAT / EORI</label>
-                                  <input value={b.vatId || ''} onChange={(e) => updateBuyer(b.id, { vatId: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="VAT / Importer code (optional)" />
-                              </div>
-                              <div className="col-span-2">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Billing Address</label>
-                                  <textarea rows={2} value={b.address} onChange={(e) => updateBuyer(b.id, { address: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 resize-none focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Street, City, ZIP" />
-                              </div>
-                              <div className="col-span-2">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Notes</label>
-                                  <textarea rows={2} value={b.notes} onChange={(e) => updateBuyer(b.id, { notes: e.target.value })} className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 resize-none focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Preferred shipping, packaging, contact times…" />
-                              </div>
-                          </div>
-
-                          {b.lastOrderAt ? (
-                              <div className="text-[10px] text-slate-400">Last used: {new Date(b.lastOrderAt).toLocaleString()}</div>
-                          ) : null}
-
-                          <div className="flex gap-2 pt-1 border-t border-slate-100">
-                              <button
-                                  onClick={() => { applyBuyerToInvoice(b); setSelectedBuyerId(b.id); setView('invoice'); }}
-                                  className="flex-1 px-2.5 py-1.5 text-xs font-bold bg-blue-600 text-white rounded shadow hover:bg-blue-700 flex items-center justify-center gap-1.5"
-                                  title="Apply this buyer's info to a new Proforma Invoice"
-                                  disabled={!b.name && !b.company}
-                              >
-                                  <FileCheck className="w-3.5 h-3.5" /> Use in Invoice
-                              </button>
-                              {b.email && (
-                                  <a
-                                      href={`mailto:${b.email}`}
-                                      className="px-2 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 flex items-center gap-1"
-                                      title="Send email"
-                                  >
-                                      <Mail className="w-3 h-3" /> Email
-                                  </a>
-                              )}
-                          </div>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      );
-  };
+  const renderBuyers = () => (
+    <BuyersPanel
+      buyers={buyers}
+      setBuyers={setBuyers}
+      selectedBuyerId={selectedBuyerId}
+      setSelectedBuyerId={setSelectedBuyerId}
+      onApplyToInvoice={applyBuyerToInvoice}
+      onOpenInvoice={() => setView('invoice')}
+      defaultKindForNewRow={invoiceDocKind === 'services' ? 'services' : 'export'}
+    />
+  );
 
   const renderSuppliers = () => {
       const patchSupplier = (id: number, patch: Partial<Supplier>) => {

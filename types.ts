@@ -320,9 +320,14 @@ export interface SupplierAttachment {
   size: number; // in bytes
 }
 
+/** Export (goods) vs service-invoice customers — shown in buyers spreadsheet & exports. */
+export type BuyerCustomerKind = 'export' | 'services';
+
 // New Interface for Buyers (saved customers for repeat orders)
 export interface Buyer {
   id: number;
+  /** Export proforma vs service invoice customer (default export for legacy saves). */
+  customerKind?: BuyerCustomerKind;
   /** Legacy / display — synced from firstName + lastName when set */
   name: string;
   firstName?: string;
