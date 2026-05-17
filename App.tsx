@@ -109,37 +109,6 @@ import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import { BuyersPanel } from './buyersUi';
 import {
-  CONTRACT_LETTERHEAD_FIT_DEFAULT,
-  CONTRACT_LETTERHEAD_FIT_MODES,
-  CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT,
-  CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MAX,
-  CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MIN,
-  CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
-  CONTRACT_LETTERHEAD_MARGIN_MAX,
-  CONTRACT_LETTERHEAD_MARGIN_MIN,
-  CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
-  CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MAX,
-  CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MIN,
-  CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
-  CONTRACT_LETTERHEAD_OPACITY_MAX,
-  CONTRACT_LETTERHEAD_OPACITY_MIN,
-  CONTRACT_LETTERHEAD_SCALE_DEFAULT,
-  CONTRACT_LETTERHEAD_SCALE_MAX,
-  CONTRACT_LETTERHEAD_SCALE_MIN,
-  contractDocumentBodyPaddingStyle,
-  contractLetterheadActive,
-  contractLetterheadContentPaddingCss,
-  contractLetterheadLayerStyle,
-  contractLetterheadBackgroundPosition,
-  contractLetterheadPageMarginCss,
-  contractLetterheadPrintBackgroundSize,
-  contractLetterheadWordHtml,
-  contractLetterheadWordPageStyle,
-  normalizeContractLetterheadFields,
-  type ContractLetterheadFitMode,
-} from './contractLetterhead';
-import { ContractPreviewPageGuides } from './contractLetterheadPreview';
-import {
   buyerFromInvoiceCustomer,
   buyerDisplayLabel,
   buyerKindShort,
@@ -342,7 +311,7 @@ function buildContractAiExportEnvelope(c: ContractDef): Record<string, unknown> 
     _for_ai_models:
       'Return ONLY valid JSON. Use this envelope with a top-level "contract" object, OR return a single object with the same keys as "contract" (no _schema_version required). Preserve array order: clauses[] is the legal ladder order. Each clause needs articleNum (e.g. RECITALS, 1, 2), titleEn, titleRtl, contentEn, contentRtl. Each party, scheduleRows item, and addOns item needs a string id. You may omit id, createdAt, updatedAt on the contract root — the app assigns them on import.',
     _root_keys:
-      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, letterheadEnabled?, letterheadUrl?, letterheadOpacity? (3-45), letterheadContentMarginMm? (8-30), letterheadContentMarginTopExtraMm? (0-55), letterheadContentMarginBottomExtraMm? (0-55), letterheadFitMode? ("fill"|"cover"|"contain"), letterheadScalePercent? (85-120), parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
+      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
     contract: JSON.parse(JSON.stringify(c)) as ContractDef,
   };
 }
@@ -434,7 +403,7 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
       : `REF-${y}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
 
   const now = Date.now();
-  const merged: ContractDef = {
+  return {
     id: typeof inner.id === 'string' && inner.id ? inner.id : String(now),
     refNo,
     titleEn: String(inner.titleEn ?? 'SERVICES AGREEMENT'),
@@ -447,12 +416,6 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
         : new Date().toISOString().split('T')[0],
     logoUrl: typeof inner.logoUrl === 'string' ? inner.logoUrl : '',
     companyName: typeof inner.companyName === 'string' ? inner.companyName : '',
-    letterheadEnabled: inner.letterheadEnabled === true,
-    letterheadUrl: typeof inner.letterheadUrl === 'string' ? inner.letterheadUrl : '',
-    letterheadOpacity:
-      inner.letterheadOpacity !== undefined && inner.letterheadOpacity !== null
-        ? Number(inner.letterheadOpacity)
-        : CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
     parties: partiesRaw.length ? partiesRaw.map(normParty) : [
       {
         id: nid(),
@@ -493,7 +456,6 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
     createdAt: typeof inner.createdAt === 'number' ? inner.createdAt : now,
     updatedAt: now,
   };
-  return { ...merged, ...normalizeContractLetterheadFields(merged) };
 }
 
 function downloadJsonFile(filename: string, data: unknown) {
@@ -2394,22 +2356,12 @@ function buildContractWordHtml(c: ContractDef): string {
     )
     .join('');
 
-  const letterheadBg = contractLetterheadWordHtml(c);
-  const withLh = contractLetterheadActive(c);
-  const bodyMargin = withLh ? '0' : '24px';
-  const contentWrapStyle = withLh
-    ? contractLetterheadContentPaddingCss(c)
-    : 'position:relative;z-index:1';
-  const pageStyle = contractLetterheadWordPageStyle(c);
-
   return `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="en">
 <head><meta charset="utf-8"><title>${escapeHtml(c.titleEn)}</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-<style>${pageStyle}body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:${bodyMargin};line-height:1.6;position:relative}</style>
+<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6}</style>
 </head><body>
-${letterheadBg}
-<div style="${contentWrapStyle}">
 <div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:12px">
   ${logoSrc ? `<img src="${logoSrc}" alt="" style="max-height:48px;margin-bottom:8px"/>` : ''}
   <div style="font-size:13pt;font-weight:bold">${escapeHtml(c.titleEn)}</div>
@@ -2425,7 +2377,6 @@ ${clauseBlocks}
 ${scheduleHtml}
 <table style="width:100%;border-collapse:collapse;margin-top:20px"><thead><tr><th colspan="${sigParties.length}" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">IN WITNESS WHEROF / امضای طرفین</th></tr></thead><tbody><tr>${sigCells}</tr></tbody></table>
 <p style="text-align:center;font-size:9pt;color:#94a3b8;margin-top:16px">${escapeHtml(c.titleEn)}${c.refNo ? ` | Ref. ${escapeHtml(c.refNo)}` : ''}</p>
-</div>
 </body></html>`;
 }
 
@@ -4437,8 +4388,6 @@ function AppInner() {
   });
   const [contractsSubView, setContractsSubView] = useState<'list' | 'editor' | 'preview'>('list');
   const [editingContract, setEditingContract] = useState<ContractDef | null>(null);
-  const contractPreviewRootRef = useRef<HTMLDivElement>(null);
-  const contractPreviewBodyRef = useRef<HTMLDivElement>(null);
   const [contractEditorTab, setContractEditorTab] = useState<'info' | 'parties' | 'clauses' | 'schedule'>('info');
 
   // -- STATE: COMMUNITY HUB --
@@ -7259,41 +7208,6 @@ function AppInner() {
         };
         reader.readAsDataURL(file);
     }
-  };
-
-  const handleContractLetterheadUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) {
-      e.target.value = '';
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const raw = reader.result as string;
-      const compressed = await compressImage(raw, 1240, 0.88);
-      setEditingContract((prev) =>
-        prev
-          ? {
-              ...prev,
-              letterheadUrl: compressed,
-              letterheadEnabled: true,
-              letterheadOpacity: prev.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
-              letterheadContentMarginMm:
-                prev.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
-              letterheadContentMarginTopExtraMm:
-                prev.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
-              letterheadContentMarginBottomExtraMm:
-                prev.letterheadContentMarginBottomExtraMm ??
-                CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT,
-              letterheadFitMode: prev.letterheadFitMode ?? CONTRACT_LETTERHEAD_FIT_DEFAULT,
-              letterheadScalePercent: prev.letterheadScalePercent ?? CONTRACT_LETTERHEAD_SCALE_DEFAULT,
-              updatedAt: Date.now(),
-            }
-          : prev
-      );
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
   };
 
   const handleInvoiceLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -15233,14 +15147,6 @@ function AppInner() {
       effectiveDate: new Date().toISOString().split('T')[0],
       logoUrl: '',
       companyName: '',
-      letterheadEnabled: false,
-      letterheadUrl: '',
-      letterheadOpacity: CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
-      letterheadContentMarginMm: CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
-      letterheadContentMarginTopExtraMm: CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
-      letterheadContentMarginBottomExtraMm: CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT,
-      letterheadFitMode: CONTRACT_LETTERHEAD_FIT_DEFAULT,
-      letterheadScalePercent: CONTRACT_LETTERHEAD_SCALE_DEFAULT,
       parties: [
         { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
         { id: 'cl_' + ts, labelEn: 'CLIENT', labelRtl: 'مشتری', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Client', aliasRtl: 'مشتری' },
@@ -15730,160 +15636,6 @@ function AppInner() {
                 </select>
               </div>
             </div>
-
-            <div className="mt-6 pt-5 border-t border-slate-200">
-              <label className="flex items-start gap-2 cursor-pointer mb-3">
-                <input
-                  type="checkbox"
-                  checked={!!c.letterheadEnabled}
-                  onChange={(e) => upd({ letterheadEnabled: e.target.checked })}
-                  className="mt-0.5 rounded border-slate-300 text-blue-600"
-                />
-                <span>
-                  <span className="text-sm font-semibold text-slate-800 block">A4 letterhead background (optional)</span>
-                  <span className="text-xs text-slate-500" dir="rtl">
-                    سربرگ تمام صفحه A4 در پشت متن — حاشیه متن قابل تنظیم است
-                  </span>
-                </span>
-              </label>
-              {c.letterheadEnabled && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
-                  <div>
-                    <label className={labelCls}>Letterhead image (PNG/JPG, A4 ratio)</label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold border border-slate-200 rounded-lg px-3 py-2 bg-white hover:bg-slate-50 cursor-pointer">
-                        <Upload className="w-3.5 h-3.5" /> Upload
-                        <input type="file" accept="image/*" className="hidden" onChange={handleContractLetterheadUpload} />
-                      </label>
-                      {c.letterheadUrl ? (
-                        <button
-                          type="button"
-                          onClick={() => upd({ letterheadUrl: '', letterheadEnabled: false })}
-                          className="text-xs text-red-600 hover:underline"
-                        >
-                          Remove
-                        </button>
-                      ) : null}
-                    </div>
-                    {c.letterheadUrl ? (
-                      <img
-                        src={c.letterheadUrl}
-                        alt="Letterhead preview"
-                        className="mt-2 max-h-28 w-full object-contain border border-slate-200 rounded bg-slate-50"
-                      />
-                    ) : (
-                      <p className="text-[11px] text-amber-700 mt-2">Upload an image to enable the watermark in preview/print.</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className={labelCls}>
-                      Background strength ({c.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT}% — lower = more transparent)
-                    </label>
-                    <input
-                      type="range"
-                      min={CONTRACT_LETTERHEAD_OPACITY_MIN}
-                      max={CONTRACT_LETTERHEAD_OPACITY_MAX}
-                      value={c.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT}
-                      onChange={(e) => upd({ letterheadOpacity: Number(e.target.value) })}
-                      className="w-full accent-blue-600"
-                    />
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Tip: 8–15% is typical for a subtle official watermark behind contract text.
-                    </p>
-                  </div>
-                  <div className="md:col-span-2 space-y-4 border-t border-slate-100 pt-4">
-                    <div>
-                      <label className={labelCls}>Letterhead on page</label>
-                      <select
-                        value={c.letterheadFitMode ?? CONTRACT_LETTERHEAD_FIT_DEFAULT}
-                        onChange={(e) =>
-                          upd({ letterheadFitMode: e.target.value as ContractLetterheadFitMode })
-                        }
-                        className={inputCls}
-                      >
-                        {CONTRACT_LETTERHEAD_FIT_MODES.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.labelEn} — {opt.labelFa}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
-                        «تمام صفحه» سربرگ را روی کل A4 می‌کشد.
-                      </p>
-                    </div>
-                    <div>
-                      <label className={labelCls}>
-                        Letterhead size ({c.letterheadScalePercent ?? CONTRACT_LETTERHEAD_SCALE_DEFAULT}%)
-                      </label>
-                      <input
-                        type="range"
-                        min={CONTRACT_LETTERHEAD_SCALE_MIN}
-                        max={CONTRACT_LETTERHEAD_SCALE_MAX}
-                        value={c.letterheadScalePercent ?? CONTRACT_LETTERHEAD_SCALE_DEFAULT}
-                        onChange={(e) => upd({ letterheadScalePercent: Number(e.target.value) })}
-                        className="w-full accent-blue-600"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
-                        اگر لبه سفید می‌ماند، بیش از ۱۰۰٪ بگذارید.
-                      </p>
-                    </div>
-                    <div>
-                      <label className={labelCls}>
-                        Side margin ({c.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT} mm)
-                      </label>
-                      <input
-                        type="range"
-                        min={CONTRACT_LETTERHEAD_MARGIN_MIN}
-                        max={CONTRACT_LETTERHEAD_MARGIN_MAX}
-                        value={c.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT}
-                        onChange={(e) => upd({ letterheadContentMarginMm: Number(e.target.value) })}
-                        className="w-full accent-blue-600"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
-                        حاشیه چپ و راست متن
-                      </p>
-                    </div>
-                    <div>
-                      <label className={labelCls}>
-                        Top margin ({c.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT} mm extra)
-                      </label>
-                      <input
-                        type="range"
-                        min={CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MIN}
-                        max={CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MAX}
-                        value={c.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT}
-                        onChange={(e) => upd({ letterheadContentMarginTopExtraMm: Number(e.target.value) })}
-                        className="w-full accent-blue-600"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
-                        فاصله اضافه از بالا (علاوه بر حاشیه کناری)
-                      </p>
-                    </div>
-                    <div>
-                      <label className={labelCls}>
-                        Bottom margin ({c.letterheadContentMarginBottomExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT} mm extra)
-                      </label>
-                      <input
-                        type="range"
-                        min={CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MIN}
-                        max={CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_MAX}
-                        value={
-                          c.letterheadContentMarginBottomExtraMm ??
-                          CONTRACT_LETTERHEAD_MARGIN_BOTTOM_EXTRA_DEFAULT
-                        }
-                        onChange={(e) =>
-                          upd({ letterheadContentMarginBottomExtraMm: Number(e.target.value) })
-                        }
-                        className="w-full accent-blue-600"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
-                        فاصله اضافه از پایین (علاوه بر حاشیه کناری)
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
@@ -16094,12 +15846,6 @@ function AppInner() {
     const rtlFont = c.rtlLanguage === 'fa'
       ? 'Vazirmatn, Tahoma, "Segoe UI", sans-serif'
       : '"Noto Naskh Arabic", Tahoma, "Segoe UI", sans-serif';
-    const showLetterhead = contractLetterheadActive(c);
-    const bodyPadStyle = contractDocumentBodyPaddingStyle(c);
-    const lhLayerStyle = contractLetterheadLayerStyle(c);
-    const lhPrintBgSize = contractLetterheadPrintBackgroundSize(c);
-    const lhBgPos = contractLetterheadBackgroundPosition(c);
-    const pageMargins = contractLetterheadPageMarginCss(c);
 
     return (
       <div>
@@ -16153,85 +15899,29 @@ function AppInner() {
               box-shadow: none !important;
               border-radius: 0 !important;
               overflow: visible !important;
-              background: transparent !important;
-            }
-            #contract-preview-root.contract-with-letterhead {
-              width: 210mm !important;
-              max-width: 210mm !important;
+              background: #fff !important;
             }
             .print\\:hidden {
               display: none !important;
               visibility: hidden !important;
             }
-            @page { size: A4; margin: ${showLetterhead ? pageMargins : '15mm'}; }
-            .contract-with-letterhead .contract-document-body {
-              padding: 0 !important;
-              display: block !important;
-            }
-            .contract-with-letterhead .contract-letterhead-layer {
-              position: fixed !important;
-              left: 0 !important;
-              top: 0 !important;
-              right: 0 !important;
-              bottom: 0 !important;
-              width: 100% !important;
-              height: 100% !important;
-              min-height: 0 !important;
-              background-size: var(--contract-lh-print-bg-size, 100% 100%) !important;
-              background-repeat: no-repeat !important;
-              background-position: var(--contract-lh-print-bg-pos, top center) !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-          }
-          @media screen {
-            #contract-preview-root.contract-with-letterhead {
-              margin-bottom: 1.5rem;
-            }
+            @page { size: A4; margin: 15mm; }
           }
         `}</style>
-        <div
-          id="contract-preview-root"
-          ref={contractPreviewRootRef}
-          className={`bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none relative${showLetterhead ? ' contract-with-letterhead' : ''}`}
+        <div id="contract-preview-root"
+          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none"
           style={{
-            width: showLetterhead ? '210mm' : undefined,
             maxWidth: '210mm',
-            minHeight: '297mm',
             fontFamily: 'Georgia, "Times New Roman", serif',
             fontSize: '9.5pt',
             lineHeight: '1.65',
             color: '#1e293b',
             WebkitPrintColorAdjust: 'exact',
             printColorAdjust: 'exact',
-            ...(showLetterhead
-              ? ({
-                  ['--contract-lh-print-bg-size' as string]: lhPrintBgSize,
-                  ['--contract-lh-print-bg-pos' as string]: lhBgPos,
-                } as React.CSSProperties)
-              : {}),
           }}>
-          {showLetterhead && lhLayerStyle && (
-            <div
-              className="contract-letterhead-layer print:block pointer-events-none"
-              style={lhLayerStyle}
-              aria-hidden
-            />
-          )}
-          {showLetterhead && (
-            <ContractPreviewPageGuides
-              contract={c}
-              contentRef={contractPreviewBodyRef}
-              rootRef={contractPreviewRootRef}
-            />
-          )}
-          <div
-            ref={contractPreviewBodyRef}
-            className="contract-document-body relative z-[1]"
-            style={bodyPadStyle}
-          >
+
           {/* Header */}
-          <div className={`border-b-2 border-slate-800 pb-4${showLetterhead ? '' : ' p-6'}`}>
+          <div className="border-b-2 border-slate-800 p-6 pb-4">
             <div className="flex items-start gap-4">
               {c.logoUrl && <img src={c.logoUrl} alt="Logo" className="h-12 object-contain flex-shrink-0" />}
               <div className="flex-1 text-center">
@@ -16423,7 +16113,6 @@ function AppInner() {
           {/* Footer */}
           <div style={{ borderTop: '1px solid #e2e8f0', padding: '8px 14px', textAlign: 'center', fontSize: '8pt', color: '#94a3b8' }}>
             {c.titleEn}{c.refNo ? ` | Ref. ${c.refNo}` : ''}{c.effectiveDate ? ` | ${c.effectiveDate}` : ''}
-          </div>
           </div>
         </div>
       </div>
