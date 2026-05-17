@@ -114,6 +114,13 @@ import {
   ContractLogosEditor,
 } from './contractLogos';
 import {
+  ContractDraftWatermark,
+  ContractDraftWatermarkEditor,
+  contractDraftWatermarkBodyHtml,
+  contractDraftWatermarkPrintCss,
+  normalizeContractDraftWatermark,
+} from './contractWatermark';
+import {
   buyerFromInvoiceCustomer,
   buyerDisplayLabel,
   buyerKindShort,
@@ -451,6 +458,9 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
       inner.contractLogo2Side === 'left' || inner.contractLogo2Side === 'center' || inner.contractLogo2Side === 'right'
         ? inner.contractLogo2Side
         : 'right',
+    contractDraftWatermark: Boolean(inner.contractDraftWatermark),
+    contractDraftWatermarkText:
+      typeof inner.contractDraftWatermarkText === 'string' ? inner.contractDraftWatermarkText : undefined,
     companyName: typeof inner.companyName === 'string' ? inner.companyName : '',
     parties: partiesRaw.length ? partiesRaw.map(normParty) : [
       {
@@ -2292,6 +2302,8 @@ function buildContractWordHtml(c: ContractDef): string {
     logo2Url: c.logo2Url && safeCatalogMediaUrl(c.logo2Url) ? c.logo2Url : '',
   };
   const headerHtml = buildContractHeaderHtml(cForMedia, rtlFont);
+  const wm = normalizeContractDraftWatermark(c);
+  const watermarkHtml = wm.enabled ? contractDraftWatermarkBodyHtml(wm.text) : '';
 
   const partiesRows = c.parties
     .map(
@@ -2400,6 +2412,7 @@ function buildContractWordHtml(c: ContractDef): string {
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
 <style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6}</style>
 </head><body>
+${watermarkHtml}
 ${headerHtml}
 ${c.parties.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr><th colspan="2" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">THE PARTIES / طرفین قرارداد</th></tr></thead><tbody>${partiesRows}</tbody></table>` : ''}
 ${clauseBlocks}
@@ -15184,6 +15197,7 @@ function AppInner() {
       contractLogoInsetPx: 0,
       contractLogo1Side: 'left',
       contractLogo2Side: 'right',
+      contractDraftWatermark: false,
       companyName: '',
       parties: [
         { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
@@ -15667,6 +15681,7 @@ function AppInner() {
                 <input value={c.companyName || ''} onChange={e => upd({ companyName: e.target.value })} className={inputCls} placeholder="Your company name" />
               </div>
               <ContractLogosEditor c={c} onChange={upd} inputCls={inputCls} labelCls={labelCls} />
+              <ContractDraftWatermarkEditor c={c} onChange={upd} inputCls={inputCls} labelCls={labelCls} />
               <div>
                 <label className={labelCls}>RTL Column Language</label>
                 <select value={c.rtlLanguage} onChange={e => upd({ rtlLanguage: e.target.value as ContractRtlLang })} className={inputCls}>
@@ -15880,8 +15895,16 @@ function AppInner() {
     if (!editingContract) return null;
     const c = editingContract;
     const isInList = contracts.some(x => x.id === c.id);
+    const draftWm = normalizeContractDraftWatermark(c);
 
-    const cellCls = 'p-3 align-top text-sm leading-relaxed';
+    const patchPreviewContract = (patch: Partial<ContractDef>) => {
+      const next = { ...c, ...patch, updatedAt: Date.now() };
+      setEditingContract(next);
+      if (contracts.some((x) => x.id === c.id)) {
+        saveContractsList(contracts.map((x) => (x.id === c.id ? next : x)));
+      }
+    };
+
     const rtlFont = c.rtlLanguage === 'fa'
       ? 'Vazirmatn, Tahoma, "Segoe UI", sans-serif'
       : '"Noto Naskh Arabic", Tahoma, "Segoe UI", sans-serif';
@@ -15896,6 +15919,15 @@ function AppInner() {
           </button>
           <span className="text-slate-300">|</span>
           <span className="text-sm text-slate-500 font-mono">{c.refNo}</span>
+          <label className="flex items-center gap-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={draftWm.enabled}
+              onChange={(e) => patchPreviewContract({ contractDraftWatermark: e.target.checked })}
+              className="rounded border-amber-300 text-amber-600 focus:ring-amber-400"
+            />
+            <span dir="rtl">واترمارک DRAFT</span>
+          </label>
           <div className="flex-1" />
           <button onClick={() => { window.print(); }}
             className="flex items-center gap-2 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700">
@@ -15911,7 +15943,7 @@ function AppInner() {
         </div>
 
         {/* Contract Document */}
-        <style>{`
+        <style>{`${contractDraftWatermarkPrintCss()}
           @media print {
             html, body {
               height: auto !important;
@@ -15952,10 +15984,14 @@ function AppInner() {
             #contract-preview-root .contract-clause-table thead {
               display: table-header-group;
             }
+            #contract-preview-root .contract-draft-watermark-layer {
+              position: fixed !important;
+              inset: 0 !important;
+            }
           }
         `}</style>
         <div id="contract-preview-root"
-          className="bg-white mx-auto shadow-lg rounded-xl overflow-visible print:shadow-none print:rounded-none"
+          className="relative bg-white mx-auto shadow-lg rounded-xl overflow-visible print:shadow-none print:rounded-none"
           style={{
             maxWidth: '210mm',
             fontFamily: 'Georgia, "Times New Roman", serif',
@@ -15965,6 +16001,8 @@ function AppInner() {
             WebkitPrintColorAdjust: 'exact',
             printColorAdjust: 'exact',
           }}>
+
+          {draftWm.enabled ? <ContractDraftWatermark text={draftWm.text} /> : null}
 
           {/* Header */}
           <ContractHeaderBlock c={c} rtlFont={rtlFont} />

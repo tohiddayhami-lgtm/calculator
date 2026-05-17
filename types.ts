@@ -850,6 +850,10 @@ export interface ContractDef {
   contractLogo1Side?: 'left' | 'center' | 'right';
   /** Horizontal placement of logo 2 in compact banner row. */
   contractLogo2Side?: 'left' | 'center' | 'right';
+  /** Diagonal DRAFT watermark on preview, print/PDF, and Word export. */
+  contractDraftWatermark?: boolean;
+  /** Watermark label (default DRAFT). */
+  contractDraftWatermarkText?: string;
   companyName?: string;
   parties: ContractParty[];
   clauses: ContractClause[];
