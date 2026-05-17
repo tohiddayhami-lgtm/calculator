@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import { computeServiceInvoiceByCurrency } from './invoiceAdjustments';
 import {
   SERVICE_INVOICE_CURRENCIES,
   createEmptyServiceLine,
@@ -25,6 +26,7 @@ import {
   type SavedService,
   type ServiceInvoiceLine,
 } from './serviceInvoice';
+import type { InvoiceExtraCharge } from './types';
 import type { InvoiceCustomerFields } from './invoiceCustomer';
 import { InvoiceAccentColorPicker, invoiceThemeStyle } from './invoiceTheme';
 import { InvoiceBillToBlock, InvoiceCustomerEditor, InvoiceHeaderRow } from './invoiceShared';
@@ -81,6 +83,18 @@ export type ServiceInvoicePanelProps = {
   notes: string;
   setNotes: (v: string) => void;
   invoiceOrientation: 'portrait' | 'landscape';
+  invoiceGlobalDiscountMode: 'none' | 'percent' | 'amount';
+  setInvoiceGlobalDiscountMode: (m: 'none' | 'percent' | 'amount') => void;
+  invoiceGlobalDiscountValue: number;
+  setInvoiceGlobalDiscountValue: (v: number) => void;
+  serviceInvoiceDiscountCurrency: string;
+  setServiceInvoiceDiscountCurrency: (c: string) => void;
+  invoiceVatEnabled: boolean;
+  setInvoiceVatEnabled: (v: boolean) => void;
+  invoiceVatPercent: number;
+  setInvoiceVatPercent: (v: number) => void;
+  invoiceExtraCharges: InvoiceExtraCharge[];
+  setInvoiceExtraCharges: React.Dispatch<React.SetStateAction<InvoiceExtraCharge[]>>;
   onManageSellerProfiles?: () => void;
   sellerProfileSelect?: React.ReactNode;
   buyerSelect?: React.ReactNode;
@@ -167,6 +181,18 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
     notes,
     setNotes,
     invoiceOrientation,
+    invoiceGlobalDiscountMode,
+    setInvoiceGlobalDiscountMode,
+    invoiceGlobalDiscountValue,
+    setInvoiceGlobalDiscountValue,
+    serviceInvoiceDiscountCurrency,
+    setServiceInvoiceDiscountCurrency,
+    invoiceVatEnabled,
+    setInvoiceVatEnabled,
+    invoiceVatPercent,
+    setInvoiceVatPercent,
+    invoiceExtraCharges,
+    setInvoiceExtraCharges,
     onManageSellerProfiles,
     sellerProfileSelect,
     buyerSelect,
@@ -178,6 +204,32 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
 
   const currencyTotals = totalsByCurrency(lines);
   const sortedCurrencies = Object.keys(currencyTotals).sort();
+
+  const currencyOptions = React.useMemo(() => {
+    const set = new Set<string>([...SERVICE_INVOICE_CURRENCIES, ...sortedCurrencies]);
+    return Array.from(set).sort();
+  }, [sortedCurrencies]);
+
+  React.useEffect(() => {
+    const disc = (serviceInvoiceDiscountCurrency || defaultCurrency || 'USD').trim().toUpperCase();
+    if (sortedCurrencies.length > 0 && !sortedCurrencies.includes(disc)) {
+      setServiceInvoiceDiscountCurrency(sortedCurrencies[0]);
+    }
+  }, [sortedCurrencies, serviceInvoiceDiscountCurrency, defaultCurrency, setServiceInvoiceDiscountCurrency]);
+
+  const adjustments = computeServiceInvoiceByCurrency({
+    lines,
+    globalDiscountMode: invoiceGlobalDiscountMode,
+    globalDiscountValue: invoiceGlobalDiscountValue,
+    discountCurrency: serviceInvoiceDiscountCurrency || defaultCurrency || 'USD',
+    vatEnabled: invoiceVatEnabled,
+    vatPercent: invoiceVatPercent,
+    extraCharges: invoiceExtraCharges,
+  });
+
+  const showGlobalDiscount =
+    invoiceGlobalDiscountMode !== 'none' && invoiceGlobalDiscountValue > 0;
+  const showVat = invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0;
 
   const updateLine = (id: string, patch: Partial<ServiceInvoiceLine>) => {
     setLines((prev) => prev.map((l) => (l.id === id ? normalizeServiceLine({ ...l, ...patch }) : l)));
@@ -467,6 +519,204 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
             </div>
           )}
 
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+            <p className="text-xs font-bold text-slate-700 uppercase">Discounts</p>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">Whole invoice</label>
+              <select
+                value={invoiceGlobalDiscountMode}
+                onChange={(e) =>
+                  setInvoiceGlobalDiscountMode(e.target.value as 'none' | 'percent' | 'amount')
+                }
+                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 mb-1"
+              >
+                <option value="none">No invoice-level discount</option>
+                <option value="percent">Percent (each currency)</option>
+                <option value="amount">Fixed amount (one currency)</option>
+              </select>
+              {invoiceGlobalDiscountMode !== 'none' && (
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={invoiceGlobalDiscountValue || ''}
+                  onChange={(e) => setInvoiceGlobalDiscountValue(Number(e.target.value) || 0)}
+                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                  placeholder={invoiceGlobalDiscountMode === 'percent' ? '%' : 'Amount'}
+                />
+              )}
+            </div>
+            {invoiceGlobalDiscountMode === 'amount' && (
+              <div>
+                <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">
+                  Fixed discount currency
+                </label>
+                <select
+                  value={serviceInvoiceDiscountCurrency}
+                  onChange={(e) => setServiceInvoiceDiscountCurrency(e.target.value)}
+                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                >
+                  {currencyOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[9px] text-slate-500 mt-1 leading-tight">
+                  Percent discount applies to every currency subtotal. Fixed amount subtracts from the currency above only.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={invoiceVatEnabled}
+                onChange={(e) => setInvoiceVatEnabled(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-xs font-bold text-slate-700 uppercase">VAT / sales tax</span>
+            </label>
+            {invoiceVatEnabled && (
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] text-slate-500">Rate %</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={invoiceVatPercent || ''}
+                  onChange={(e) => setInvoiceVatPercent(Number(e.target.value) || 0)}
+                  className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+                />
+              </div>
+            )}
+            <p className="text-[9px] text-slate-500 leading-tight">VAT is calculated per currency on net after discount.</p>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-700 uppercase">Other charges</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setInvoiceExtraCharges((prev) => [
+                    ...prev,
+                    {
+                      id: `ec-${Date.now()}`,
+                      label: '',
+                      amount: 0,
+                      enabled: true,
+                      valueMode: 'amount',
+                      currency: serviceInvoiceDiscountCurrency || defaultCurrency || 'USD',
+                    },
+                  ])
+                }
+                className="text-[10px] font-semibold text-indigo-600 hover:underline"
+              >
+                + Add
+              </button>
+            </div>
+            <p className="text-[9px] text-slate-500 leading-tight">
+              Fixed amount or percent of net (before VAT) per currency. Added after VAT to the total.
+            </p>
+            <div className="space-y-1.5">
+              {(invoiceExtraCharges || []).map((row) => (
+                <div
+                  key={row.id}
+                  className="flex flex-col gap-1 bg-white border border-slate-100 rounded px-1.5 py-1"
+                >
+                  <div className="flex flex-wrap items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={row.enabled}
+                      onChange={(e) =>
+                        setInvoiceExtraCharges((prev) =>
+                          prev.map((x) => (x.id === row.id ? { ...x, enabled: e.target.checked } : x))
+                        )
+                      }
+                      className="rounded border-slate-300 text-indigo-600 shrink-0"
+                      title="Include in total"
+                    />
+                    <input
+                      type="text"
+                      value={row.label}
+                      onChange={(e) =>
+                        setInvoiceExtraCharges((prev) =>
+                          prev.map((x) => (x.id === row.id ? { ...x, label: e.target.value } : x))
+                        )
+                      }
+                      placeholder="Label (e.g. Shipping)"
+                      className="flex-1 min-w-[72px] text-[11px] border border-slate-200 rounded px-2 py-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setInvoiceExtraCharges((prev) => prev.filter((x) => x.id !== row.id))
+                      }
+                      className="p-1 text-slate-400 hover:text-red-600 shrink-0"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1 pl-5">
+                    <select
+                      value={row.valueMode === 'percent' ? 'percent' : 'amount'}
+                      onChange={(e) =>
+                        setInvoiceExtraCharges((prev) =>
+                          prev.map((x) =>
+                            x.id === row.id
+                              ? { ...x, valueMode: e.target.value as 'amount' | 'percent' }
+                              : x
+                          )
+                        )
+                      }
+                      className="text-[10px] border border-slate-200 rounded px-1 py-0.5"
+                    >
+                      <option value="amount">Amount</option>
+                      <option value="percent">%</option>
+                    </select>
+                    <select
+                      value={row.currency || serviceInvoiceDiscountCurrency || defaultCurrency || 'USD'}
+                      onChange={(e) =>
+                        setInvoiceExtraCharges((prev) =>
+                          prev.map((x) => (x.id === row.id ? { ...x, currency: e.target.value } : x))
+                        )
+                      }
+                      className="text-[10px] border border-slate-200 rounded px-1 py-0.5"
+                    >
+                      {currencyOptions.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={row.amount || ''}
+                      onChange={(e) =>
+                        setInvoiceExtraCharges((prev) =>
+                          prev.map((x) =>
+                            x.id === row.id ? { ...x, amount: Number(e.target.value) || 0 } : x
+                          )
+                        )
+                      }
+                      placeholder={row.valueMode === 'percent' ? '%' : '0'}
+                      className="w-[72px] text-[11px] border border-slate-200 rounded px-2 py-1 text-right"
+                    />
+                  </div>
+                </div>
+              ))}
+              {(!invoiceExtraCharges || invoiceExtraCharges.length === 0) && (
+                <p className="text-[10px] text-slate-400 italic">No extra lines yet.</p>
+              )}
+            </div>
+          </div>
+
           <hr className="border-slate-100" />
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
@@ -644,15 +894,56 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                 ))
               )}
             </tbody>
-            {sortedCurrencies.length > 0 && (
+            {adjustments.length > 0 && (
               <tfoot>
-                {sortedCurrencies.map((ccy) => (
-                  <tr key={ccy} className="total">
-                    <td colSpan={4} className="num">
-                      Subtotal ({ccy})
-                    </td>
-                    <td className="num">{formatMoney(currencyTotals[ccy] || 0, ccy)}</td>
-                  </tr>
+                {adjustments.map((row) => (
+                  <React.Fragment key={row.currency}>
+                    <tr className="subtotal">
+                      <td colSpan={4} className="num">
+                        Subtotal ({row.currency})
+                      </td>
+                      <td className="num">{formatMoney(row.subtotal, row.currency)}</td>
+                    </tr>
+                    {showGlobalDiscount && row.discount > 0 && (
+                      <tr className="discount">
+                        <td colSpan={4} className="num">
+                          {invoiceGlobalDiscountMode === 'percent'
+                            ? `Discount (${Math.min(100, invoiceGlobalDiscountValue)}%)`
+                            : 'Discount (fixed)'}{' '}
+                          ({row.currency})
+                        </td>
+                        <td className="num">−{formatMoney(row.discount, row.currency)}</td>
+                      </tr>
+                    )}
+                    <tr className="net">
+                      <td colSpan={4} className="num">
+                        Net{showVat ? ' (before VAT)' : ''} ({row.currency})
+                      </td>
+                      <td className="num">{formatMoney(row.net, row.currency)}</td>
+                    </tr>
+                    {showVat && (
+                      <tr className="vat">
+                        <td colSpan={4} className="num">
+                          VAT ({Number(invoiceVatPercent)}%) ({row.currency})
+                        </td>
+                        <td className="num">{formatMoney(row.vat, row.currency)}</td>
+                      </tr>
+                    )}
+                    {row.extras.map((ex) => (
+                      <tr key={`${row.currency}-${ex.id}`} className="extra">
+                        <td colSpan={4} className="num">
+                          {ex.label}
+                        </td>
+                        <td className="num">{formatMoney(ex.amount, row.currency)}</td>
+                      </tr>
+                    ))}
+                    <tr className="total">
+                      <td colSpan={4} className="num">
+                        TOTAL DUE ({row.currency})
+                      </td>
+                      <td className="num">{formatMoney(row.grand, row.currency)}</td>
+                    </tr>
+                  </React.Fragment>
                 ))}
               </tfoot>
             )}

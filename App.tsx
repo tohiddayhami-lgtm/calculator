@@ -98,6 +98,7 @@ import {
   ContractStatus,
   ContractRtlLang,
 } from './types';
+import { normalizeInvoiceExtraCharges, sumEnabledInvoiceExtras } from './invoiceAdjustments';
 import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import {
@@ -1194,23 +1195,6 @@ function formatWelteDate(ms: number | undefined): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-function normalizeInvoiceExtraCharges(raw: unknown): InvoiceExtraCharge[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object')
-    .map((x, i) => ({
-      id: String(x.id ?? `ec-${i}-${Date.now()}`),
-      label: typeof x.label === 'string' ? x.label : '',
-      amount: Math.max(0, Number(x.amount) || 0),
-      enabled: Boolean(x.enabled)
-    }));
-}
-
-function sumEnabledInvoiceExtras(charges: InvoiceExtraCharge[]): number {
-  return charges
-    .filter((c) => c.enabled && (c.label || '').trim() && (Number(c.amount) || 0) > 0)
-    .reduce((s, c) => s + Math.max(0, Number(c.amount) || 0), 0);
-}
 
 function getSupplierDisplayName(s: Pick<Supplier, 'name' | 'firstName' | 'lastName' | 'companyName'>): string {
   const comp = (s.companyName ?? '').trim();
@@ -4349,6 +4333,7 @@ function AppInner() {
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
+  const [serviceInvoiceDiscountCurrency, setServiceInvoiceDiscountCurrency] = useState('USD');
   const [savedServices, setSavedServices] = useState<SavedService[]>([]);
   const [savedServicesReady, setSavedServicesReady] = useState(false);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
@@ -6644,6 +6629,7 @@ function AppInner() {
         dashboardTodos,
         invoiceDocKind,
         serviceInvoiceLines,
+        serviceInvoiceDiscountCurrency,
         savedServices
     };
 
@@ -6859,6 +6845,8 @@ function AppInner() {
     const loadedKind = (project.data as any).invoiceDocKind;
     setInvoiceDocKind(loadedKind === 'services' ? 'services' : 'products');
     setServiceInvoiceLines(parseServiceInvoiceLines((project.data as any).serviceInvoiceLines));
+    const loadedSvcDiscCcy = String((project.data as any).serviceInvoiceDiscountCurrency ?? '').trim().toUpperCase();
+    setServiceInvoiceDiscountCurrency(loadedSvcDiscCcy || config.outputCurrency || 'USD');
     setSavedServices((prev) =>
       mergeSavedServicesLists(prev, parseSavedServices((project.data as any).savedServices))
     );
@@ -7892,6 +7880,7 @@ function AppInner() {
             dashboardTodos,
             invoiceDocKind,
             serviceInvoiceLines,
+            serviceInvoiceDiscountCurrency,
             savedServices
           }
         };
@@ -7965,6 +7954,7 @@ function AppInner() {
     dashboardTodos,
     invoiceDocKind,
     serviceInvoiceLines,
+    serviceInvoiceDiscountCurrency,
     savedServices
   ]);
 
@@ -8259,6 +8249,7 @@ function AppInner() {
     setInvoiceWelteTrade(createDefaultInvoiceWelteTrade());
     setInvoiceDocKind('products');
     setServiceInvoiceLines([]);
+    setServiceInvoiceDiscountCurrency(config.outputCurrency || 'USD');
     setPackingListConfig(createDefaultPackingListConfig());
     setCatalogConfig(createDefaultCatalogConfig());
     setImportCandidateProject(null);
@@ -12281,6 +12272,18 @@ function AppInner() {
           notes={notes}
           setNotes={setNotes}
           invoiceOrientation={invoiceOrientation}
+          invoiceGlobalDiscountMode={invoiceGlobalDiscountMode}
+          setInvoiceGlobalDiscountMode={setInvoiceGlobalDiscountMode}
+          invoiceGlobalDiscountValue={invoiceGlobalDiscountValue}
+          setInvoiceGlobalDiscountValue={setInvoiceGlobalDiscountValue}
+          serviceInvoiceDiscountCurrency={serviceInvoiceDiscountCurrency}
+          setServiceInvoiceDiscountCurrency={setServiceInvoiceDiscountCurrency}
+          invoiceVatEnabled={invoiceVatEnabled}
+          setInvoiceVatEnabled={setInvoiceVatEnabled}
+          invoiceVatPercent={invoiceVatPercent}
+          setInvoiceVatPercent={setInvoiceVatPercent}
+          invoiceExtraCharges={invoiceExtraCharges}
+          setInvoiceExtraCharges={setInvoiceExtraCharges}
           onManageSellerProfiles={() => setShowSellerProfilesModal(true)}
           onArchiveIssued={() => void handleArchiveCurrentInvoice('issued')}
           onArchiveDraft={() => void handleArchiveCurrentInvoice('draft')}

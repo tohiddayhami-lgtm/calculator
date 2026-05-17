@@ -392,12 +392,16 @@ export type ArchivedInvoiceStatus =
   | 'overdue'
   | 'cancelled';
 
-/** Optional fixed invoice lines (shipping, insurance, documentation fees, etc.) in invoice currency. */
+/** Optional invoice lines (shipping, insurance, …) — fixed amount or % of net (service invoices). */
 export interface InvoiceExtraCharge {
   id: string;
   label: string;
+  /** Numeric value: currency amount or percent (0–100) when `valueMode` is `percent`. */
   amount: number;
   enabled: boolean;
+  valueMode?: 'amount' | 'percent';
+  /** Target currency for amount / percent base (service invoices; product uses invoice output currency). */
+  currency?: string;
 }
 
 /** Editable titles / column headers on the customs-style proforma (layout key `welte`). */
@@ -660,6 +664,8 @@ export interface SavedProject {
     /** Proforma sub-mode: goods (default) vs service invoice editor. */
     invoiceDocKind?: 'products' | 'services';
     serviceInvoiceLines?: ServiceInvoiceLine[];
+    /** Fixed invoice discount for service proforma applies in this currency. */
+    serviceInvoiceDiscountCurrency?: string;
     savedServices?: SavedService[];
     invoiceAccentColor?: string;
     customerFirstName?: string;
