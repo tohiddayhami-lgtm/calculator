@@ -116,6 +116,9 @@ export function contractLetterheadOpacityCss(c: ContractDef): number {
   return (n.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT) / 100;
 }
 
+/** A4 page height used for preview page-break guides. */
+export const CONTRACT_A4_HEIGHT_MM = 297;
+
 export function getContractContentMarginsMm(c: ContractDef): ContractContentMarginsMm {
   const n = normalizeContractLetterheadFields(c);
   const side = n.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT;
@@ -172,6 +175,14 @@ export function contractLetterheadBackgroundPosition(c: ContractDef): string {
   return letterheadFitMode(c) === 'fill' ? 'top center' : 'center center';
 }
 
+/** @page margin shorthand (top right bottom left) for print / Word. */
+export function contractLetterheadPageMarginCss(c: ContractDef): string {
+  if (!contractLetterheadActive(c)) return '15mm';
+  const m = getContractContentMarginsMm(c);
+  return `${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm`;
+}
+
+/** Screen preview: padding repeats on each printed page fragment when printing. */
 export function contractDocumentBodyPaddingStyle(c: ContractDef): CSSProperties | undefined {
   if (!contractLetterheadActive(c)) return undefined;
   const m = getContractContentMarginsMm(c);
@@ -179,7 +190,21 @@ export function contractDocumentBodyPaddingStyle(c: ContractDef): CSSProperties 
     position: 'relative',
     zIndex: 1,
     boxSizing: 'border-box',
+    display: 'inline-block',
+    width: '100%',
     padding: `${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm`,
+    WebkitBoxDecorationBreak: 'clone',
+    boxDecorationBreak: 'clone',
+  };
+}
+
+export function contractDocumentBodyPrintStyle(): CSSProperties {
+  return {
+    position: 'relative',
+    zIndex: 1,
+    boxSizing: 'border-box',
+    width: '100%',
+    padding: 0,
   };
 }
 
@@ -212,8 +237,13 @@ export function contractLetterheadLayerStyle(c: ContractDef): CSSProperties | un
 
 export function contractLetterheadContentPaddingCss(c: ContractDef): string {
   if (!contractLetterheadActive(c)) return 'position:relative;z-index:1';
-  const m = getContractContentMarginsMm(c);
-  return `position:relative;z-index:1;box-sizing:border-box;padding:${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm`;
+  return 'position:relative;z-index:1;box-sizing:border-box;width:100%';
+}
+
+/** Word export: page margins + full-bleed letterhead behind content. */
+export function contractLetterheadWordPageStyle(c: ContractDef): string {
+  if (!contractLetterheadActive(c)) return '';
+  return `@page{size:A4;margin:${contractLetterheadPageMarginCss(c)}}`;
 }
 
 /** Full-page fixed layer for print / Word — sits behind padded text. */

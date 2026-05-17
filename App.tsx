@@ -131,11 +131,14 @@ import {
   contractLetterheadContentPaddingCss,
   contractLetterheadLayerStyle,
   contractLetterheadBackgroundPosition,
+  contractLetterheadPageMarginCss,
   contractLetterheadPrintBackgroundSize,
   contractLetterheadWordHtml,
+  contractLetterheadWordPageStyle,
   normalizeContractLetterheadFields,
   type ContractLetterheadFitMode,
 } from './contractLetterhead';
+import { ContractPreviewPageGuides } from './contractLetterheadPreview';
 import {
   buyerFromInvoiceCustomer,
   buyerDisplayLabel,
@@ -2397,12 +2400,13 @@ function buildContractWordHtml(c: ContractDef): string {
   const contentWrapStyle = withLh
     ? contractLetterheadContentPaddingCss(c)
     : 'position:relative;z-index:1';
+  const pageStyle = contractLetterheadWordPageStyle(c);
 
   return `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="en">
 <head><meta charset="utf-8"><title>${escapeHtml(c.titleEn)}</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:${bodyMargin};line-height:1.6;position:relative}</style>
+<style>${pageStyle}body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:${bodyMargin};line-height:1.6;position:relative}</style>
 </head><body>
 ${letterheadBg}
 <div style="${contentWrapStyle}">
@@ -4433,6 +4437,8 @@ function AppInner() {
   });
   const [contractsSubView, setContractsSubView] = useState<'list' | 'editor' | 'preview'>('list');
   const [editingContract, setEditingContract] = useState<ContractDef | null>(null);
+  const contractPreviewRootRef = useRef<HTMLDivElement>(null);
+  const contractPreviewBodyRef = useRef<HTMLDivElement>(null);
   const [contractEditorTab, setContractEditorTab] = useState<'info' | 'parties' | 'clauses' | 'schedule'>('info');
 
   // -- STATE: COMMUNITY HUB --
@@ -16093,6 +16099,7 @@ function AppInner() {
     const lhLayerStyle = contractLetterheadLayerStyle(c);
     const lhPrintBgSize = contractLetterheadPrintBackgroundSize(c);
     const lhBgPos = contractLetterheadBackgroundPosition(c);
+    const pageMargins = contractLetterheadPageMarginCss(c);
 
     return (
       <div>
@@ -16156,7 +16163,11 @@ function AppInner() {
               display: none !important;
               visibility: hidden !important;
             }
-            @page { size: A4; margin: ${showLetterhead ? '0' : '15mm'}; }
+            @page { size: A4; margin: ${showLetterhead ? pageMargins : '15mm'}; }
+            .contract-with-letterhead .contract-document-body {
+              padding: 0 !important;
+              display: block !important;
+            }
             .contract-with-letterhead .contract-letterhead-layer {
               position: fixed !important;
               left: 0 !important;
@@ -16173,8 +16184,15 @@ function AppInner() {
               print-color-adjust: exact;
             }
           }
+          @media screen {
+            #contract-preview-root.contract-with-letterhead {
+              margin-bottom: 1.5rem;
+            }
+          }
         `}</style>
-        <div id="contract-preview-root"
+        <div
+          id="contract-preview-root"
+          ref={contractPreviewRootRef}
           className={`bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none relative${showLetterhead ? ' contract-with-letterhead' : ''}`}
           style={{
             width: showLetterhead ? '210mm' : undefined,
@@ -16200,7 +16218,18 @@ function AppInner() {
               aria-hidden
             />
           )}
-          <div className="contract-document-body relative z-[1]" style={bodyPadStyle}>
+          {showLetterhead && (
+            <ContractPreviewPageGuides
+              contract={c}
+              contentRef={contractPreviewBodyRef}
+              rootRef={contractPreviewRootRef}
+            />
+          )}
+          <div
+            ref={contractPreviewBodyRef}
+            className="contract-document-body relative z-[1]"
+            style={bodyPadStyle}
+          >
           {/* Header */}
           <div className={`border-b-2 border-slate-800 pb-4${showLetterhead ? '' : ' p-6'}`}>
             <div className="flex items-start gap-4">
