@@ -98,7 +98,13 @@ import {
   ContractStatus,
   ContractRtlLang,
 } from './types';
-import { normalizeInvoiceExtraCharges, sumEnabledInvoiceExtras } from './invoiceAdjustments';
+import {
+  computeVatFromNet,
+  normalizeInvoiceExtraCharges,
+  normalizeInvoiceVatMode,
+  sumEnabledInvoiceExtras,
+  type InvoiceVatMode,
+} from './invoiceAdjustments';
 import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import {
@@ -4715,6 +4721,7 @@ function AppInner() {
   const [invoiceDiscountBaseTerm, setInvoiceDiscountBaseTerm] = useState<string>('FOB');
   const [invoiceVatEnabled, setInvoiceVatEnabled] = useState(false);
   const [invoiceVatPercent, setInvoiceVatPercent] = useState(9);
+  const [invoiceVatMode, setInvoiceVatMode] = useState<InvoiceVatMode>('exclusive');
   /** Optional fixed lines (shipping, insurance, documentation fees, …) after VAT. */
   const [invoiceExtraCharges, setInvoiceExtraCharges] = useState<InvoiceExtraCharge[]>([]);
   const [invoiceOrientation, setInvoiceOrientation] = useState<'portrait' | 'landscape'>('portrait');
@@ -6102,14 +6109,13 @@ function AppInner() {
     const extrasSum = sumEnabledInvoiceExtras(invoiceExtraCharges);
     const vatByTerm: Record<string, number> = {};
     const grandByTerm: Record<string, number> = {};
+    const vatRate = invoiceVatEnabled ? Math.max(0, Number(invoiceVatPercent) || 0) : 0;
+    const vatMode = normalizeInvoiceVatMode(invoiceVatMode);
     invoiceTerms.forEach((t) => {
       const net = netAfterGlobalByTerm[t] || 0;
-      const vat =
-        invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0
-          ? net * (Math.max(0, Number(invoiceVatPercent) || 0) / 100)
-          : 0;
-      vatByTerm[t] = vat;
-      grandByTerm[t] = net + vat + extrasSum;
+      const breakdown = vatRate > 0 ? computeVatFromNet(net, vatRate, vatMode) : { netExclVat: net, vat: 0, totalInclVat: net };
+      vatByTerm[t] = breakdown.vat;
+      grandByTerm[t] = breakdown.totalInclVat + extrasSum;
     });
 
     const selectedTerm = invoiceDiscountBaseTerm && invoiceTerms.includes(invoiceDiscountBaseTerm)
@@ -6146,6 +6152,7 @@ function AppInner() {
       invoiceGlobalDiscountValue,
       invoiceVatEnabled,
       invoiceVatPercent,
+      invoiceVatMode: vatMode,
       invoiceExtraCharges: normalizeInvoiceExtraCharges(invoiceExtraCharges),
       extrasTotal: extrasSum,
 
@@ -6257,6 +6264,7 @@ function AppInner() {
     setInvoiceVatPercent(
       inv.invoiceVatPercent !== undefined && inv.invoiceVatPercent !== null ? Number(inv.invoiceVatPercent) : 9
     );
+    setInvoiceVatMode(normalizeInvoiceVatMode((inv as { invoiceVatMode?: unknown }).invoiceVatMode));
     setInvoiceExtraCharges(normalizeInvoiceExtraCharges(inv.invoiceExtraCharges));
     setInvoiceIssueDateMs(inv.issueDate && Number.isFinite(inv.issueDate) ? inv.issueDate : Date.now());
     setInvoiceDueDateMs(
@@ -6616,7 +6624,12 @@ function AppInner() {
         billedFrom, billedFromDetails, invoiceLogo, invoiceSellerEmail, invoiceSellerPhone, invoiceSellerWebsite, invoiceSellerTaxId,
         paymentTerms, showImages, showPackInfo,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, packingListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
-        invoiceGlobalDiscountMode, invoiceGlobalDiscountValue, invoiceDiscountBaseTerm, invoiceVatEnabled, invoiceVatPercent,
+        invoiceGlobalDiscountMode,
+        invoiceGlobalDiscountValue,
+        invoiceDiscountBaseTerm,
+        invoiceVatEnabled,
+        invoiceVatPercent,
+        invoiceVatMode,
         invoiceExtraCharges,
         invoiceOrientation,
         invoiceLayout,
@@ -6826,6 +6839,7 @@ function AppInner() {
         ? Number((project.data as any).invoiceVatPercent)
         : 9
     );
+    setInvoiceVatMode(normalizeInvoiceVatMode((project.data as any).invoiceVatMode));
     setInvoiceExtraCharges(normalizeInvoiceExtraCharges((project.data as any).invoiceExtraCharges));
     setInvoiceOrientation(
       (project.data as any).invoiceOrientation === 'landscape' ? 'landscape' : 'portrait'
@@ -7867,6 +7881,7 @@ function AppInner() {
             invoiceDiscountBaseTerm,
             invoiceVatEnabled,
             invoiceVatPercent,
+            invoiceVatMode,
             invoiceExtraCharges,
             invoiceOrientation,
             invoiceLayout,
@@ -7941,6 +7956,7 @@ function AppInner() {
     invoiceDiscountBaseTerm,
     invoiceVatEnabled,
     invoiceVatPercent,
+    invoiceVatMode,
     invoiceExtraCharges,
     invoiceOrientation,
     invoiceLayout,
@@ -8243,6 +8259,7 @@ function AppInner() {
     setInvoiceDiscountBaseTerm('FOB');
     setInvoiceVatEnabled(false);
     setInvoiceVatPercent(9);
+    setInvoiceVatMode('exclusive');
     setInvoiceExtraCharges([]);
     setInvoiceOrientation('portrait');
     setInvoiceLayout('standard');
@@ -12282,6 +12299,8 @@ function AppInner() {
           setInvoiceVatEnabled={setInvoiceVatEnabled}
           invoiceVatPercent={invoiceVatPercent}
           setInvoiceVatPercent={setInvoiceVatPercent}
+          invoiceVatMode={invoiceVatMode}
+          setInvoiceVatMode={setInvoiceVatMode}
           invoiceExtraCharges={invoiceExtraCharges}
           setInvoiceExtraCharges={setInvoiceExtraCharges}
           onManageSellerProfiles={() => setShowSellerProfilesModal(true)}
@@ -12347,15 +12366,17 @@ function AppInner() {
     );
 
     const vatByTerm: Record<string, number> = {};
+    const netExclVatByTerm: Record<string, number> = {};
     const grandByTerm: Record<string, number> = {};
+    const vatRate = invoiceVatEnabled ? Math.max(0, Number(invoiceVatPercent) || 0) : 0;
+    const vatMode = normalizeInvoiceVatMode(invoiceVatMode);
     invoiceTerms.forEach((t) => {
       const net = netAfterGlobalByTerm[t] || 0;
-      const vat =
-        invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0
-          ? net * (Math.max(0, Number(invoiceVatPercent) || 0) / 100)
-          : 0;
-      vatByTerm[t] = vat;
-      grandByTerm[t] = net + vat + extrasSum;
+      const breakdown =
+        vatRate > 0 ? computeVatFromNet(net, vatRate, vatMode) : { netExclVat: net, vat: 0, totalInclVat: net };
+      vatByTerm[t] = breakdown.vat;
+      netExclVatByTerm[t] = breakdown.netExclVat;
+      grandByTerm[t] = breakdown.totalInclVat + extrasSum;
     });
 
     const welteTerm =
@@ -12684,7 +12705,8 @@ function AppInner() {
             {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
               <tr>
                 <td>
-                  {L.vatLabel} ({Number(invoiceVatPercent)}%)
+                  {L.vatLabel} ({Number(invoiceVatPercent)}% ·{' '}
+                  {invoiceVatMode === 'inclusive' ? 'incl.' : 'excl.'})
                 </td>
                 <td className="num">{formatMoney(welteVat, config.outputCurrency)}</td>
                 <td className="num" style={{ fontWeight: 700 }}>
@@ -13256,14 +13278,31 @@ function AppInner() {
                            <span className="text-xs font-bold text-slate-700 uppercase">VAT / sales tax</span>
                        </label>
                        {invoiceVatEnabled && (
-                           <div className="flex items-center gap-2">
-                               <label className="text-[10px] text-slate-500">Rate %</label>
-                               <FormattedNumberInput
-                                   value={invoiceVatPercent}
-                                   onChange={(val) => setInvoiceVatPercent(val ?? 0)}
-                                   className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5"
-                               />
-                           </div>
+                           <>
+                               <div>
+                                   <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">
+                                       VAT treatment
+                                   </label>
+                                   <select
+                                       value={invoiceVatMode}
+                                       onChange={(e) =>
+                                           setInvoiceVatMode(e.target.value as InvoiceVatMode)
+                                       }
+                                       className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                                   >
+                                       <option value="exclusive">Exclusive — VAT added on top</option>
+                                       <option value="inclusive">Inclusive — prices include VAT</option>
+                                   </select>
+                               </div>
+                               <div className="flex items-center gap-2">
+                                   <label className="text-[10px] text-slate-500">Rate %</label>
+                                   <FormattedNumberInput
+                                       value={invoiceVatPercent}
+                                       onChange={(val) => setInvoiceVatPercent(val ?? 0)}
+                                       className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+                                   />
+                               </div>
+                           </>
                        )}
                    </div>
 
@@ -13447,7 +13486,8 @@ function AppInner() {
                            </div>
                            {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
                                <div className="small" style={{ marginTop: 4 }}>
-                                   VAT {Number(invoiceVatPercent)}% applied to net
+                                   VAT {Number(invoiceVatPercent)}% ·{' '}
+                                   {invoiceVatMode === 'inclusive' ? 'inclusive (in prices)' : 'exclusive (added on top)'}
                                </div>
                            )}
                        </div>
@@ -13729,17 +13769,27 @@ function AppInner() {
                            )}
                            <tr className="net">
                                <td colSpan={fixedLeadCols} className="num">
-                                   Net{invoiceVatEnabled ? ' (before VAT)' : ''}
+                                   {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0
+                                       ? 'Net (excl. VAT)'
+                                       : 'Net'}
                                </td>
                                {invoiceTerms.map((term) => (
                                    <td key={`net-${term}`} className="num" colSpan={colsPerTermFooter}>
-                                       {formatMoney(netAfterGlobalByTerm[term] || 0, config.outputCurrency)}
+                                       {formatMoney(
+                                           invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0
+                                               ? netExclVatByTerm[term] || 0
+                                               : netAfterGlobalByTerm[term] || 0,
+                                           config.outputCurrency
+                                       )}
                                    </td>
                                ))}
                            </tr>
                            {invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0 && (
                                <tr className="vat">
-                                   <td colSpan={fixedLeadCols} className="num">VAT ({Number(invoiceVatPercent)}%)</td>
+                                   <td colSpan={fixedLeadCols} className="num">
+                                       VAT ({Number(invoiceVatPercent)}% ·{' '}
+                                       {invoiceVatMode === 'inclusive' ? 'inclusive' : 'exclusive'})
+                                   </td>
                                    {invoiceTerms.map((term) => (
                                        <td key={`vat-${term}`} className="num" colSpan={colsPerTermFooter}>
                                            {formatMoney(vatByTerm[term] || 0, config.outputCurrency)}

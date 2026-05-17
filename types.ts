@@ -537,6 +537,7 @@ export interface ArchivedInvoice {
   invoiceGlobalDiscountValue: number;
   invoiceVatEnabled: boolean;
   invoiceVatPercent: number;
+  invoiceVatMode?: 'exclusive' | 'inclusive';
   /** Fixed extras (shipping, etc.) — same amount added to every scenario column total. */
   invoiceExtraCharges?: InvoiceExtraCharge[];
   extrasTotal?: number;
@@ -641,6 +642,7 @@ export interface SavedProject {
     invoiceDiscountBaseTerm?: string;
     invoiceVatEnabled?: boolean;
     invoiceVatPercent?: number;
+    invoiceVatMode?: 'exclusive' | 'inclusive';
     /** Optional fixed costs (shipping, insurance, …) added after VAT in invoice currency. */
     invoiceExtraCharges?: InvoiceExtraCharge[];
     /** Page orientation for the printed proforma invoice. */

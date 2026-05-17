@@ -1,6 +1,32 @@
 import type { InvoiceExtraCharge } from './types';
 import { totalsByCurrency, type ServiceInvoiceLine } from './serviceInvoice';
 
+export type InvoiceVatMode = 'exclusive' | 'inclusive';
+
+export function normalizeInvoiceVatMode(raw: unknown): InvoiceVatMode {
+  return raw === 'inclusive' ? 'inclusive' : 'exclusive';
+}
+
+/** Split net-after-discount into ex-VAT base, VAT amount, and total including VAT. */
+export function computeVatFromNet(
+  netAfterDiscount: number,
+  ratePercent: number,
+  mode: InvoiceVatMode
+): { netExclVat: number; vat: number; totalInclVat: number } {
+  const net = Math.max(0, netAfterDiscount);
+  const rate = Math.max(0, Number(ratePercent) || 0);
+  if (rate <= 0) {
+    return { netExclVat: net, vat: 0, totalInclVat: net };
+  }
+  if (mode === 'inclusive') {
+    const vat = net * (rate / (100 + rate));
+    const netExclVat = net - vat;
+    return { netExclVat, vat, totalInclVat: net };
+  }
+  const vat = net * (rate / 100);
+  return { netExclVat: net, vat, totalInclVat: net + vat };
+}
+
 export function normalizeInvoiceExtraCharges(raw: unknown): InvoiceExtraCharge[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -53,8 +79,11 @@ export type ServiceCurrencyAdjustment = {
   currency: string;
   subtotal: number;
   discount: number;
+  /** Net after discount (excl. VAT if exclusive; incl. VAT if inclusive). */
   net: number;
+  netExclVat: number;
   vat: number;
+  totalInclVat: number;
   extras: { id: string; label: string; amount: number }[];
   grand: number;
 };
@@ -66,12 +95,14 @@ export function computeServiceInvoiceByCurrency(params: {
   discountCurrency: string;
   vatEnabled: boolean;
   vatPercent: number;
+  vatMode: InvoiceVatMode;
   extraCharges: InvoiceExtraCharge[];
 }): ServiceCurrencyAdjustment[] {
   const subtotals = totalsByCurrency(params.lines);
   const currencies = Object.keys(subtotals).sort();
   const discCcy = (params.discountCurrency || 'USD').trim().toUpperCase() || 'USD';
   const vatRate = params.vatEnabled ? Math.max(0, Number(params.vatPercent) || 0) : 0;
+  const vatMode = normalizeInvoiceVatMode(params.vatMode);
 
   return currencies.map((currency) => {
     const subtotal = subtotals[currency] || 0;
@@ -91,11 +122,12 @@ export function computeServiceInvoiceByCurrency(params: {
       net = Math.max(0, subtotal - discount);
     }
 
-    const vat = vatRate > 0 ? net * (vatRate / 100) : 0;
+    const vatBreakdown =
+      vatRate > 0 ? computeVatFromNet(net, vatRate, vatMode) : { netExclVat: net, vat: 0, totalInclVat: net };
     const extras: { id: string; label: string; amount: number }[] = [];
     let extrasSum = 0;
     for (const ch of params.extraCharges) {
-      const amt = resolveExtraChargeForCurrency(ch, currency, net);
+      const amt = resolveExtraChargeForCurrency(ch, currency, vatBreakdown.netExclVat);
       if (amt > 0) {
         extras.push({ id: ch.id, label: (ch.label || '').trim(), amount: amt });
         extrasSum += amt;
@@ -107,9 +139,11 @@ export function computeServiceInvoiceByCurrency(params: {
       subtotal,
       discount,
       net,
-      vat,
+      netExclVat: vatBreakdown.netExclVat,
+      vat: vatBreakdown.vat,
+      totalInclVat: vatBreakdown.totalInclVat,
       extras,
-      grand: net + vat + extrasSum,
+      grand: vatBreakdown.totalInclVat + extrasSum,
     };
   });
 }

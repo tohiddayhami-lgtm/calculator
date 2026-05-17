@@ -12,7 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { computeServiceInvoiceByCurrency } from './invoiceAdjustments';
+import { computeServiceInvoiceByCurrency, type InvoiceVatMode } from './invoiceAdjustments';
 import {
   SERVICE_INVOICE_CURRENCIES,
   createEmptyServiceLine,
@@ -93,6 +93,8 @@ export type ServiceInvoicePanelProps = {
   setInvoiceVatEnabled: (v: boolean) => void;
   invoiceVatPercent: number;
   setInvoiceVatPercent: (v: number) => void;
+  invoiceVatMode: InvoiceVatMode;
+  setInvoiceVatMode: (m: InvoiceVatMode) => void;
   invoiceExtraCharges: InvoiceExtraCharge[];
   setInvoiceExtraCharges: React.Dispatch<React.SetStateAction<InvoiceExtraCharge[]>>;
   onManageSellerProfiles?: () => void;
@@ -191,6 +193,8 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
     setInvoiceVatEnabled,
     invoiceVatPercent,
     setInvoiceVatPercent,
+    invoiceVatMode,
+    setInvoiceVatMode,
     invoiceExtraCharges,
     setInvoiceExtraCharges,
     onManageSellerProfiles,
@@ -224,6 +228,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
     discountCurrency: serviceInvoiceDiscountCurrency || defaultCurrency || 'USD',
     vatEnabled: invoiceVatEnabled,
     vatPercent: invoiceVatPercent,
+    vatMode: invoiceVatMode,
     extraCharges: invoiceExtraCharges,
   });
 
@@ -580,19 +585,38 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
               <span className="text-xs font-bold text-slate-700 uppercase">VAT / sales tax</span>
             </label>
             {invoiceVatEnabled && (
-              <div className="flex items-center gap-2">
-                <label className="text-[10px] text-slate-500">Rate %</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={invoiceVatPercent || ''}
-                  onChange={(e) => setInvoiceVatPercent(Number(e.target.value) || 0)}
-                  className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase block mb-1">
+                    VAT treatment
+                  </label>
+                  <select
+                    value={invoiceVatMode}
+                    onChange={(e) => setInvoiceVatMode(e.target.value as InvoiceVatMode)}
+                    className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                  >
+                    <option value="exclusive">Exclusive — VAT added on top</option>
+                    <option value="inclusive">Inclusive — prices include VAT</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-slate-500">Rate %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={invoiceVatPercent || ''}
+                    onChange={(e) => setInvoiceVatPercent(Number(e.target.value) || 0)}
+                    className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+                  />
+                </div>
+              </>
             )}
-            <p className="text-[9px] text-slate-500 leading-tight">VAT is calculated per currency on net after discount.</p>
+            <p className="text-[9px] text-slate-500 leading-tight">
+              {invoiceVatMode === 'inclusive'
+                ? 'Line totals include VAT; footer shows ex-VAT net and VAT portion per currency.'
+                : 'VAT is added on top of net after discount, per currency.'}
+            </p>
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
@@ -619,7 +643,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
               </button>
             </div>
             <p className="text-[9px] text-slate-500 leading-tight">
-              Fixed amount or percent of net (before VAT) per currency. Added after VAT to the total.
+              Fixed amount or percent of net excl. VAT per currency. Added after VAT to the total.
             </p>
             <div className="space-y-1.5">
               {(invoiceExtraCharges || []).map((row) => (
@@ -917,14 +941,17 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                     )}
                     <tr className="net">
                       <td colSpan={4} className="num">
-                        Net{showVat ? ' (before VAT)' : ''} ({row.currency})
+                        {showVat ? 'Net (excl. VAT)' : 'Net'} ({row.currency})
                       </td>
-                      <td className="num">{formatMoney(row.net, row.currency)}</td>
+                      <td className="num">
+                        {formatMoney(showVat ? row.netExclVat : row.net, row.currency)}
+                      </td>
                     </tr>
                     {showVat && (
                       <tr className="vat">
                         <td colSpan={4} className="num">
-                          VAT ({Number(invoiceVatPercent)}%) ({row.currency})
+                          VAT ({Number(invoiceVatPercent)}% ·{' '}
+                          {invoiceVatMode === 'inclusive' ? 'inclusive' : 'exclusive'}) ({row.currency})
                         </td>
                         <td className="num">{formatMoney(row.vat, row.currency)}</td>
                       </tr>
