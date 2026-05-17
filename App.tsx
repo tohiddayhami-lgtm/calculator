@@ -109,11 +109,19 @@ import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import { BuyersPanel } from './buyersUi';
 import {
+  CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
+  CONTRACT_LETTERHEAD_MARGIN_MAX,
+  CONTRACT_LETTERHEAD_MARGIN_MIN,
+  CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
+  CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MAX,
+  CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MIN,
   CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
   CONTRACT_LETTERHEAD_OPACITY_MAX,
   CONTRACT_LETTERHEAD_OPACITY_MIN,
+  contractDocumentBodyPaddingStyle,
   contractLetterheadActive,
-  contractLetterheadOpacityCss,
+  contractLetterheadContentPaddingCss,
+  contractLetterheadLayerStyle,
   contractLetterheadWordHtml,
   normalizeContractLetterheadFields,
 } from './contractLetterhead';
@@ -320,7 +328,7 @@ function buildContractAiExportEnvelope(c: ContractDef): Record<string, unknown> 
     _for_ai_models:
       'Return ONLY valid JSON. Use this envelope with a top-level "contract" object, OR return a single object with the same keys as "contract" (no _schema_version required). Preserve array order: clauses[] is the legal ladder order. Each clause needs articleNum (e.g. RECITALS, 1, 2), titleEn, titleRtl, contentEn, contentRtl. Each party, scheduleRows item, and addOns item needs a string id. You may omit id, createdAt, updatedAt on the contract root — the app assigns them on import.',
     _root_keys:
-      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, letterheadEnabled?, letterheadUrl?, letterheadOpacity? (3-45), parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
+      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, effectiveDate (YYYY-MM-DD), logoUrl?, companyName?, letterheadEnabled?, letterheadUrl?, letterheadOpacity? (3-45), letterheadContentMarginMm? (8-30), letterheadContentMarginTopExtraMm? (0-55), parties[], clauses[], scheduleRows[], addOns[], rtlLanguage ("fa"|"ar"), status ("draft"|"final"|"signed")',
     contract: JSON.parse(JSON.stringify(c)) as ContractDef,
   };
 }
@@ -2373,15 +2381,20 @@ function buildContractWordHtml(c: ContractDef): string {
     .join('');
 
   const letterheadBg = contractLetterheadWordHtml(c);
+  const withLh = contractLetterheadActive(c);
+  const bodyMargin = withLh ? '0' : '24px';
+  const contentWrapStyle = withLh
+    ? contractLetterheadContentPaddingCss(c)
+    : 'position:relative;z-index:1';
 
   return `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="en">
 <head><meta charset="utf-8"><title>${escapeHtml(c.titleEn)}</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6;position:relative}</style>
+<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:${bodyMargin};line-height:1.6;position:relative}</style>
 </head><body>
 ${letterheadBg}
-<div style="position:relative;z-index:1">
+<div style="${contentWrapStyle}">
 <div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:12px">
   ${logoSrc ? `<img src="${logoSrc}" alt="" style="max-height:48px;margin-bottom:8px"/>` : ''}
   <div style="font-size:13pt;font-weight:bold">${escapeHtml(c.titleEn)}</div>
@@ -7248,6 +7261,10 @@ function AppInner() {
               letterheadUrl: compressed,
               letterheadEnabled: true,
               letterheadOpacity: prev.letterheadOpacity ?? CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
+              letterheadContentMarginMm:
+                prev.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
+              letterheadContentMarginTopExtraMm:
+                prev.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
               updatedAt: Date.now(),
             }
           : prev
@@ -15197,6 +15214,8 @@ function AppInner() {
       letterheadEnabled: false,
       letterheadUrl: '',
       letterheadOpacity: CONTRACT_LETTERHEAD_OPACITY_DEFAULT,
+      letterheadContentMarginMm: CONTRACT_LETTERHEAD_MARGIN_DEFAULT,
+      letterheadContentMarginTopExtraMm: CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT,
       parties: [
         { id: 'sp_' + ts, labelEn: 'SERVICE PROVIDER', labelRtl: 'ارائه‌دهنده‌ی خدمات', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Service Provider', aliasRtl: 'ارائه‌دهنده‌ی خدمات' },
         { id: 'cl_' + ts, labelEn: 'CLIENT', labelRtl: 'مشتری', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: 'the Client', aliasRtl: 'مشتری' },
@@ -15698,7 +15717,7 @@ function AppInner() {
                 <span>
                   <span className="text-sm font-semibold text-slate-800 block">A4 letterhead background (optional)</span>
                   <span className="text-xs text-slate-500" dir="rtl">
-                    تصویر سربرگ A4 در پشت صفحه — برای چاپ و پیش‌نمایش رسمی‌تر
+                    سربرگ تمام صفحه A4 در پشت متن — حاشیه متن قابل تنظیم است
                   </span>
                 </span>
               </label>
@@ -15746,6 +15765,40 @@ function AppInner() {
                     <p className="text-[10px] text-slate-500 mt-1">
                       Tip: 8–15% is typical for a subtle official watermark behind contract text.
                     </p>
+                  </div>
+                  <div className="md:col-span-2 space-y-4">
+                    <div>
+                      <label className={labelCls}>
+                        Text margin ({c.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT} mm)
+                      </label>
+                      <input
+                        type="range"
+                        min={CONTRACT_LETTERHEAD_MARGIN_MIN}
+                        max={CONTRACT_LETTERHEAD_MARGIN_MAX}
+                        value={c.letterheadContentMarginMm ?? CONTRACT_LETTERHEAD_MARGIN_DEFAULT}
+                        onChange={(e) => upd({ letterheadContentMarginMm: Number(e.target.value) })}
+                        className="w-full accent-blue-600"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
+                        فاصله متن از لبه صفحه — سربرگ کل A4 را می‌پوشاند.
+                      </p>
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        Extra top margin ({c.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT} mm)
+                      </label>
+                      <input
+                        type="range"
+                        min={CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MIN}
+                        max={CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_MAX}
+                        value={c.letterheadContentMarginTopExtraMm ?? CONTRACT_LETTERHEAD_MARGIN_TOP_EXTRA_DEFAULT}
+                        onChange={(e) => upd({ letterheadContentMarginTopExtraMm: Number(e.target.value) })}
+                        className="w-full accent-blue-600"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1" dir="rtl">
+                        فاصله اضافه از بالا برای قرارگیری متن زیر هدر سربرگ.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -15961,7 +16014,8 @@ function AppInner() {
       ? 'Vazirmatn, Tahoma, "Segoe UI", sans-serif'
       : '"Noto Naskh Arabic", Tahoma, "Segoe UI", sans-serif';
     const showLetterhead = contractLetterheadActive(c);
-    const letterheadOp = contractLetterheadOpacityCss(c);
+    const bodyPadStyle = contractDocumentBodyPaddingStyle(c);
+    const lhLayerStyle = contractLetterheadLayerStyle(c);
 
     return (
       <div>
@@ -16015,38 +16069,36 @@ function AppInner() {
               box-shadow: none !important;
               border-radius: 0 !important;
               overflow: visible !important;
-              background: #fff !important;
+              background: transparent !important;
+            }
+            #contract-preview-root.contract-with-letterhead {
+              width: 210mm !important;
+              max-width: 210mm !important;
             }
             .print\\:hidden {
               display: none !important;
               visibility: hidden !important;
             }
-            @page { size: A4; margin: 15mm; }
-            .contract-letterhead-watermark {
+            @page { size: A4; margin: ${showLetterhead ? '0' : '15mm'}; }
+            .contract-with-letterhead .contract-letterhead-layer {
               position: fixed !important;
-              left: 0;
-              top: 0;
-              width: 100%;
-              height: 100%;
-              z-index: 0;
-              pointer-events: none;
-              display: flex !important;
-              align-items: center;
-              justify-content: center;
+              left: 0 !important;
+              top: 0 !important;
+              right: 0 !important;
+              bottom: 0 !important;
+              width: 100% !important;
+              height: 100% !important;
+              min-height: 0 !important;
+              background-size: 100% 100% !important;
+              background-repeat: no-repeat !important;
+              background-position: center center !important;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
-            }
-            .contract-letterhead-watermark img {
-              width: 100%;
-              height: 100%;
-              max-width: 210mm;
-              object-fit: contain;
-              object-position: center center;
             }
           }
         `}</style>
         <div id="contract-preview-root"
-          className="bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none relative"
+          className={`bg-white mx-auto shadow-lg rounded-xl overflow-hidden print:shadow-none print:rounded-none relative${showLetterhead ? ' contract-with-letterhead' : ''}`}
           style={{
             maxWidth: '210mm',
             minHeight: '297mm',
@@ -16057,21 +16109,16 @@ function AppInner() {
             WebkitPrintColorAdjust: 'exact',
             printColorAdjust: 'exact',
           }}>
-          {showLetterhead && c.letterheadUrl && (
+          {showLetterhead && lhLayerStyle && (
             <div
-              className="contract-letterhead-watermark print:block absolute inset-0 flex items-center justify-center pointer-events-none z-0"
+              className="contract-letterhead-layer print:block pointer-events-none"
+              style={lhLayerStyle}
               aria-hidden
-            >
-              <img
-                src={c.letterheadUrl}
-                alt=""
-                style={{ opacity: letterheadOp, width: '100%', height: '100%', objectFit: 'contain' }}
-              />
-            </div>
+            />
           )}
-          <div className="relative z-[1]">
+          <div className="contract-document-body relative z-[1]" style={bodyPadStyle}>
           {/* Header */}
-          <div className="border-b-2 border-slate-800 p-6 pb-4">
+          <div className={`border-b-2 border-slate-800 pb-4${showLetterhead ? '' : ' p-6'}`}>
             <div className="flex items-start gap-4">
               {c.logoUrl && <img src={c.logoUrl} alt="Logo" className="h-12 object-contain flex-shrink-0" />}
               <div className="flex-1 text-center">
