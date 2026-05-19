@@ -1,4 +1,5 @@
 import type {
+  BusinessCatalogOptions,
   BusinessItem,
   BusinessItemType,
   BusinessKind,
@@ -7,6 +8,7 @@ import type {
   BusinessScenario,
   BusinessScenarioLine,
 } from './types';
+import { buildMinimalBusinessSampleJson } from './businessJsonFormat';
 
 export const BUSINESS_KIND_OPTIONS: {
   value: BusinessKind;
@@ -117,6 +119,11 @@ function normCustomFields(raw: unknown): Record<string, string> {
   return out;
 }
 
+function optStr(raw: unknown): string | undefined {
+  const s = String(raw ?? '').trim();
+  return s.length > 0 ? s : undefined;
+}
+
 export function normalizeBusinessProfile(raw: Partial<BusinessProfile> & { id?: string }): BusinessProfile {
   const now = Date.now();
   return {
@@ -125,6 +132,11 @@ export function normalizeBusinessProfile(raw: Partial<BusinessProfile> & { id?: 
     kind: normKind(raw.kind),
     description: String(raw.description ?? '').trim(),
     defaultCurrency: normCurrency(raw.defaultCurrency, 'USD'),
+    contactPhone: optStr(raw.contactPhone),
+    contactEmail: optStr(raw.contactEmail),
+    address: optStr(raw.address),
+    website: optStr(raw.website),
+    logoUrl: optStr(raw.logoUrl),
     createdAt: Number.isFinite(raw.createdAt) ? Number(raw.createdAt) : now,
     updatedAt: Number.isFinite(raw.updatedAt) ? Number(raw.updatedAt) : now,
   };
@@ -149,6 +161,7 @@ export function normalizeBusinessItem(
     currency: ccy,
     pricingModel: normPricing(raw.pricingModel),
     notes: String(raw.notes ?? '').trim(),
+    imageUrl: optStr(raw.imageUrl),
     customFields: normCustomFields(raw.customFields),
     active: raw.active !== false,
     createdAt: Number.isFinite(raw.createdAt) ? Number(raw.createdAt) : now,
@@ -178,19 +191,96 @@ export function normalizeBusinessScenario(
     name: String(raw.name ?? '').trim() || 'سناریو جدید',
     lines: Array.isArray(raw.lines) ? raw.lines.map(normalizeScenarioLine) : [],
     globalDiscountPercent: Math.min(100, Math.max(0, num(raw.globalDiscountPercent))),
+    fixedCosts: raw.fixedCosts !== undefined ? Math.max(0, num(raw.fixedCosts)) : undefined,
     notes: String(raw.notes ?? '').trim(),
     createdAt: Number.isFinite(raw.createdAt) ? Number(raw.createdAt) : now,
     updatedAt: Number.isFinite(raw.updatedAt) ? Number(raw.updatedAt) : now,
   };
 }
 
+export type BusinessScenarioImportLine = {
+  itemSku?: string;
+  itemName?: string;
+  itemIndex?: number;
+  qty: number;
+  unitPriceOverride?: number;
+  discountPercent: number;
+};
+
+export type BusinessScenarioImport = {
+  name: string;
+  globalDiscountPercent: number;
+  fixedCosts: number;
+  notes: string;
+  lines: BusinessScenarioImportLine[];
+};
+
 export type BusinessImportResult = {
   profilePatch?: Partial<BusinessProfile>;
   items: Omit<BusinessItem, 'id' | 'businessId' | 'createdAt' | 'updatedAt'>[];
+  scenarioImports: BusinessScenarioImport[];
+  catalog?: BusinessCatalogOptions;
   warnings: string[];
 };
 
-/** Accept flexible JSON: { business, items } | { products } | array of items */
+function parseCatalogOptions(raw: unknown): BusinessCatalogOptions | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const c = raw as Record<string, unknown>;
+  return {
+    title: c.title !== undefined ? String(c.title) : undefined,
+    subtitle: c.subtitle !== undefined ? String(c.subtitle) : undefined,
+    tagline: c.tagline !== undefined ? String(c.tagline) : undefined,
+    footerText: c.footerText !== undefined ? String(c.footerText) : undefined,
+    showImages: c.showImages === true || c.showImages === 'true',
+    showCostColumn: c.showCostColumn === true || c.showCostColumn === 'true',
+    hidePrices: c.hidePrices === true || c.hidePrices === 'true',
+  };
+}
+
+function parseScenarioImports(raw: unknown): BusinessScenarioImport[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BusinessScenarioImport[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const s = row as Record<string, unknown>;
+    const linesRaw = s.lines ?? s.items;
+    const lines: BusinessScenarioImportLine[] = [];
+    if (Array.isArray(linesRaw)) {
+      for (const lr of linesRaw) {
+        if (!lr || typeof lr !== 'object') continue;
+        const l = lr as Record<string, unknown>;
+        lines.push({
+          itemSku: l.itemSku !== undefined ? String(l.itemSku).trim() : l.sku !== undefined ? String(l.sku).trim() : undefined,
+          itemName:
+            l.itemName !== undefined
+              ? String(l.itemName).trim()
+              : l.name !== undefined
+                ? String(l.name).trim()
+                : undefined,
+          itemIndex: l.itemIndex !== undefined ? Math.max(0, Math.floor(num(l.itemIndex))) : undefined,
+          qty: Math.max(0, num(l.qty, 1)),
+          unitPriceOverride:
+            l.unitPriceOverride !== undefined
+              ? Math.max(0, num(l.unitPriceOverride))
+              : l.price !== undefined
+                ? Math.max(0, num(l.price))
+                : undefined,
+          discountPercent: Math.min(100, Math.max(0, num(l.discountPercent ?? l.discount))),
+        });
+      }
+    }
+    out.push({
+      name: String(s.name ?? s.title ?? 'سناریو').trim() || 'سناریو',
+      globalDiscountPercent: Math.min(100, Math.max(0, num(s.globalDiscountPercent))),
+      fixedCosts: Math.max(0, num(s.fixedCosts ?? s.fixed_costs ?? s.overhead)),
+      notes: String(s.notes ?? '').trim(),
+      lines,
+    });
+  }
+  return out;
+}
+
+/** Accept flexible JSON: { business, items, scenarios, catalog } | array | legacy keys */
 export function parseBusinessImportJson(text: string): BusinessImportResult {
   const warnings: string[] = [];
   let data: unknown;
@@ -216,6 +306,16 @@ export function parseBusinessImportJson(text: string): BusinessImportResult {
           : b.currency !== undefined
             ? normCurrency(b.currency)
             : undefined,
+      contactPhone: b.contactPhone !== undefined ? String(b.contactPhone) : undefined,
+      contactEmail: b.contactEmail !== undefined ? String(b.contactEmail) : undefined,
+      address: b.address !== undefined ? String(b.address) : undefined,
+      website: b.website !== undefined ? String(b.website) : undefined,
+      logoUrl:
+        b.logoUrl !== undefined
+          ? String(b.logoUrl)
+          : b.logo !== undefined
+            ? String(b.logo)
+            : undefined,
     };
   }
 
@@ -227,38 +327,108 @@ export function parseBusinessImportJson(text: string): BusinessImportResult {
       root.products ??
       root.services ??
       root.menu ??
+      root.menuItems ??
       root.properties ??
-      root.catalog;
+      root.listings;
     if (Array.isArray(list)) rows = list;
-    else warnings.push('لیست items/products یافت نشد؛ فقط پروفایل به‌روز می‌شود.');
+    else if (root.catalog && typeof root.catalog === 'object' && !Array.isArray(root.catalog)) {
+      const cat = root.catalog as Record<string, unknown>;
+      if (Array.isArray(cat.items)) rows = cat.items;
+      else warnings.push('لیست items/products یافت نشد؛ فقط پروفایل/سناریو به‌روز می‌شود.');
+    } else warnings.push('لیست items/products یافت نشد؛ فقط پروفایل به‌روز می‌شود.');
   }
 
-  const items = rows.map((row, i) => {
-    if (!row || typeof row !== 'object') {
-      warnings.push(`ردیف ${i + 1} نادیده گرفته شد.`);
-      return null;
-    }
-    const o = row as Record<string, unknown>;
-    const price =
-      o.unitPrice ?? o.price ?? o.salePrice ?? o.rent ?? o.amount ?? o.rate ?? 0;
-    const cost = o.costPrice ?? o.cost ?? o.purchasePrice ?? 0;
-    return {
-      name: String(o.name ?? o.title ?? o.label ?? `آیتم ${i + 1}`),
-      sku: o.sku !== undefined ? String(o.sku) : o.code !== undefined ? String(o.code) : undefined,
-      itemType: normItemType(o.itemType ?? o.type),
-      category: String(o.category ?? o.group ?? 'عمومی'),
-      unit: String(o.unit ?? o.uom ?? 'عدد'),
-      unitPrice: Math.max(0, num(price)),
-      costPrice: Math.max(0, num(cost)),
-      currency: normCurrency(o.currency ?? (profilePatch as { defaultCurrency?: string })?.defaultCurrency),
-      pricingModel: normPricing(o.pricingModel ?? o.pricing),
-      notes: String(o.notes ?? o.description ?? ''),
-      customFields: normCustomFields(o.customFields ?? o.meta ?? o.attributes),
-      active: o.active !== false,
-    };
-  }).filter(Boolean) as BusinessImportResult['items'];
+  const defaultCcy = (profilePatch as { defaultCurrency?: string } | undefined)?.defaultCurrency;
 
-  return { profilePatch, items, warnings };
+  const items = rows
+    .map((row, i) => {
+      if (!row || typeof row !== 'object') {
+        warnings.push(`ردیف ${i + 1} نادیده گرفته شد.`);
+        return null;
+      }
+      const o = row as Record<string, unknown>;
+      const price =
+        o.unitPrice ?? o.price ?? o.salePrice ?? o.rent ?? o.amount ?? o.rate ?? 0;
+      const cost = o.costPrice ?? o.cost ?? o.purchasePrice ?? 0;
+      const img =
+        o.imageUrl ?? o.image ?? o.photo ?? o.picture ?? o.thumbnail ?? o.img;
+      const cf = normCustomFields(o.customFields ?? o.meta ?? o.attributes);
+      const imgStr = img !== undefined && img !== null ? String(img).trim() : '';
+      if (imgStr && !cf.imageUrl) cf.imageUrl = imgStr;
+      return {
+        name: String(o.name ?? o.title ?? o.label ?? `آیتم ${i + 1}`),
+        sku: o.sku !== undefined ? String(o.sku) : o.code !== undefined ? String(o.code) : undefined,
+        itemType: normItemType(o.itemType ?? o.type, profilePatch?.kind),
+        category: String(o.category ?? o.group ?? 'عمومی'),
+        unit: String(o.unit ?? o.uom ?? 'عدد'),
+        unitPrice: Math.max(0, num(price)),
+        costPrice: Math.max(0, num(cost)),
+        currency: normCurrency(o.currency ?? defaultCcy),
+        pricingModel: normPricing(o.pricingModel ?? o.pricing),
+        notes: String(o.notes ?? o.description ?? ''),
+        imageUrl: imgStr || undefined,
+        customFields: cf,
+        active: o.active !== false,
+      };
+    })
+    .filter(Boolean) as BusinessImportResult['items'];
+
+  const scenarioImports = root ? parseScenarioImports(root.scenarios ?? root.forecasts) : [];
+  const catalogRaw = root?.catalog;
+  const catalog =
+    catalogRaw && typeof catalogRaw === 'object' && !Array.isArray(catalogRaw)
+      ? parseCatalogOptions(catalogRaw)
+      : undefined;
+
+  return { profilePatch, items, scenarioImports, catalog, warnings };
+}
+
+/** بعد از import اقلام، سناریوها را با sku/نام به itemId وصل می‌کند */
+export function resolveScenarioImports(
+  imports: BusinessScenarioImport[],
+  businessId: string,
+  items: BusinessItem[],
+): { scenarios: BusinessScenario[]; warnings: string[] } {
+  const warnings: string[] = [];
+  const bySku = new Map<string, BusinessItem>();
+  const byName = new Map<string, BusinessItem>();
+  for (const it of items) {
+    if (it.sku) bySku.set(it.sku.trim().toLowerCase(), it);
+    byName.set(it.name.trim().toLowerCase(), it);
+  }
+
+  const scenarios: BusinessScenario[] = imports.map((imp) => {
+    const lines: BusinessScenarioLine[] = [];
+    for (const l of imp.lines) {
+      let item: BusinessItem | undefined;
+      if (l.itemSku) item = bySku.get(l.itemSku.trim().toLowerCase());
+      if (!item && l.itemName) item = byName.get(l.itemName.trim().toLowerCase());
+      if (!item && l.itemIndex !== undefined && l.itemIndex < items.length) {
+        item = items[l.itemIndex];
+      }
+      if (!item) {
+        warnings.push(`سناریو «${imp.name}»: آیتم ${l.itemSku || l.itemName || `#${l.itemIndex}`} یافت نشد.`);
+        continue;
+      }
+      lines.push({
+        itemId: item.id,
+        qty: l.qty,
+        unitPriceOverride: l.unitPriceOverride,
+        discountPercent: l.discountPercent,
+      });
+    }
+    return normalizeBusinessScenario({
+      id: newBusinessScenarioId(),
+      businessId,
+      name: imp.name,
+      lines,
+      globalDiscountPercent: imp.globalDiscountPercent,
+      fixedCosts: imp.fixedCosts,
+      notes: imp.notes,
+    });
+  });
+
+  return { scenarios, warnings };
 }
 
 export type ScenarioLineCalc = {
@@ -310,9 +480,11 @@ export function calculateScenario(
   }
 
   let revenue = lines.reduce((s, l) => s + l.lineRevenue, 0);
-  const cost = lines.reduce((s, l) => s + l.lineCost, 0);
+  let cost = lines.reduce((s, l) => s + l.lineCost, 0);
   const gDisc = scenario.globalDiscountPercent / 100;
   revenue = Math.max(0, revenue * (1 - gDisc));
+  const fixed = Math.max(0, scenario.fixedCosts ?? 0);
+  cost += fixed;
   const profit = revenue - cost;
   const marginPct = revenue > 0 ? (profit / revenue) * 100 : 0;
 
@@ -331,82 +503,7 @@ export function kindLabel(k: BusinessKind): string {
   return BUSINESS_KIND_OPTIONS.find((o) => o.value === k)?.label ?? k;
 }
 
+/** @deprecated از buildMinimalBusinessSampleJson استفاده کنید */
 export function sampleImportJson(kind: BusinessKind): string {
-  if (kind === 'restaurant') {
-    return JSON.stringify(
-      {
-        business: { name: 'رستوران نمونه', kind: 'restaurant', defaultCurrency: 'IRR' },
-        items: [
-          {
-            name: 'پیتزا مارگاریتا',
-            itemType: 'menu_item',
-            category: 'غذا',
-            unitPrice: 450000,
-            costPrice: 180000,
-            currency: 'IRR',
-            pricingModel: 'per_unit',
-            customFields: { prepMin: '15' },
-          },
-          {
-            name: 'نوشابه',
-            itemType: 'menu_item',
-            category: 'نوشیدنی',
-            unitPrice: 35000,
-            costPrice: 12000,
-            currency: 'IRR',
-          },
-        ],
-      },
-      null,
-      2,
-    );
-  }
-  if (kind === 'real_estate') {
-    return JSON.stringify(
-      {
-        business: { name: 'املاک نمونه', kind: 'real_estate', defaultCurrency: 'IRR' },
-        items: [
-          {
-            name: 'آپارتمان ۱۲۰ متری — ونک',
-            itemType: 'property',
-            category: 'فروش',
-            unitPrice: 12500000000,
-            costPrice: 11000000000,
-            currency: 'IRR',
-            pricingModel: 'fixed',
-            customFields: { area_sqm: '120', bedrooms: '2' },
-          },
-          {
-            name: 'واحد اداری — اجاره ماهانه',
-            itemType: 'rental_unit',
-            category: 'اجاره',
-            unitPrice: 85000000,
-            costPrice: 0,
-            currency: 'IRR',
-            pricingModel: 'per_month',
-          },
-        ],
-      },
-      null,
-      2,
-    );
-  }
-  return JSON.stringify(
-    {
-      business: { name: 'کسب‌وکار نمونه', kind, defaultCurrency: 'USD' },
-      items: [
-        {
-          name: 'محصول یا خدمت نمونه',
-          itemType: 'product',
-          category: 'عمومی',
-          unitPrice: 100,
-          costPrice: 60,
-          currency: 'USD',
-          pricingModel: 'per_unit',
-        },
-      ],
-    },
-    null,
-    2,
-  );
+  return buildMinimalBusinessSampleJson(kind);
 }

@@ -672,6 +672,11 @@ export interface BusinessProfile {
   kind: BusinessKind;
   description: string;
   defaultCurrency: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  address?: string;
+  website?: string;
+  logoUrl?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -688,11 +693,24 @@ export interface BusinessItem {
   costPrice: number;
   currency: string;
   pricingModel: BusinessPricingModel;
+  /** تصویر کاتالوگ — URL عمومی https */
+  imageUrl?: string;
   notes: string;
   customFields: Record<string, string>;
   active: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+/** تنظیمات چاپ کاتالوگ (از JSON یا UI) */
+export interface BusinessCatalogOptions {
+  title?: string;
+  subtitle?: string;
+  tagline?: string;
+  footerText?: string;
+  showImages?: boolean;
+  showCostColumn?: boolean;
+  hidePrices?: boolean;
 }
 
 export interface BusinessScenarioLine {
@@ -708,6 +726,8 @@ export interface BusinessScenario {
   name: string;
   lines: BusinessScenarioLine[];
   globalDiscountPercent: number;
+  /** هزینه ثابت دوره (اجاره، حقوق، …) — از سود کسر می‌شود */
+  fixedCosts?: number;
   notes: string;
   createdAt: number;
   updatedAt: number;

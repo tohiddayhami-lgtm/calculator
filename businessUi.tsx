@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import type {
+  BusinessCatalogOptions,
   BusinessItem,
   BusinessItemType,
   BusinessKind,
@@ -25,6 +26,13 @@ import type {
   BusinessScenario,
   BusinessScenarioLine,
 } from './types';
+import {
+  buildBusinessAiPrompt,
+  buildFullBusinessSampleJson,
+  buildMinimalBusinessSampleJson,
+  BUSINESS_JSON_SCHEMA_VERSION,
+  getBusinessJsonFieldGuideFa,
+} from './businessJsonFormat';
 import { buildBusinessCatalogHtml } from './businessCatalog';
 import {
   BUSINESS_ITEM_TYPE_OPTIONS,
@@ -41,7 +49,7 @@ import {
   normalizeBusinessScenario,
   parseBusinessImportJson,
   pricingModelLabel,
-  sampleImportJson,
+  resolveScenarioImports,
 } from './businessCore';
 import { formatThousandsWhileTyping, parseFormattedNumber } from './numericInputFormat';
 
@@ -107,6 +115,8 @@ export function BusinessPanel({
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>('');
   const [profileDraft, setProfileDraft] = useState<BusinessProfile | null>(null);
+  const [catalogOptions, setCatalogOptions] = useState<BusinessCatalogOptions>({ showImages: true });
+  const [showJsonGuide, setShowJsonGuide] = useState(false);
 
   const activeProfile = useMemo(
     () => profiles.find((p) => p.id === activeBusinessId) ?? null,
@@ -203,7 +213,8 @@ export function BusinessPanel({
     const profile = ensureActive();
     if (!profile) return;
     try {
-      const { profilePatch, items: imported, warnings } = parseBusinessImportJson(importText);
+      const { profilePatch, items: imported, scenarioImports, catalog, warnings } =
+        parseBusinessImportJson(importText);
       if (profilePatch) {
         setProfiles((prev) =>
           prev.map((p) =>
@@ -218,6 +229,7 @@ export function BusinessPanel({
           ),
         );
       }
+      if (catalog) setCatalogOptions((prev) => ({ ...prev, ...catalog }));
       const mapped = imported.map((row) =>
         normalizeBusinessItem(
           {
@@ -228,18 +240,39 @@ export function BusinessPanel({
           profile,
         ),
       );
-      if (importMode === 'replace') {
-        setItems((prev) => [...prev.filter((i) => i.businessId !== profile.id), ...mapped]);
-      } else {
-        setItems((prev) => [...prev, ...mapped]);
+      const kept =
+        importMode === 'replace' ? [] : items.filter((i) => i.businessId === profile.id);
+      const merged = [...kept, ...mapped];
+      setItems((prev) => [...prev.filter((i) => i.businessId !== profile.id), ...merged]);
+
+      const allWarnings = [...warnings];
+      if (scenarioImports.length > 0) {
+        const { scenarios: resolved, warnings: sw } = resolveScenarioImports(
+          scenarioImports,
+          profile.id,
+          merged,
+        );
+        if (importMode === 'replace') {
+          setScenarios((prev) => [
+            ...prev.filter((s) => s.businessId !== profile.id),
+            ...resolved,
+          ]);
+        } else {
+          setScenarios((prev) => [...prev, ...resolved]);
+        }
+        allWarnings.push(...sw);
       }
+
       const msg = [
         `${mapped.length} آیتم وارد شد.`,
-        ...warnings,
-      ].filter(Boolean).join('\n');
+        scenarioImports.length > 0 ? `${scenarioImports.length} سناریو پردازش شد.` : '',
+        ...allWarnings,
+      ]
+        .filter(Boolean)
+        .join('\n');
       alert(msg || 'انجام شد.');
       setImportText('');
-      setTab('items');
+      setTab(scenarioImports.length > 0 ? 'scenarios' : 'items');
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
     }
@@ -249,9 +282,51 @@ export function BusinessPanel({
     const profile = ensureActive();
     if (!profile) return;
     const payload = {
-      business: profile,
-      items: businessItems,
-      scenarios: businessScenarios,
+      _schema: 'cloudexport-business-v1',
+      _schemaVersion: BUSINESS_JSON_SCHEMA_VERSION,
+      business: {
+        name: profile.name,
+        kind: profile.kind,
+        description: profile.description,
+        defaultCurrency: profile.defaultCurrency,
+        contactPhone: profile.contactPhone,
+        contactEmail: profile.contactEmail,
+        address: profile.address,
+        website: profile.website,
+        logoUrl: profile.logoUrl,
+      },
+      items: businessItems.map((it) => ({
+        name: it.name,
+        sku: it.sku,
+        itemType: it.itemType,
+        category: it.category,
+        unit: it.unit,
+        unitPrice: it.unitPrice,
+        costPrice: it.costPrice,
+        currency: it.currency,
+        pricingModel: it.pricingModel,
+        imageUrl: it.imageUrl,
+        notes: it.notes,
+        customFields: it.customFields,
+        active: it.active,
+      })),
+      scenarios: businessScenarios.map((s) => ({
+        name: s.name,
+        globalDiscountPercent: s.globalDiscountPercent,
+        fixedCosts: s.fixedCosts ?? 0,
+        notes: s.notes,
+        lines: s.lines.map((l) => {
+          const it = businessItems.find((i) => i.id === l.itemId);
+          return {
+            itemSku: it?.sku,
+            itemName: it?.name,
+            qty: l.qty,
+            unitPriceOverride: l.unitPriceOverride,
+            discountPercent: l.discountPercent,
+          };
+        }),
+      })),
+      catalog: catalogOptions,
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -265,7 +340,7 @@ export function BusinessPanel({
   const openCatalogPrint = () => {
     const profile = ensureActive();
     if (!profile) return;
-    const html = buildBusinessCatalogHtml(profile, businessItems);
+    const html = buildBusinessCatalogHtml(profile, businessItems, catalogOptions.title, catalogOptions);
     const w = window.open('', '_blank');
     if (!w) {
       alert('پاپ‌آپ مسدود است.');
@@ -467,6 +542,55 @@ export function BusinessPanel({
                           onChange={(e) => setDraft({ description: e.target.value })}
                         />
                       </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className={labelCls}>تلفن</label>
+                          <input
+                            className={inputCls}
+                            dir="ltr"
+                            value={draft.contactPhone ?? ''}
+                            onChange={(e) => setDraft({ contactPhone: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelCls}>ایمیل</label>
+                          <input
+                            className={inputCls}
+                            dir="ltr"
+                            value={draft.contactEmail ?? ''}
+                            onChange={(e) => setDraft({ contactEmail: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>آدرس</label>
+                        <input
+                          className={inputCls}
+                          dir="rtl"
+                          value={draft.address ?? ''}
+                          onChange={(e) => setDraft({ address: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className={labelCls}>وب‌سایت</label>
+                          <input
+                            className={inputCls}
+                            dir="ltr"
+                            value={draft.website ?? ''}
+                            onChange={(e) => setDraft({ website: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelCls}>لوگو (URL)</label>
+                          <input
+                            className={inputCls}
+                            dir="ltr"
+                            value={draft.logoUrl ?? ''}
+                            onChange={(e) => setDraft({ logoUrl: e.target.value })}
+                          />
+                        </div>
+                      </div>
                       <div className="flex gap-2 pt-2">
                         <button
                           type="button"
@@ -641,30 +765,65 @@ export function BusinessPanel({
 
       {tab === 'import' && activeProfile && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+          <p className="text-xs bg-violet-50 border border-violet-100 rounded-lg p-3 text-violet-900 leading-relaxed">
+            <strong>برای هوش مصنوعی:</strong> «کپی پرامپت AI» را در چت Paste کنید، یا «نمونه کامل» را ویرایش
+            کنید. خروجی AI را اینجا وارد کنید — اقلام، سناریو، سود و کاتالوگ با تصویر ساخته می‌شود.
+          </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setImportText(sampleImportJson(activeProfile.kind))}
+              onClick={() => setImportText(buildFullBusinessSampleJson(activeProfile.kind))}
+              className="text-xs border border-violet-300 bg-violet-50 text-violet-800 px-3 py-1.5 rounded-lg hover:bg-violet-100 font-semibold"
+            >
+              نمونه کامل (اقلام + سناریو + کاتالوگ)
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportText(buildMinimalBusinessSampleJson(activeProfile.kind))}
               className="text-xs border border-violet-200 text-violet-700 px-3 py-1.5 rounded-lg hover:bg-violet-50"
             >
-              نمونه JSON ({kindLabel(activeProfile.kind)})
+              نمونه سریع
             </button>
             <button
               type="button"
               onClick={() => {
-                navigator.clipboard?.writeText(sampleImportJson(activeProfile.kind));
+                void navigator.clipboard?.writeText(buildFullBusinessSampleJson(activeProfile.kind));
               }}
               className="text-xs border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-1"
             >
-              <Copy className="w-3 h-3" /> کپی نمونه
+              <Copy className="w-3 h-3" /> کپی نمونه کامل
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(
+                  buildBusinessAiPrompt(activeProfile.kind, activeProfile.name),
+                );
+                alert('دستورالعمل AI در کلیپ‌بورد کپی شد.');
+              }}
+              className="text-xs border border-indigo-200 text-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-50 font-semibold"
+            >
+              کپی پرامپت AI
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowJsonGuide((v) => !v)}
+              className="text-xs border border-slate-200 px-3 py-1.5 rounded-lg"
+            >
+              {showJsonGuide ? 'بستن راهنما' : 'راهنمای فیلدها'}
             </button>
           </div>
+          {showJsonGuide && (
+            <pre className="text-[10px] bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono text-slate-700 max-h-48 overflow-y-auto">
+              {getBusinessJsonFieldGuideFa()}
+            </pre>
+          )}
           <textarea
-            className={inputCls + ' min-h-[220px] font-mono text-xs'}
+            className={inputCls + ' min-h-[280px] font-mono text-[11px]'}
             dir="ltr"
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder='{ "business": { ... }, "items": [ ... ] }'
+            placeholder='{ "_schema": "cloudexport-business-v1", "business": {}, "items": [], "scenarios": [], "catalog": {} }'
           />
           <div className="flex flex-wrap items-center gap-4">
             <label className="flex items-center gap-2 text-sm">
@@ -677,7 +836,7 @@ export function BusinessPanel({
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="radio" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} />
-              جایگزینی همه اقلام این کسب‌وکار
+              جایگزینی اقلام + سناریوهای این کسب‌وکار
             </label>
           </div>
           <button
@@ -688,8 +847,8 @@ export function BusinessPanel({
             <Upload className="w-4 h-4" /> ورود JSON
           </button>
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            فیلدهای پشتیبانی‌شده: name, unitPrice, costPrice, currency, category, itemType, sku, notes,
-            customFields, pricingModel. نام‌های جایگزین: price, cost, products, services, properties.
+            فرمت {BUSINESS_JSON_SCHEMA_VERSION}: business، items (imageUrl)، scenarios (itemSku، fixedCosts)،
+            catalog (چاپ). دکمه «خروجی JSON» در بالا همان ساختار را صادر می‌کند — مناسب برای AI.
           </p>
         </div>
       )}
@@ -796,6 +955,16 @@ function ItemFormModal({
           <div>
             <label className={labelCls}>یادداشت</label>
             <textarea className={inputCls} rows={2} dir="rtl" value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelCls}>تصویر (URL)</label>
+            <input
+              className={inputCls}
+              dir="ltr"
+              placeholder="https://..."
+              value={draft.imageUrl ?? ''}
+              onChange={(e) => set({ imageUrl: e.target.value })}
+            />
           </div>
           <div>
             <label className={labelCls}>فیلدهای اضافی (مثلاً متراژ، تعداد خواب)</label>
@@ -928,6 +1097,17 @@ function ScenarioTab({
                   value={selectedScenario.globalDiscountPercent}
                   onChange={(e) =>
                     onUpdateScenario({ globalDiscountPercent: parseFloat(e.target.value) || 0 })
+                  }
+                />
+              </div>
+              <div className="w-36">
+                <label className={labelCls}>هزینه ثابت</label>
+                <input
+                  className={inputCls}
+                  dir="ltr"
+                  value={formatThousandsWhileTyping(String(selectedScenario.fixedCosts ?? ''))}
+                  onChange={(e) =>
+                    onUpdateScenario({ fixedCosts: parseFormattedNumber(e.target.value) ?? 0 })
                   }
                 />
               </div>
