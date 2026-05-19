@@ -1108,6 +1108,8 @@ export interface EducationCourse {
   endDate: string;
   /** Total course fee (digits, commas added in UI) */
   courseFee: string;
+  /** Label before fee on story export (e.g. شهریه، هزینه، مبلغ) */
+  courseFeeLabel?: string;
   courseFeeCurrency: EducationFeeCurrency;
   /** Custom currency label for story/list (defaults from preset if empty) */
   courseFeeCurrencyLabel?: string;

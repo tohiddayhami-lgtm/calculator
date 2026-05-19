@@ -71,6 +71,10 @@ export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
     instructorResume: c.instructorResume ?? '',
     instructorPhotoUrl: typeof c.instructorPhotoUrl === 'string' ? c.instructorPhotoUrl : '',
     courseFee: c.courseFee ?? '',
+    courseFeeLabel:
+      typeof c.courseFeeLabel === 'string' && c.courseFeeLabel.trim()
+        ? c.courseFeeLabel.trim()
+        : 'شهریه',
     courseFeeCurrency: normCurrency(c.courseFeeCurrency),
     courseFeeCurrencyLabel:
       typeof c.courseFeeCurrencyLabel === 'string'

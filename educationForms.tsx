@@ -78,6 +78,7 @@ export function makeBlankEducationCourse(): EducationCourse {
     startDate: today,
     endDate: today,
     courseFee: '',
+    courseFeeLabel: 'شهریه',
     courseFeeCurrency: 'OMR',
     courseFeeCurrencyLabel: 'OMR',
     storyBackgroundUrl: '',
@@ -752,9 +753,22 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className={labelCls}>شهریه دوره</label>
+                <label className={labelCls}>عنوان مبلغ در استوری</label>
+                <input
+                  value={editing.courseFeeLabel ?? 'شهریه'}
+                  onChange={e => upd({ courseFeeLabel: e.target.value })}
+                  className={inputCls}
+                  dir="rtl"
+                  placeholder="شهریه، هزینه، مبلغ، …"
+                />
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  در خروجی: «{(editing.courseFeeLabel || 'شهریه').trim()}: ۱,۵۰۰,۰۰۰ …»
+                </p>
+              </div>
+              <div>
+                <label className={labelCls}>مبلغ دوره</label>
                 <input
                   value={formatAmountDisplay(editing.courseFee)}
                   onChange={e => upd({ courseFee: onAmountInput(e.target.value) })}
@@ -883,7 +897,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 placeholder="مثلاً: برای ثبت‌نام کلمه آموزش را دایرکت کنید"
               />
               <p className="text-[10px] text-slate-400 mt-1 mb-2">
-                زیر درصد اشغال و نوار پیشرفت در خروجی استوری نمایش داده می‌شود.
+                زیر وضعیت ظرفیت و نوار پیشرفت در خروجی استوری نمایش داده می‌شود.
               </p>
               <div className="flex gap-2 mb-2">
                 {(

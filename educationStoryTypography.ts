@@ -45,7 +45,7 @@ export const STORY_TYPOGRAPHY_FIELDS: {
   { key: 'syllabusHeading', label: 'عنوان سرفصل‌ها', min: 18, max: 36 },
   { key: 'syllabusItem', label: 'آیتم سرفصل', min: 16, max: 30 },
   { key: 'statsMain', label: 'آمار اصلی (۱/۵۰)', min: 36, max: 72 },
-  { key: 'statsSub', label: 'درصد اشغال', min: 20, max: 40 },
+  { key: 'statsSub', label: 'وضعیت ظرفیت', min: 20, max: 40 },
   { key: 'statsDetail', label: 'قطعی / رزرو', min: 16, max: 32 },
   { key: 'footNote', label: 'نوت استوری', min: 14, max: 40 },
   { key: 'legend', label: 'راهنمای رنگ صندلی', min: 14, max: 32 },

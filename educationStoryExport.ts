@@ -464,7 +464,7 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
     contentY =
       drawRtlWrapped(
         ctx,
-        `شهریه: ${feeFmt} ${feeCurrencyDisplay(course)}`,
+        `${(course.courseFeeLabel || 'شهریه').trim()}: ${feeFmt} ${feeCurrencyDisplay(course)}`,
         bodyTextRight,
         contentY,
         bodyMaxW,
@@ -626,7 +626,13 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
   ctx.fillText(`${filled} / ${cap}`, W / 2, statsY);
   ctx.font = `500 ${typo.statsSub}px ${FONT}`;
   ctx.fillStyle = pct >= 100 ? '#f87171' : '#c4b5fd';
-  ctx.fillText(pct >= 100 ? 'ظرفیت تکمیل شد' : `${pct}% اشغال`, W / 2, statsY + storyLineHeight(typo.statsSub));
+  const capacityLine =
+    pct >= 100
+      ? 'ظرفیت تکمیل شده'
+      : filled > 0
+        ? `${filled} از ${cap} ثبت‌شده`
+        : 'صندلی خالی موجود';
+  ctx.fillText(capacityLine, W / 2, statsY + storyLineHeight(typo.statsSub));
   if (filled > 0) {
     ctx.font = `400 ${typo.statsDetail}px ${FONT}`;
     ctx.fillStyle = '#94a3b8';
