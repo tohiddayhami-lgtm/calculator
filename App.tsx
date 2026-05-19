@@ -8986,7 +8986,7 @@ function AppInner() {
   // (Note: Kept inside component to access state closure)
   
   const renderDashboard = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" data-dashboard-layout="export-warehouse-only">
       <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1 gap-1 shadow-sm">
         <button
           type="button"
