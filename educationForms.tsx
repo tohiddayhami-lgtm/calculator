@@ -140,12 +140,12 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     setEditing({ ...editing, ...patch, updatedAt: Date.now() });
   };
 
-  const addInstructorResumeMediaFiles = async (fileList: FileList | null) => {
-    if (!fileList?.length) return;
+  const addInstructorResumeMediaFiles = async (files: File[]) => {
+    if (!files.length) return;
     let rejected = false;
     const items: EducationInstructorMediaItem[] = [];
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       if (file.size > EDUCATION_RESUME_MEDIA_MAX_BYTES) {
         rejected = true;
         continue;
@@ -157,6 +157,10 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
           r.onerror = () => reject(new Error('read'));
           r.readAsDataURL(file);
         });
+        if (!dataUrl) {
+          rejected = true;
+          continue;
+        }
         items.push({
           id: newId(),
           kind: resumeMediaKind(file.type || 'application/octet-stream'),
@@ -520,14 +524,16 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
               <input
                 type="file"
                 multiple
-                accept="image/*,video/*,.pdf,.doc,.docx,.zip"
+                accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.zip,.rar"
                 className="text-sm w-full"
                 onChange={async e => {
-                  const list = e.target.files;
-                  e.target.value = '';
-                  await addInstructorResumeMediaFiles(list);
+                  const input = e.target;
+                  const picked = input.files?.length ? Array.from(input.files) : [];
+                  input.value = '';
+                  await addInstructorResumeMediaFiles(picked);
                 }}
               />
+              <p className="text-[10px] text-slate-400">می‌توانید چند فایل را با هم انتخاب کنید (Ctrl یا Shift).</p>
               {(editing.instructorResumeMedia ?? []).length > 0 ? (
                 <ul className="space-y-2 max-h-48 overflow-y-auto">
                   {(editing.instructorResumeMedia ?? []).map(m => (
