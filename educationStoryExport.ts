@@ -3,8 +3,19 @@ import { feeCurrencyDisplay, formatAmountDisplay } from './educationFormat';
 import { normalizeEducationCourse } from './educationNormalize';
 import { resolveStoryTypography, storyLineHeight } from './educationStoryTypography';
 
+/** Layout / preview resolution (Instagram story 9:16). */
 export const EDUCATION_STORY_WIDTH = 1080;
 export const EDUCATION_STORY_HEIGHT = 1920;
+
+/** 4× design size → 4320×7680 vertical (8K-class export). */
+export const EDUCATION_STORY_EXPORT_SCALE = 4;
+export const EDUCATION_STORY_EXPORT_WIDTH = EDUCATION_STORY_WIDTH * EDUCATION_STORY_EXPORT_SCALE;
+export const EDUCATION_STORY_EXPORT_HEIGHT = EDUCATION_STORY_HEIGHT * EDUCATION_STORY_EXPORT_SCALE;
+
+export type EducationStoryRenderOptions = {
+  /** 1 = preview; default = EDUCATION_STORY_EXPORT_SCALE (8K file). */
+  scale?: number;
+};
 
 const FONT = 'Vazirmatn, Tahoma, sans-serif';
 const SEAT_GREEN = '#34d399';
@@ -14,8 +25,11 @@ const SEAT_ORANGE_BORDER = '#fdba74';
 
 let vazirReady: Promise<void> | null = null;
 
-export function ensureVazirmatnLoaded(): Promise<void> {
-  if (vazirReady) return vazirReady;
+let vazirReadyScale = 0;
+
+export function ensureVazirmatnLoaded(exportScale = EDUCATION_STORY_EXPORT_SCALE): Promise<void> {
+  if (vazirReady && vazirReadyScale >= exportScale) return vazirReady;
+  vazirReadyScale = exportScale;
   vazirReady = (async () => {
     if (!document.getElementById('vazirmatn-education-font')) {
       const link = document.createElement('link');
@@ -26,11 +40,12 @@ export function ensureVazirmatnLoaded(): Promise<void> {
       document.head.appendChild(link);
     }
     if (document.fonts?.load) {
+      const px = Math.round(16 * exportScale);
       await Promise.all([
-        document.fonts.load('400 16px Vazirmatn').catch(() => undefined),
-        document.fonts.load('500 16px Vazirmatn').catch(() => undefined),
-        document.fonts.load('600 16px Vazirmatn').catch(() => undefined),
-        document.fonts.load('700 16px Vazirmatn').catch(() => undefined),
+        document.fonts.load(`400 ${px}px Vazirmatn`).catch(() => undefined),
+        document.fonts.load(`500 ${px}px Vazirmatn`).catch(() => undefined),
+        document.fonts.load(`600 ${px}px Vazirmatn`).catch(() => undefined),
+        document.fonts.load(`700 ${px}px Vazirmatn`).catch(() => undefined),
       ]);
     }
   })();
@@ -314,9 +329,13 @@ function drawSeatName(
   }
 }
 
-/** Draw Instagram story (1080×1920); returns PNG blob. */
-export async function renderEducationStoryPng(rawCourse: EducationCourse): Promise<Blob> {
-  await ensureVazirmatnLoaded();
+/** Draw Instagram story; returns PNG blob (default 4320×7680 / 8K). */
+export async function renderEducationStoryPng(
+  rawCourse: EducationCourse,
+  options?: EducationStoryRenderOptions,
+): Promise<Blob> {
+  const scale = Math.max(1, Math.min(4, options?.scale ?? EDUCATION_STORY_EXPORT_SCALE));
+  await ensureVazirmatnLoaded(scale);
 
   const course = normalizeEducationCourse({
     ...rawCourse,
@@ -327,10 +346,14 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
   const W = EDUCATION_STORY_WIDTH;
   const H = EDUCATION_STORY_HEIGHT;
   const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('Canvas not supported');
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.scale(scale, scale);
 
   const typo = resolveStoryTypography(course);
 
@@ -707,7 +730,7 @@ export function downloadEducationStory(course: EducationCourse) {
     const a = document.createElement('a');
     const safe = (course.title || 'course').replace(/[^\w\u0600-\u06FF.-]+/g, '_').slice(0, 40);
     a.href = url;
-    a.download = `education_story_${safe}.png`;
+    a.download = `education_story_8k_${safe}.png`;
     a.click();
     URL.revokeObjectURL(url);
   });

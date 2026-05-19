@@ -34,6 +34,8 @@ import {
 } from './educationFormat';
 import {
   downloadEducationStory,
+  EDUCATION_STORY_EXPORT_HEIGHT,
+  EDUCATION_STORY_EXPORT_WIDTH,
   EDUCATION_STORY_HEIGHT,
   EDUCATION_STORY_WIDTH,
   renderEducationStoryPng,
@@ -380,7 +382,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     if (!editing) return;
     setExporting(true);
     try {
-      const blob = await renderEducationStoryPng(normalizeEducationCourse(editing));
+      const blob = await renderEducationStoryPng(normalizeEducationCourse(editing), { scale: 1 });
       if (storyPreviewUrl) URL.revokeObjectURL(storyPreviewUrl);
       setStoryPreviewUrl(URL.createObjectURL(blob));
     } catch {
@@ -568,7 +570,8 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
           disabled={exporting}
           className="flex items-center gap-1 text-sm bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
         >
-          <Download className="w-4 h-4" /> {exporting ? '…' : 'دانلود استوری (۱۰۸۰×۱۹۲۰)'}
+          <Download className="w-4 h-4" />{' '}
+          {exporting ? '…' : `دانلود استوری 8K (${EDUCATION_STORY_EXPORT_WIDTH}×${EDUCATION_STORY_EXPORT_HEIGHT})`}
         </button>
         <button
           type="button"
@@ -1310,7 +1313,10 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
 
 {storyPreviewUrl && (
             <div className="bg-slate-900 rounded-xl p-4 flex flex-col items-center">
-              <p className="text-white text-xs mb-2">پیش‌نمایش استوری ({EDUCATION_STORY_WIDTH}×{EDUCATION_STORY_HEIGHT})</p>
+              <p className="text-white text-xs mb-2 text-center">
+                پیش‌نمایش ({EDUCATION_STORY_WIDTH}×{EDUCATION_STORY_HEIGHT}) — فایل دانلود{' '}
+                {EDUCATION_STORY_EXPORT_WIDTH}×{EDUCATION_STORY_EXPORT_HEIGHT} PNG
+              </p>
               <img
                 src={storyPreviewUrl}
                 alt="Story preview"
