@@ -12746,7 +12746,6 @@ function AppInner() {
         <ServiceInvoicePanel
           invoiceDocKind={invoiceDocKind}
           setInvoiceDocKind={setInvoiceDocKind}
-          formatMoney={formatMoney}
           triggerPrint={triggerPrint}
           onOpenArchive={() => setShowArchiveModal(true)}
           archiveCount={archivedInvoices.length}

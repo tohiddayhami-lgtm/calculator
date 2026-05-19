@@ -22,6 +22,8 @@ import {
   savedServiceFromLine,
   serviceLineHasDetailNotes,
   serviceLineInvoiceDescription,
+  formatServiceInvoiceMoney,
+  formatServiceInvoiceQty,
   serviceLineTotal,
   totalsByCurrency,
   type SavedService,
@@ -39,7 +41,6 @@ export type InvoiceDocKind = 'products' | 'services';
 export type ServiceInvoicePanelProps = {
   invoiceDocKind: InvoiceDocKind;
   setInvoiceDocKind: (k: InvoiceDocKind) => void;
-  formatMoney: (amount: number, currency: string) => string;
   triggerPrint: () => void;
   onOpenArchive?: () => void;
   archiveCount?: number;
@@ -146,7 +147,6 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
   const {
     invoiceDocKind,
     setInvoiceDocKind,
-    formatMoney,
     triggerPrint,
     onOpenArchive,
     archiveCount = 0,
@@ -254,6 +254,12 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
   const showGlobalDiscount =
     invoiceGlobalDiscountMode !== 'none' && invoiceGlobalDiscountValue > 0;
   const showVat = invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0;
+
+  const fmtMoney = React.useCallback(
+    (amount: number, currency: string) =>
+      formatServiceInvoiceMoney(amount, currency, serviceInvoiceDecimalPlaces),
+    [serviceInvoiceDecimalPlaces],
+  );
 
   const updateLine = (id: string, patch: Partial<ServiceInvoiceLine>) => {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
@@ -940,10 +946,12 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                         {serviceLineInvoiceDescription(normalizeServiceLine(line)) || '—'}
                       </div>
                     </td>
-                    <td className="center">{line.qty}</td>
-                    <td className="num">{formatMoney(line.unitPrice, line.currency)}</td>
+                    <td className="center">
+                      {formatServiceInvoiceQty(line.qty, serviceInvoiceDecimalPlaces)}
+                    </td>
+                    <td className="num">{fmtMoney(line.unitPrice, line.currency)}</td>
                     <td className="num line-total">
-                      {formatMoney(serviceLineTotal(line, serviceInvoiceDecimalPlaces), line.currency)}
+                      {fmtMoney(serviceLineTotal(line, serviceInvoiceDecimalPlaces), line.currency)}
                     </td>
                   </tr>
                 ))
@@ -957,7 +965,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                       <td colSpan={4} className="num">
                         Subtotal ({row.currency})
                       </td>
-                      <td className="num">{formatMoney(row.subtotal, row.currency)}</td>
+                      <td className="num">{fmtMoney(row.subtotal, row.currency)}</td>
                     </tr>
                     {showGlobalDiscount && row.discount > 0 && (
                       <tr className="discount">
@@ -967,7 +975,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                             : 'Discount (fixed)'}{' '}
                           ({row.currency})
                         </td>
-                        <td className="num">−{formatMoney(row.discount, row.currency)}</td>
+                        <td className="num">−{fmtMoney(row.discount, row.currency)}</td>
                       </tr>
                     )}
                     <tr className="net">
@@ -975,7 +983,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                         {showVat ? 'Net (excl. VAT)' : 'Net'} ({row.currency})
                       </td>
                       <td className="num">
-                        {formatMoney(showVat ? row.netExclVat : row.net, row.currency)}
+                        {fmtMoney(showVat ? row.netExclVat : row.net, row.currency)}
                       </td>
                     </tr>
                     {showVat && (
@@ -984,7 +992,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                           VAT ({Number(invoiceVatPercent)}% ·{' '}
                           {invoiceVatMode === 'inclusive' ? 'inclusive' : 'exclusive'}) ({row.currency})
                         </td>
-                        <td className="num">{formatMoney(row.vat, row.currency)}</td>
+                        <td className="num">{fmtMoney(row.vat, row.currency)}</td>
                       </tr>
                     )}
                     {row.extras.map((ex) => (
@@ -992,14 +1000,14 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                         <td colSpan={4} className="num">
                           {ex.label}
                         </td>
-                        <td className="num">{formatMoney(ex.amount, row.currency)}</td>
+                        <td className="num">{fmtMoney(ex.amount, row.currency)}</td>
                       </tr>
                     ))}
                     <tr className="total">
                       <td colSpan={4} className="num">
                         TOTAL DUE ({row.currency})
                       </td>
-                      <td className="num">{formatMoney(row.grand, row.currency)}</td>
+                      <td className="num">{fmtMoney(row.grand, row.currency)}</td>
                     </tr>
                   </React.Fragment>
                 ))}

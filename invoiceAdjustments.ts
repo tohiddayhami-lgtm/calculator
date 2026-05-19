@@ -1,6 +1,7 @@
 import type { InvoiceExtraCharge } from './types';
 import {
   DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES,
+  roundServiceLineAmount,
   totalsByCurrency,
   type ServiceInvoiceDecimalPlaces,
   type ServiceInvoiceLine,
@@ -141,16 +142,17 @@ export function computeServiceInvoiceByCurrency(params: {
       }
     }
 
+    const r = (n: number) => roundServiceLineAmount(n, places);
     return {
       currency,
-      subtotal,
-      discount,
-      net,
-      netExclVat: vatBreakdown.netExclVat,
-      vat: vatBreakdown.vat,
-      totalInclVat: vatBreakdown.totalInclVat,
-      extras,
-      grand: vatBreakdown.totalInclVat + extrasSum,
+      subtotal: r(subtotal),
+      discount: r(discount),
+      net: r(net),
+      netExclVat: r(vatBreakdown.netExclVat),
+      vat: r(vatBreakdown.vat),
+      totalInclVat: r(vatBreakdown.totalInclVat),
+      extras: extras.map((ex) => ({ ...ex, amount: r(ex.amount) })),
+      grand: r(vatBreakdown.totalInclVat + extrasSum),
     };
   });
 }

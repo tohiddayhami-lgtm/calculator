@@ -21,7 +21,12 @@ export interface SavedService {
   updatedAt: number;
 }
 
-import { parseMaxDecimalPlaces, roundToDecimalPlaces, type MaxDecimalPlaces } from './numericInputFormat';
+import {
+  formatWithSeparators,
+  parseMaxDecimalPlaces,
+  roundToDecimalPlaces,
+  type MaxDecimalPlaces,
+} from './numericInputFormat';
 
 export type ServiceInvoiceDecimalPlaces = MaxDecimalPlaces;
 
@@ -33,6 +38,30 @@ export function parseServiceInvoiceDecimalPlaces(raw: unknown): ServiceInvoiceDe
 
 export function roundServiceLineAmount(n: number, places: ServiceInvoiceDecimalPlaces): number {
   return roundToDecimalPlaces(Math.max(0, n), places);
+}
+
+/** Invoice / print amounts — respects user decimal setting (0–3), not currency defaults. */
+export function formatServiceInvoiceMoney(
+  amount: number,
+  currency: string,
+  decimalPlaces: ServiceInvoiceDecimalPlaces,
+): string {
+  const ccy = (currency || 'USD').trim().toUpperCase() || 'USD';
+  const n = roundServiceLineAmount(amount, decimalPlaces);
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: ccy,
+      minimumFractionDigits: decimalPlaces,
+      maximumFractionDigits: decimalPlaces,
+    }).format(n);
+  } catch {
+    return `${ccy} ${formatWithSeparators(n, decimalPlaces)}`;
+  }
+}
+
+export function formatServiceInvoiceQty(qty: number, decimalPlaces: ServiceInvoiceDecimalPlaces): string {
+  return formatWithSeparators(roundServiceLineAmount(qty, decimalPlaces), decimalPlaces);
 }
 
 export const SERVICE_INVOICE_CURRENCIES = [
