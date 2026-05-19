@@ -37,6 +37,75 @@ export function ensureVazirmatnLoaded(): Promise<void> {
   return vazirReady;
 }
 
+/** Stack Persian label characters vertically (one per line). */
+function verticalTextHeight(text: string, fontSize: number): number {
+  const lh = fontSize * 1.12;
+  let n = 0;
+  for (const ch of text) {
+    if (ch !== ' ' && ch !== '\u200c') n += 1;
+    else n += 0.35;
+  }
+  return n * lh;
+}
+
+function drawVerticalPersianText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  yStart: number,
+  fontSize: number,
+  color: string,
+) {
+  const lh = fontSize * 1.12;
+  ctx.save();
+  ctx.font = `500 ${fontSize}px ${FONT}`;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.direction = 'rtl';
+  let y = yStart;
+  for (const ch of text) {
+    if (ch === ' ' || ch === '\u200c') {
+      y += lh * 0.35;
+      continue;
+    }
+    ctx.fillText(ch, x, y);
+    y += lh;
+  }
+  ctx.restore();
+}
+
+/** Legend: vertical labels to the left of the seat grid. */
+function drawSeatLegendBesideGrid(
+  ctx: CanvasRenderingContext2D,
+  gridX: number,
+  gridY: number,
+  gridH: number,
+  legendFontSize: number,
+) {
+  const textSize = Math.max(13, legendFontSize - 2);
+  const sw = 18;
+  const itemGap = 36;
+  const label1 = 'ثبت‌نام قطعی';
+  const label2 = 'رزرو موقت';
+  const h1 = verticalTextHeight(label1, textSize);
+  const h2 = verticalTextHeight(label2, textSize);
+  const blockH = sw + 8 + h1 + itemGap + sw + 8 + h2;
+  let y = gridY + Math.max(0, (gridH - blockH) / 2);
+  const textX = gridX - 52;
+  const swatchX = gridX - 24;
+
+  roundRect(ctx, swatchX, y, sw, sw, 4);
+  ctx.fillStyle = SEAT_GREEN;
+  ctx.fill();
+  drawVerticalPersianText(ctx, label1, textX, y + sw + 10, textSize, '#e2e8f0');
+  y += sw + 8 + h1 + itemGap;
+
+  roundRect(ctx, swatchX, y, sw, sw, 4);
+  ctx.fillStyle = SEAT_ORANGE;
+  ctx.fill();
+  drawVerticalPersianText(ctx, label2, textX, y + sw + 10, textSize, '#e2e8f0');
+}
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -526,7 +595,8 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
     gridH = rows * seatSize + (rows - 1) * gap;
   }
   const gridW = cols * seatSize + (cols - 1) * gap;
-  const gridX = (W - gridW) / 2;
+  const legendColW = 88;
+  const gridX = pad + legendColW + Math.max(12, (innerW - legendColW - gridW) / 2);
   const gridY = gridTop;
 
   for (let i = 0; i < cap; i++) {
@@ -565,6 +635,8 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
       ctx.fillText(String(seatNum), sx + seatSize / 2, sy + seatSize / 2 + 6);
     }
   }
+
+  drawSeatLegendBesideGrid(ctx, gridX, gridY, gridH, typo.legend);
 
   const statsY = Math.min(gridY + gridH + 36, H - 200);
   ctx.textAlign = 'center';
@@ -631,20 +703,6 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
       footTextY += lineH;
     }
   }
-
-  ctx.textAlign = 'right';
-  ctx.direction = 'rtl';
-  ctx.font = `400 ${typo.legend}px ${FONT}`;
-  ctx.fillStyle = SEAT_GREEN;
-  roundRect(ctx, textRight - 300, legY - 16, 20, 20, 4);
-  ctx.fill();
-  ctx.fillStyle = '#e2e8f0';
-  ctx.fillText('سبز = ثبت‌نام قطعی', textRight - 272, legY);
-  ctx.fillStyle = SEAT_ORANGE;
-  roundRect(ctx, textRight - 300, legY + 14, 20, 20, 4);
-  ctx.fill();
-  ctx.fillStyle = '#e2e8f0';
-  ctx.fillText('نارنجی = رزرو موقت', textRight - 272, legY + 30);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(

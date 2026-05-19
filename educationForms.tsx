@@ -915,12 +915,26 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>تاریخ شروع</label>
-                <input type="date" value={editing.startDate} onChange={e => upd({ startDate: e.target.value })} className={inputCls} />
+                <label className={labelCls}>تاریخ دوره (شروع)</label>
+                <input
+                  type="text"
+                  value={editing.startDate}
+                  onChange={e => upd({ startDate: e.target.value })}
+                  className={inputCls}
+                  dir="rtl"
+                  placeholder="مثال: ۱۹-۰۵-۱۴۰۵ یا May 2026"
+                />
               </div>
               <div>
-                <label className={labelCls}>تاریخ پایان</label>
-                <input type="date" value={editing.endDate} onChange={e => upd({ endDate: e.target.value })} className={inputCls} />
+                <label className={labelCls}>تاریخ دوره (پایان)</label>
+                <input
+                  type="text"
+                  value={editing.endDate}
+                  onChange={e => upd({ endDate: e.target.value })}
+                  className={inputCls}
+                  dir="rtl"
+                  placeholder="اختیاری — همان فرمت دلخواه"
+                />
               </div>
             </div>
             <div>

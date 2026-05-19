@@ -17544,7 +17544,7 @@ function AppInner() {
         <div className="w-px bg-slate-200" />
         <button onClick={() => setFormsSubView('education')}
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'education' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <GraduationCap className="w-4 h-4" /> ?????
+          <GraduationCap className="w-4 h-4" /> Academy
         </button>
         <div className="w-px bg-slate-200" />
         <button onClick={() => setFormsSubView('packinglist')}
