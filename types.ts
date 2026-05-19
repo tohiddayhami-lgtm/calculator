@@ -639,6 +639,80 @@ export interface WarehouseProductSettings {
   minStock?: number;
 }
 
+// ---- BUSINESS MANAGEMENT (multi-vertical catalog & scenarios) ----
+
+export type BusinessKind =
+  | 'restaurant'
+  | 'real_estate'
+  | 'retail'
+  | 'services'
+  | 'export'
+  | 'custom';
+
+export type BusinessItemType =
+  | 'product'
+  | 'service'
+  | 'menu_item'
+  | 'property'
+  | 'rental_unit'
+  | 'package';
+
+export type BusinessPricingModel =
+  | 'fixed'
+  | 'per_unit'
+  | 'per_month'
+  | 'per_night'
+  | 'per_sqm'
+  | 'per_person'
+  | 'custom';
+
+export interface BusinessProfile {
+  id: string;
+  name: string;
+  kind: BusinessKind;
+  description: string;
+  defaultCurrency: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface BusinessItem {
+  id: string;
+  businessId: string;
+  name: string;
+  sku?: string;
+  itemType: BusinessItemType;
+  category: string;
+  unit: string;
+  unitPrice: number;
+  costPrice: number;
+  currency: string;
+  pricingModel: BusinessPricingModel;
+  notes: string;
+  customFields: Record<string, string>;
+  active: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface BusinessScenarioLine {
+  itemId: string;
+  qty: number;
+  unitPriceOverride?: number;
+  discountPercent: number;
+}
+
+export interface BusinessScenario {
+  id: string;
+  businessId: string;
+  name: string;
+  lines: BusinessScenarioLine[];
+  globalDiscountPercent: number;
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Compact linear task on the dashboard (start / end window + optional one file). */
 export interface DashboardTodoItem {
   id: string;
@@ -729,6 +803,11 @@ export interface SavedProject {
     warehouseMovements?: WarehouseMovement[];
     /** Per-product reorder / min stock levels. */
     warehouseProductSettings?: WarehouseProductSettings[];
+    /** Business management — profiles, catalog items, what-if scenarios. */
+    businessProfiles?: BusinessProfile[];
+    businessItems?: BusinessItem[];
+    businessScenarios?: BusinessScenario[];
+    activeBusinessId?: string;
     /** Proforma sub-mode: goods (default) vs service invoice editor. */
     invoiceDocKind?: 'products' | 'services';
     serviceInvoiceLines?: ServiceInvoiceLine[];
