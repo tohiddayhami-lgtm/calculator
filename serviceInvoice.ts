@@ -57,16 +57,24 @@ export function splitLegacyServiceDescription(raw: string): { title: string; det
   };
 }
 
-export function normalizeServiceLine(line: ServiceInvoiceLine): ServiceInvoiceLine {
-  if (line.detailNotes !== undefined || !String(line.description ?? '').includes('\n')) {
+export function normalizeServiceLine(
+  line: ServiceInvoiceLine,
+  options?: { trimText?: boolean },
+): ServiceInvoiceLine {
+  const trimText = options?.trimText !== false;
+  const rawDesc = String(line.description ?? '');
+  const rawNotes =
+    line.detailNotes !== undefined && line.detailNotes !== null ? String(line.detailNotes) : '';
+
+  if (line.detailNotes !== undefined || !rawDesc.includes('\n')) {
     return {
       ...line,
-      description: String(line.description ?? '').trim(),
-      detailNotes: String(line.detailNotes ?? '').trim(),
+      description: trimText ? rawDesc.trim() : rawDesc,
+      detailNotes: trimText ? rawNotes.trim() : rawNotes,
       detailsOpen: !!line.detailsOpen,
     };
   }
-  const split = splitLegacyServiceDescription(line.description);
+  const split = splitLegacyServiceDescription(rawDesc);
   return {
     ...line,
     description: split.title,

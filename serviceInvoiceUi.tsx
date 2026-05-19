@@ -237,16 +237,12 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
   const showVat = invoiceVatEnabled && (Number(invoiceVatPercent) || 0) > 0;
 
   const updateLine = (id: string, patch: Partial<ServiceInvoiceLine>) => {
-    setLines((prev) => prev.map((l) => (l.id === id ? normalizeServiceLine({ ...l, ...patch }) : l)));
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   };
 
   const toggleLineDetails = (id: string) => {
     setLines((prev) =>
-      prev.map((l) => {
-        if (l.id !== id) return l;
-        const n = normalizeServiceLine(l);
-        return { ...n, detailsOpen: !n.detailsOpen };
-      })
+      prev.map((l) => (l.id === id ? { ...l, detailsOpen: !l.detailsOpen } : l)),
     );
   };
 
@@ -417,9 +413,8 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
           {lines.length > 0 && (
             <div className="space-y-2 max-h-72 overflow-y-auto border border-slate-100 rounded-lg p-2">
               {lines.map((line, idx) => {
-                const row = normalizeServiceLine(line);
-                const notesOpen = !!row.detailsOpen;
-                const hasNotes = serviceLineHasDetailNotes(row);
+                const notesOpen = !!line.detailsOpen;
+                const hasNotes = serviceLineHasDetailNotes(line);
                 return (
                 <div key={line.id} className="text-[10px] border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                   <div className="flex justify-between gap-1 mb-1">
@@ -445,7 +440,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                   </div>
                   <input
                     type="text"
-                    value={row.description}
+                    value={line.description}
                     onChange={(e) => updateLine(line.id, { description: e.target.value })}
                     className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 mb-1"
                     placeholder="نام / عنوان خدمت"
@@ -465,7 +460,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                   {notesOpen ? (
                     <textarea
                       rows={3}
-                      value={row.detailNotes ?? ''}
+                      value={line.detailNotes ?? ''}
                       onChange={(e) => updateLine(line.id, { detailNotes: e.target.value })}
                       className="w-full text-xs border border-indigo-200 rounded px-1.5 py-1 mb-1 bg-indigo-50/40 resize-y min-h-[52px]"
                       placeholder="جزئیات، محدوده کار، شرایط، یادداشت برای مشتری…"
