@@ -147,6 +147,10 @@ import {
 } from './warehouseNormalize';
 import { WarehousePanel } from './warehouseUi';
 import {
+  computeUnitSellFromCost,
+  packagingExtraUnitCostOutput,
+} from './productPackaging';
+import {
   buildContractHeaderHtml,
   ContractHeaderBlock,
   ContractLogosEditor,
@@ -8262,6 +8266,48 @@ function AppInner() {
             accSell_DDP += ddpSell * p.qty;
         }
 
+        const pricingCtx = {
+          config,
+          logistics,
+          uExwExtra,
+          uInland,
+          uPort,
+          uFreight,
+          uInsurance,
+          uDest,
+          uExtras,
+        };
+        let packagingUnitCostStandard: number | undefined;
+        let packagingUnitCostLuxury: number | undefined;
+        let packagingUnitSellStandard: number | undefined;
+        let packagingUnitSellLuxury: number | undefined;
+        if (isActive && p.packagingEnabled) {
+          const stdExtra = packagingExtraUnitCostOutput(
+            p.packagingStandardPerUnit,
+            p.currency,
+            toBase,
+            toOutput,
+          );
+          const luxExtra = packagingExtraUnitCostOutput(
+            p.packagingLuxuryPerUnit,
+            p.currency,
+            toBase,
+            toOutput,
+          );
+          packagingUnitCostStandard = unitCostOutput + stdExtra;
+          packagingUnitCostLuxury = unitCostOutput + luxExtra;
+          packagingUnitSellStandard = computeUnitSellFromCost(
+            packagingUnitCostStandard,
+            effectiveProfitPercent,
+            pricingCtx,
+          ).unitSellPrice;
+          packagingUnitSellLuxury = computeUnitSellFromCost(
+            packagingUnitCostLuxury,
+            effectiveProfitPercent,
+            pricingCtx,
+          ).unitSellPrice;
+        }
+
         return { 
             ...p, 
             isActive, 
@@ -8274,7 +8320,11 @@ function AppInner() {
             totalPacks,
             packPrice,
             scenarioPrices: { EXW: exwSell, FCA: fcaSell, FOB: fobSell, CIF: cifSell, DDP: ddpSell },
-            scenarioPackPrices
+            scenarioPackPrices,
+            packagingUnitCostStandard,
+            packagingUnitCostLuxury,
+            packagingUnitSellStandard,
+            packagingUnitSellLuxury,
         };
     });
 
@@ -9369,6 +9419,14 @@ function AppInner() {
                             {basis === 'unit' ? 'Unit' : 'Pack'} Sell ({config.outputCurrency})
                         </th>
                         <th className="px-4 py-2 w-32 min-w-[120px] bg-green-50 text-green-700">Total Sell ({config.outputCurrency})</th>
+                        <th className="px-4 py-2 w-40 min-w-[9rem] bg-violet-50 text-violet-800" title="هزینه بسته‌بندی به ازای هر واحد (اختیاری)">
+                            بسته‌بندی
+                            <span className="block text-[9px] font-normal text-violet-600/90">اختیاری · / واحد</span>
+                        </th>
+                        <th className="px-4 py-2 w-36 min-w-[8.5rem] bg-violet-50/80 text-violet-900" title="قیمت فروش واحد با هزینه بسته‌بندی (EXW)">
+                            فروش با بسته‌بندی
+                            <span className="block text-[9px] font-normal text-violet-600/90">معمولی / لاکچری</span>
+                        </th>
                         <th className="px-4 py-2 w-32 min-w-[120px] bg-amber-50 text-amber-700" title="Optional: Buyer / market target price per unit">
                             Target Price
                             <span className="block text-[9px] font-normal text-amber-500/80">Optional</span>
@@ -9553,6 +9611,104 @@ function AppInner() {
                                 <td className="px-4 py-2 bg-green-50/30 text-right font-medium text-green-700">
                                     {formatMoney(p.totalSellPrice || 0, config.outputCurrency)}
                                 </td>
+                                <td className="px-4 py-2 bg-violet-50/25 align-top">
+                                    <label className="flex items-center gap-1.5 text-[10px] text-violet-800 font-medium cursor-pointer mb-1.5">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!p.packagingEnabled}
+                                            onChange={(e) => {
+                                                const on = e.target.checked;
+                                                updateProduct(p.id, 'packagingEnabled', on);
+                                                if (on && !p.packagingStandardPerUnit && !p.packagingLuxuryPerUnit) {
+                                                    setProducts(prev =>
+                                                        prev.map(item =>
+                                                            item.id === p.id
+                                                                ? {
+                                                                      ...item,
+                                                                      packagingEnabled: true,
+                                                                      packagingStandardPerUnit: 0,
+                                                                      packagingLuxuryPerUnit: 0,
+                                                                  }
+                                                                : item,
+                                                        ),
+                                                    );
+                                                }
+                                            }}
+                                            className="rounded border-violet-300 text-violet-600 focus:ring-violet-400"
+                                        />
+                                        مقایسه بسته‌بندی
+                                    </label>
+                                    {p.packagingEnabled ? (
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-[9px] text-violet-700 w-11 shrink-0">معمولی</span>
+                                                <FormattedNumberInput
+                                                    value={p.packagingStandardPerUnit ?? 0}
+                                                    onChange={(val) =>
+                                                        updateProduct(p.id, 'packagingStandardPerUnit', val ?? 0)
+                                                    }
+                                                    className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right"
+                                                    placeholder="0"
+                                                />
+                                                <span className="text-[9px] text-slate-400">{p.currency}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-[9px] text-violet-700 w-11 shrink-0">لاکچری</span>
+                                                <FormattedNumberInput
+                                                    value={p.packagingLuxuryPerUnit ?? 0}
+                                                    onChange={(val) =>
+                                                        updateProduct(p.id, 'packagingLuxuryPerUnit', val ?? 0)
+                                                    }
+                                                    className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right"
+                                                    placeholder="0"
+                                                />
+                                                <span className="text-[9px] text-slate-400">{p.currency}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span className="text-[9px] text-slate-400">—</span>
+                                    )}
+                                </td>
+                                <td className="px-4 py-2 bg-violet-50/20 align-top text-[10px]">
+                                    {p.packagingEnabled ? (
+                                        <div className="space-y-1.5 text-right">
+                                            <div>
+                                                <span className="text-violet-700 font-semibold">معمولی</span>
+                                                <span className="block text-slate-800 font-mono">
+                                                    {formatMoney(
+                                                        (p.packagingUnitSellStandard ?? 0) * viewMult,
+                                                        config.outputCurrency,
+                                                    )}
+                                                </span>
+                                                <span className="text-[8px] text-slate-400">
+                                                    بهای تمام:{' '}
+                                                    {formatMoney(
+                                                        (p.packagingUnitCostStandard ?? 0) * viewMult,
+                                                        config.outputCurrency,
+                                                    )}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span className="text-violet-700 font-semibold">لاکچری</span>
+                                                <span className="block text-slate-800 font-mono">
+                                                    {formatMoney(
+                                                        (p.packagingUnitSellLuxury ?? 0) * viewMult,
+                                                        config.outputCurrency,
+                                                    )}
+                                                </span>
+                                                <span className="text-[8px] text-slate-400">
+                                                    بهای تمام:{' '}
+                                                    {formatMoney(
+                                                        (p.packagingUnitCostLuxury ?? 0) * viewMult,
+                                                        config.outputCurrency,
+                                                    )}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span className="text-slate-400">—</span>
+                                    )}
+                                </td>
                                 <td className="px-4 py-2 bg-amber-50/30">
                                     {(() => {
                                         const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
@@ -9606,7 +9762,7 @@ function AppInner() {
                     })}
                     {products.length === 0 && (
                         <tr>
-                            <td colSpan={showPackInfo ? 21 : 19} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
+                            <td colSpan={showPackInfo ? 23 : 21} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
                         </tr>
                     )}
                 </tbody>

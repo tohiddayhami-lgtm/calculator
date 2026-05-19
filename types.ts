@@ -38,6 +38,11 @@ export interface Product {
   targetPrice?: number;
   targetPriceCurrency?: string;
 
+  /** Optional: compare unit sell with standard vs luxury packaging (extra cost per unit in `currency`) */
+  packagingEnabled?: boolean;
+  packagingStandardPerUnit?: number;
+  packagingLuxuryPerUnit?: number;
+
   /** Packing list — cartons & pallets (weights in kg unless app packing doc states otherwise) */
   packingQtyCartons?: number;
   packingCartonNetWeightKg?: number;
@@ -64,6 +69,10 @@ export interface Product {
   totalPacks?: number; // New: Calculated number of packs (qty / itemsPerPack)
   scenarioPrices?: { [key: string]: number };
   scenarioPackPrices?: { [key: string]: number }; // New: Pack prices for each scenario
+  packagingUnitCostStandard?: number;
+  packagingUnitCostLuxury?: number;
+  packagingUnitSellStandard?: number;
+  packagingUnitSellLuxury?: number;
 }
 
 export interface ExtraCost {
