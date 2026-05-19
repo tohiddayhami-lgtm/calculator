@@ -1,4 +1,4 @@
-import type { EducationFeeCurrency } from './types';
+import type { EducationCourse, EducationFeeCurrency } from './types';
 
 export const EDUCATION_CURRENCY_OPTIONS: { value: EducationFeeCurrency; label: string; short: string }[] = [
   { value: 'IRR', label: 'ریال ایران', short: 'ریال' },
@@ -47,8 +47,19 @@ export function formatAmountDisplay(raw: string): string {
   return dec !== undefined ? `${intFormatted}.${dec}` : intFormatted;
 }
 
-export function formatAmountWithCurrency(amount: string, currency: string): string {
+export function feeCurrencyDisplay(course: Pick<EducationCourse, 'courseFeeCurrency' | 'courseFeeCurrencyLabel'>): string {
+  const custom = course.courseFeeCurrencyLabel?.trim();
+  if (custom) return custom;
+  return currencyShort(course.courseFeeCurrency);
+}
+
+export function formatAmountWithCurrency(
+  amount: string,
+  currency: string,
+  currencyLabel?: string,
+): string {
   const display = formatAmountDisplay(amount);
   if (!display) return '—';
-  return `${display} ${currencyShort(currency)}`;
+  const unit = currencyLabel?.trim() || currencyShort(currency);
+  return `${display} ${unit}`;
 }

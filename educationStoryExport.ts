@@ -1,5 +1,5 @@
 import type { EducationCourse, EducationParticipant } from './types';
-import { currencyShort, formatAmountDisplay, formatAmountWithCurrency } from './educationFormat';
+import { feeCurrencyDisplay, formatAmountDisplay } from './educationFormat';
 
 export const EDUCATION_STORY_WIDTH = 1080;
 export const EDUCATION_STORY_HEIGHT = 1920;
@@ -104,6 +104,34 @@ function drawRtlWrapped(
   color: string,
 ): number {
   const lines = wrapTextLines(ctx, text, maxWidth, maxLines);
+  drawRtlBlock(ctx, lines, xRight, y, lineHeight, color);
+  return y + lines.length * lineHeight;
+}
+
+/** Split resume/bio by line breaks; each line drawn separately (linear). */
+function splitLinearLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
+}
+
+function drawRtlLinearLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  xRight: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  color: string,
+): number {
+  const rawLines = splitLinearLines(text);
+  const lines: string[] = [];
+  for (const raw of rawLines) {
+    const wrapped = wrapTextLines(ctx, raw, maxWidth, 4);
+    lines.push(...wrapped);
+  }
+  if (!lines.length) return y;
   drawRtlBlock(ctx, lines, xRight, y, lineHeight, color);
   return y + lines.length * lineHeight;
 }
@@ -269,7 +297,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
     contentY =
       drawRtlWrapped(
         ctx,
-        `شهریه: ${feeFmt} ${currencyShort(course.courseFeeCurrency)}`,
+        `شهریه: ${feeFmt} ${feeCurrencyDisplay(course)}`,
         textRight,
         contentY,
         innerW - 48,
@@ -298,31 +326,43 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
     drawRtlBlock(ctx, ['رزومه استاد'], textRight, contentY, 32, '#e2e8f0');
     contentY += 36;
     ctx.font = `400 22px ${FONT}`;
-    contentY = drawRtlWrapped(ctx, course.instructorResume.trim(), textRight, contentY, innerW - 48, 30, 3, '#94a3b8') + 8;
+    contentY =
+      drawRtlLinearLines(ctx, course.instructorResume.trim(), textRight, contentY, innerW - 48, 28, '#94a3b8') + 8;
   }
 
-  const syllabus = course.syllabus.map(s => s.text).filter(Boolean).slice(0, 3);
+  const syllabus = course.syllabus.map(s => s.text.trim()).filter(Boolean);
+  const syllabusFont = syllabus.length > 8 ? 20 : 22;
+  const syllabusLh = syllabus.length > 8 ? 26 : 30;
   if (syllabus.length) {
+    contentY += 4;
     ctx.font = `600 26px ${FONT}`;
     drawRtlBlock(ctx, ['سرفصل‌ها'], textRight, contentY, 32, '#e2e8f0');
     contentY += 36;
-    ctx.font = `400 22px ${FONT}`;
+    ctx.font = `400 ${syllabusFont}px ${FONT}`;
     for (const item of syllabus) {
-      contentY = drawRtlWrapped(ctx, `• ${item}`, textRight, contentY, innerW - 48, 30, 2, '#94a3b8') + 4;
-      if (contentY > 720) break;
+      contentY =
+        drawRtlWrapped(ctx, `• ${item}`, textRight, contentY, innerW - 48, syllabusLh, 2, '#94a3b8') + 4;
     }
   }
 
-  const gridTop = Math.max(contentY + 20, 680);
+  const footerReserve = 220;
   const cols = cap <= 15 ? 5 : cap <= 35 ? 7 : cap <= 55 ? 9 : 10;
   const gap = 12;
-  const seatSize = Math.min(
+  let seatSize = Math.min(
     cap <= 15 ? 128 : cap <= 35 ? 96 : 80,
     Math.floor((innerW - gap * (cols - 1)) / cols),
   );
   const rows = Math.ceil(cap / cols);
+  let gridH = rows * seatSize + (rows - 1) * gap;
+  let gridTop = contentY + 20;
+  const maxGridTop = H - footerReserve - gridH;
+  if (gridTop > maxGridTop) gridTop = Math.max(contentY + 12, maxGridTop);
+  if (gridTop + gridH > H - footerReserve) {
+    const maxH = H - footerReserve - gridTop;
+    seatSize = Math.max(48, Math.floor((maxH - (rows - 1) * gap) / rows));
+    gridH = rows * seatSize + (rows - 1) * gap;
+  }
   const gridW = cols * seatSize + (cols - 1) * gap;
-  const gridH = rows * seatSize + (rows - 1) * gap;
   const gridX = (W - gridW) / 2;
   const gridY = gridTop;
 
@@ -402,7 +442,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   roundRect(ctx, textRight - 300, legY + 14, 20, 20, 4);
   ctx.fill();
   ctx.fillStyle = '#e2e8f0';
-  ctx.fillText('نارنجی = رزرو موقت — نام کامل روی صندلی', textRight - 272, legY + 30);
+  ctx.fillText('نارنجی = رزرو موقت', textRight - 272, legY + 30);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(

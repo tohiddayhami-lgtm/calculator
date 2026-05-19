@@ -1,4 +1,5 @@
 import type { EducationCourse, EducationFeeCurrency, EducationParticipant } from './types';
+import { currencyShort } from './educationFormat';
 
 function normCurrency(raw: unknown): EducationFeeCurrency {
   if (raw === 'IRR' || raw === 'USD') return raw;
@@ -25,6 +26,10 @@ export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
     instructorResume: c.instructorResume ?? '',
     courseFee: c.courseFee ?? '',
     courseFeeCurrency: normCurrency(c.courseFeeCurrency),
+    courseFeeCurrencyLabel:
+      typeof c.courseFeeCurrencyLabel === 'string'
+        ? c.courseFeeCurrencyLabel
+        : currencyShort(normCurrency(c.courseFeeCurrency)),
     storyBackgroundUrl: typeof c.storyBackgroundUrl === 'string' ? c.storyBackgroundUrl : '',
     storyBackgroundOpacity: opacity,
     participants: (c.participants ?? []).map(normalizeEducationParticipant),

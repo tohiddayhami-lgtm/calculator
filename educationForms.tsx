@@ -21,6 +21,7 @@ import type {
 import { normalizeEducationCourse } from './educationNormalize';
 import {
   EDUCATION_CURRENCY_OPTIONS,
+  currencyShort,
   formatAmountDisplay,
   formatAmountWithCurrency,
   parseAmountDigits,
@@ -52,6 +53,7 @@ export function makeBlankEducationCourse(): EducationCourse {
     endDate: today,
     courseFee: '',
     courseFeeCurrency: 'OMR',
+    courseFeeCurrencyLabel: 'OMR',
     storyBackgroundUrl: '',
     storyBackgroundOpacity: 40,
     syllabus: [{ id: newId(), text: '' }],
@@ -319,7 +321,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                     <p className="text-sm text-slate-500 mt-0.5">{c.instructorName || '—'}</p>
                     {c.courseFee?.trim() ? (
                       <p className="text-xs text-amber-700 mt-1">
-                        هزینه: {formatAmountWithCurrency(c.courseFee, c.courseFeeCurrency || "OMR")}
+                        هزینه: {formatAmountWithCurrency(c.courseFee, c.courseFeeCurrency || 'OMR', c.courseFeeCurrencyLabel)}
                       </p>
                     ) : null}
                     <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
@@ -460,7 +462,13 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 <label className={labelCls}>ارز</label>
                 <select
                   value={editing.courseFeeCurrency}
-                  onChange={e => upd({ courseFeeCurrency: e.target.value as EducationFeeCurrency })}
+                  onChange={e => {
+                    const code = e.target.value as EducationFeeCurrency;
+                    upd({
+                      courseFeeCurrency: code,
+                      courseFeeCurrencyLabel: currencyShort(code),
+                    });
+                  }}
                   className={inputCls}
                 >
                   {EDUCATION_CURRENCY_OPTIONS.map(c => (
@@ -468,6 +476,16 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                   ))}
                 </select>
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>نمایش ارز در استوری و لیست</label>
+              <input
+                value={editing.courseFeeCurrencyLabel ?? currencyShort(editing.courseFeeCurrency)}
+                onChange={e => upd({ courseFeeCurrencyLabel: e.target.value })}
+                className={inputCls}
+                dir="rtl"
+                placeholder="مثلاً ریال ایران، OMR، USD"
+              />
             </div>
             <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/80">
               <label className={labelCls + ' mb-0'}>پس‌زمینه استوری (عکس + شفافیت)</label>

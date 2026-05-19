@@ -992,6 +992,8 @@ export interface EducationCourse {
   /** Total course fee (digits, commas added in UI) */
   courseFee: string;
   courseFeeCurrency: EducationFeeCurrency;
+  /** Custom currency label for story/list (defaults from preset if empty) */
+  courseFeeCurrencyLabel?: string;
   /** Story export background image (data URL or https) */
   storyBackgroundUrl?: string;
   /** 0–100 opacity of background image on story export */
