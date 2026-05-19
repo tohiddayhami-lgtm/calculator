@@ -317,15 +317,18 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   contentY = drawRtlWrapped(ctx, course.title || 'بدون عنوان', textRight, contentY, innerW - 48, 56, 2, '#ffffff') + 8;
 
   if (course.instructorName?.trim() || instructorFace) {
-    const photoR = 48;
+    const photoR = 46;
     const photoGap = 18;
     const baseY = contentY;
-    let rowBottom = baseY + 8;
+    let rowBottom = baseY;
+    let photoBottom = baseY;
     if (instructorFace) {
       const cx = textRight - photoR;
-      const cy = baseY + photoR + 8;
+      // Higher placement: align with instructor line, keep clear of tuition below
+      const cy = baseY + photoR - 14;
       drawCircleImage(ctx, instructorFace, cx, cy, photoR);
-      rowBottom = Math.max(rowBottom, cy + photoR + 14);
+      photoBottom = cy + photoR;
+      rowBottom = photoBottom;
     }
     const label =
       course.instructorName?.trim() ? `استاد: ${course.instructorName.trim()}` : instructorFace ? 'استاد' : '';
@@ -338,14 +341,15 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
       ctx.fillStyle = '#e2e8f0';
       ctx.textAlign = 'right';
       ctx.direction = 'rtl';
-      let ty = baseY + 32;
+      const tyStart = instructorFace ? baseY + 10 : baseY + 8;
+      let ty = tyStart;
       for (const ln of lines) {
         ctx.fillText(ln, textRightAdj, ty);
         ty += lnH;
       }
-      rowBottom = Math.max(rowBottom, ty + 8);
+      rowBottom = Math.max(rowBottom, ty + 6, photoBottom);
     }
-    contentY = rowBottom;
+    contentY = rowBottom + 16;
   }
 
   if (course.courseFee?.trim()) {
