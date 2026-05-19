@@ -91,6 +91,12 @@ export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
     storyTypography: c.storyTypography
       ? normalizeStoryTypography(c.storyTypography)
       : undefined,
+    syllabus: Array.isArray(c.syllabus)
+      ? c.syllabus.map(s => ({
+          id: typeof s?.id === 'string' ? s.id : '',
+          text: typeof s?.text === 'string' ? s.text : '',
+        }))
+      : [],
     participants: (c.participants ?? []).map(normalizeEducationParticipant),
     vipGuests: normVipGuests(c.vipGuests),
   };

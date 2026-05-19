@@ -366,7 +366,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     if (!editing) return;
     setExporting(true);
     try {
-      const saved = saveCourse(editing);
+      const saved = saveCourse(normalizeEducationCourse(editing));
       await downloadEducationStory(saved);
     } catch {
       alert('خروجی تصویر انجام نشد. دوباره تلاش کنید.');
@@ -379,7 +379,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     if (!editing) return;
     setExporting(true);
     try {
-      const blob = await renderEducationStoryPng(editing);
+      const blob = await renderEducationStoryPng(normalizeEducationCourse(editing));
       if (storyPreviewUrl) URL.revokeObjectURL(storyPreviewUrl);
       setStoryPreviewUrl(URL.createObjectURL(blob));
     } catch {

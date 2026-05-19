@@ -1,5 +1,6 @@
 import type { EducationCourse, EducationParticipant } from './types';
 import { feeCurrencyDisplay, formatAmountDisplay } from './educationFormat';
+import { normalizeEducationCourse } from './educationNormalize';
 import { resolveStoryTypography, storyLineHeight } from './educationStoryTypography';
 
 export const EDUCATION_STORY_WIDTH = 1080;
@@ -24,12 +25,14 @@ export function ensureVazirmatnLoaded(): Promise<void> {
         'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap';
       document.head.appendChild(link);
     }
-    await Promise.all([
-      document.fonts.load('400 16px Vazirmatn'),
-      document.fonts.load('500 16px Vazirmatn'),
-      document.fonts.load('600 16px Vazirmatn'),
-      document.fonts.load('700 16px Vazirmatn'),
-    ]);
+    if (document.fonts?.load) {
+      await Promise.all([
+        document.fonts.load('400 16px Vazirmatn').catch(() => undefined),
+        document.fonts.load('500 16px Vazirmatn').catch(() => undefined),
+        document.fonts.load('600 16px Vazirmatn').catch(() => undefined),
+        document.fonts.load('700 16px Vazirmatn').catch(() => undefined),
+      ]);
+    }
   })();
   return vazirReady;
 }
@@ -141,10 +144,14 @@ async function loadBackgroundImage(url: string): Promise<HTMLImageElement | null
   if (!url?.trim()) return null;
   return new Promise(resolve => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) resolve(img);
+      else resolve(null);
+    };
     img.onerror = () => resolve(null);
-    img.src = url;
+    img.src = trimmed;
   });
 }
 
@@ -174,6 +181,7 @@ function drawCircleImage(
   cy: number,
   r: number,
 ) {
+  if (!img.width || !img.height || !Number.isFinite(r) || r <= 0) return;
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -258,8 +266,14 @@ function drawSeatName(
 }
 
 /** Draw Instagram story (1080×1920); returns PNG blob. */
-export async function renderEducationStoryPng(course: EducationCourse): Promise<Blob> {
+export async function renderEducationStoryPng(rawCourse: EducationCourse): Promise<Blob> {
   await ensureVazirmatnLoaded();
+
+  const course = normalizeEducationCourse({
+    ...rawCourse,
+    syllabus: rawCourse.syllabus ?? [],
+    participants: rawCourse.participants ?? [],
+  });
 
   const W = EDUCATION_STORY_WIDTH;
   const H = EDUCATION_STORY_HEIGHT;
@@ -269,7 +283,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas not supported');
 
-  const ty = resolveStoryTypography(course);
+  const typo = resolveStoryTypography(course);
 
   const filled = course.participants.length;
   const cap = Math.max(1, course.seatCapacity);
@@ -312,20 +326,20 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
 
   const textRight = W - pad - 24;
 
-  ctx.font = `600 ${ty.badge}px ${FONT}`;
+  ctx.font = `600 ${typo.badge}px ${FONT}`;
   drawRtlWrapped(
     ctx,
     'دوره آموزشی',
     textRight,
     contentY,
     innerW - 48,
-    storyLineHeight(ty.badge),
+    storyLineHeight(typo.badge),
     1,
     '#a5b4fc',
   );
-  contentY += storyLineHeight(ty.badge) + 8;
+  contentY += storyLineHeight(typo.badge) + 8;
 
-  ctx.font = `700 ${ty.title}px ${FONT}`;
+  ctx.font = `700 ${typo.title}px ${FONT}`;
   contentY =
     drawRtlWrapped(
       ctx,
@@ -333,8 +347,8 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
       textRight,
       contentY,
       innerW - 48,
-      storyLineHeight(ty.title),
-      ty.titleMaxLines,
+      storyLineHeight(typo.title),
+      typo.titleMaxLines,
       '#ffffff',
     ) + 8;
 
@@ -363,24 +377,24 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
       drawCircleImage(ctx, instructorFace, cx, cy, photoR);
 
       if (label) {
-        ctx.font = `500 ${ty.instructor}px ${FONT}`;
+        ctx.font = `500 ${typo.instructor}px ${FONT}`;
         const lines = wrapTextLines(ctx, label, bodyMaxW, 3);
-        const lnH = storyLineHeight(ty.instructor);
+        const lnH = storyLineHeight(typo.instructor);
         ctx.fillStyle = '#e2e8f0';
         ctx.textAlign = 'right';
         ctx.direction = 'rtl';
         const textBlockH = lines.length * lnH;
-        let ty = baseY + Math.max(28, (rowH - textBlockH) / 2 + 22);
+        let textY = baseY + Math.max(28, (rowH - textBlockH) / 2 + 22);
         for (const ln of lines) {
-          ctx.fillText(ln, bodyTextRight, ty);
-          ty += lnH;
+          ctx.fillText(ln, bodyTextRight, textY);
+          textY += lnH;
         }
       }
 
       // Full row height + gap; fee baseline must clear photo (glyphs extend above baseline)
       contentY = baseY + rowH + 28;
     } else if (label) {
-      ctx.font = `500 ${ty.instructor}px ${FONT}`;
+      ctx.font = `500 ${typo.instructor}px ${FONT}`;
       contentY =
         drawRtlWrapped(
           ctx,
@@ -388,7 +402,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
           textRight,
           baseY + 8,
           innerW - 48,
-          storyLineHeight(ty.instructor),
+          storyLineHeight(typo.instructor),
           2,
           '#e2e8f0',
         ) + 12;
@@ -397,7 +411,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
 
   if (course.courseFee?.trim()) {
     const feeFmt = formatAmountDisplay(course.courseFee);
-    ctx.font = `600 ${ty.fee}px ${FONT}`;
+    ctx.font = `600 ${typo.fee}px ${FONT}`;
     contentY =
       drawRtlWrapped(
         ctx,
@@ -405,7 +419,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
         bodyTextRight,
         contentY,
         bodyMaxW,
-        storyLineHeight(ty.fee),
+        storyLineHeight(typo.fee),
         1,
         '#fde68a',
       ) + 8;
@@ -418,19 +432,19 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   if (dateStr) meta.push(`تاریخ: ${dateStr}`);
   if (course.location) meta.push(`مکان: ${course.location}`);
   if (meta.length) {
-    ctx.font = `400 ${ty.meta}px ${FONT}`;
+    ctx.font = `400 ${typo.meta}px ${FONT}`;
     for (const m of meta) {
       contentY =
-        drawRtlWrapped(ctx, m, bodyTextRight, contentY, bodyMaxW, storyLineHeight(ty.meta), 1, '#94a3b8') + 4;
+        drawRtlWrapped(ctx, m, bodyTextRight, contentY, bodyMaxW, storyLineHeight(typo.meta), 1, '#94a3b8') + 4;
     }
   }
 
   if (course.instructorResume?.trim()) {
     contentY += 8;
-    ctx.font = `600 ${ty.sectionHeading}px ${FONT}`;
-    drawRtlBlock(ctx, ['رزومه استاد'], textRight, contentY, storyLineHeight(ty.sectionHeading), '#e2e8f0');
-    contentY += storyLineHeight(ty.sectionHeading) + 8;
-    ctx.font = `400 ${ty.body}px ${FONT}`;
+    ctx.font = `600 ${typo.sectionHeading}px ${FONT}`;
+    drawRtlBlock(ctx, ['رزومه استاد'], textRight, contentY, storyLineHeight(typo.sectionHeading), '#e2e8f0');
+    contentY += storyLineHeight(typo.sectionHeading) + 8;
+    ctx.font = `400 ${typo.body}px ${FONT}`;
     contentY =
       drawRtlLinearLines(
         ctx,
@@ -438,7 +452,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
         textRight,
         contentY,
         innerW - 48,
-        storyLineHeight(ty.body),
+        storyLineHeight(typo.body),
         '#94a3b8',
       ) + 8;
   }
@@ -446,11 +460,11 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   const vips = (course.vipGuests ?? []).filter(g => g.fullName?.trim());
   if (vips.length) {
     contentY += 6;
-    ctx.font = `600 ${ty.vipHeading}px ${FONT}`;
-    drawRtlBlock(ctx, ['مهمانان VIP'], textRight, contentY, storyLineHeight(ty.vipHeading), '#fcd34d');
-    contentY += storyLineHeight(ty.vipHeading) + 8;
+    ctx.font = `600 ${typo.vipHeading}px ${FONT}`;
+    drawRtlBlock(ctx, ['مهمانان VIP'], textRight, contentY, storyLineHeight(typo.vipHeading), '#fcd34d');
+    contentY += storyLineHeight(typo.vipHeading) + 8;
     for (const g of vips) {
-      ctx.font = `600 ${ty.vipName}px ${FONT}`;
+      ctx.font = `600 ${typo.vipName}px ${FONT}`;
       contentY =
         drawRtlWrapped(
           ctx,
@@ -458,12 +472,12 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
           textRight,
           contentY,
           innerW - 48,
-          storyLineHeight(ty.vipName),
+          storyLineHeight(typo.vipName),
           2,
           '#fef9c3',
         ) + 4;
       if (g.resume?.trim()) {
-        ctx.font = `400 ${ty.vipBody}px ${FONT}`;
+        ctx.font = `400 ${typo.vipBody}px ${FONT}`;
         contentY =
           drawRtlLinearLines(
             ctx,
@@ -471,7 +485,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
             textRight,
             contentY,
             innerW - 52,
-            storyLineHeight(ty.vipBody),
+            storyLineHeight(typo.vipBody),
             '#cbd5e1',
           ) + 8;
       }
@@ -480,13 +494,13 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   }
 
   const syllabus = course.syllabus.map(s => s.text.trim()).filter(Boolean);
-  const syllabusFont = syllabus.length > 8 ? Math.max(16, ty.syllabusItem - 2) : ty.syllabusItem;
+  const syllabusFont = syllabus.length > 8 ? Math.max(16, typo.syllabusItem - 2) : typo.syllabusItem;
   const syllabusLh = storyLineHeight(syllabusFont);
   if (syllabus.length) {
     contentY += 4;
-    ctx.font = `600 ${ty.syllabusHeading}px ${FONT}`;
-    drawRtlBlock(ctx, ['سرفصل‌ها'], textRight, contentY, storyLineHeight(ty.syllabusHeading), '#e2e8f0');
-    contentY += storyLineHeight(ty.syllabusHeading) + 8;
+    ctx.font = `600 ${typo.syllabusHeading}px ${FONT}`;
+    drawRtlBlock(ctx, ['سرفصل‌ها'], textRight, contentY, storyLineHeight(typo.syllabusHeading), '#e2e8f0');
+    contentY += storyLineHeight(typo.syllabusHeading) + 8;
     ctx.font = `400 ${syllabusFont}px ${FONT}`;
     for (const item of syllabus) {
       contentY =
@@ -556,18 +570,18 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   ctx.textAlign = 'center';
   ctx.direction = 'ltr';
   ctx.fillStyle = '#ffffff';
-  ctx.font = `700 ${ty.statsMain}px ${FONT}`;
+  ctx.font = `700 ${typo.statsMain}px ${FONT}`;
   ctx.fillText(`${filled} / ${cap}`, W / 2, statsY);
-  ctx.font = `500 ${ty.statsSub}px ${FONT}`;
+  ctx.font = `500 ${typo.statsSub}px ${FONT}`;
   ctx.fillStyle = pct >= 100 ? '#f87171' : '#c4b5fd';
-  ctx.fillText(pct >= 100 ? 'ظرفیت تکمیل شد' : `${pct}% اشغال`, W / 2, statsY + storyLineHeight(ty.statsSub));
+  ctx.fillText(pct >= 100 ? 'ظرفیت تکمیل شد' : `${pct}% اشغال`, W / 2, statsY + storyLineHeight(typo.statsSub));
   if (filled > 0) {
-    ctx.font = `400 ${ty.statsDetail}px ${FONT}`;
+    ctx.font = `400 ${typo.statsDetail}px ${FONT}`;
     ctx.fillStyle = '#94a3b8';
     ctx.fillText(
       `قطعی: ${confirmed}  ·  رزرو: ${reserved}`,
       W / 2,
-      statsY + storyLineHeight(ty.statsSub) + storyLineHeight(ty.statsDetail),
+      statsY + storyLineHeight(typo.statsSub) + storyLineHeight(typo.statsDetail),
     );
   }
 
@@ -586,7 +600,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   const footRaw = course.storyFootNote?.trim() ?? '';
   if (footRaw) {
     const align = course.storyFootNoteAlign ?? 'center';
-    const fontSize = ty.footNote;
+    const fontSize = typo.footNote;
     const boxW = W - 72;
     const padX = 20;
     const padY = 16;
@@ -611,16 +625,16 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
     const textX =
       align === 'left' ? boxX + padX : align === 'center' ? boxX + boxW / 2 : boxX + boxW - padX;
     ctx.textAlign = align === 'left' ? 'left' : align === 'center' ? 'center' : 'right';
-    let ty = boxY + padY + fontSize;
+    let footTextY = boxY + padY + fontSize;
     for (const ln of footLines) {
-      ctx.fillText(ln, textX, ty);
-      ty += lineH;
+      ctx.fillText(ln, textX, footTextY);
+      footTextY += lineH;
     }
   }
 
   ctx.textAlign = 'right';
   ctx.direction = 'rtl';
-  ctx.font = `400 ${ty.legend}px ${FONT}`;
+  ctx.font = `400 ${typo.legend}px ${FONT}`;
   ctx.fillStyle = SEAT_GREEN;
   roundRect(ctx, textRight - 300, legY - 16, 20, 20, 4);
   ctx.fill();
