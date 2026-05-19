@@ -10,7 +10,12 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react';
-import type { EducationCourse, EducationParticipant, EducationSyllabusItem } from './types';
+import type {
+  EducationCourse,
+  EducationParticipant,
+  EducationRegistrationStatus,
+} from './types';
+import { normalizeEducationCourse } from './educationNormalize';
 import {
   downloadEducationStory,
   EDUCATION_STORY_HEIGHT,
@@ -31,15 +36,26 @@ export function makeBlankEducationCourse(): EducationCourse {
     id: String(now),
     title: '',
     instructorName: '',
+    instructorResume: '',
     location: '',
     startDate: today,
     endDate: today,
+    courseFee: '',
+    courseFeeCurrency: 'OMR',
     syllabus: [{ id: newId(), text: '' }],
     seatCapacity: 50,
     participants: [],
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function updateParticipant(
+  participants: EducationParticipant[],
+  id: string,
+  patch: Partial<EducationParticipant>,
+): EducationParticipant[] {
+  return participants.map(p => (p.id === id ? { ...p, ...patch } : p));
 }
 
 function nextSeatNumber(course: EducationCourse): number | null {
@@ -66,6 +82,10 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     lastName: '',
     phone: '',
     city: '',
+    registrationStatus: 'confirmed' as EducationRegistrationStatus,
+    amountPaid: '',
+    amountRemaining: '',
+    paymentNote: '',
   });
 
   const saveCourse = (c: EducationCourse) => {
@@ -83,6 +103,8 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
   const filled = editing?.participants.length ?? 0;
   const cap = editing?.seatCapacity ?? 0;
   const isFull = filled >= cap && cap > 0;
+  const confirmedCount = editing?.participants.filter(p => p.registrationStatus === 'confirmed').length ?? 0;
+  const reservedCount = filled - confirmedCount;
 
   const seatGrid = useMemo(() => {
     if (!editing) return null;
@@ -116,10 +138,35 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
       phone: participantForm.phone.trim(),
       city: participantForm.city.trim(),
       seatNumber: seat,
+      registrationStatus: participantForm.registrationStatus,
+      amountPaid: participantForm.amountPaid.trim(),
+      amountRemaining: participantForm.amountRemaining.trim(),
+      paymentNote: participantForm.paymentNote.trim(),
       registeredAt: Date.now(),
     };
     upd({ participants: [...editing.participants, p] });
-    setParticipantForm({ firstName: '', lastName: '', phone: '', city: '' });
+    setParticipantForm({
+      firstName: '',
+      lastName: '',
+      phone: '',
+      city: '',
+      registrationStatus: participantForm.registrationStatus,
+      amountPaid: '',
+      amountRemaining: '',
+      paymentNote: '',
+    });
+  };
+
+  const fillHalfPayment = () => {
+    if (!editing?.courseFee?.trim()) return;
+    const fee = parseFloat(editing.courseFee.replace(/,/g, ''));
+    if (!Number.isFinite(fee) || fee <= 0) return;
+    const half = Math.round((fee / 2) * 100) / 100;
+    setParticipantForm(f => ({
+      ...f,
+      amountPaid: String(half),
+      amountRemaining: String(Math.round((fee - half) * 100) / 100),
+    }));
   };
 
   const handleExportStory = async () => {
@@ -196,6 +243,11 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-900 truncate">{c.title || 'بدون عنوان'}</div>
                     <p className="text-sm text-slate-500 mt-0.5">{c.instructorName || '—'}</p>
+                    {c.courseFee?.trim() ? (
+                      <p className="text-xs text-amber-700 mt-1">
+                        هزینه: {c.courseFee} {c.courseFeeCurrency || 'OMR'}
+                      </p>
+                    ) : null}
                     <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
                       <span>{c.startDate}</span>
                       <span>·</span>
@@ -214,7 +266,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                     <button
                       type="button"
                       onClick={() => {
-                        setEditing(JSON.parse(JSON.stringify(c)) as EducationCourse);
+                        setEditing(normalizeEducationCourse(JSON.parse(JSON.stringify(c)) as EducationCourse));
                         setSubView('editor');
                       }}
                       className="text-sm text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 hover:bg-teal-50"
@@ -261,6 +313,12 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
         <span className={`text-xs px-2 py-1 rounded-full border ${isFull ? 'bg-red-50 border-red-200 text-red-700' : 'bg-teal-50 border-teal-200 text-teal-700'}`}>
           {filled} / {cap} صندلی
         </span>
+        <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full">
+          قطعی {confirmedCount}
+        </span>
+        <span className="text-xs text-orange-700 bg-orange-50 border border-orange-200 px-2 py-1 rounded-full">
+          رزرو {reservedCount}
+        </span>
         <button
           type="button"
           onClick={openStoryPreview}
@@ -301,6 +359,27 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
             <div>
               <label className={labelCls}>نام استاد</label>
               <input value={editing.instructorName} onChange={e => upd({ instructorName: e.target.value })} className={inputCls} dir="rtl" />
+            </div>
+            <div>
+              <label className={labelCls}>رزومه استاد (در استوری)</label>
+              <textarea
+                value={editing.instructorResume}
+                onChange={e => upd({ instructorResume: e.target.value })}
+                rows={4}
+                className={inputCls}
+                dir="rtl"
+                placeholder="سوابق و تخصص استاد..."
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>هزینه دوره</label>
+                <input value={editing.courseFee} onChange={e => upd({ courseFee: e.target.value })} className={inputCls} dir="ltr" placeholder="150" />
+              </div>
+              <div>
+                <label className={labelCls}>واحد پول</label>
+                <input value={editing.courseFeeCurrency} onChange={e => upd({ courseFeeCurrency: e.target.value })} className={inputCls} dir="ltr" placeholder="OMR" />
+              </div>
             </div>
             <div>
               <label className={labelCls}>مکان برگزاری</label>
@@ -380,8 +459,32 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-teal-600" />
-              ثبت‌نام قطعی (اشغال صندلی)
+              ثبت شرکت‌کننده
             </h3>
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setParticipantForm(f => ({ ...f, registrationStatus: 'confirmed' }))}
+                className={`flex-1 text-sm py-2 rounded-lg border font-medium ${
+                  participantForm.registrationStatus === 'confirmed'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-600 border-slate-200'
+                }`}
+              >
+                قطعی (سبز)
+              </button>
+              <button
+                type="button"
+                onClick={() => setParticipantForm(f => ({ ...f, registrationStatus: 'reserved' }))}
+                className={`flex-1 text-sm py-2 rounded-lg border font-medium ${
+                  participantForm.registrationStatus === 'reserved'
+                    ? 'bg-orange-500 text-white border-orange-500'
+                    : 'bg-white text-slate-600 border-slate-200'
+                }`}
+              >
+                رزرو موقت (نارنجی)
+              </button>
+            </div>
             {isFull && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-3">
                 ظرفیت تکمیل شده — صندلی خالی وجود ندارد.
@@ -421,13 +524,27 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 disabled={isFull}
               />
             </div>
+            <p className="text-xs text-slate-500 mb-2 font-medium">پرداخت (پیش‌پرداخت / مانده)</p>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input placeholder="مبلغ پرداخت‌شده" value={participantForm.amountPaid} onChange={e => setParticipantForm(f => ({ ...f, amountPaid: e.target.value }))} className={inputCls} dir="ltr" disabled={isFull} />
+              <input placeholder="مانده حساب" value={participantForm.amountRemaining} onChange={e => setParticipantForm(f => ({ ...f, amountRemaining: e.target.value }))} className={inputCls} dir="ltr" disabled={isFull} />
+            </div>
+            {editing.courseFee?.trim() ? (
+              <button type="button" onClick={fillHalfPayment} disabled={isFull} className="text-xs text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 mb-2 hover:bg-teal-50 w-full">
+                نصف هزینه دوره: پرداخت‌شده / مانده (خودکار)
+              </button>
+            ) : null}
+            <input placeholder="یادداشت پرداخت" value={participantForm.paymentNote} onChange={e => setParticipantForm(f => ({ ...f, paymentNote: e.target.value }))} className={inputCls + ' mb-3'} dir="rtl" disabled={isFull} />
             <button
               type="button"
               onClick={handleAddParticipant}
               disabled={isFull}
-              className="w-full flex items-center justify-center gap-2 text-sm bg-teal-600 text-white rounded-lg py-2 hover:bg-teal-700 disabled:opacity-50"
+              className={`w-full flex items-center justify-center gap-2 text-sm text-white rounded-lg py-2 disabled:opacity-50 ${
+                participantForm.registrationStatus === 'reserved' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-teal-600 hover:bg-teal-700'
+              }`}
             >
-              <Plus className="w-4 h-4" /> تأیید و رزرو صندلی
+              <Plus className="w-4 h-4" />
+              {participantForm.registrationStatus === 'reserved' ? 'رزرو موقت صندلی' : 'ثبت‌نام قطعی صندلی'}
             </button>
           </div>
         </div>
@@ -435,6 +552,10 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <h3 className="font-semibold text-slate-800 mb-3">نقشه صندلی‌ها</h3>
+            <div className="flex gap-3 text-xs mb-3 justify-center">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500" /> قطعی</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500" /> رزرو موقت</span>
+            </div>
             {seatGrid && (
               <div
                 className="grid gap-1.5 justify-center"
@@ -446,7 +567,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                     type="button"
                     title={
                       participant
-                        ? `${participant.firstName} ${participant.lastName} — ${participant.city}`
+                        ? `${participant.firstName} ${participant.lastName} — ${participant.city}${participant.amountPaid ? ` — پرداخت: ${participant.amountPaid}` : ''}`
                         : `صندلی ${num} — خالی`
                     }
                     onClick={() => {
@@ -455,13 +576,20 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                         upd({ participants: editing.participants.filter(p => p.id !== participant.id) });
                       }
                     }}
-                    className={`aspect-square rounded-md text-[10px] font-bold transition-all ${
+                    className={`min-h-[52px] rounded-md text-[9px] font-bold transition-all flex flex-col items-center justify-center p-0.5 leading-tight ${
                       participant
-                        ? 'bg-teal-500 text-white hover:bg-red-500 shadow-sm'
-                        : 'bg-slate-100 text-slate-400 border border-slate-200'
+                        ? participant.registrationStatus === 'reserved'
+                          ? 'bg-orange-500 text-white hover:bg-red-500 shadow-sm'
+                          : 'bg-emerald-500 text-white hover:bg-red-500 shadow-sm'
+                        : 'bg-slate-100 text-slate-400 border border-slate-200 aspect-square'
                     }`}
                   >
-                    {num}
+                    <span className="opacity-80">{num}</span>
+                    {participant ? (
+                      <span className="font-normal text-[8px] truncate w-full text-center px-0.5">
+                        {participant.firstName}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -469,47 +597,131 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
             <p className="text-xs text-slate-400 mt-3 text-center">کلیک روی صندلی پر = حذف ثبت‌نام</p>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 p-5 max-h-80 overflow-y-auto">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 max-h-[28rem] overflow-y-auto">
             <h3 className="font-semibold text-slate-800 mb-3">لیست شرکت‌کنندگان ({filled})</h3>
             {editing.participants.length === 0 ? (
-              <p className="text-sm text-slate-400">هنوز کسی ثبت‌نام قطعی نشده.</p>
+              <p className="text-sm text-slate-400">هنوز کسی ثبت نشده.</p>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-slate-500 border-b">
-                    <th className="text-right py-2">صندلی</th>
-                    <th className="text-right py-2">نام</th>
-                    <th className="text-right py-2">شهر</th>
-                    <th className="text-right py-2">تماس</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...editing.participants]
-                    .sort((a, b) => a.seatNumber - b.seatNumber)
-                    .map(p => (
-                      <tr key={p.id} className="border-b border-slate-50">
-                        <td className="py-2 font-mono text-teal-700">{p.seatNumber}</td>
-                        <td className="py-2">
-                          {p.firstName} {p.lastName}
-                        </td>
-                        <td className="py-2 text-slate-600">{p.city || '—'}</td>
-                        <td className="py-2 text-slate-600 font-mono text-xs" dir="ltr">
-                          {p.phone || '—'}
-                        </td>
-                        <td className="py-2">
-                          <button
-                            type="button"
-                            onClick={() => upd({ participants: editing.participants.filter(x => x.id !== p.id) })}
-                            className="text-red-400 hover:text-red-600"
+              <div className="space-y-3">
+                {[...editing.participants]
+                  .sort((a, b) => a.seatNumber - b.seatNumber)
+                  .map(p => (
+                    <div
+                      key={p.id}
+                      className={`border rounded-lg p-3 text-sm ${
+                        p.registrationStatus === 'reserved'
+                          ? 'border-orange-200 bg-orange-50/50'
+                          : 'border-emerald-200 bg-emerald-50/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div>
+                          <span className="font-mono text-xs font-bold text-slate-500">#{p.seatNumber}</span>
+                          <span className="font-semibold mr-2">
+                            {p.firstName} {p.lastName}
+                          </span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              p.registrationStatus === 'reserved'
+                                ? 'bg-orange-200 text-orange-800'
+                                : 'bg-emerald-200 text-emerald-800'
+                            }`}
                           >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+                            {p.registrationStatus === 'reserved' ? 'رزرو موقت' : 'قطعی'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => upd({ participants: editing.participants.filter(x => x.id !== p.id) })}
+                          className="text-red-400 shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 mb-2">
+                        <span>{p.city || '—'}</span>
+                        <span dir="ltr" className="text-left">{p.phone || '—'}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <input
+                          value={p.amountPaid}
+                          onChange={e =>
+                            upd({
+                              participants: updateParticipant(editing.participants, p.id, {
+                                amountPaid: e.target.value,
+                              }),
+                            })
+                          }
+                          className="border rounded px-2 py-1 text-xs"
+                          dir="ltr"
+                          placeholder="پرداخت‌شده"
+                        />
+                        <input
+                          value={p.amountRemaining}
+                          onChange={e =>
+                            upd({
+                              participants: updateParticipant(editing.participants, p.id, {
+                                amountRemaining: e.target.value,
+                              }),
+                            })
+                          }
+                          className="border rounded px-2 py-1 text-xs"
+                          dir="ltr"
+                          placeholder="مانده"
+                        />
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            upd({
+                              participants: updateParticipant(editing.participants, p.id, {
+                                registrationStatus: 'confirmed',
+                              }),
+                            })
+                          }
+                          className={`text-xs px-2 py-1 rounded border ${
+                            p.registrationStatus === 'confirmed'
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'border-slate-200'
+                          }`}
+                        >
+                          قطعی
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            upd({
+                              participants: updateParticipant(editing.participants, p.id, {
+                                registrationStatus: 'reserved',
+                              }),
+                            })
+                          }
+                          className={`text-xs px-2 py-1 rounded border ${
+                            p.registrationStatus === 'reserved'
+                              ? 'bg-orange-500 text-white border-orange-500'
+                              : 'border-slate-200'
+                          }`}
+                        >
+                          رزرو
+                        </button>
+                        <input
+                          value={p.paymentNote}
+                          onChange={e =>
+                            upd({
+                              participants: updateParticipant(editing.participants, p.id, {
+                                paymentNote: e.target.value,
+                              }),
+                            })
+                          }
+                          className="flex-1 min-w-[120px] border rounded px-2 py-1 text-xs"
+                          dir="rtl"
+                          placeholder="یادداشت"
+                        />
+                      </div>
+                    </div>
+                  ))}
+              </div>
             )}
           </div>
 

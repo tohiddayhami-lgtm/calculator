@@ -107,6 +107,7 @@ import {
   EducationCourse,
 } from './types';
 import { EducationFormsPanel, EDUCATION_STORAGE_KEY } from './educationForms';
+import { normalizeEducationCourse } from './educationNormalize';
 import {
   computeVatFromNet,
   normalizeInvoiceExtraCharges,
@@ -4843,7 +4844,10 @@ function AppInner() {
     if (typeof window === 'undefined') return [];
     try {
       const raw = localStorage.getItem(EDUCATION_STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw) as EducationCourse[];
+        return Array.isArray(parsed) ? parsed.map(c => normalizeEducationCourse(c)) : [];
+      }
     } catch {}
     return [];
   });

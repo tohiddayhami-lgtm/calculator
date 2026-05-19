@@ -957,14 +957,23 @@ export interface EducationSyllabusItem {
   text: string;
 }
 
+export type EducationRegistrationStatus = 'confirmed' | 'reserved';
+
 export interface EducationParticipant {
   id: string;
   firstName: string;
   lastName: string;
   phone: string;
   city: string;
-  /** 1-based seat number when registration is confirmed */
+  /** 1-based seat number */
   seatNumber: number;
+  /** confirmed = green (قطعی), reserved = orange (رزرو موقت) */
+  registrationStatus: EducationRegistrationStatus;
+  /** Amount already paid (e.g. half upfront) */
+  amountPaid: string;
+  /** Remaining balance */
+  amountRemaining: string;
+  paymentNote: string;
   registeredAt: number;
 }
 
@@ -972,9 +981,14 @@ export interface EducationCourse {
   id: string;
   title: string;
   instructorName: string;
+  /** Short bio / resume for story export */
+  instructorResume: string;
   location: string;
   startDate: string;
   endDate: string;
+  /** Total course fee display text e.g. "150" */
+  courseFee: string;
+  courseFeeCurrency: string;
   syllabus: EducationSyllabusItem[];
   seatCapacity: number;
   participants: EducationParticipant[];
