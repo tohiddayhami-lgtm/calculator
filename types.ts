@@ -509,8 +509,25 @@ export interface ArchivedInvoiceLineSnapshot {
   discountAmount?: number;
 }
 
+/** Archived service-invoice line (separate from product/export lines). */
+export interface ArchivedServiceLineSnapshot {
+  lineId: string;
+  description: string;
+  detailNotes?: string;
+  qty: number;
+  unitPrice: number;
+  currency: string;
+  lineTotal: number;
+}
+
+export type ArchivedInvoiceKind = 'products' | 'services';
+
 export interface ArchivedInvoice {
   id: string; // Firestore doc id
+  /** `products` = export/goods proforma; `services` = service invoice (legacy saves default to products). */
+  invoiceKind?: ArchivedInvoiceKind;
+  /** Buyer segment at issue time (export vs services customer). */
+  customerKind?: BuyerCustomerKind;
   invoiceRef: string;
   invoiceTitle: string;
   issueDate: number; // ms epoch
@@ -553,8 +570,13 @@ export interface ArchivedInvoice {
   vatByTerm: Record<string, number>;
   grandByTerm: Record<string, number>;
 
+  /** Service invoice lines when `invoiceKind` is `services`. */
+  serviceLines?: ArchivedServiceLineSnapshot[];
+  /** Per-currency grand totals for service invoices. */
+  serviceGrandByCurrency?: Record<string, number>;
+
   // money tracking
-  totalDue: number; // grandByTerm[selectedTerm]
+  totalDue: number; // grandByTerm[selectedTerm] or service primary currency grand
   payments: InvoicePayment[];
 
   projectId?: string; // origin project, for breadcrumbs
