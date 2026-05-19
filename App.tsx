@@ -47,7 +47,7 @@ import {
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
-  ChevronUp, ChevronDown, Copy, GraduationCap
+  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon
 } from 'lucide-react';
 
 // Types
@@ -105,6 +105,9 @@ import {
   ProposalStatus,
   ProposalRtlLang,
   EducationCourse,
+  WarehouseLocation,
+  WarehouseMovement,
+  WarehouseProductSettings,
 } from './types';
 import { EducationFormsPanel, EDUCATION_STORAGE_KEY } from './educationForms';
 import { normalizeEducationCourse } from './educationNormalize';
@@ -124,6 +127,13 @@ import {
 } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import { BuyersPanel } from './buyersUi';
+import { defaultWarehouseLocations } from './warehouseCore';
+import {
+  parseWarehouseLocations,
+  parseWarehouseMovements,
+  parseWarehouseProductSettings,
+} from './warehouseNormalize';
+import { WarehousePanel } from './warehouseUi';
 import {
   buildContractHeaderHtml,
   ContractHeaderBlock,
@@ -5086,6 +5096,14 @@ function AppInner() {
   const [researchEntries, setResearchEntries] = useState<DashboardResearchEntry[]>([]);
   const [researchUploadingKey, setResearchUploadingKey] = useState<string | null>(null);
   const [dashboardTodos, setDashboardTodos] = useState<DashboardTodoItem[]>([]);
+  const [dashboardSubView, setDashboardSubView] = useState<'workspace' | 'warehouse'>('workspace');
+  const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>(() =>
+    defaultWarehouseLocations(),
+  );
+  const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>([]);
+  const [warehouseProductSettings, setWarehouseProductSettings] = useState<WarehouseProductSettings[]>(
+    [],
+  );
   const [dashboardTodoDraft, setDashboardTodoDraft] = useState({ label: '', start: '', due: '' });
   const [dashboardTodoUploadingId, setDashboardTodoUploadingId] = useState<string | null>(null);
   const [expandedTodoId, setExpandedTodoId] = useState<string | null>(null);
@@ -7130,6 +7148,9 @@ function AppInner() {
         editingArchiveInvoiceId,
         researchEntries,
         dashboardTodos,
+        warehouseLocations,
+        warehouseMovements,
+        warehouseProductSettings,
         invoiceDocKind,
         serviceInvoiceLines,
         serviceInvoiceDiscountCurrency,
@@ -7346,6 +7367,12 @@ function AppInner() {
     );
     setResearchEntries(parseResearchEntriesFromProject((project.data as any).researchEntries));
     setDashboardTodos(parseDashboardTodosFromProject((project.data as any).dashboardTodos));
+    setWarehouseLocations(parseWarehouseLocations((project.data as any).warehouseLocations));
+    setWarehouseMovements(parseWarehouseMovements((project.data as any).warehouseMovements));
+    setWarehouseProductSettings(
+      parseWarehouseProductSettings((project.data as any).warehouseProductSettings),
+    );
+    setDashboardSubView('workspace');
     setSelectedBuyerId('');
     const loadedKind = (project.data as any).invoiceDocKind;
     setInvoiceDocKind(loadedKind === 'services' ? 'services' : 'products');
@@ -8394,6 +8421,9 @@ function AppInner() {
             editingArchiveInvoiceId,
             researchEntries,
             dashboardTodos,
+            warehouseLocations,
+            warehouseMovements,
+            warehouseProductSettings,
             invoiceDocKind,
             serviceInvoiceLines,
             serviceInvoiceDiscountCurrency,
@@ -8470,6 +8500,9 @@ function AppInner() {
     editingArchiveInvoiceId,
     researchEntries,
     dashboardTodos,
+    warehouseLocations,
+    warehouseMovements,
+    warehouseProductSettings,
     invoiceDocKind,
     serviceInvoiceLines,
     serviceInvoiceDiscountCurrency,
@@ -8749,6 +8782,10 @@ function AppInner() {
     setDashboardTodoDraft({ label: '', start: '', due: '' });
     setDashboardTodoUploadingId(null);
     setExpandedTodoId(null);
+    setDashboardSubView('workspace');
+    setWarehouseLocations(defaultWarehouseLocations());
+    setWarehouseMovements([]);
+    setWarehouseProductSettings([]);
     setInvoiceBasis('both');
     setBankDetails('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
     setSuppliers([]);
@@ -8802,7 +8839,46 @@ function AppInner() {
   
   const renderDashboard = () => (
     <div className="space-y-6">
-      
+      <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1 gap-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setDashboardSubView('workspace')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+            dashboardSubView === 'workspace'
+              ? 'bg-white text-blue-800 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          محاسبه صادرات
+        </button>
+        <button
+          type="button"
+          onClick={() => setDashboardSubView('warehouse')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+            dashboardSubView === 'warehouse'
+              ? 'bg-white text-teal-800 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <WarehouseIcon className="w-4 h-4" />
+          مدیریت انبار
+        </button>
+      </div>
+
+      {dashboardSubView === 'warehouse' ? (
+        <WarehousePanel
+          products={products}
+          suppliers={suppliers}
+          locations={warehouseLocations}
+          setLocations={setWarehouseLocations}
+          movements={warehouseMovements}
+          setMovements={setWarehouseMovements}
+          productSettings={warehouseProductSettings}
+          setProductSettings={setWarehouseProductSettings}
+        />
+      ) : (
+      <>
       {/* 1. CONFIG BAR */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
         {/* ... (existing dashboard code) ... */}
@@ -10352,6 +10428,8 @@ function AppInner() {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 

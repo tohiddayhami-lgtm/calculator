@@ -584,6 +584,39 @@ export interface DashboardResearchEntry {
   collapsed?: boolean;
 }
 
+// ---- WAREHOUSE / INVENTORY ----
+
+export type WarehouseMovementType = 'in' | 'out' | 'adjustment';
+
+export interface WarehouseLocation {
+  id: string;
+  name: string;
+  code?: string;
+  notes?: string;
+  isDefault?: boolean;
+  createdAt: number;
+}
+
+/** Immutable stock ledger row (qty is always positive; direction from type). */
+export interface WarehouseMovement {
+  id: string;
+  productId: number;
+  warehouseId: string;
+  type: WarehouseMovementType;
+  qty: number;
+  qtyBefore: number;
+  qtyAfter: number;
+  reason: string;
+  note?: string;
+  reference?: string;
+  createdAt: number;
+}
+
+export interface WarehouseProductSettings {
+  productId: number;
+  minStock?: number;
+}
+
 /** Compact linear task on the dashboard (start / end window + optional one file). */
 export interface DashboardTodoItem {
   id: string;
@@ -668,6 +701,12 @@ export interface SavedProject {
     researchEntries?: DashboardResearchEntry[];
     /** Dashboard: compact linear todo list (tasks with dates + optional file). */
     dashboardTodos?: DashboardTodoItem[];
+    /** Warehouse locations for this project. */
+    warehouseLocations?: WarehouseLocation[];
+    /** Stock movement ledger. */
+    warehouseMovements?: WarehouseMovement[];
+    /** Per-product reorder / min stock levels. */
+    warehouseProductSettings?: WarehouseProductSettings[];
     /** Proforma sub-mode: goods (default) vs service invoice editor. */
     invoiceDocKind?: 'products' | 'services';
     serviceInvoiceLines?: ServiceInvoiceLine[];
