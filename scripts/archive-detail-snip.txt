@@ -1,0 +1,18 @@
+                                              <ArchiveLegacyMisarchiveBanner selected={selected} />
+
+                                              <ArchiveCustomerBalanceSummary
+                                                selected={selected}
+                                                allInvoices={archivedInvoices}
+                                                formatNumber={formatNumber}
+                                                formatMoney={formatMoney}
+                                              />
+
+                                              <ArchiveSelectedItemsTable
+                                                selected={selected}
+                                                allInvoices={archivedInvoices}
+                                                formatNumber={formatNumber}
+                                                formatMoney={formatMoney}
+                                                formatServiceMoney={(amt, ccy) =>
+                                                  formatServiceInvoiceMoney(amt, ccy, serviceInvoiceDecimalPlaces)
+                                                }
+                                              />

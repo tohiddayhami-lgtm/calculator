@@ -1,0 +1,71 @@
+  const handleUpdateArchivedInvoiceFromEditor = async () => {
+    const id = editingArchiveInvoiceId;
+    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!id || !isRealCloudUser) {
+      alert('برای به‌روزرسانی آرشیو، ابتدا وارد حساب ابری شوید و از آرشیو «بازخوانی برای ویرایش» را بزنید.');
+      return;
+    }
+    const existing = archivedInvoices.find((x) => x.id === id);
+    if (!existing) {
+      alert('این فاکتور در آرشیو پیدا نشد؛ لیست را رفرش کنید.');
+      return;
+    }
+    const existingNorm = normalizeArchivedInvoice(existing);
+    const snap =
+      normalizeArchivedInvoiceKind(existingNorm.invoiceKind) === 'services'
+        ? buildServiceArchiveSnapshot({
+            status: existingNorm.status || 'issued',
+            customerName: customerDisplayName(getInvoiceCustomerFields()) || customerName,
+            customerAddress,
+            customerKind: 'services',
+            invoiceRef,
+            invoiceTitle,
+            issueDateMs: invoiceIssueDateMs,
+            dueDateMs: invoiceDueDateMs,
+            billedFrom,
+            billedFromDetails,
+            invoiceLogo,
+            invoiceSellerEmail,
+            invoiceSellerPhone,
+            invoiceSellerWebsite,
+            invoiceSellerTaxId,
+            paymentTerms,
+            bankDetails,
+            notes,
+            lines: serviceInvoiceLines,
+            globalDiscountMode: invoiceGlobalDiscountMode,
+            globalDiscountValue: invoiceGlobalDiscountValue,
+            discountCurrency: serviceInvoiceDiscountCurrency,
+            vatEnabled: invoiceVatEnabled,
+            vatPercent: invoiceVatPercent,
+            vatMode: invoiceVatMode,
+            extraCharges: invoiceExtraCharges,
+            decimalPlaces: serviceInvoiceDecimalPlaces,
+            projectId: loadedProjectId || '',
+          })
+        : buildArchiveSnapshot(existingNorm.status || 'issued');
+    if (!snap) return;
+    const merged = {
+      ...snap,
+      issueDate: Number.isFinite(invoiceIssueDateMs) && invoiceIssueDateMs > 0 ? invoiceIssueDateMs : snap.issueDate,
+      dueDate: invoiceDueDateMs,
+      payments: existing.payments || [],
+    };
+    try {
+      const { data: prepared, notice } = await prepareCloudProjectData(merged, user.uid, setUploadProgress);
+      await withTimeout(
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive', id), {
+          ...prepared,
+          updatedAt: serverTimestamp(),
+        }),
+        20000,
+        'Update archived invoice'
+      );
+      setUploadProgress(null);
+      if (notice) alert(notice);
+      alert('فاکتور آرشیو با تغییرات شما به‌روز شد (پرداخت‌ها حفظ شدند).');
+    } catch (e: any) {
+      setUploadProgress(null);
+      alert('به‌روزرسانی آرشیو ناموفق: ' + (e?.message || e));
+    }
+  };

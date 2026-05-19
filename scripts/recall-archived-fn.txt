@@ -1,0 +1,140 @@
+  const recallArchivedInvoiceForEditing = (inv: ArchivedInvoice) => {
+    const archived = normalizeArchivedInvoice(inv);
+    if (normalizeArchivedInvoiceKind(archived.invoiceKind) === 'services') {
+      setInvoiceDocKind('services');
+      setCustomerName(archived.customerName || '');
+      setCustomerAddress(archived.customerAddress || '');
+      setInvoiceRef(archived.invoiceRef || '');
+      setInvoiceTitle(archived.invoiceTitle || 'Service Proforma Invoice');
+      setBilledFrom(archived.billedFrom || '');
+      setBilledFromDetails(archived.billedFromDetails || '');
+      setInvoiceLogo(archived.invoiceLogo || '');
+      setInvoiceSellerEmail(archived.invoiceSellerEmail || '');
+      setInvoiceSellerPhone(archived.invoiceSellerPhone || '');
+      setInvoiceSellerWebsite(archived.invoiceSellerWebsite || '');
+      setInvoiceSellerTaxId(archived.invoiceSellerTaxId || '');
+      setPaymentTerms(archived.paymentTerms || '');
+      setBankDetails(archived.bankDetails || '');
+      setNotes(archived.notes || '');
+      setInvoiceGlobalDiscountMode(archived.invoiceGlobalDiscountMode || 'none');
+      setInvoiceGlobalDiscountValue(Number(archived.invoiceGlobalDiscountValue) || 0);
+      setInvoiceVatEnabled(!!archived.invoiceVatEnabled);
+      setInvoiceVatPercent(
+        archived.invoiceVatPercent !== undefined && archived.invoiceVatPercent !== null
+          ? Number(archived.invoiceVatPercent)
+          : 9,
+      );
+      setInvoiceVatMode(normalizeInvoiceVatMode(archived.invoiceVatMode));
+      setInvoiceExtraCharges(normalizeInvoiceExtraCharges(archived.invoiceExtraCharges));
+      setServiceInvoiceDiscountCurrency(
+        (archived.outputCurrency || archived.selectedTerm || serviceInvoiceDiscountCurrency || 'USD')
+          .trim()
+          .toUpperCase() || 'USD',
+      );
+      setInvoiceIssueDateMs(
+        archived.issueDate && Number.isFinite(archived.issueDate) ? archived.issueDate : Date.now(),
+      );
+      setInvoiceDueDateMs(
+        archived.dueDate !== undefined && archived.dueDate !== null && Number.isFinite(archived.dueDate)
+          ? archived.dueDate
+          : undefined,
+      );
+      setEditingArchiveInvoiceId(archived.id);
+      setServiceInvoiceLines(
+        (archived.serviceLines ?? []).map((line) => ({
+          id: line.lineId || newServiceLineId(),
+          description: line.description,
+          detailNotes: line.detailNotes ?? '',
+          detailsOpen: !!String(line.detailNotes ?? '').trim(),
+          qty: line.qty,
+          unitPrice: line.unitPrice,
+          currency: line.currency,
+        })),
+      );
+      setInvoiceIncludedIds(null);
+      setInvoiceOverrides({});
+      setIsInvoiceEditable(false);
+      setShowArchiveModal(false);
+      setShowPaymentForm(false);
+      setView('invoice');
+      return;
+    }
+
+    setInvoiceDocKind('products');
+    setCustomerName(inv.customerName || '');
+    setCustomerAddress(inv.customerAddress || '');
+    setInvoiceRef(inv.invoiceRef || '');
+    setInvoiceTitle(inv.invoiceTitle || 'Proforma Invoice');
+    setBilledFrom(inv.billedFrom || '');
+    setBilledFromDetails(inv.billedFromDetails || '');
+    setInvoiceLogo(inv.invoiceLogo || '');
+    setInvoiceSellerEmail(inv.invoiceSellerEmail || '');
+    setInvoiceSellerPhone(inv.invoiceSellerPhone || '');
+    setInvoiceSellerWebsite(inv.invoiceSellerWebsite || '');
+    setInvoiceSellerTaxId(inv.invoiceSellerTaxId || '');
+    setPaymentTerms(inv.paymentTerms || 'T/T 50% Advance');
+    setBankDetails(inv.bankDetails || '');
+    setNotes(inv.notes || '');
+    const terms = inv.invoiceTerms?.length ? [...inv.invoiceTerms] : ['FOB', 'DDP'];
+    setInvoiceTerms(terms);
+    setInvoiceBasis(inv.invoiceBasis || 'both');
+    setShowImages(!!inv.showImages);
+    setConfig((c) => ({ ...c, outputCurrency: inv.outputCurrency || c.outputCurrency }));
+    const baseTerm =
+      inv.invoiceDiscountBaseTerm && terms.includes(inv.invoiceDiscountBaseTerm)
+        ? inv.invoiceDiscountBaseTerm
+        : terms[0] || 'FOB';
+    setInvoiceDiscountBaseTerm(baseTerm);
+    setInvoiceGlobalDiscountMode(inv.invoiceGlobalDiscountMode || 'none');
+    setInvoiceGlobalDiscountValue(Number(inv.invoiceGlobalDiscountValue) || 0);
+    setInvoiceVatEnabled(!!inv.invoiceVatEnabled);
+    setInvoiceVatPercent(
+      inv.invoiceVatPercent !== undefined && inv.invoiceVatPercent !== null ? Number(inv.invoiceVatPercent) : 9
+    );
+    setInvoiceVatMode(normalizeInvoiceVatMode((inv as { invoiceVatMode?: unknown }).invoiceVatMode));
+    setInvoiceExtraCharges(normalizeInvoiceExtraCharges(inv.invoiceExtraCharges));
+    setInvoiceIssueDateMs(inv.issueDate && Number.isFinite(inv.issueDate) ? inv.issueDate : Date.now());
+    setInvoiceDueDateMs(
+      inv.dueDate !== undefined && inv.dueDate !== null && Number.isFinite(inv.dueDate) ? inv.dueDate : undefined
+    );
+    setEditingArchiveInvoiceId(inv.id);
+
+    const productIds = new Set(products.map((p) => p.id));
+    const missing: number[] = [];
+    const overrides: Record<
+      number,
+      {
+        qty?: number;
+        unitPrices?: Record<string, number>;
+        packPrices?: Record<string, number>;
+        discountPercent?: number;
+        discountAmount?: number;
+      }
+    > = {};
+    const included: number[] = [];
+    (inv.items || []).forEach((line) => {
+      if (!productIds.has(line.productId)) {
+        missing.push(line.productId);
+        return;
+      }
+      included.push(line.productId);
+      overrides[line.productId] = {
+        qty: line.qty,
+        unitPrices: { ...line.unitPrices },
+        packPrices: { ...line.packPrices },
+        discountPercent: line.discountPercent || 0,
+        discountAmount: line.discountAmount || 0,
+      };
+    });
+    setInvoiceOverrides(overrides);
+    setInvoiceIncludedIds(included.length > 0 ? included : null);
+    setIsInvoiceEditable(true);
+    if (missing.length) {
+      alert(
+        `بازیابی انجام شد؛ ${included.length} ردیف با کالاهای همین پروژه هم‌خوان شد.\nشناسهٔ کالاهایی که در پروژه نیستند و حذف شدند: ${missing.join(', ')}`
+      );
+    }
+    setShowArchiveModal(false);
+    setShowPaymentForm(false);
+    setView('invoice');
+  };
