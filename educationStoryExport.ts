@@ -508,7 +508,7 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
     }
   }
 
-  const footerReserve = 220;
+  const footerReserve = 190;
   const cols = cap <= 15 ? 5 : cap <= 35 ? 7 : cap <= 55 ? 9 : 10;
   const gap = 12;
   let seatSize = Math.min(
@@ -526,8 +526,51 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
     gridH = rows * seatSize + (rows - 1) * gap;
   }
   const gridW = cols * seatSize + (cols - 1) * gap;
-  const gridX = (W - gridW) / 2;
+  const legendColumnW = 200;
+  const minGridX = 36 + legendColumnW + 20;
+  let gridX = (W - gridW) / 2;
+  if (gridX < minGridX) gridX = minGridX;
   const gridY = gridTop;
+  const legendRight = gridX - 20;
+
+  const drawSeatLegendVertical = (centerY: number) => {
+    const box = 18;
+    const rowStep = 54;
+    const items: { fill: string; stroke: string; label: string }[] = [
+      { fill: SEAT_GREEN, stroke: SEAT_GREEN_BORDER, label: 'ثبت‌نام قطعی' },
+      { fill: SEAT_ORANGE, stroke: SEAT_ORANGE_BORDER, label: 'رزرو موقت' },
+    ];
+    const blockH = (items.length - 1) * rowStep;
+    let rowY = centerY - blockH / 2;
+
+    ctx.save();
+    ctx.direction = 'rtl';
+    ctx.font = `500 ${typo.legend}px ${FONT}`;
+    ctx.textAlign = 'right';
+
+    for (const item of items) {
+      ctx.font = `500 ${typo.legend}px ${FONT}`;
+      const labelW = ctx.measureText(item.label).width;
+      const rowW = box + 10 + labelW;
+      const boxX = legendRight - rowW;
+      const boxY = rowY - box / 2 - 4;
+
+      ctx.fillStyle = item.fill;
+      roundRect(ctx, boxX, boxY, box, box, 5);
+      ctx.fill();
+      ctx.strokeStyle = item.stroke;
+      ctx.lineWidth = 2;
+      roundRect(ctx, boxX, boxY, box, box, 5);
+      ctx.stroke();
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText(item.label, legendRight, rowY + 6);
+      rowY += rowStep;
+    }
+    ctx.restore();
+  };
+
+  drawSeatLegendVertical(gridY + gridH / 2);
 
   for (let i = 0; i < cap; i++) {
     const seatNum = i + 1;
@@ -596,7 +639,6 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
     ctx.fill();
   }
 
-  const legY = H - 80;
   const footRaw = course.storyFootNote?.trim() ?? '';
   if (footRaw) {
     const align = course.storyFootNoteAlign ?? 'center';
@@ -610,7 +652,7 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
     const footLines = wrapTextLines(ctx, footRaw, textMaxW, 6);
     const lineH = Math.round(fontSize * 1.35);
     const boxH = padY * 2 + footLines.length * lineH;
-    const boxY = Math.max(barY + 16, Math.min(barY + 28, legY - boxH - 32));
+    const boxY = Math.max(barY + 16, Math.min(barY + 28, H - boxH - 48));
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
     roundRect(ctx, boxX, boxY, boxW, boxH, 14);
@@ -631,20 +673,6 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
       footTextY += lineH;
     }
   }
-
-  ctx.textAlign = 'right';
-  ctx.direction = 'rtl';
-  ctx.font = `400 ${typo.legend}px ${FONT}`;
-  ctx.fillStyle = SEAT_GREEN;
-  roundRect(ctx, textRight - 300, legY - 16, 20, 20, 4);
-  ctx.fill();
-  ctx.fillStyle = '#e2e8f0';
-  ctx.fillText('سبز = ثبت‌نام قطعی', textRight - 272, legY);
-  ctx.fillStyle = SEAT_ORANGE;
-  roundRect(ctx, textRight - 300, legY + 14, 20, 20, 4);
-  ctx.fill();
-  ctx.fillStyle = '#e2e8f0';
-  ctx.fillText('نارنجی = رزرو موقت', textRight - 272, legY + 30);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
