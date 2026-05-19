@@ -128,6 +128,14 @@ import {
 } from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import {
+  allocateInvoiceNumber,
+  loadInvoiceNumberingSettings,
+  syncCounterFromRef,
+  type InvoiceNumberKind,
+  type InvoiceNumberingSettings,
+} from './invoiceNumbering';
+import { InvoiceNumberingPanel } from './invoiceNumberingUi';
+import {
   archivedInvoiceKindLabel,
   buildServiceArchiveSnapshot,
   normalizeArchivedInvoice,
@@ -5106,6 +5114,7 @@ function AppInner() {
   const [invoiceSellerTaxId, setInvoiceSellerTaxId] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('T/T 50% Advance');
   const [invoiceRef, setInvoiceRef] = useState(String(Math.floor(Math.random() * 10000)));
+  const [invoiceNumbering, setInvoiceNumbering] = useState<InvoiceNumberingSettings>(loadInvoiceNumberingSettings);
   const [invoiceTitle, setInvoiceTitle] = useState('Proforma Invoice');
   const [invoiceIssueDateMs, setInvoiceIssueDateMs] = useState<number>(() => Date.now());
   const [invoiceDueDateMs, setInvoiceDueDateMs] = useState<number | undefined>(undefined);
@@ -5126,6 +5135,47 @@ function AppInner() {
   const [expandedTodoId, setExpandedTodoId] = useState<string | null>(null);
   const [invoiceBasis, setInvoiceBasis] = useState<'unit' | 'pack' | 'both'>('both');
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
+
+  const invoiceKindFromDoc = (k?: InvoiceDocKind): InvoiceNumberKind =>
+    (k ?? invoiceDocKind) === 'services' ? 'services' : 'export';
+
+  const assignFreshInvoiceNumber = (kind?: InvoiceNumberKind) => {
+    const k = kind ?? invoiceKindFromDoc();
+    const { ref, issueDateMs, settings } = allocateInvoiceNumber(k, loadInvoiceNumberingSettings());
+    setInvoiceNumbering(settings);
+    setInvoiceRef(ref);
+    setInvoiceIssueDateMs(issueDateMs);
+  };
+
+  const handleInvoiceDocKindChange = (k: InvoiceDocKind) => {
+    if (k === invoiceDocKind) return;
+    setInvoiceDocKind(k);
+    if (loadInvoiceNumberingSettings().autoEnabled) {
+      assignFreshInvoiceNumber(invoiceKindFromDoc(k));
+    }
+  };
+
+  const renderInvoiceNumberingPanel = () => (
+    <InvoiceNumberingPanel
+      kind={invoiceKindFromDoc()}
+      settings={invoiceNumbering}
+      onSettingsChange={setInvoiceNumbering}
+      onAssignNew={() => assignFreshInvoiceNumber()}
+    />
+  );
+
+  useEffect(() => {
+    const s = loadInvoiceNumberingSettings();
+    setInvoiceNumbering(s);
+    if (!s.autoEnabled) return;
+    setInvoiceRef((cur) => {
+      if (!/^\d{1,5}$/.test(String(cur).trim())) return cur;
+      const { ref, issueDateMs, settings } = allocateInvoiceNumber('export', s);
+      setInvoiceNumbering(settings);
+      setInvoiceIssueDateMs(issueDateMs);
+      return ref;
+    });
+  }, []);
 
   const bumpInvoiceTextPresetPickers = () => setInvoiceTextPresetPickerKey((k) => k + 1);
 
@@ -6280,7 +6330,12 @@ function AppInner() {
       // Restrict invoice to only the products the customer requested.
       setInvoiceIncludedIds(matchedIds.length > 0 ? matchedIds : null);
 
-      setInvoiceRef(`INV-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
+      if (loadInvoiceNumberingSettings().autoEnabled) {
+        assignFreshInvoiceNumber('export');
+      } else {
+        setInvoiceRef(`INV-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
+        setInvoiceIssueDateMs(Date.now());
+      }
 
       // Auto-create or refresh a Buyer record from this customer so they're saved for future repeat orders.
       if (fullName || company || cust.email) {
@@ -6759,6 +6814,16 @@ function AppInner() {
       setEditingArchiveInvoiceId(null);
       setSelectedArchiveId(docRef.id);
       setShowArchiveModal(true);
+      const archivedKind = invoiceKindFromDoc();
+      let nextNumbering = syncCounterFromRef(archivedKind, snapshot.invoiceRef, loadInvoiceNumberingSettings());
+      setInvoiceNumbering(nextNumbering);
+      if (nextNumbering.autoEnabled) {
+        const next = allocateInvoiceNumber(archivedKind, nextNumbering);
+        nextNumbering = next.settings;
+        setInvoiceNumbering(nextNumbering);
+        setInvoiceRef(next.ref);
+        setInvoiceIssueDateMs(next.issueDateMs);
+      }
       if (notice) alert(notice);
     } catch (e: any) {
       setUploadProgress(null);
@@ -7476,7 +7541,8 @@ function AppInner() {
     setInvoiceSellerWebsite((project.data as any).invoiceSellerWebsite || '');
     setInvoiceSellerTaxId((project.data as any).invoiceSellerTaxId || '');
     setPaymentTerms(project.data.paymentTerms || 'T/T 50% Advance');
-    setInvoiceRef(project.data.invoiceRef || String(Math.floor(Math.random() * 10000)));
+    const loadedInvoiceRef = project.data.invoiceRef || '';
+    setInvoiceRef(loadedInvoiceRef || String(Math.floor(Math.random() * 10000)));
     setShowImages(project.data.showImages || false);
     setShowPackInfo(project.data.showPackInfo !== undefined ? project.data.showPackInfo : true);
     setInvoiceTitle(project.data.invoiceTitle || 'Proforma Invoice');
@@ -7528,6 +7594,11 @@ function AppInner() {
     setSelectedBuyerId('');
     const loadedKind = (project.data as any).invoiceDocKind;
     setInvoiceDocKind(loadedKind === 'services' ? 'services' : 'products');
+    if (loadedInvoiceRef) {
+      setInvoiceNumbering(
+        syncCounterFromRef(loadedKind === 'services' ? 'services' : 'export', loadedInvoiceRef),
+      );
+    }
     const loadedSvcDecimals = parseServiceInvoiceDecimalPlaces(
       (project.data as any).serviceInvoiceDecimalPlaces,
     );
@@ -8969,9 +9040,13 @@ function AppInner() {
     setInvoiceSellerWebsite('');
     setInvoiceSellerTaxId('');
     setPaymentTerms('T/T 50% Advance');
-    setInvoiceRef(String(Math.floor(Math.random() * 10000)));
+    if (loadInvoiceNumberingSettings().autoEnabled) {
+      assignFreshInvoiceNumber('export');
+    } else {
+      setInvoiceRef(String(Math.floor(Math.random() * 10000)));
+      setInvoiceIssueDateMs(Date.now());
+    }
     setInvoiceTitle('Proforma Invoice');
-    setInvoiceIssueDateMs(Date.now());
     setInvoiceDueDateMs(undefined);
     setEditingArchiveInvoiceId(null);
     setResearchEntries([]);
@@ -13127,7 +13202,8 @@ function AppInner() {
       return (
         <ServiceInvoicePanel
           invoiceDocKind={invoiceDocKind}
-          setInvoiceDocKind={setInvoiceDocKind}
+          setInvoiceDocKind={handleInvoiceDocKindChange}
+          invoiceNumberingSlot={renderInvoiceNumberingPanel()}
           triggerPrint={triggerPrint}
           onOpenArchive={() => setShowArchiveModal(true)}
           archiveCount={archivedInvoices.length}
@@ -13678,7 +13754,7 @@ function AppInner() {
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
           {/* Controls */}
           <div className="w-full lg:w-80 bg-white border border-slate-200 rounded-lg p-4 overflow-y-auto print:hidden">
-               <InvoiceDocKindTabs kind={invoiceDocKind} setKind={setInvoiceDocKind} />
+               <InvoiceDocKindTabs kind={invoiceDocKind} setKind={handleInvoiceDocKindChange} />
                <div className="flex items-center justify-between mb-4 gap-2">
                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-600"/> Invoice Settings</h3>
                    <button
@@ -13751,6 +13827,7 @@ function AppInner() {
                            Customs style matches the classic bordered export proforma: seller header, shipment blocks, single-price goods table, discount / charges / total, certification note, and signatory lines (A4 portrait). All block titles and column headers are editable under Customs style.
                        </p>
                    </div>
+                   {renderInvoiceNumberingPanel()}
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Invoice #</label>
                        <input type="text" value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />

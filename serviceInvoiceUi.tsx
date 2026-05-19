@@ -64,6 +64,7 @@ export type ServiceInvoicePanelProps = {
   invoiceAccentColor: string;
   onInvoiceAccentColorChange: (c: string) => void;
   renderTextPresetToolbar?: (kind: 'note' | 'paymentTerms' | 'bankDetails') => React.ReactNode;
+  invoiceNumberingSlot?: React.ReactNode;
   buyersSlot?: React.ReactNode;
   onSaveBuyer?: () => void;
   billedFrom: string;
@@ -170,6 +171,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
     invoiceAccentColor,
     onInvoiceAccentColorChange,
     renderTextPresetToolbar,
+    invoiceNumberingSlot,
     buyersSlot,
     onSaveBuyer,
     billedFrom,
@@ -356,6 +358,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
             />
           </div>
           <InvoiceAccentColorPicker value={invoiceAccentColor} onChange={onInvoiceAccentColorChange} />
+          {invoiceNumberingSlot}
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Invoice #</label>
             <input
