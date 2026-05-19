@@ -316,40 +316,52 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   ctx.font = `700 48px ${FONT}`;
   contentY = drawRtlWrapped(ctx, course.title || 'بدون عنوان', textRight, contentY, innerW - 48, 56, 2, '#ffffff') + 8;
 
+  /** When instructor photo exists, fee/meta use this column so text does not run under the portrait */
+  let bodyTextRight = textRight;
+  let bodyMaxW = innerW - 48;
+
   if (course.instructorName?.trim() || instructorFace) {
-    const photoR = 46;
-    const photoGap = 18;
+    const photoR = 44;
+    const photoGap = 20;
+    const photoColW = photoR * 2 + photoGap;
     const baseY = contentY;
-    let rowBottom = baseY;
-    let photoBottom = baseY;
+
     if (instructorFace) {
-      const cx = textRight - photoR;
-      // Higher placement: align with instructor line, keep clear of tuition below
-      const cy = baseY + photoR - 14;
-      drawCircleImage(ctx, instructorFace, cx, cy, photoR);
-      photoBottom = cy + photoR;
-      rowBottom = photoBottom;
+      bodyTextRight = textRight - photoColW;
+      bodyMaxW = innerW - 48 - photoColW;
     }
+
     const label =
       course.instructorName?.trim() ? `استاد: ${course.instructorName.trim()}` : instructorFace ? 'استاد' : '';
-    if (label) {
-      ctx.font = `500 30px ${FONT}`;
-      const textRightAdj = instructorFace ? textRight - photoR * 2 - photoGap : textRight;
-      const maxW = innerW - 48 - (instructorFace ? photoR * 2 + photoGap : 0);
-      const lines = wrapTextLines(ctx, label, maxW, 3);
-      const lnH = 36;
-      ctx.fillStyle = '#e2e8f0';
-      ctx.textAlign = 'right';
-      ctx.direction = 'rtl';
-      const tyStart = instructorFace ? baseY + 10 : baseY + 8;
-      let ty = tyStart;
-      for (const ln of lines) {
-        ctx.fillText(ln, textRightAdj, ty);
-        ty += lnH;
+
+    if (instructorFace) {
+      const rowH = photoR * 2 + 12;
+      const cx = textRight - photoR;
+      const cy = baseY + photoR + 4;
+      drawCircleImage(ctx, instructorFace, cx, cy, photoR);
+
+      if (label) {
+        ctx.font = `500 30px ${FONT}`;
+        const lines = wrapTextLines(ctx, label, bodyMaxW, 3);
+        const lnH = 36;
+        ctx.fillStyle = '#e2e8f0';
+        ctx.textAlign = 'right';
+        ctx.direction = 'rtl';
+        const textBlockH = lines.length * lnH;
+        let ty = baseY + Math.max(28, (rowH - textBlockH) / 2 + 22);
+        for (const ln of lines) {
+          ctx.fillText(ln, bodyTextRight, ty);
+          ty += lnH;
+        }
       }
-      rowBottom = Math.max(rowBottom, ty + 6, photoBottom);
+
+      // Full row height + gap; fee baseline must clear photo (glyphs extend above baseline)
+      contentY = baseY + rowH + 28;
+    } else if (label) {
+      ctx.font = `500 30px ${FONT}`;
+      contentY =
+        drawRtlWrapped(ctx, label, textRight, baseY + 8, innerW - 48, 38, 2, '#e2e8f0') + 12;
     }
-    contentY = rowBottom + 16;
   }
 
   if (course.courseFee?.trim()) {
@@ -359,9 +371,9 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
       drawRtlWrapped(
         ctx,
         `شهریه: ${feeFmt} ${feeCurrencyDisplay(course)}`,
-        textRight,
+        bodyTextRight,
         contentY,
-        innerW - 48,
+        bodyMaxW,
         40,
         1,
         '#fde68a',
@@ -377,7 +389,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   if (meta.length) {
     ctx.font = `400 26px ${FONT}`;
     for (const m of meta) {
-      contentY = drawRtlWrapped(ctx, m, textRight, contentY, innerW - 48, 34, 1, '#94a3b8') + 4;
+      contentY = drawRtlWrapped(ctx, m, bodyTextRight, contentY, bodyMaxW, 34, 1, '#94a3b8') + 4;
     }
   }
 
