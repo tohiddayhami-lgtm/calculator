@@ -874,6 +874,12 @@ export interface CustomFormDef {
   workflowGuideTitleRtl?: string;
   workflowSteps?: FormWorkflowStep[];
   fields: FormField[];
+  /** Public Google Form link (viewform). Responses can sync to googleSheetsUrl. */
+  googleFormUrl?: string;
+  /** Linked spreadsheet (from Form → Responses → Sheets in Google). */
+  googleSheetsUrl?: string;
+  /** When true, published link prioritizes embedded/open Google Form over native fields. */
+  useGoogleFormPrimary?: boolean;
   createdAt: number;
   updatedAt: number;
   publishedKey?: string;

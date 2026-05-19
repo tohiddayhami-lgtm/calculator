@@ -47,8 +47,19 @@ import {
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
-  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon
+  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon,
+  ExternalLink, Table2
 } from 'lucide-react';
+import {
+  normalizeGoogleFormUrl,
+  normalizeGoogleSheetsUrl,
+  isValidGoogleFormUrl,
+} from './googleFormUtils';
+import {
+  CustomFormsGoogleEmbedPanel,
+  CustomFormsInnerTabs,
+  type CustomFormsInnerTab,
+} from './customFormsGooglePanel';
 
 // Types
 import {
@@ -4852,6 +4863,8 @@ function AppInner() {
   const [formBuilderDraft, setFormBuilderDraft] = useState<CustomFormDef | null>(null);
   const [formBuilderSaving, setFormBuilderSaving] = useState(false);
   const [formPublishing, setFormPublishing] = useState<string | null>(null);
+  const [customFormsInnerTab, setCustomFormsInnerTab] = useState<CustomFormsInnerTab>('list');
+  const [selectedCustomFormGoogleId, setSelectedCustomFormGoogleId] = useState<string | null>(null);
   const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
   const [publicFormData, setPublicFormData] = useState<Record<string, string>>({});
   const [publicFormSubmitting, setPublicFormSubmitting] = useState(false);
@@ -5857,6 +5870,9 @@ function AppInner() {
     workflowGuideTitleRtl: 'مراحل کار',
     workflowSteps: [],
     fields: [],
+    googleFormUrl: '',
+    googleSheetsUrl: '',
+    useGoogleFormPrimary: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     isPublished: false,
@@ -5894,6 +5910,9 @@ function AppInner() {
                 workflowGuideTitleRtl: formDef.workflowGuideTitleRtl || '',
                 workflowSteps: formDef.workflowSteps || [],
                 fields: formDef.fields,
+                googleFormUrl: formDef.googleFormUrl || '',
+                googleSheetsUrl: formDef.googleSheetsUrl || '',
+                useGoogleFormPrimary: !!formDef.useGoogleFormPrimary,
                 updatedAt: now,
               })
             ),
@@ -6024,6 +6043,9 @@ function AppInner() {
         workflowGuideTitleRtl: form.workflowGuideTitleRtl || '',
         workflowSteps: form.workflowSteps || [],
         fields: form.fields,
+        googleFormUrl: form.googleFormUrl || '',
+        googleSheetsUrl: form.googleSheetsUrl || '',
+        useGoogleFormPrimary: !!form.useGoogleFormPrimary,
         isActive: true,
         updatedAt: Date.now(),
       });
@@ -15352,6 +15374,46 @@ function AppInner() {
     const rawAccent = (form.headerBgColor || '#0f172a').trim();
     const accentHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawAccent) ? rawAccent : '#0f172a';
 
+    const googleFormEmbed = normalizeGoogleFormUrl(form.googleFormUrl || '');
+    if (form.useGoogleFormPrimary && googleFormEmbed) {
+      return (
+        <>
+          <style>{PUBLIC_FORM_DOCUMENT_CSS}</style>
+          <div id="public-form-root" className="public-form-page">
+            <div className="public-form-doc-wrap max-w-3xl mx-auto px-4 py-6">
+              <div className="public-form-doc mb-4">
+                <div className="pf-header">
+                  <div className="pf-doc-info">
+                    <p className="pf-kicker">Google Form</p>
+                    <h1 className="pf-doc-title">{form.name}</h1>
+                    {form.description ? <p className="pf-desc">{form.description}</p> : null}
+                  </div>
+                  <div className="pf-seller">
+                    {form.logoUrl ? <img src={form.logoUrl} alt="" /> : null}
+                    <div className="pf-co">{form.companyName || form.name}</div>
+                  </div>
+                </div>
+                <div className="pf-accent" style={{ background: `linear-gradient(90deg, ${accentHex} 0%, #64748b 100%)` }} />
+              </div>
+              <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm" style={{ height: 'min(80vh, 900px)' }}>
+                <iframe
+                  title="Google Form"
+                  src={googleFormEmbed.embedUrl}
+                  className="w-full h-full border-0"
+                  allow="fullscreen"
+                />
+              </div>
+              <p className="text-center mt-3 text-[10px] text-slate-500">
+                <a href={googleFormEmbed.viewUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  Open form in a new tab
+                </a>
+              </p>
+            </div>
+          </div>
+        </>
+      );
+    }
+
     const renderField = (field: FormField) => {
       const setVal = (v: string) => setPublicFormData((prev) => ({ ...prev, [field.id]: v }));
       const val = publicFormData[field.id] || '';
@@ -15840,21 +15902,26 @@ function AppInner() {
   };
 
   const SAMPLE_FORM_JSON = {
-    _schema_version: '1.2',
+    _schema_version: '1.3',
     _about:
       'CloudExport Pro — custom form JSON. The live page is an A4-style document (like the proforma invoice): white page, company block + logo on the right, thin accent stripe from headerBgColor, optional formNumber, then fields in light bordered cards.',
     _for_ai_models:
-      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload (multiple images: maxFiles default 5, maxSizeMb default 5 per image). display_image = fixed image URL.',
+      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload (multiple images: maxFiles default 5, maxSizeMb default 5 per image). display_image = fixed image URL. Optional: googleFormUrl + googleSheetsUrl to link Google Form/Sheets; useGoogleFormPrimary true to show Google Form on the public link instead of native fields.',
     _field_types:
       'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
     _root_keys:
-      'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, showWorkflowGuide, workflowGuideTitle, workflowGuideTitleRtl, workflowSteps[], fields',
+      'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, showWorkflowGuide, workflowGuideTitle, workflowGuideTitleRtl, workflowSteps[], googleFormUrl, googleSheetsUrl, useGoogleFormPrimary, fields',
+    _google_integration:
+      '1) Create form at forms.google.com. 2) Responses → Link to Sheets → copy spreadsheet URL into googleSheetsUrl. 3) Copy form “Send” link (viewform) into googleFormUrl. 4) Import this JSON in Custom Forms. Tabs “Google Form” / “Google Sheets” preview responses here.',
     _workflow_guide:
       'Optional compact flowchart below header: showWorkflowGuide true, workflowSteps: [{ label, labelRtl }], max 20 steps. Titles: workflowGuideTitle (EN), workflowGuideTitleRtl (FA).',
     _bilingual_layout:
       'When labelRtl is set and label (or labelLtr) has text, the form shows English/LTR on the LEFT and RTL (Farsi, Arabic, …) on the RIGHT for titles and helper rows. Keys: labelLtr (optional), labelRtl, placeholderLtr, placeholderRtl, uploadHintLtr, uploadHintRtl (file fields).',
     name: 'Sample — Inquiry with photos & files',
     formNumber: 'RFQ-2026-SAMPLE',
+    googleFormUrl: '',
+    googleSheetsUrl: '',
+    useGoogleFormPrimary: false,
     accessLevel: 'public',
     description:
       'Demonstrates reference images (display_image), multiple customer photo uploads, PDF/Office uploads, and a video slot — same layout as your branded electronic forms.',
@@ -15998,11 +16065,50 @@ function AppInner() {
     ],
   };
 
+  const SAMPLE_GOOGLE_AI_JSON = {
+    _schema_version: '1.3',
+    _purpose: 'Give this file to ChatGPT/Claude/Gemini to generate form questions. Import the result via Custom Forms → Import JSON.',
+    _for_ai_models:
+      'Return ONLY valid JSON. Include fields[] with unique ids (f_1, f_2, …). Use bilingual label + labelRtl when needed. After the user creates a Google Form manually, they paste viewform URL in googleFormUrl and the linked spreadsheet URL in googleSheetsUrl.',
+    _google_setup_steps: [
+      'Create form at https://forms.google.com',
+      'Add questions matching fields[] (or use native CloudExport form only)',
+      'Responses tab → Link to Google Sheets → copy sheet URL to googleSheetsUrl',
+      'Send → link icon → copy viewform URL to googleFormUrl',
+      'Import JSON here, save, open tabs Google Form / Google Sheets',
+    ],
+    name: 'AI-generated inquiry form',
+    formNumber: 'RFQ-2026-001',
+    accessLevel: 'public',
+    description: 'Replace fields below with your product-specific questions.',
+    companyName: 'Your Company Ltd.',
+    googleFormUrl: 'https://docs.google.com/forms/d/e/XXXXXXXX/viewform',
+    googleSheetsUrl: 'https://docs.google.com/spreadsheets/d/XXXXXXXX/edit',
+    useGoogleFormPrimary: false,
+    fields: [
+      { id: 'f_company', type: 'text', label: 'Company name', labelRtl: 'نام شرکت', required: true },
+      { id: 'f_email', type: 'email', label: 'Email', labelRtl: 'ایمیل', required: true },
+      { id: 'f_product', type: 'select', label: 'Product', labelRtl: 'محصول', options: ['Grade A', 'Grade B', 'Other'], required: true },
+      { id: 'f_qty', type: 'number', label: 'Quantity', labelRtl: 'مقدار', required: false },
+      { id: 'f_notes', type: 'textarea', label: 'Notes', labelRtl: 'توضیحات', required: false },
+    ],
+  };
+
   const handleDownloadSampleJson = () => {
     const blob = new Blob([JSON.stringify(SAMPLE_FORM_JSON, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'sample_form_schema_v1.2.json'; a.click();
+    a.href = url; a.download = 'sample_form_schema_v1.3.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadGoogleAiSampleJson = () => {
+    const blob = new Blob([JSON.stringify(SAMPLE_GOOGLE_AI_JSON, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sample_form_for_ai_google_v1.3.json';
+    a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -16032,6 +16138,9 @@ function AppInner() {
               workflowGuideTitleRtl: typeof parsed.workflowGuideTitleRtl === 'string' ? parsed.workflowGuideTitleRtl : '',
               workflowSteps: parseFormWorkflowSteps(parsed.workflowSteps),
               fields: Array.isArray(parsed.fields) ? parsed.fields : [],
+              googleFormUrl: typeof parsed.googleFormUrl === 'string' ? parsed.googleFormUrl : '',
+              googleSheetsUrl: typeof parsed.googleSheetsUrl === 'string' ? parsed.googleSheetsUrl : '',
+              useGoogleFormPrimary: !!parsed.useGoogleFormPrimary,
               createdAt: Date.now(),
               updatedAt: Date.now(),
               isPublished: false,
@@ -16059,6 +16168,9 @@ function AppInner() {
         workflowGuideTitle: form.workflowGuideTitle,
         workflowGuideTitleRtl: form.workflowGuideTitleRtl,
         workflowSteps: form.workflowSteps,
+        googleFormUrl: form.googleFormUrl || '',
+        googleSheetsUrl: form.googleSheetsUrl || '',
+        useGoogleFormPrimary: !!form.useGoogleFormPrimary,
         fields: form.fields,
       };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -16078,8 +16190,13 @@ function AppInner() {
           <div className="flex gap-2 flex-wrap">
             <button onClick={handleDownloadSampleJson}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-indigo-200 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-              title="Download a sample JSON template showing all available field types. Give it to an AI to generate forms.">
+              title="Full schema with all field types for AI">
               <Download className="w-4 h-4" /> Sample JSON
+            </button>
+            <button onClick={handleDownloadGoogleAiSampleJson}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-violet-200 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100"
+              title="Compact JSON template for ChatGPT — generates questions fast">
+              <Sparkles className="w-4 h-4" /> AI sample JSON
             </button>
             <button onClick={handleImportJson} className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50">
               <Upload className="w-4 h-4" /> Import JSON
@@ -16090,6 +16207,28 @@ function AppInner() {
             </button>
           </div>
         </div>
+
+        {user && customForms.length > 0 && (
+          <CustomFormsInnerTabs
+            active={customFormsInnerTab}
+            onChange={setCustomFormsInnerTab}
+            hasGoogleLinked={customForms.some((f) => !!(f.googleFormUrl || '').trim() || !!(f.googleSheetsUrl || '').trim())}
+          />
+        )}
+
+        {user && customFormsInnerTab !== 'list' && customForms.length > 0 && (
+          <CustomFormsGoogleEmbedPanel
+            tab={customFormsInnerTab}
+            forms={customForms}
+            selectedFormId={selectedCustomFormGoogleId}
+            onSelectFormId={setSelectedCustomFormGoogleId}
+            onEditForm={(form) => {
+              setEditingForm(form);
+              setFormBuilderDraft({ ...form });
+              setShowFormBuilder(true);
+            }}
+          />
+        )}
 
         {!user ? (
           <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
@@ -16106,7 +16245,7 @@ function AppInner() {
               Create your first form
             </button>
           </div>
-        ) : (
+        ) : customFormsInnerTab !== 'list' ? null : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {customForms.map((form) => {
               const subCount = formSubmissions.filter((s) => s.formKey === form.publishedKey).length;
@@ -16177,6 +16316,24 @@ function AppInner() {
                         className="flex items-center gap-1 px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50">
                         <Download className="w-3 h-3" /> JSON
                       </button>
+                      {(form.googleFormUrl || '').trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedCustomFormGoogleId(form.id); setCustomFormsInnerTab('google-form'); }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs border border-green-200 rounded bg-green-50 text-green-800 hover:bg-green-100"
+                        >
+                          <Globe className="w-3 h-3" /> G.Form
+                        </button>
+                      ) : null}
+                      {(form.googleSheetsUrl || '').trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedCustomFormGoogleId(form.id); setCustomFormsInnerTab('google-sheets'); }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs border border-emerald-200 rounded bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                        >
+                          <Table2 className="w-3 h-3" /> Sheets
+                        </button>
+                      ) : null}
                       {!form.isPublished ? (
                         <button onClick={() => handlePublishForm(form.id)} disabled={formPublishing === form.id}
                           className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 rounded hover:bg-emerald-100">
@@ -20203,6 +20360,51 @@ function AppInner() {
                       className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
                   </div>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-green-200 bg-green-50/50 p-4 space-y-3">
+                <p className="text-xs font-bold text-green-900 uppercase tracking-wide flex items-center gap-2">
+                  <Globe className="w-4 h-4" /> Google Forms & Sheets
+                </p>
+                <p className="text-[10px] text-green-800/90">
+                  In Google: Responses → Link to Sheets. Paste URLs; preview in Custom Forms tabs.
+                </p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Google Form URL</label>
+                  <input
+                    type="url"
+                    value={formBuilderDraft.googleFormUrl || ''}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, googleFormUrl: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 outline-none font-mono"
+                    placeholder="https://docs.google.com/forms/d/e/…/viewform"
+                  />
+                  {formBuilderDraft.googleFormUrl && !isValidGoogleFormUrl(formBuilderDraft.googleFormUrl) ? (
+                    <p className="text-[10px] text-amber-700 mt-1">Use the viewform link from Google Form → Send.</p>
+                  ) : null}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Google Sheets URL</label>
+                  <input
+                    type="url"
+                    value={formBuilderDraft.googleSheetsUrl || ''}
+                    onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, googleSheetsUrl: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 outline-none font-mono"
+                    placeholder="https://docs.google.com/spreadsheets/d/…/edit"
+                  />
+                </div>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 rounded border-slate-300 text-green-600 focus:ring-green-500"
+                    checked={!!formBuilderDraft.useGoogleFormPrimary}
+                    onChange={(e) =>
+                      setFormBuilderDraft({ ...formBuilderDraft, useGoogleFormPrimary: e.target.checked })
+                    }
+                  />
+                  <span className="text-xs text-slate-700">
+                    <strong>Use Google Form on public link</strong> — visitors see embedded Google Form instead of native fields.
+                  </span>
+                </label>
               </div>
 
               <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
