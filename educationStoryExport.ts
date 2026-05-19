@@ -631,7 +631,7 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
       ? 'ظرفیت تکمیل شده'
       : filled > 0
         ? `${filled} از ${cap} ثبت‌شده`
-        : 'صندلی خالی موجود';
+        : 'صندلی رزرو شده';
   ctx.fillText(capacityLine, W / 2, statsY + storyLineHeight(typo.statsSub));
   if (filled > 0) {
     ctx.font = `400 ${typo.statsDetail}px ${FONT}`;
