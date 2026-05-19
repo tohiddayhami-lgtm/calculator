@@ -126,6 +126,24 @@ export interface InvoiceTextPreset {
   updatedAt: number;
 }
 
+/** Optional annex page appended after the main proforma (e.g. MoU / تفاهم‌نامه). */
+export interface InvoiceAnnex {
+  id: string;
+  title: string;
+  body: string;
+  /** When false, kept in editor but omitted from print. */
+  includeInPrint: boolean;
+}
+
+/** Saved annex template (title + body) in browser storage. */
+export interface InvoiceAnnexPreset {
+  id: string;
+  name: string;
+  title: string;
+  body: string;
+  updatedAt: number;
+}
+
 /** Line on a service proforma (multi-currency). */
 export interface ServiceInvoiceLine {
   id: string;
@@ -562,6 +580,10 @@ export interface ArchivedInvoice {
   bankDetails?: string;
   notes?: string;
 
+  /** Optional annex pages (printed after main invoice, each references invoiceRef). */
+  invoiceAnnexesEnabled?: boolean;
+  invoiceAnnexes?: InvoiceAnnex[];
+
   // computed / discount info for re-render
   invoiceDiscountBaseTerm: string;
   invoiceGlobalDiscountMode: 'none' | 'percent' | 'amount';
@@ -750,6 +772,9 @@ export interface SavedProject {
     customerCompany?: string;
     customerEmail?: string;
     customerPhone?: string;
+    /** Optional annex pages (MoU, agreements, etc.) printed after the main proforma. */
+    invoiceAnnexesEnabled?: boolean;
+    invoiceAnnexes?: InvoiceAnnex[];
   };
 }
 

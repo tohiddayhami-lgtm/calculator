@@ -10,8 +10,10 @@ import type {
   ArchivedInvoiceKind,
   ArchivedServiceLineSnapshot,
   BuyerCustomerKind,
+  InvoiceAnnex,
   InvoiceExtraCharge,
 } from './types';
+import { parseInvoiceAnnexes } from './invoiceAnnex';
 import type { InvoiceVatMode } from './invoiceAdjustments';
 
 export function normalizeArchivedInvoiceKind(raw: unknown): ArchivedInvoiceKind {
@@ -78,6 +80,8 @@ export type BuildServiceArchiveParams = {
   extraCharges: InvoiceExtraCharge[];
   decimalPlaces: ServiceInvoiceDecimalPlaces;
   projectId: string;
+  invoiceAnnexesEnabled?: boolean;
+  invoiceAnnexes?: InvoiceAnnex[];
 };
 
 /** Build archive payload for service proforma (not export product lines). */
@@ -191,6 +195,10 @@ export function buildServiceArchiveSnapshot(
     totalDue: primaryRow.grand,
     payments: [],
     projectId: params.projectId || '',
+    invoiceAnnexesEnabled: !!params.invoiceAnnexesEnabled,
+    invoiceAnnexes: params.invoiceAnnexesEnabled
+      ? parseInvoiceAnnexes(params.invoiceAnnexes).filter((a) => a.title.trim() || a.body.trim())
+      : [],
   };
 }
 

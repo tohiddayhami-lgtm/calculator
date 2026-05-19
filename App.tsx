@@ -58,6 +58,8 @@ import {
   LogisticsPreset,
   InvoiceTextPreset,
   InvoiceTextPresetKind,
+  InvoiceAnnex,
+  InvoiceAnnexPreset,
   AppConfig,
   RateMap,
   SavedProject,
@@ -135,6 +137,13 @@ import {
   type InvoiceNumberingSettings,
 } from './invoiceNumbering';
 import { InvoiceNumberingPanel } from './invoiceNumberingUi';
+import {
+  INVOICE_ANNEX_PRESETS_STORAGE_KEY,
+  MAX_INVOICE_ANNEX_PRESETS,
+  parseInvoiceAnnexPresetsFromStorage,
+  parseInvoiceAnnexes,
+} from './invoiceAnnex';
+import { InvoiceAnnexEditorPanel, InvoiceAnnexPrintPages } from './invoiceAnnexUi';
 import {
   archivedInvoiceKindLabel,
   buildServiceArchiveSnapshot,
@@ -1548,6 +1557,7 @@ const MAX_LOGISTICS_PRESETS = 30;
 
 const INVOICE_TEXT_PRESETS_STORAGE_KEY = 'exportcalc_invoice_text_presets_v1';
 const MAX_INVOICE_TEXT_PRESETS = 40;
+const MAX_INVOICE_ANNEX_PRESETS_LOCAL = MAX_INVOICE_ANNEX_PRESETS;
 const SAVED_SERVICES_STORAGE_KEY = 'exportcalc_saved_services_v1';
 const MAX_SAVED_SERVICES = 200;
 const BUYERS_STORAGE_KEY = 'exportcalc_buyers_v1';
@@ -5011,6 +5021,26 @@ function AppInner() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      const raw = localStorage.getItem(INVOICE_ANNEX_PRESETS_STORAGE_KEY);
+      setInvoiceAnnexPresets(parseInvoiceAnnexPresetsFromStorage(raw));
+    } catch {
+      setInvoiceAnnexPresets([]);
+    }
+    setInvoiceAnnexPresetsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!invoiceAnnexPresetsReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(INVOICE_ANNEX_PRESETS_STORAGE_KEY, JSON.stringify(invoiceAnnexPresets));
+    } catch {
+      /* ignore */
+    }
+  }, [invoiceAnnexPresets, invoiceAnnexPresetsReady]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
       const raw = localStorage.getItem(SAVED_SERVICES_STORAGE_KEY);
       setSavedServices(parseSavedServices(raw ? JSON.parse(raw) : []));
     } catch {
@@ -5115,6 +5145,10 @@ function AppInner() {
   const [paymentTerms, setPaymentTerms] = useState('T/T 50% Advance');
   const [invoiceRef, setInvoiceRef] = useState(String(Math.floor(Math.random() * 10000)));
   const [invoiceNumbering, setInvoiceNumbering] = useState<InvoiceNumberingSettings>(loadInvoiceNumberingSettings);
+  const [invoiceAnnexesEnabled, setInvoiceAnnexesEnabled] = useState(false);
+  const [invoiceAnnexes, setInvoiceAnnexes] = useState<InvoiceAnnex[]>([]);
+  const [invoiceAnnexPresets, setInvoiceAnnexPresets] = useState<InvoiceAnnexPreset[]>([]);
+  const [invoiceAnnexPresetsReady, setInvoiceAnnexPresetsReady] = useState(false);
   const [invoiceTitle, setInvoiceTitle] = useState('Proforma Invoice');
   const [invoiceIssueDateMs, setInvoiceIssueDateMs] = useState<number>(() => Date.now());
   const [invoiceDueDateMs, setInvoiceDueDateMs] = useState<number | undefined>(undefined);
@@ -5161,6 +5195,57 @@ function AppInner() {
       settings={invoiceNumbering}
       onSettingsChange={setInvoiceNumbering}
       onAssignNew={() => assignFreshInvoiceNumber()}
+    />
+  );
+
+  const saveInvoiceAnnexPreset = (annex: InvoiceAnnex) => {
+    if (!annex.title.trim() && !annex.body.trim()) {
+      alert('ابتدا عنوان یا متن الحاقیه را بنویسید.');
+      return;
+    }
+    const name = window.prompt('نام الگوی الحاقیه:', annex.title.trim() || '')?.trim();
+    if (!name) return;
+    const entry: InvoiceAnnexPreset = {
+      id: `iap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      title: annex.title,
+      body: annex.body,
+      updatedAt: Date.now(),
+    };
+    setInvoiceAnnexPresets((prev) => [entry, ...prev].slice(0, MAX_INVOICE_ANNEX_PRESETS_LOCAL));
+  };
+
+  const deleteInvoiceAnnexPreset = (id: string) => {
+    const p = invoiceAnnexPresets.find((x) => x.id === id);
+    if (!p) return;
+    if (!window.confirm(`حذف الگوی «${p.name}»؟`)) return;
+    setInvoiceAnnexPresets((prev) => prev.filter((x) => x.id !== id));
+  };
+
+  const renderInvoiceAnnexEditorPanel = () => (
+    <InvoiceAnnexEditorPanel
+      enabled={invoiceAnnexesEnabled}
+      onEnabledChange={setInvoiceAnnexesEnabled}
+      annexes={invoiceAnnexes}
+      onAnnexesChange={setInvoiceAnnexes}
+      presets={invoiceAnnexPresets}
+      onSavePreset={saveInvoiceAnnexPreset}
+      onDeletePreset={deleteInvoiceAnnexPreset}
+      invoiceRef={invoiceRef}
+    />
+  );
+
+  const renderInvoiceAnnexPrint = () => (
+    <InvoiceAnnexPrintPages
+      enabled={invoiceAnnexesEnabled}
+      annexes={invoiceAnnexes}
+      invoiceRef={invoiceRef}
+      invoiceTitle={invoiceTitle}
+      invoiceIssueDateMs={invoiceIssueDateMs}
+      invoiceAccentColor={invoiceAccentColor}
+      billedFrom={billedFrom}
+      billedFromDetails={billedFromDetails}
+      invoiceLogo={invoiceLogo}
     />
   );
 
@@ -6746,7 +6831,9 @@ function AppInner() {
       grandByTerm,
       totalDue: grandByTerm[selectedTerm] || 0,
       payments: [],
-      projectId: loadedProjectId || ''
+      projectId: loadedProjectId || '',
+      invoiceAnnexesEnabled,
+      invoiceAnnexes: invoiceAnnexes.filter((a) => a.title.trim() || a.body.trim()),
     };
   };
 
@@ -6789,6 +6876,8 @@ function AppInner() {
             extraCharges: invoiceExtraCharges,
             decimalPlaces: serviceInvoiceDecimalPlaces,
             projectId: loadedProjectId || '',
+            invoiceAnnexesEnabled,
+            invoiceAnnexes: invoiceAnnexes.filter((a) => a.title.trim() || a.body.trim()),
           })
         : buildArchiveSnapshot(status);
     if (!snapshot) {
@@ -6881,6 +6970,8 @@ function AppInner() {
       setPaymentTerms(archived.paymentTerms || '');
       setBankDetails(archived.bankDetails || '');
       setNotes(archived.notes || '');
+      setInvoiceAnnexesEnabled(!!archived.invoiceAnnexesEnabled);
+      setInvoiceAnnexes(parseInvoiceAnnexes(archived.invoiceAnnexes));
       setInvoiceGlobalDiscountMode(archived.invoiceGlobalDiscountMode || 'none');
       setInvoiceGlobalDiscountValue(Number(archived.invoiceGlobalDiscountValue) || 0);
       setInvoiceVatEnabled(!!archived.invoiceVatEnabled);
@@ -6940,6 +7031,8 @@ function AppInner() {
     setPaymentTerms(inv.paymentTerms || 'T/T 50% Advance');
     setBankDetails(inv.bankDetails || '');
     setNotes(inv.notes || '');
+    setInvoiceAnnexesEnabled(!!inv.invoiceAnnexesEnabled);
+    setInvoiceAnnexes(parseInvoiceAnnexes(inv.invoiceAnnexes));
     const terms = inv.invoiceTerms?.length ? [...inv.invoiceTerms] : ['FOB', 'DDP'];
     setInvoiceTerms(terms);
     setInvoiceBasis(inv.invoiceBasis || 'both');
@@ -7372,7 +7465,9 @@ function AppInner() {
         serviceInvoiceLines,
         serviceInvoiceDiscountCurrency,
         serviceInvoiceDecimalPlaces,
-        savedServices
+        savedServices,
+        invoiceAnnexesEnabled,
+        invoiceAnnexes,
     };
 
     const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -7599,6 +7694,8 @@ function AppInner() {
         syncCounterFromRef(loadedKind === 'services' ? 'services' : 'export', loadedInvoiceRef),
       );
     }
+    setInvoiceAnnexesEnabled(!!(project.data as any).invoiceAnnexesEnabled);
+    setInvoiceAnnexes(parseInvoiceAnnexes((project.data as any).invoiceAnnexes));
     const loadedSvcDecimals = parseServiceInvoiceDecimalPlaces(
       (project.data as any).serviceInvoiceDecimalPlaces,
     );
@@ -8697,7 +8794,9 @@ function AppInner() {
             serviceInvoiceLines,
             serviceInvoiceDiscountCurrency,
             serviceInvoiceDecimalPlaces,
-            savedServices
+            savedServices,
+            invoiceAnnexesEnabled,
+            invoiceAnnexes,
           }
         };
         sessionStorage.setItem(SESSION_WORKSPACE_DRAFT_KEY, JSON.stringify(snapshot));
@@ -8776,7 +8875,9 @@ function AppInner() {
     serviceInvoiceLines,
     serviceInvoiceDiscountCurrency,
     serviceInvoiceDecimalPlaces,
-    savedServices
+    savedServices,
+    invoiceAnnexesEnabled,
+    invoiceAnnexes,
   ]);
 
 
@@ -9078,6 +9179,8 @@ function AppInner() {
     setInvoiceLayout('standard');
     setInvoiceWelteTrade(createDefaultInvoiceWelteTrade());
     setInvoiceDocKind('products');
+    setInvoiceAnnexesEnabled(false);
+    setInvoiceAnnexes([]);
     setServiceInvoiceLines([]);
     setServiceInvoiceDiscountCurrency(config.outputCurrency || 'USD');
     setServiceInvoiceDecimalPlaces(2);
@@ -13204,6 +13307,8 @@ function AppInner() {
           invoiceDocKind={invoiceDocKind}
           setInvoiceDocKind={handleInvoiceDocKindChange}
           invoiceNumberingSlot={renderInvoiceNumberingPanel()}
+          invoiceAnnexEditorSlot={renderInvoiceAnnexEditorPanel()}
+          invoiceAnnexPrint={renderInvoiceAnnexPrint()}
           triggerPrint={triggerPrint}
           onOpenArchive={() => setShowArchiveModal(true)}
           archiveCount={archivedInvoices.length}
@@ -13828,6 +13933,7 @@ function AppInner() {
                        </p>
                    </div>
                    {renderInvoiceNumberingPanel()}
+                   {renderInvoiceAnnexEditorPanel()}
                    <div>
                        <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Invoice #</label>
                        <input type="text" value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
@@ -14823,6 +14929,7 @@ function AppInner() {
                    </>
                    )}
                </div>
+               {renderInvoiceAnnexPrint()}
           </div>
       </div>
   );
@@ -18490,6 +18597,10 @@ function AppInner() {
         @page { size: A4 portrait; margin: 0; }
         @page invoiceLandscapeA4 { size: A4 landscape; margin: 0; }
         .invoice-landscape-page { page: invoiceLandscapeA4; }
+        .invoice-annex-page {
+            page-break-before: always;
+            break-before: page;
+        }
 
         /* ─────────────────────────────────────────────────────────────────
            Professional A4 invoice document (screen + print). All sizes are
@@ -18684,6 +18795,10 @@ function AppInner() {
             .invoice-doc table.items thead { display: table-header-group; }
             .invoice-doc table.items tfoot { display: table-row-group; }
             .invoice-doc table.items tbody tr { page-break-inside: avoid; break-inside: avoid; }
+            #invoice-preview .invoice-annex-page {
+                page-break-before: always !important;
+                break-before: page !important;
+            }
             
             /* RESET MAIN CONTAINERS FOR PRINT */
             header, nav, aside, .print\\:hidden { display: none !important; }
