@@ -361,9 +361,11 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
   const pad = 64;
   const innerW = W - pad * 2;
   const cardX = 40;
-  const cardY = 56;
+  /** Extra top inset so badge/title clear Instagram story UI (profile, close, etc.) */
+  const STORY_TOP_SAFE = 108;
+  const cardY = STORY_TOP_SAFE;
   const cardW = W - 80;
-  let contentY = cardY + 36;
+  let contentY = cardY + 44;
 
   ctx.fillStyle = 'rgba(255,255,255,0.08)';
   roundRect(ctx, cardX, cardY, cardW, H - cardY - 48, 32);
