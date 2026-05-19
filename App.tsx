@@ -47,7 +47,7 @@ import {
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
-  ChevronUp, ChevronDown, Copy
+  ChevronUp, ChevronDown, Copy, GraduationCap
 } from 'lucide-react';
 
 // Types
@@ -104,7 +104,9 @@ import {
   ProposalAddOn,
   ProposalStatus,
   ProposalRtlLang,
+  EducationCourse,
 } from './types';
+import { EducationFormsPanel, EDUCATION_STORAGE_KEY } from './educationForms';
 import {
   computeVatFromNet,
   normalizeInvoiceExtraCharges,
@@ -4784,7 +4786,7 @@ function AppInner() {
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'proposals' | 'archive'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'proposals' | 'education' | 'archive'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
   const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
@@ -4835,6 +4837,16 @@ function AppInner() {
   const [proposalsSubView, setProposalsSubView] = useState<'list' | 'editor' | 'preview'>('list');
   const [editingProposal, setEditingProposal] = useState<ProposalDef | null>(null);
   const [proposalEditorTab, setProposalEditorTab] = useState<'info' | 'parties' | 'sections' | 'pricing'>('info');
+
+  // -- STATE: EDUCATION --
+  const [educationCourses, setEducationCourses] = useState<EducationCourse[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(EDUCATION_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  });
 
   // -- STATE: COMMUNITY HUB --
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
@@ -5018,6 +5030,11 @@ function AppInner() {
     if (typeof window === 'undefined') return;
     try { localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(proposals)); } catch { /* ignore */ }
   }, [proposals]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { localStorage.setItem(EDUCATION_STORAGE_KEY, JSON.stringify(educationCourses)); } catch { /* ignore */ }
+  }, [educationCourses]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
@@ -17257,6 +17274,11 @@ function AppInner() {
           <FileText className="w-4 h-4" /> Proposals
         </button>
         <div className="w-px bg-slate-200" />
+        <button onClick={() => setFormsSubView('education')}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'education' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <GraduationCap className="w-4 h-4" /> آموزش
+        </button>
+        <div className="w-px bg-slate-200" />
         <button onClick={() => setFormsSubView('packinglist')}
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'packinglist' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
           <ClipboardList className="w-4 h-4" /> Packing List
@@ -17280,6 +17302,9 @@ function AppInner() {
       {formsSubView === 'list' && renderCustomFormsList()}
       {formsSubView === 'contracts' && renderContracts()}
       {formsSubView === 'proposals' && renderProposals()}
+      {formsSubView === 'education' && (
+        <EducationFormsPanel courses={educationCourses} onSaveCourses={setEducationCourses} />
+      )}
       {formsSubView === 'packinglist' && renderPackingList()}
       {formsSubView === 'archive' && renderFormArchive()}
     </div>

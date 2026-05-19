@@ -949,3 +949,35 @@ export interface ProposalDef {
   createdAt: number;
   updatedAt: number;
 }
+
+// ---- EDUCATION / TRAINING COURSES ----
+
+export interface EducationSyllabusItem {
+  id: string;
+  text: string;
+}
+
+export interface EducationParticipant {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  city: string;
+  /** 1-based seat number when registration is confirmed */
+  seatNumber: number;
+  registeredAt: number;
+}
+
+export interface EducationCourse {
+  id: string;
+  title: string;
+  instructorName: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  syllabus: EducationSyllabusItem[];
+  seatCapacity: number;
+  participants: EducationParticipant[];
+  createdAt: number;
+  updatedAt: number;
+}
