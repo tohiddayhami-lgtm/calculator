@@ -5021,26 +5021,6 @@ function AppInner() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const raw = localStorage.getItem(INVOICE_ANNEX_PRESETS_STORAGE_KEY);
-      setInvoiceAnnexPresets(parseInvoiceAnnexPresetsFromStorage(raw));
-    } catch {
-      setInvoiceAnnexPresets([]);
-    }
-    setInvoiceAnnexPresetsReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!invoiceAnnexPresetsReady || typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(INVOICE_ANNEX_PRESETS_STORAGE_KEY, JSON.stringify(invoiceAnnexPresets));
-    } catch {
-      /* ignore */
-    }
-  }, [invoiceAnnexPresets, invoiceAnnexPresetsReady]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
       const raw = localStorage.getItem(SAVED_SERVICES_STORAGE_KEY);
       setSavedServices(parseSavedServices(raw ? JSON.parse(raw) : []));
     } catch {
@@ -5169,6 +5149,26 @@ function AppInner() {
   const [expandedTodoId, setExpandedTodoId] = useState<string | null>(null);
   const [invoiceBasis, setInvoiceBasis] = useState<'unit' | 'pack' | 'both'>('both');
   const [bankDetails, setBankDetails] = useState('Bank Name: Example Bank Ltd\nSWIFT: EXBKUS33\nAccount: 1234567890');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(INVOICE_ANNEX_PRESETS_STORAGE_KEY);
+      setInvoiceAnnexPresets(parseInvoiceAnnexPresetsFromStorage(raw));
+    } catch {
+      setInvoiceAnnexPresets([]);
+    }
+    setInvoiceAnnexPresetsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!invoiceAnnexPresetsReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(INVOICE_ANNEX_PRESETS_STORAGE_KEY, JSON.stringify(invoiceAnnexPresets));
+    } catch {
+      /* ignore */
+    }
+  }, [invoiceAnnexPresets, invoiceAnnexPresetsReady]);
 
   const invoiceKindFromDoc = (k?: InvoiceDocKind): InvoiceNumberKind =>
     (k ?? invoiceDocKind) === 'services' ? 'services' : 'export';
