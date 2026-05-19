@@ -962,6 +962,19 @@ export type EducationRegistrationStatus = 'confirmed' | 'reserved';
 /** Course fee / payment currency */
 export type EducationFeeCurrency = 'IRR' | 'OMR' | 'USD';
 
+/** Media / files attached to instructor resume (stored per course) */
+export type EducationInstructorMediaKind = 'image' | 'video' | 'file';
+
+export interface EducationInstructorMediaItem {
+  id: string;
+  kind: EducationInstructorMediaKind;
+  fileName: string;
+  mimeType: string;
+  /** data URL (base64) — keep files small for browser storage */
+  dataUrl: string;
+  addedAt: number;
+}
+
 export interface EducationParticipant {
   id: string;
   firstName: string;
@@ -986,6 +999,10 @@ export interface EducationCourse {
   instructorName: string;
   /** Short bio / resume for story export */
   instructorResume: string;
+  /** Photos, videos, documents for this instructor (course-scoped) */
+  instructorResumeMedia?: EducationInstructorMediaItem[];
+  /** Optional bold notice at bottom of story export (e.g. payment rules) */
+  storyFootNote?: string;
   location: string;
   startDate: string;
   endDate: string;

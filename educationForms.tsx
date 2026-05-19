@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   BookOpen,
   Download,
+  FileVideo,
+  FileText,
   GraduationCap,
   Image as ImageIcon,
   Pencil,
@@ -15,6 +17,7 @@ import {
 import type {
   EducationCourse,
   EducationFeeCurrency,
+  EducationInstructorMediaItem,
   EducationParticipant,
   EducationRegistrationStatus,
 } from './types';
@@ -36,6 +39,14 @@ import {
 
 export const EDUCATION_STORAGE_KEY = 'exportcalc_education_courses_v1';
 
+const EDUCATION_RESUME_MEDIA_MAX_BYTES = 12 * 1024 * 1024;
+
+function resumeMediaKind(mime: string): EducationInstructorMediaItem['kind'] {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  return 'file';
+}
+
 function newId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -48,6 +59,8 @@ export function makeBlankEducationCourse(): EducationCourse {
     title: '',
     instructorName: '',
     instructorResume: '',
+    instructorResumeMedia: [],
+    storyFootNote: '',
     location: '',
     startDate: today,
     endDate: today,
@@ -123,6 +136,56 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
   const upd = (patch: Partial<EducationCourse>) => {
     if (!editing) return;
     setEditing({ ...editing, ...patch, updatedAt: Date.now() });
+  };
+
+  const addInstructorResumeMediaFiles = async (fileList: FileList | null) => {
+    if (!fileList?.length) return;
+    let rejected = false;
+    const items: EducationInstructorMediaItem[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      if (file.size > EDUCATION_RESUME_MEDIA_MAX_BYTES) {
+        rejected = true;
+        continue;
+      }
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result || ''));
+          r.onerror = () => reject(new Error('read'));
+          r.readAsDataURL(file);
+        });
+        items.push({
+          id: newId(),
+          kind: resumeMediaKind(file.type || 'application/octet-stream'),
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          dataUrl,
+          addedAt: Date.now(),
+        });
+      } catch {
+        rejected = true;
+      }
+    }
+    if (rejected) {
+      alert('برخی فایل‌ها اضافه نشدند (خطای خواندن یا بیش از ۱۲ مگابایت).');
+    }
+    if (!items.length) return;
+    setEditing(cur => {
+      if (!cur) return cur;
+      return {
+        ...cur,
+        instructorResumeMedia: [...(cur.instructorResumeMedia ?? []), ...items],
+        updatedAt: Date.now(),
+      };
+    });
+  };
+
+  const removeInstructorResumeMedia = (id: string) => {
+    if (!editing) return;
+    upd({
+      instructorResumeMedia: (editing.instructorResumeMedia ?? []).filter(m => m.id !== id),
+    });
   };
 
   const filled = editing?.participants.length ?? 0;
@@ -447,6 +510,61 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 placeholder="سوابق و تخصص استاد..."
               />
             </div>
+            <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/70">
+              <label className={labelCls + ' mb-0'}>پیوست رزومه استاد / دبیر</label>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                عکس، فیلم یا فایل برای همین دوره و استاد ذخیره می‌شود. برای جلوگیری از پر شدن حافظه مرورگر، هر فایل حداکثر ۱۲ مگابایت.
+              </p>
+              <input
+                type="file"
+                multiple
+                accept="image/*,video/*,.pdf,.doc,.docx,.zip"
+                className="text-sm w-full"
+                onChange={async e => {
+                  const list = e.target.files;
+                  e.target.value = '';
+                  await addInstructorResumeMediaFiles(list);
+                }}
+              />
+              {(editing.instructorResumeMedia ?? []).length > 0 ? (
+                <ul className="space-y-2 max-h-48 overflow-y-auto">
+                  {(editing.instructorResumeMedia ?? []).map(m => (
+                    <li
+                      key={m.id}
+                      className="flex items-center gap-2 text-xs border border-slate-200 rounded-lg p-2 bg-white"
+                    >
+                      {m.kind === 'image' ? (
+                        <img src={m.dataUrl} alt="" className="w-12 h-12 object-cover rounded shrink-0" />
+                      ) : m.kind === 'video' ? (
+                        <span className="w-12 h-12 rounded bg-slate-800 flex items-center justify-center shrink-0">
+                          <FileVideo className="w-6 h-6 text-white" />
+                        </span>
+                      ) : (
+                        <span className="w-12 h-12 rounded bg-slate-200 flex items-center justify-center shrink-0">
+                          <FileText className="w-6 h-6 text-slate-600" />
+                        </span>
+                      )}
+                      <span className="flex-1 min-w-0 truncate" title={m.fileName}>
+                        {m.fileName}
+                      </span>
+                      <a href={m.dataUrl} download={m.fileName} className="text-teal-600 shrink-0 text-[11px]">
+                        باز / دانلود
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => removeInstructorResumeMedia(m.id)}
+                        className="text-red-400 p-1 shrink-0"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-400">هنوز پیوستی اضافه نشده.</p>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>شهریه دوره</label>
@@ -510,6 +628,18 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 <input type="range" min={0} max={100} value={editing.storyBackgroundOpacity ?? 40} onChange={e => upd({ storyBackgroundOpacity: Number(e.target.value) })} className="w-full accent-teal-600" />
                 <p className="text-[10px] text-slate-400 mt-1">۰ = فقط گرادیان · ۱۰۰ = عکس پررنگ‌تر</p>
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>نوت پایین استوری (اختیاری)</label>
+              <textarea
+                value={editing.storyFootNote ?? ''}
+                onChange={e => upd({ storyFootNote: e.target.value })}
+                rows={3}
+                className={inputCls}
+                dir="rtl"
+                placeholder="مثلاً: ظرفیت محدود — پرداخت ۵۰٪ برای رزرو الزامی است"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">در خروجی تصویر استوری، اگر جا باشد، پایین صفحه با قاب مشخص و متن بولد نمایش داده می‌شود.</p>
             </div>
             <div>
               <label className={labelCls}>مکان برگزاری</label>
