@@ -47,7 +47,7 @@ import {
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
-  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon, Briefcase
+  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon
 } from 'lucide-react';
 
 // Types
@@ -108,9 +108,6 @@ import {
   WarehouseLocation,
   WarehouseMovement,
   WarehouseProductSettings,
-  BusinessProfile,
-  BusinessItem,
-  BusinessScenario,
 } from './types';
 import { EducationFormsPanel, EDUCATION_STORAGE_KEY } from './educationForms';
 import { normalizeEducationCourse } from './educationNormalize';
@@ -149,12 +146,6 @@ import {
   parseWarehouseProductSettings,
 } from './warehouseNormalize';
 import { WarehousePanel } from './warehouseUi';
-import { BusinessPanel } from './businessUi';
-import {
-  parseBusinessItems,
-  parseBusinessProfiles,
-  parseBusinessScenarios,
-} from './businessNormalize';
 import {
   buildContractHeaderHtml,
   ContractHeaderBlock,
@@ -5118,13 +5109,7 @@ function AppInner() {
   const [researchEntries, setResearchEntries] = useState<DashboardResearchEntry[]>([]);
   const [researchUploadingKey, setResearchUploadingKey] = useState<string | null>(null);
   const [dashboardTodos, setDashboardTodos] = useState<DashboardTodoItem[]>([]);
-  const [dashboardSubView, setDashboardSubView] = useState<'workspace' | 'warehouse' | 'business'>(
-    'workspace',
-  );
-  const [businessProfiles, setBusinessProfiles] = useState<BusinessProfile[]>([]);
-  const [businessItems, setBusinessItems] = useState<BusinessItem[]>([]);
-  const [businessScenarios, setBusinessScenarios] = useState<BusinessScenario[]>([]);
-  const [activeBusinessId, setActiveBusinessId] = useState('');
+  const [dashboardSubView, setDashboardSubView] = useState<'workspace' | 'warehouse'>('workspace');
   const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>(() =>
     defaultWarehouseLocations(),
   );
@@ -7314,10 +7299,6 @@ function AppInner() {
         warehouseLocations,
         warehouseMovements,
         warehouseProductSettings,
-        businessProfiles,
-        businessItems,
-        businessScenarios,
-        activeBusinessId,
         invoiceDocKind,
         serviceInvoiceLines,
         serviceInvoiceDiscountCurrency,
@@ -7539,10 +7520,6 @@ function AppInner() {
     setWarehouseProductSettings(
       parseWarehouseProductSettings((project.data as any).warehouseProductSettings),
     );
-    setBusinessProfiles(parseBusinessProfiles((project.data as any).businessProfiles));
-    setBusinessItems(parseBusinessItems((project.data as any).businessItems));
-    setBusinessScenarios(parseBusinessScenarios((project.data as any).businessScenarios));
-    setActiveBusinessId(String((project.data as any).activeBusinessId || ''));
     setDashboardSubView('workspace');
     setSelectedBuyerId('');
     const loadedKind = (project.data as any).invoiceDocKind;
@@ -8595,10 +8572,6 @@ function AppInner() {
             warehouseLocations,
             warehouseMovements,
             warehouseProductSettings,
-            businessProfiles,
-            businessItems,
-            businessScenarios,
-            activeBusinessId,
             invoiceDocKind,
             serviceInvoiceLines,
             serviceInvoiceDiscountCurrency,
@@ -8678,10 +8651,6 @@ function AppInner() {
     warehouseLocations,
     warehouseMovements,
     warehouseProductSettings,
-    businessProfiles,
-    businessItems,
-    businessScenarios,
-    activeBusinessId,
     invoiceDocKind,
     serviceInvoiceLines,
     serviceInvoiceDiscountCurrency,
@@ -9018,7 +8987,7 @@ function AppInner() {
   
   const renderDashboard = () => (
     <div className="space-y-6">
-      <div className="flex flex-wrap rounded-xl border border-slate-200 bg-slate-100 p-1 gap-1 shadow-sm">
+      <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1 gap-1 shadow-sm">
         <button
           type="button"
           onClick={() => setDashboardSubView('workspace')}
@@ -9043,18 +9012,6 @@ function AppInner() {
           <WarehouseIcon className="w-4 h-4" />
           مدیریت انبار
         </button>
-        <button
-          type="button"
-          onClick={() => setDashboardSubView('business')}
-          className={`flex-1 min-w-[9rem] flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
-            dashboardSubView === 'business'
-              ? 'bg-white text-violet-800 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Briefcase className="w-4 h-4" />
-          مدیریت کسب و کار
-        </button>
       </div>
 
       {dashboardSubView === 'warehouse' ? (
@@ -9067,17 +9024,6 @@ function AppInner() {
           setMovements={setWarehouseMovements}
           productSettings={warehouseProductSettings}
           setProductSettings={setWarehouseProductSettings}
-        />
-      ) : dashboardSubView === 'business' ? (
-        <BusinessPanel
-          profiles={businessProfiles}
-          setProfiles={setBusinessProfiles}
-          items={businessItems}
-          setItems={setBusinessItems}
-          scenarios={businessScenarios}
-          setScenarios={setBusinessScenarios}
-          activeBusinessId={activeBusinessId}
-          setActiveBusinessId={setActiveBusinessId}
         />
       ) : (
       <>
