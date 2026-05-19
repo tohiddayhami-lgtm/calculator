@@ -61,6 +61,8 @@ export function makeBlankEducationCourse(): EducationCourse {
     instructorResume: '',
     instructorResumeMedia: [],
     storyFootNote: '',
+    storyFootNoteAlign: 'center',
+    storyFootNoteFontSize: 22,
     location: '',
     startDate: today,
     endDate: today,
@@ -630,16 +632,53 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
               </div>
             </div>
             <div>
-              <label className={labelCls}>نوت پایین استوری (اختیاری)</label>
+              <label className={labelCls}>نوت استوری (اختیاری)</label>
               <textarea
                 value={editing.storyFootNote ?? ''}
                 onChange={e => upd({ storyFootNote: e.target.value })}
                 rows={3}
                 className={inputCls}
                 dir="rtl"
-                placeholder="مثلاً: ظرفیت محدود — پرداخت ۵۰٪ برای رزرو الزامی است"
+                placeholder="مثلاً: برای ثبت‌نام کلمه آموزش را دایرکت کنید"
               />
-              <p className="text-[10px] text-slate-400 mt-1">در خروجی تصویر استوری، اگر جا باشد، پایین صفحه با قاب مشخص و متن بولد نمایش داده می‌شود.</p>
+              <p className="text-[10px] text-slate-400 mt-1 mb-2">
+                زیر درصد اشغال و نوار پیشرفت در خروجی استوری نمایش داده می‌شود.
+              </p>
+              <div className="flex gap-2 mb-2">
+                {(
+                  [
+                    { id: 'right' as const, label: 'راست‌چین' },
+                    { id: 'center' as const, label: 'وسط‌چین' },
+                    { id: 'left' as const, label: 'چپ‌چین' },
+                  ] as const
+                ).map(a => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => upd({ storyFootNoteAlign: a.id })}
+                    className={`flex-1 text-xs py-2 rounded-lg border font-medium ${
+                      (editing.storyFootNoteAlign ?? 'center') === a.id
+                        ? 'bg-teal-600 text-white border-teal-600'
+                        : 'bg-white text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <span className="text-xs text-slate-500">
+                  اندازه فونت نوت: {editing.storyFootNoteFontSize ?? 22}px
+                </span>
+                <input
+                  type="range"
+                  min={14}
+                  max={40}
+                  value={editing.storyFootNoteFontSize ?? 22}
+                  onChange={e => upd({ storyFootNoteFontSize: Number(e.target.value) })}
+                  className="w-full accent-teal-600"
+                />
+              </div>
             </div>
             <div>
               <label className={labelCls}>مکان برگزاری</label>

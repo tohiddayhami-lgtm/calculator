@@ -63,6 +63,14 @@ export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
     storyBackgroundOpacity: opacity,
     instructorResumeMedia: normResumeMedia(c.instructorResumeMedia),
     storyFootNote: typeof c.storyFootNote === 'string' ? c.storyFootNote : '',
+    storyFootNoteAlign:
+      c.storyFootNoteAlign === 'center' || c.storyFootNoteAlign === 'left'
+        ? c.storyFootNoteAlign
+        : 'right',
+    storyFootNoteFontSize:
+      typeof c.storyFootNoteFontSize === 'number' && Number.isFinite(c.storyFootNoteFontSize)
+        ? Math.min(40, Math.max(14, Math.round(c.storyFootNoteFontSize)))
+        : 22,
     participants: (c.participants ?? []).map(normalizeEducationParticipant),
   };
 }

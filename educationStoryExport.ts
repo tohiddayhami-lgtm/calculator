@@ -345,7 +345,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
     }
   }
 
-  const footerReserve = course.storyFootNote?.trim() ? 300 : 220;
+  const footerReserve = 220;
   const cols = cap <= 15 ? 5 : cap <= 35 ? 7 : cap <= 55 ? 9 : 10;
   const gap = 12;
   let seatSize = Math.min(
@@ -429,24 +429,25 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
     ctx.fill();
   }
 
-  ctx.textAlign = 'right';
-  ctx.direction = 'rtl';
-  ctx.font = `400 22px ${FONT}`;
-
+  const legY = H - 80;
   const footRaw = course.storyFootNote?.trim() ?? '';
-  let legY = H - 80;
   if (footRaw) {
+    const align = course.storyFootNoteAlign ?? 'center';
+    const fontSize =
+      typeof course.storyFootNoteFontSize === 'number' && Number.isFinite(course.storyFootNoteFontSize)
+        ? Math.min(40, Math.max(14, Math.round(course.storyFootNoteFontSize)))
+        : 22;
     const boxW = W - 72;
-    const padX = 18;
-    const padY = 14;
-    const textMaxW = boxW - padX * 2;
-    ctx.font = `700 22px ${FONT}`;
-    const footLines = wrapTextLines(ctx, footRaw, textMaxW, 6);
-    const lineH = 28;
-    const boxH = padY * 2 + footLines.length * lineH;
-    const boxBottom = H - 88;
-    const boxY = boxBottom - boxH;
+    const padX = 20;
+    const padY = 16;
     const boxX = 36;
+    const textMaxW = boxW - padX * 2;
+    ctx.font = `700 ${fontSize}px ${FONT}`;
+    const footLines = wrapTextLines(ctx, footRaw, textMaxW, 6);
+    const lineH = Math.round(fontSize * 1.35);
+    const boxH = padY * 2 + footLines.length * lineH;
+    const boxY = Math.max(barY + 16, Math.min(barY + 28, legY - boxH - 32));
+
     ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
     roundRect(ctx, boxX, boxY, boxW, boxH, 14);
     ctx.fill();
@@ -454,17 +455,21 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
     ctx.lineWidth = 2;
     roundRect(ctx, boxX, boxY, boxW, boxH, 14);
     ctx.stroke();
+
     ctx.fillStyle = '#fef9c3';
-    ctx.textAlign = 'right';
     ctx.direction = 'rtl';
-    let ty = boxY + padY + 20;
+    const textX =
+      align === 'left' ? boxX + padX : align === 'center' ? boxX + boxW / 2 : boxX + boxW - padX;
+    ctx.textAlign = align === 'left' ? 'left' : align === 'center' ? 'center' : 'right';
+    let ty = boxY + padY + fontSize;
     for (const ln of footLines) {
-      ctx.fillText(ln, boxX + boxW - padX, ty);
+      ctx.fillText(ln, textX, ty);
       ty += lineH;
     }
-    legY = Math.min(H - 80, boxY - 44);
   }
 
+  ctx.textAlign = 'right';
+  ctx.direction = 'rtl';
   ctx.font = `400 22px ${FONT}`;
   ctx.fillStyle = SEAT_GREEN;
   roundRect(ctx, textRight - 300, legY - 16, 20, 20, 4);

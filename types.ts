@@ -1001,8 +1001,12 @@ export interface EducationCourse {
   instructorResume: string;
   /** Photos, videos, documents for this instructor (course-scoped) */
   instructorResumeMedia?: EducationInstructorMediaItem[];
-  /** Optional bold notice at bottom of story export (e.g. payment rules) */
+  /** Optional bold notice on story export (below occupancy stats) */
   storyFootNote?: string;
+  /** Text alignment inside story foot note box */
+  storyFootNoteAlign?: 'right' | 'center' | 'left';
+  /** Font size (px) for story foot note */
+  storyFootNoteFontSize?: number;
   location: string;
   startDate: string;
   endDate: string;
