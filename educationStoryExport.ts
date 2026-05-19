@@ -37,44 +37,7 @@ export function ensureVazirmatnLoaded(): Promise<void> {
   return vazirReady;
 }
 
-/** Stack Persian label characters vertically (one per line). */
-function verticalTextHeight(text: string, fontSize: number): number {
-  const lh = fontSize * 1.12;
-  let n = 0;
-  for (const ch of text) {
-    if (ch !== ' ' && ch !== '\u200c') n += 1;
-    else n += 0.35;
-  }
-  return n * lh;
-}
-
-function drawVerticalPersianText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  yStart: number,
-  fontSize: number,
-  color: string,
-) {
-  const lh = fontSize * 1.12;
-  ctx.save();
-  ctx.font = `500 ${fontSize}px ${FONT}`;
-  ctx.fillStyle = color;
-  ctx.textAlign = 'center';
-  ctx.direction = 'rtl';
-  let y = yStart;
-  for (const ch of text) {
-    if (ch === ' ' || ch === '\u200c') {
-      y += lh * 0.35;
-      continue;
-    }
-    ctx.fillText(ch, x, y);
-    y += lh;
-  }
-  ctx.restore();
-}
-
-/** Legend: vertical labels to the left of the seat grid. */
+/** Legend rows to the left of the seat grid — one connected RTL line per status. */
 function drawSeatLegendBesideGrid(
   ctx: CanvasRenderingContext2D,
   gridX: number,
@@ -82,28 +45,45 @@ function drawSeatLegendBesideGrid(
   gridH: number,
   legendFontSize: number,
 ) {
-  const textSize = Math.max(13, legendFontSize - 2);
-  const sw = 18;
-  const itemGap = 36;
-  const label1 = 'ثبت‌نام قطعی';
-  const label2 = 'رزرو موقت';
-  const h1 = verticalTextHeight(label1, textSize);
-  const h2 = verticalTextHeight(label2, textSize);
-  const blockH = sw + 8 + h1 + itemGap + sw + 8 + h2;
-  let y = gridY + Math.max(0, (gridH - blockH) / 2);
-  const textX = gridX - 52;
-  const swatchX = gridX - 24;
+  const textSize = Math.max(14, legendFontSize - 1);
+  const sw = 16;
+  const swatchTextGap = 10;
+  const rowStep = Math.max(44, textSize + sw + 14);
+  const gapFromGrid = 64;
 
-  roundRect(ctx, swatchX, y, sw, sw, 4);
-  ctx.fillStyle = SEAT_GREEN;
-  ctx.fill();
-  drawVerticalPersianText(ctx, label1, textX, y + sw + 10, textSize, '#e2e8f0');
-  y += sw + 8 + h1 + itemGap;
+  const items: { label: string; color: string }[] = [
+    { label: 'ثبت‌نام قطعی', color: SEAT_GREEN },
+    { label: 'رزرو موقت', color: SEAT_ORANGE },
+  ];
 
-  roundRect(ctx, swatchX, y, sw, sw, 4);
-  ctx.fillStyle = SEAT_ORANGE;
-  ctx.fill();
-  drawVerticalPersianText(ctx, label2, textX, y + sw + 10, textSize, '#e2e8f0');
+  ctx.save();
+  ctx.font = `500 ${textSize}px ${FONT}`;
+  ctx.direction = 'rtl';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+
+  const maxLabelW = Math.max(
+    ...items.map(it => ctx.measureText(it.label).width),
+    textSize * 4,
+  );
+  const legendRight = gridX - gapFromGrid;
+  const legendLeft = Math.max(28, legendRight - maxLabelW - sw - swatchTextGap);
+  const blockH = (items.length - 1) * rowStep;
+  let rowY = gridY + (gridH - blockH) / 2;
+
+  for (const item of items) {
+    const swatchX = legendRight - sw;
+    const swatchY = rowY - sw / 2;
+    ctx.fillStyle = item.color;
+    roundRect(ctx, swatchX, swatchY, sw, sw, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(item.label, swatchX - swatchTextGap, rowY);
+    rowY += rowStep;
+  }
+
+  ctx.restore();
 }
 
 function roundRect(
@@ -595,8 +575,8 @@ export async function renderEducationStoryPng(rawCourse: EducationCourse): Promi
     gridH = rows * seatSize + (rows - 1) * gap;
   }
   const gridW = cols * seatSize + (cols - 1) * gap;
-  const legendColW = 88;
-  const gridX = pad + legendColW + Math.max(12, (innerW - legendColW - gridW) / 2);
+  const legendColW = 168;
+  const gridX = pad + legendColW + Math.max(16, (innerW - legendColW - gridW) / 2);
   const gridY = gridTop;
 
   for (let i = 0; i < cap; i++) {
