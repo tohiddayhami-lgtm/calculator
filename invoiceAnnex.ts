@@ -1,4 +1,11 @@
 import type { InvoiceAnnex, InvoiceAnnexImage, InvoiceAnnexPreset, Product } from './types';
+import {
+  annexHasParagraphText,
+  annexParagraphsToBody,
+  bodyToAnnexParagraphs,
+  createEmptyAnnexParagraph,
+  normalizeAnnexParagraph,
+} from './invoiceAnnexParagraphs';
 
 export const INVOICE_ANNEX_PRESETS_STORAGE_KEY = 'exportcalc_invoice_annex_presets_v1';
 export const MAX_INVOICE_ANNEX_PRESETS = 30;
@@ -20,13 +27,23 @@ export function newAnnexImageId(): string {
 }
 
 export function createEmptyAnnex(overrides?: Partial<InvoiceAnnex>): InvoiceAnnex {
-  return {
+  const base = {
     id: newAnnexId(),
     title: '',
-    body: '',
     includeInPrint: true,
-    images: [],
+    images: [] as InvoiceAnnexImage[],
     ...overrides,
+  };
+  const paragraphs =
+    base.paragraphs && base.paragraphs.length > 0
+      ? base.paragraphs.map(normalizeAnnexParagraph)
+      : String(base.body ?? '').trim()
+        ? bodyToAnnexParagraphs(base.body)
+        : [createEmptyAnnexParagraph()];
+  return {
+    ...base,
+    body: annexParagraphsToBody(paragraphs),
+    paragraphs,
   };
 }
 
@@ -48,10 +65,18 @@ export function normalizeInvoiceAnnex(raw: unknown): InvoiceAnnex {
   const images = Array.isArray(imagesRaw)
     ? imagesRaw.map(normalizeInvoiceAnnexImage).filter((x): x is InvoiceAnnexImage => x !== null)
     : [];
+  const body = String(o.body ?? '');
+  const paragraphsRaw = o.paragraphs;
+  const paragraphs = Array.isArray(paragraphsRaw)
+    ? paragraphsRaw.map(normalizeAnnexParagraph)
+    : body.trim()
+      ? bodyToAnnexParagraphs(body)
+      : [createEmptyAnnexParagraph()];
   return {
     id: String(o.id ?? newAnnexId()),
     title: String(o.title ?? ''),
-    body: String(o.body ?? ''),
+    body: annexParagraphsToBody(paragraphs) || body,
+    paragraphs,
     includeInPrint: o.includeInPrint !== false,
     images,
   };
@@ -63,7 +88,7 @@ export function parseInvoiceAnnexes(raw: unknown): InvoiceAnnex[] {
 }
 
 export function annexHasPrintableContent(annex: InvoiceAnnex): boolean {
-  return !!(annex.title.trim() || annex.body.trim() || (annex.images?.length ?? 0) > 0);
+  return !!(annex.title.trim() || annexHasParagraphText(annex) || (annex.images?.length ?? 0) > 0);
 }
 
 export function annexesForPrint(annexes: InvoiceAnnex[], enabled: boolean): InvoiceAnnex[] {
@@ -150,11 +175,19 @@ export function parseInvoiceAnnexPresetsFromStorage(raw: string | null): Invoice
         const o = x as Record<string, unknown>;
         const name = String(o.name ?? '').trim();
         if (!name) return null;
+        const body = String(o.body ?? '');
+        const paragraphsRaw = o.paragraphs;
+        const paragraphs = Array.isArray(paragraphsRaw)
+          ? paragraphsRaw.map(normalizeAnnexParagraph)
+          : body.trim()
+            ? bodyToAnnexParagraphs(body)
+            : undefined;
         return {
           id: String(o.id ?? `iap_${Date.now()}`),
           name,
           title: String(o.title ?? ''),
-          body: String(o.body ?? ''),
+          body: paragraphs ? annexParagraphsToBody(paragraphs) : body,
+          paragraphs,
           updatedAt: Number(o.updatedAt) || Date.now(),
         } satisfies InvoiceAnnexPreset;
       })

@@ -12,6 +12,8 @@ import {
   type InvoiceAnnexProjectImageOption,
 } from './invoiceAnnex';
 import { invoiceThemeStyle } from './invoiceTheme';
+import { AnnexParagraphsEditor, AnnexParagraphsPrint } from './invoiceAnnexParagraphsUi';
+import { annexHasParagraphText } from './invoiceAnnexParagraphs';
 
 export type InvoiceAnnexEditorPanelProps = {
   enabled: boolean;
@@ -199,7 +201,12 @@ export function InvoiceAnnexEditorPanel({
     if (!p) return;
     onAnnexesChange([
       ...annexes,
-      createEmptyAnnex({ title: p.title, body: p.body, includeInPrint: true }),
+      createEmptyAnnex({
+        title: p.title,
+        body: p.body,
+        paragraphs: p.paragraphs,
+        includeInPrint: true,
+      }),
     ]);
     onEnabledChange(true);
   };
@@ -278,16 +285,10 @@ export function InvoiceAnnexEditorPanel({
                       placeholder={'\u0645\u062b\u0627\u0644: \u062a\u0635\u0627\u0648\u06cc\u0631 \u067e\u0631\u0648\u0698\u0647'}
                     />
                   </div>
-                  <div>
-                    <label className={labelCls}>{'\u0645\u062a\u0646'}</label>
-                    <textarea
-                      rows={4}
-                      value={annex.body}
-                      onChange={(e) => updateAnnex(annex.id, { body: e.target.value })}
-                      className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 font-sans"
-                      placeholder={'\u062a\u0648\u0636\u06cc\u062d\u0627\u062a \u0645\u062a\u0646\u06cc\u2026'}
-                    />
-                  </div>
+                  <AnnexParagraphsEditor
+                    annex={annex}
+                    onAnnexChange={(next) => onAnnexesChange(annexes.map((a) => (a.id === annex.id ? next : a)))}
+                  />
                   <AnnexImageEditor
                     annex={annex}
                     onChange={(patch) => updateAnnex(annex.id, patch)}
@@ -433,7 +434,7 @@ export function InvoiceAnnexPrintPages({
     <>
       {pages.map((annex, i) => {
         const imgs = annex.images ?? [];
-        const hasBody = !!annex.body.trim();
+        const hasBody = annexHasParagraphText(annex);
         return (
           <div
             key={annex.id}
@@ -492,7 +493,7 @@ export function InvoiceAnnexPrintPages({
                 color: '#1e293b',
               }}
             >
-              {hasBody ? annex.body.trim() : imgs.length ? null : '\u2014'}
+              {hasBody ? <AnnexParagraphsPrint annex={annex} /> : imgs.length ? null : '\u2014'}
               <AnnexPrintImageGrid images={imgs} afterBody={hasBody} />
             </div>
 

@@ -136,11 +136,22 @@ export interface InvoiceAnnexImage {
   caption?: string;
 }
 
+export type InvoiceAnnexParagraphAlign = 'left' | 'center' | 'right' | 'justify';
+
+/** One text block on an annex page (supports simple markup in `text`). */
+export interface InvoiceAnnexParagraph {
+  id: string;
+  text: string;
+  align: InvoiceAnnexParagraphAlign;
+}
+
 /** Optional annex page appended after the main proforma (e.g. MoU / تفاهم‌نامه). */
 export interface InvoiceAnnex {
   id: string;
   title: string;
+  /** Legacy flat text; kept in sync with `paragraphs` for older saves. */
   body: string;
+  paragraphs?: InvoiceAnnexParagraph[];
   /** When false, kept in editor but omitted from print. */
   includeInPrint: boolean;
   /** Multiple images (project photos, diagrams, etc.). */
@@ -153,6 +164,7 @@ export interface InvoiceAnnexPreset {
   name: string;
   title: string;
   body: string;
+  paragraphs?: InvoiceAnnexParagraph[];
   updatedAt: number;
 }
 

@@ -145,6 +145,7 @@ import {
   parseInvoiceAnnexPresetsFromStorage,
   parseInvoiceAnnexes,
 } from './invoiceAnnex';
+import { annexHasParagraphText } from './invoiceAnnexParagraphs';
 import { InvoiceAnnexEditorPanel, InvoiceAnnexPrintPages } from './invoiceAnnexUi';
 import {
   archivedInvoiceKindLabel,
@@ -5201,7 +5202,7 @@ function AppInner() {
   );
 
   const saveInvoiceAnnexPreset = (annex: InvoiceAnnex) => {
-    if (!annex.title.trim() && !annex.body.trim()) {
+    if (!annex.title.trim() && !annexHasParagraphText(annex)) {
       alert('ابتدا عنوان یا متن الحاقیه را بنویسید.');
       return;
     }
@@ -5212,6 +5213,7 @@ function AppInner() {
       name,
       title: annex.title,
       body: annex.body,
+      paragraphs: annex.paragraphs,
       updatedAt: Date.now(),
     };
     setInvoiceAnnexPresets((prev) => [entry, ...prev].slice(0, MAX_INVOICE_ANNEX_PRESETS_LOCAL));
