@@ -6,6 +6,7 @@ import type {
   EducationVipGuest,
 } from './types';
 import { currencyShort } from './educationFormat';
+import { normalizeStoryTypography } from './educationStoryTypography';
 
 function normCurrency(raw: unknown): EducationFeeCurrency {
   if (raw === 'IRR' || raw === 'USD') return raw;
@@ -87,6 +88,9 @@ export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
       typeof c.storyFootNoteFontSize === 'number' && Number.isFinite(c.storyFootNoteFontSize)
         ? Math.min(40, Math.max(14, Math.round(c.storyFootNoteFontSize)))
         : 22,
+    storyTypography: c.storyTypography
+      ? normalizeStoryTypography(c.storyTypography)
+      : undefined,
     participants: (c.participants ?? []).map(normalizeEducationParticipant),
     vipGuests: normVipGuests(c.vipGuests),
   };

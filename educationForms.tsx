@@ -38,6 +38,13 @@ import {
   EDUCATION_STORY_WIDTH,
   renderEducationStoryPng,
 } from './educationStoryExport';
+import {
+  loadSavedStoryTypography,
+  resolveStoryTypography,
+  saveStoryTypographyDefaults,
+  STORY_TYPOGRAPHY_FIELDS,
+  type EducationStoryTypography,
+} from './educationStoryTypography';
 
 export const EDUCATION_STORAGE_KEY = 'exportcalc_education_courses_v1';
 
@@ -387,6 +394,30 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
   const labelCls = 'text-xs text-slate-500 font-medium mb-1 block';
 
   const editingParticipant = editing?.participants.find(p => p.id === editingParticipantId);
+
+  const courseTypo = editing ? resolveStoryTypography(editing) : loadSavedStoryTypography();
+
+  const patchStoryTypo = (patch: Partial<EducationStoryTypography>) => {
+    if (!editing) return;
+    upd({
+      storyTypography: {
+        ...(editing.storyTypography ?? {}),
+        ...patch,
+      },
+    });
+  };
+
+  const saveTypoAsDefault = () => {
+    if (!editing) return;
+    const resolved = resolveStoryTypography(editing);
+    saveStoryTypographyDefaults(resolved);
+    alert('تنظیمات فونت به‌عنوان پیش‌فرض ذخیره شد و برای دوره‌های بعدی اعمال می‌شود.');
+  };
+
+  const resetTypoToDefault = () => {
+    if (!confirm('تنظیمات فونت این دوره به پیش‌فرض ذخیره‌شده بازگردد؟')) return;
+    upd({ storyTypography: undefined, storyFootNoteFontSize: undefined });
+  };
 
   if (subView === 'list') {
     return (
@@ -785,6 +816,62 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 <p className="text-[10px] text-slate-400 mt-1">۰ = فقط گرادیان · ۱۰۰ = عکس پررنگ‌تر</p>
               </div>
             </div>
+            <div className="border border-indigo-200 rounded-xl p-4 space-y-3 bg-indigo-50/40">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className={labelCls + ' mb-0'}>تنظیمات فونت خروجی استوری</label>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={saveTypoAsDefault}
+                    className="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 hover:bg-indigo-700"
+                  >
+                    ذخیره پیش‌فرض
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetTypoToDefault}
+                    className="text-xs border border-slate-300 rounded-lg px-3 py-1.5 bg-white hover:bg-slate-50"
+                  >
+                    بازنشانی
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                «ذخیره پیش‌فرض» برای همه دوره‌ها ذخیره می‌شود. اسلایدرها روی همین دوره اعمال می‌شود؛ با ذخیره دوره ماندگار می‌ماند.
+              </p>
+              <div>
+                <label className={labelCls}>حداکثر خط عنوان دوره</label>
+                <select
+                  value={courseTypo.titleMaxLines}
+                  onChange={e => patchStoryTypo({ titleMaxLines: Number(e.target.value) })}
+                  className={inputCls}
+                >
+                  <option value={1}>۱ خط</option>
+                  <option value={2}>۲ خط</option>
+                  <option value={3}>۳ خط</option>
+                </select>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
+                {STORY_TYPOGRAPHY_FIELDS.filter(f => f.key !== 'titleMaxLines').map(f => (
+                  <div key={f.key}>
+                    <span className="text-xs text-slate-600">
+                      {f.label}: {courseTypo[f.key]}px
+                    </span>
+                    <input
+                      type="range"
+                      min={f.min}
+                      max={f.max}
+                      value={courseTypo[f.key]}
+                      onChange={e =>
+                        patchStoryTypo({ [f.key]: Number(e.target.value) } as Partial<EducationStoryTypography>)
+                      }
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className={labelCls}>نوت استوری (اختیاری)</label>
               <textarea
@@ -820,19 +907,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                   </button>
                 ))}
               </div>
-              <div>
-                <span className="text-xs text-slate-500">
-                  اندازه فونت نوت: {editing.storyFootNoteFontSize ?? 22}px
-                </span>
-                <input
-                  type="range"
-                  min={14}
-                  max={40}
-                  value={editing.storyFootNoteFontSize ?? 22}
-                  onChange={e => upd({ storyFootNoteFontSize: Number(e.target.value) })}
-                  className="w-full accent-teal-600"
-                />
-              </div>
+              <p className="text-[10px] text-slate-400">اندازه فونت نوت در بخش «تنظیمات فونت خروجی استوری» تنظیم می‌شود.</p>
             </div>
             <div>
               <label className={labelCls}>مکان برگزاری</label>

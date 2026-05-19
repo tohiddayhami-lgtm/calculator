@@ -1,5 +1,6 @@
 import type { EducationCourse, EducationParticipant } from './types';
 import { feeCurrencyDisplay, formatAmountDisplay } from './educationFormat';
+import { resolveStoryTypography, storyLineHeight } from './educationStoryTypography';
 
 export const EDUCATION_STORY_WIDTH = 1080;
 export const EDUCATION_STORY_HEIGHT = 1920;
@@ -268,6 +269,8 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas not supported');
 
+  const ty = resolveStoryTypography(course);
+
   const filled = course.participants.length;
   const cap = Math.max(1, course.seatCapacity);
   const pct = Math.min(100, Math.round((filled / cap) * 100));
@@ -309,12 +312,31 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
 
   const textRight = W - pad - 24;
 
-  ctx.font = `600 28px ${FONT}`;
-  drawRtlWrapped(ctx, 'دوره آموزشی', textRight, contentY, innerW - 48, 36, 1, '#a5b4fc');
-  contentY += 44;
+  ctx.font = `600 ${ty.badge}px ${FONT}`;
+  drawRtlWrapped(
+    ctx,
+    'دوره آموزشی',
+    textRight,
+    contentY,
+    innerW - 48,
+    storyLineHeight(ty.badge),
+    1,
+    '#a5b4fc',
+  );
+  contentY += storyLineHeight(ty.badge) + 8;
 
-  ctx.font = `700 48px ${FONT}`;
-  contentY = drawRtlWrapped(ctx, course.title || 'بدون عنوان', textRight, contentY, innerW - 48, 56, 2, '#ffffff') + 8;
+  ctx.font = `700 ${ty.title}px ${FONT}`;
+  contentY =
+    drawRtlWrapped(
+      ctx,
+      course.title || 'بدون عنوان',
+      textRight,
+      contentY,
+      innerW - 48,
+      storyLineHeight(ty.title),
+      ty.titleMaxLines,
+      '#ffffff',
+    ) + 8;
 
   /** When instructor photo exists, fee/meta use this column so text does not run under the portrait */
   let bodyTextRight = textRight;
@@ -341,9 +363,9 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
       drawCircleImage(ctx, instructorFace, cx, cy, photoR);
 
       if (label) {
-        ctx.font = `500 30px ${FONT}`;
+        ctx.font = `500 ${ty.instructor}px ${FONT}`;
         const lines = wrapTextLines(ctx, label, bodyMaxW, 3);
-        const lnH = 36;
+        const lnH = storyLineHeight(ty.instructor);
         ctx.fillStyle = '#e2e8f0';
         ctx.textAlign = 'right';
         ctx.direction = 'rtl';
@@ -358,15 +380,24 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
       // Full row height + gap; fee baseline must clear photo (glyphs extend above baseline)
       contentY = baseY + rowH + 28;
     } else if (label) {
-      ctx.font = `500 30px ${FONT}`;
+      ctx.font = `500 ${ty.instructor}px ${FONT}`;
       contentY =
-        drawRtlWrapped(ctx, label, textRight, baseY + 8, innerW - 48, 38, 2, '#e2e8f0') + 12;
+        drawRtlWrapped(
+          ctx,
+          label,
+          textRight,
+          baseY + 8,
+          innerW - 48,
+          storyLineHeight(ty.instructor),
+          2,
+          '#e2e8f0',
+        ) + 12;
     }
   }
 
   if (course.courseFee?.trim()) {
     const feeFmt = formatAmountDisplay(course.courseFee);
-    ctx.font = `600 32px ${FONT}`;
+    ctx.font = `600 ${ty.fee}px ${FONT}`;
     contentY =
       drawRtlWrapped(
         ctx,
@@ -374,7 +405,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
         bodyTextRight,
         contentY,
         bodyMaxW,
-        40,
+        storyLineHeight(ty.fee),
         1,
         '#fde68a',
       ) + 8;
@@ -387,49 +418,75 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   if (dateStr) meta.push(`تاریخ: ${dateStr}`);
   if (course.location) meta.push(`مکان: ${course.location}`);
   if (meta.length) {
-    ctx.font = `400 26px ${FONT}`;
+    ctx.font = `400 ${ty.meta}px ${FONT}`;
     for (const m of meta) {
-      contentY = drawRtlWrapped(ctx, m, bodyTextRight, contentY, bodyMaxW, 34, 1, '#94a3b8') + 4;
+      contentY =
+        drawRtlWrapped(ctx, m, bodyTextRight, contentY, bodyMaxW, storyLineHeight(ty.meta), 1, '#94a3b8') + 4;
     }
   }
 
   if (course.instructorResume?.trim()) {
     contentY += 8;
-    ctx.font = `600 26px ${FONT}`;
-    drawRtlBlock(ctx, ['رزومه استاد'], textRight, contentY, 32, '#e2e8f0');
-    contentY += 36;
-    ctx.font = `400 22px ${FONT}`;
+    ctx.font = `600 ${ty.sectionHeading}px ${FONT}`;
+    drawRtlBlock(ctx, ['رزومه استاد'], textRight, contentY, storyLineHeight(ty.sectionHeading), '#e2e8f0');
+    contentY += storyLineHeight(ty.sectionHeading) + 8;
+    ctx.font = `400 ${ty.body}px ${FONT}`;
     contentY =
-      drawRtlLinearLines(ctx, course.instructorResume.trim(), textRight, contentY, innerW - 48, 28, '#94a3b8') + 8;
+      drawRtlLinearLines(
+        ctx,
+        course.instructorResume.trim(),
+        textRight,
+        contentY,
+        innerW - 48,
+        storyLineHeight(ty.body),
+        '#94a3b8',
+      ) + 8;
   }
 
   const vips = (course.vipGuests ?? []).filter(g => g.fullName?.trim());
   if (vips.length) {
     contentY += 6;
-    ctx.font = `600 24px ${FONT}`;
-    drawRtlBlock(ctx, ['مهمانان VIP'], textRight, contentY, 30, '#fcd34d');
-    contentY += 34;
+    ctx.font = `600 ${ty.vipHeading}px ${FONT}`;
+    drawRtlBlock(ctx, ['مهمانان VIP'], textRight, contentY, storyLineHeight(ty.vipHeading), '#fcd34d');
+    contentY += storyLineHeight(ty.vipHeading) + 8;
     for (const g of vips) {
-      ctx.font = `600 22px ${FONT}`;
+      ctx.font = `600 ${ty.vipName}px ${FONT}`;
       contentY =
-        drawRtlWrapped(ctx, g.fullName.trim(), textRight, contentY, innerW - 48, 28, 2, '#fef9c3') + 4;
+        drawRtlWrapped(
+          ctx,
+          g.fullName.trim(),
+          textRight,
+          contentY,
+          innerW - 48,
+          storyLineHeight(ty.vipName),
+          2,
+          '#fef9c3',
+        ) + 4;
       if (g.resume?.trim()) {
-        ctx.font = `400 20px ${FONT}`;
+        ctx.font = `400 ${ty.vipBody}px ${FONT}`;
         contentY =
-          drawRtlLinearLines(ctx, g.resume.trim(), textRight, contentY, innerW - 52, 26, '#cbd5e1') + 8;
+          drawRtlLinearLines(
+            ctx,
+            g.resume.trim(),
+            textRight,
+            contentY,
+            innerW - 52,
+            storyLineHeight(ty.vipBody),
+            '#cbd5e1',
+          ) + 8;
       }
       contentY += 4;
     }
   }
 
   const syllabus = course.syllabus.map(s => s.text.trim()).filter(Boolean);
-  const syllabusFont = syllabus.length > 8 ? 20 : 22;
-  const syllabusLh = syllabus.length > 8 ? 26 : 30;
+  const syllabusFont = syllabus.length > 8 ? Math.max(16, ty.syllabusItem - 2) : ty.syllabusItem;
+  const syllabusLh = storyLineHeight(syllabusFont);
   if (syllabus.length) {
     contentY += 4;
-    ctx.font = `600 26px ${FONT}`;
-    drawRtlBlock(ctx, ['سرفصل‌ها'], textRight, contentY, 32, '#e2e8f0');
-    contentY += 36;
+    ctx.font = `600 ${ty.syllabusHeading}px ${FONT}`;
+    drawRtlBlock(ctx, ['سرفصل‌ها'], textRight, contentY, storyLineHeight(ty.syllabusHeading), '#e2e8f0');
+    contentY += storyLineHeight(ty.syllabusHeading) + 8;
     ctx.font = `400 ${syllabusFont}px ${FONT}`;
     for (const item of syllabus) {
       contentY =
@@ -499,15 +556,19 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   ctx.textAlign = 'center';
   ctx.direction = 'ltr';
   ctx.fillStyle = '#ffffff';
-  ctx.font = `700 56px ${FONT}`;
+  ctx.font = `700 ${ty.statsMain}px ${FONT}`;
   ctx.fillText(`${filled} / ${cap}`, W / 2, statsY);
-  ctx.font = `500 28px ${FONT}`;
+  ctx.font = `500 ${ty.statsSub}px ${FONT}`;
   ctx.fillStyle = pct >= 100 ? '#f87171' : '#c4b5fd';
-  ctx.fillText(pct >= 100 ? 'ظرفیت تکمیل شد' : `${pct}% اشغال`, W / 2, statsY + 44);
+  ctx.fillText(pct >= 100 ? 'ظرفیت تکمیل شد' : `${pct}% اشغال`, W / 2, statsY + storyLineHeight(ty.statsSub));
   if (filled > 0) {
-    ctx.font = `400 24px ${FONT}`;
+    ctx.font = `400 ${ty.statsDetail}px ${FONT}`;
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`قطعی: ${confirmed}  ·  رزرو: ${reserved}`, W / 2, statsY + 76);
+    ctx.fillText(
+      `قطعی: ${confirmed}  ·  رزرو: ${reserved}`,
+      W / 2,
+      statsY + storyLineHeight(ty.statsSub) + storyLineHeight(ty.statsDetail),
+    );
   }
 
   const barW = innerW - 100;
@@ -525,10 +586,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   const footRaw = course.storyFootNote?.trim() ?? '';
   if (footRaw) {
     const align = course.storyFootNoteAlign ?? 'center';
-    const fontSize =
-      typeof course.storyFootNoteFontSize === 'number' && Number.isFinite(course.storyFootNoteFontSize)
-        ? Math.min(40, Math.max(14, Math.round(course.storyFootNoteFontSize)))
-        : 22;
+    const fontSize = ty.footNote;
     const boxW = W - 72;
     const padX = 20;
     const padY = 16;
@@ -562,7 +620,7 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
 
   ctx.textAlign = 'right';
   ctx.direction = 'rtl';
-  ctx.font = `400 22px ${FONT}`;
+  ctx.font = `400 ${ty.legend}px ${FONT}`;
   ctx.fillStyle = SEAT_GREEN;
   roundRect(ctx, textRight - 300, legY - 16, 20, 20, 4);
   ctx.fill();

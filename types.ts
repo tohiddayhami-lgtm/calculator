@@ -962,6 +962,28 @@ export type EducationRegistrationStatus = 'confirmed' | 'reserved';
 /** Course fee / payment currency */
 export type EducationFeeCurrency = 'IRR' | 'OMR' | 'USD';
 
+/** Font sizes (px) for education story PNG export */
+export interface EducationStoryTypography {
+  badge: number;
+  title: number;
+  titleMaxLines: number;
+  instructor: number;
+  fee: number;
+  meta: number;
+  sectionHeading: number;
+  body: number;
+  vipHeading: number;
+  vipName: number;
+  vipBody: number;
+  syllabusHeading: number;
+  syllabusItem: number;
+  statsMain: number;
+  statsSub: number;
+  statsDetail: number;
+  footNote: number;
+  legend: number;
+}
+
 /** Media / files attached to instructor resume (stored per course) */
 export type EducationInstructorMediaKind = 'image' | 'video' | 'file';
 
@@ -1016,8 +1038,10 @@ export interface EducationCourse {
   storyFootNote?: string;
   /** Text alignment inside story foot note box */
   storyFootNoteAlign?: 'right' | 'center' | 'left';
-  /** Font size (px) for story foot note */
+  /** Font size (px) for story foot note — prefer storyTypography.footNote */
   storyFootNoteFontSize?: number;
+  /** Per-course font overrides for story PNG export */
+  storyTypography?: Partial<EducationStoryTypography>;
   location: string;
   startDate: string;
   endDate: string;
