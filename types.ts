@@ -959,6 +959,9 @@ export interface EducationSyllabusItem {
 
 export type EducationRegistrationStatus = 'confirmed' | 'reserved';
 
+/** Course fee / payment currency */
+export type EducationFeeCurrency = 'IRR' | 'OMR' | 'USD';
+
 export interface EducationParticipant {
   id: string;
   firstName: string;
@@ -986,9 +989,13 @@ export interface EducationCourse {
   location: string;
   startDate: string;
   endDate: string;
-  /** Total course fee display text e.g. "150" */
+  /** Total course fee (digits, commas added in UI) */
   courseFee: string;
-  courseFeeCurrency: string;
+  courseFeeCurrency: EducationFeeCurrency;
+  /** Story export background image (data URL or https) */
+  storyBackgroundUrl?: string;
+  /** 0–100 opacity of background image on story export */
+  storyBackgroundOpacity?: number;
   syllabus: EducationSyllabusItem[];
   seatCapacity: number;
   participants: EducationParticipant[];

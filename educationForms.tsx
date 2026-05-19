@@ -5,17 +5,27 @@ import {
   Download,
   GraduationCap,
   Image as ImageIcon,
+  Pencil,
   Plus,
   Save,
   Trash2,
   UserPlus,
+  X,
 } from 'lucide-react';
 import type {
   EducationCourse,
+  EducationFeeCurrency,
   EducationParticipant,
   EducationRegistrationStatus,
 } from './types';
 import { normalizeEducationCourse } from './educationNormalize';
+import {
+  EDUCATION_CURRENCY_OPTIONS,
+  formatAmountDisplay,
+  formatAmountWithCurrency,
+  parseAmountDigits,
+  parseAmountNumber,
+} from './educationFormat';
 import {
   downloadEducationStory,
   EDUCATION_STORY_HEIGHT,
@@ -42,6 +52,8 @@ export function makeBlankEducationCourse(): EducationCourse {
     endDate: today,
     courseFee: '',
     courseFeeCurrency: 'OMR',
+    storyBackgroundUrl: '',
+    storyBackgroundOpacity: 40,
     syllabus: [{ id: newId(), text: '' }],
     seatCapacity: 50,
     participants: [],
@@ -77,6 +89,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
   const [editing, setEditing] = useState<EducationCourse | null>(null);
   const [exporting, setExporting] = useState(false);
   const [storyPreviewUrl, setStoryPreviewUrl] = useState<string | null>(null);
+  const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
   const [participantForm, setParticipantForm] = useState({
     firstName: '',
     lastName: '',
@@ -87,6 +100,16 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     amountRemaining: '',
     paymentNote: '',
   });
+  const [participantEditForm, setParticipantEditForm] = useState<{
+    firstName: string;
+    lastName: string;
+    phone: string;
+    city: string;
+    registrationStatus: EducationRegistrationStatus;
+    amountPaid: string;
+    amountRemaining: string;
+    paymentNote: string;
+  } | null>(null);
 
   const saveCourse = (c: EducationCourse) => {
     const next = { ...c, updatedAt: Date.now() };
@@ -157,17 +180,66 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     });
   };
 
-  const fillHalfPayment = () => {
+  const fillHalfPayment = (target: 'form' | string) => {
     if (!editing?.courseFee?.trim()) return;
-    const fee = parseFloat(editing.courseFee.replace(/,/g, ''));
-    if (!Number.isFinite(fee) || fee <= 0) return;
+    const fee = parseAmountNumber(editing.courseFee);
+    if (fee === null || fee <= 0) return;
     const half = Math.round((fee / 2) * 100) / 100;
-    setParticipantForm(f => ({
-      ...f,
-      amountPaid: String(half),
-      amountRemaining: String(Math.round((fee - half) * 100) / 100),
-    }));
+    const rest = Math.round((fee - half) * 100) / 100;
+    const paid = parseAmountDigits(String(half));
+    const rem = parseAmountDigits(String(rest));
+    if (target === 'form') {
+      setParticipantForm(f => ({ ...f, amountPaid: paid, amountRemaining: rem }));
+      return;
+    }
+    upd({
+      participants: updateParticipant(editing.participants, target, {
+        amountPaid: paid,
+        amountRemaining: rem,
+      }),
+    });
   };
+
+  const openParticipantEdit = (p: EducationParticipant) => {
+    setEditingParticipantId(p.id);
+    setParticipantEditForm({
+      firstName: p.firstName,
+      lastName: p.lastName,
+      phone: p.phone,
+      city: p.city,
+      registrationStatus: p.registrationStatus,
+      amountPaid: p.amountPaid,
+      amountRemaining: p.amountRemaining,
+      paymentNote: p.paymentNote,
+    });
+  };
+  const closeParticipantEdit = () => {
+    setEditingParticipantId(null);
+    setParticipantEditForm(null);
+  };
+  const saveParticipantEdit = () => {
+    if (!editing || !editingParticipantId || !participantEditForm) return;
+    const fn = participantEditForm.firstName.trim();
+    const ln = participantEditForm.lastName.trim();
+    if (!fn || !ln) {
+      alert('نام و نام خانوادگی الزامی است.');
+      return;
+    }
+    upd({
+      participants: updateParticipant(editing.participants, editingParticipantId, {
+        firstName: fn,
+        lastName: ln,
+        phone: participantEditForm.phone.trim(),
+        city: participantEditForm.city.trim(),
+        registrationStatus: participantEditForm.registrationStatus,
+        amountPaid: participantEditForm.amountPaid,
+        amountRemaining: participantEditForm.amountRemaining,
+        paymentNote: participantEditForm.paymentNote.trim(),
+      }),
+    });
+    closeParticipantEdit();
+  };
+  const onAmountInput = (raw: string) => parseAmountDigits(raw.replace(/,/g, '').replace(/،/g, ''));
 
   const handleExportStory = async () => {
     if (!editing) return;
@@ -197,8 +269,10 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
   };
 
   const inputCls =
-    'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-300';
+    'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-300 font-[Vazirmatn,Tahoma,sans-serif]';
   const labelCls = 'text-xs text-slate-500 font-medium mb-1 block';
+
+  const editingParticipant = editing?.participants.find(p => p.id === editingParticipantId);
 
   if (subView === 'list') {
     return (
@@ -245,7 +319,7 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                     <p className="text-sm text-slate-500 mt-0.5">{c.instructorName || '—'}</p>
                     {c.courseFee?.trim() ? (
                       <p className="text-xs text-amber-700 mt-1">
-                        هزینه: {c.courseFee} {c.courseFeeCurrency || 'OMR'}
+                        هزینه: {formatAmountWithCurrency(c.courseFee, c.courseFeeCurrency || "OMR")}
                       </p>
                     ) : null}
                     <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
@@ -373,12 +447,50 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>هزینه دوره</label>
-                <input value={editing.courseFee} onChange={e => upd({ courseFee: e.target.value })} className={inputCls} dir="ltr" placeholder="150" />
+                <label className={labelCls}>شهریه دوره</label>
+                <input
+                  value={formatAmountDisplay(editing.courseFee)}
+                  onChange={e => upd({ courseFee: onAmountInput(e.target.value) })}
+                  className={inputCls}
+                  dir="ltr"
+                  placeholder="1,500,000"
+                />
               </div>
               <div>
-                <label className={labelCls}>واحد پول</label>
-                <input value={editing.courseFeeCurrency} onChange={e => upd({ courseFeeCurrency: e.target.value })} className={inputCls} dir="ltr" placeholder="OMR" />
+                <label className={labelCls}>ارز</label>
+                <select
+                  value={editing.courseFeeCurrency}
+                  onChange={e => upd({ courseFeeCurrency: e.target.value as EducationFeeCurrency })}
+                  className={inputCls}
+                >
+                  {EDUCATION_CURRENCY_OPTIONS.map(c => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50/80">
+              <label className={labelCls + ' mb-0'}>پس‌زمینه استوری (عکس + شفافیت)</label>
+              {editing.storyBackgroundUrl ? (
+                <div className="relative rounded-lg overflow-hidden h-32">
+                  <img src={editing.storyBackgroundUrl} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => upd({ storyBackgroundUrl: '' })} className="absolute top-2 left-2 bg-black/60 text-white rounded-full p-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : null}
+              <input type="file" accept="image/*" className="text-sm w-full" onChange={e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => upd({ storyBackgroundUrl: String(reader.result || '') });
+                  reader.readAsDataURL(file);
+                }} />
+              <div>
+                <span className="text-xs text-slate-500">شفافیت عکس: {editing.storyBackgroundOpacity ?? 40}%</span>
+                <input type="range" min={0} max={100} value={editing.storyBackgroundOpacity ?? 40} onChange={e => upd({ storyBackgroundOpacity: Number(e.target.value) })} className="w-full accent-teal-600" />
+                <p className="text-[10px] text-slate-400 mt-1">۰ = فقط گرادیان · ۱۰۰ = عکس پررنگ‌تر</p>
               </div>
             </div>
             <div>
@@ -526,11 +638,11 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
             </div>
             <p className="text-xs text-slate-500 mb-2 font-medium">پرداخت (پیش‌پرداخت / مانده)</p>
             <div className="grid grid-cols-2 gap-2 mb-2">
-              <input placeholder="مبلغ پرداخت‌شده" value={participantForm.amountPaid} onChange={e => setParticipantForm(f => ({ ...f, amountPaid: e.target.value }))} className={inputCls} dir="ltr" disabled={isFull} />
-              <input placeholder="مانده حساب" value={participantForm.amountRemaining} onChange={e => setParticipantForm(f => ({ ...f, amountRemaining: e.target.value }))} className={inputCls} dir="ltr" disabled={isFull} />
+              <input placeholder="مبلغ پرداخت‌شده" value={formatAmountDisplay(participantForm.amountPaid)} onChange={e => setParticipantForm(f => ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" disabled={isFull} />
+              <input placeholder="مانده حساب" value={formatAmountDisplay(participantForm.amountRemaining)} onChange={e => setParticipantForm(f => ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" disabled={isFull} />
             </div>
             {editing.courseFee?.trim() ? (
-              <button type="button" onClick={fillHalfPayment} disabled={isFull} className="text-xs text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 mb-2 hover:bg-teal-50 w-full">
+              <button type="button" onClick={() => fillHalfPayment('form')} disabled={isFull} className="text-xs text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 mb-2 hover:bg-teal-50 w-full">
                 نصف هزینه دوره: پرداخت‌شده / مانده (خودکار)
               </button>
             ) : null}
@@ -570,13 +682,8 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                         ? `${participant.firstName} ${participant.lastName} — ${participant.city}${participant.amountPaid ? ` — پرداخت: ${participant.amountPaid}` : ''}`
                         : `صندلی ${num} — خالی`
                     }
-                    onClick={() => {
-                      if (!participant) return;
-                      if (confirm(`حذف ${participant.firstName} ${participant.lastName} از صندلی ${num}؟`)) {
-                        upd({ participants: editing.participants.filter(p => p.id !== participant.id) });
-                      }
-                    }}
-                    className={`min-h-[52px] rounded-md text-[9px] font-bold transition-all flex flex-col items-center justify-center p-0.5 leading-tight ${
+                    onClick={() => { if (participant) openParticipantEdit(participant); }}
+                    className={`min-h-[56px] rounded-md text-[9px] font-bold transition-all flex flex-col items-center justify-center p-0.5 leading-tight ${
                       participant
                         ? participant.registrationStatus === 'reserved'
                           ? 'bg-orange-500 text-white hover:bg-red-500 shadow-sm'
@@ -586,15 +693,15 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                   >
                     <span className="opacity-80">{num}</span>
                     {participant ? (
-                      <span className="font-normal text-[8px] truncate w-full text-center px-0.5">
-                        {participant.firstName}
+                      <span className="font-normal text-[7px] w-full text-center px-0.5 break-words line-clamp-3 leading-[1.1] text-white">
+                        {participant.firstName} {participant.lastName}
                       </span>
                     ) : null}
                   </button>
                 ))}
               </div>
             )}
-            <p className="text-xs text-slate-400 mt-3 text-center">کلیک روی صندلی پر = حذف ثبت‌نام</p>
+            <p className="text-xs text-slate-400 mt-3 text-center">کلیک روی صندلی پر = ویرایش اطلاعات</p>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-5 max-h-[28rem] overflow-y-auto">
@@ -630,13 +737,10 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                             {p.registrationStatus === 'reserved' ? 'رزرو موقت' : 'قطعی'}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => upd({ participants: editing.participants.filter(x => x.id !== p.id) })}
-                          className="text-red-400 shrink-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex gap-1 shrink-0">
+                          <button type="button" onClick={() => openParticipantEdit(p)} className="text-teal-600 p-1 hover:bg-teal-50 rounded" title="ویرایش"><Pencil className="w-4 h-4" /></button>
+                          <button type="button" onClick={() => { if (confirm(`حذف ${p.firstName} ${p.lastName}؟`)) { upd({ participants: editing.participants.filter(x => x.id !== p.id) }); if (editingParticipantId === p.id) closeParticipantEdit(); } }} className="text-red-400 p-1"><Trash2 className="w-4 h-4" /></button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 mb-2">
                         <span>{p.city || '—'}</span>
@@ -644,11 +748,11 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                       </div>
                       <div className="grid grid-cols-2 gap-2 mb-2">
                         <input
-                          value={p.amountPaid}
+                          value={formatAmountDisplay(p.amountPaid)}
                           onChange={e =>
                             upd({
                               participants: updateParticipant(editing.participants, p.id, {
-                                amountPaid: e.target.value,
+                                amountPaid: onAmountInput(e.target.value),
                               }),
                             })
                           }
@@ -657,11 +761,11 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                           placeholder="پرداخت‌شده"
                         />
                         <input
-                          value={p.amountRemaining}
+                          value={formatAmountDisplay(p.amountRemaining)}
                           onChange={e =>
                             upd({
                               participants: updateParticipant(editing.participants, p.id, {
-                                amountRemaining: e.target.value,
+                                amountRemaining: onAmountInput(e.target.value),
                               }),
                             })
                           }
@@ -670,6 +774,9 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                           placeholder="مانده"
                         />
                       </div>
+                      {editing.courseFee?.trim() ? (
+                        <button type="button" onClick={() => fillHalfPayment(p.id)} className="text-xs text-teal-700 border border-teal-200 rounded px-2 py-1 mb-2 hover:bg-teal-50 w-full">نصف شهریه (خودکار)</button>
+                      ) : null}
                       <div className="flex gap-2 flex-wrap">
                         <button
                           type="button"
@@ -725,7 +832,39 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
             )}
           </div>
 
-          {storyPreviewUrl && (
+          
+          {editingParticipant && participantEditForm ? (
+            <div className="bg-white rounded-xl border-2 border-teal-300 p-5 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-slate-800">ویرایش شرکت‌کننده (صندلی #{editingParticipant.seatNumber})</h3>
+                <button type="button" onClick={closeParticipantEdit} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <input placeholder="نام" value={participantEditForm.firstName} onChange={e => setParticipantEditForm(f => f && ({ ...f, firstName: e.target.value }))} className={inputCls} dir="rtl" />
+                <input placeholder="نام خانوادگی (کامل)" value={participantEditForm.lastName} onChange={e => setParticipantEditForm(f => f && ({ ...f, lastName: e.target.value }))} className={inputCls} dir="rtl" />
+                <input placeholder="شماره تماس" value={participantEditForm.phone} onChange={e => setParticipantEditForm(f => f && ({ ...f, phone: e.target.value }))} className={inputCls} dir="ltr" />
+                <input placeholder="شهر" value={participantEditForm.city} onChange={e => setParticipantEditForm(f => f && ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" />
+              </div>
+              <div className="flex gap-2 mb-3">
+                <button type="button" onClick={() => setParticipantEditForm(f => f && ({ ...f, registrationStatus: 'confirmed' }))} className={`flex-1 text-sm py-2 rounded-lg border ${participantEditForm.registrationStatus === 'confirmed' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-200'}`}>قطعی</button>
+                <button type="button" onClick={() => setParticipantEditForm(f => f && ({ ...f, registrationStatus: 'reserved' }))} className={`flex-1 text-sm py-2 rounded-lg border ${participantEditForm.registrationStatus === 'reserved' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-slate-200'}`}>رزرو موقت</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <input placeholder="پرداخت‌شده" value={formatAmountDisplay(participantEditForm.amountPaid)} onChange={e => setParticipantEditForm(f => f && ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" />
+                <input placeholder="مانده" value={formatAmountDisplay(participantEditForm.amountRemaining)} onChange={e => setParticipantEditForm(f => f && ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" />
+              </div>
+              {editing.courseFee?.trim() ? (
+                <button type="button" onClick={() => { if (!editingParticipantId) return; fillHalfPayment(editingParticipantId); const fee = parseAmountNumber(editing.courseFee); if (fee === null) return; const half = Math.round((fee/2)*100)/100; const rest = Math.round((fee-half)*100)/100; setParticipantEditForm(f => f ? { ...f, amountPaid: parseAmountDigits(String(half)), amountRemaining: parseAmountDigits(String(rest)) } : f); }} className="text-xs text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 mb-3 hover:bg-teal-50 w-full">نصف شهریه (خودکار)</button>
+              ) : null}
+              <input placeholder="یادداشت پرداخت" value={participantEditForm.paymentNote} onChange={e => setParticipantEditForm(f => f && ({ ...f, paymentNote: e.target.value }))} className={inputCls + ' mb-3'} dir="rtl" />
+              <div className="flex gap-2">
+                <button type="button" onClick={saveParticipantEdit} className="flex-1 bg-teal-600 text-white text-sm rounded-lg py-2">ذخیره تغییرات</button>
+                <button type="button" onClick={() => { if (confirm(`حذف ${editingParticipant.firstName} ${editingParticipant.lastName}؟`)) { upd({ participants: editing.participants.filter(x => x.id !== editingParticipantId) }); closeParticipantEdit(); } }} className="text-sm text-red-600 border border-red-200 rounded-lg px-4 py-2">حذف</button>
+              </div>
+            </div>
+          ) : null}
+
+{storyPreviewUrl && (
             <div className="bg-slate-900 rounded-xl p-4 flex flex-col items-center">
               <p className="text-white text-xs mb-2">پیش‌نمایش استوری ({EDUCATION_STORY_WIDTH}×{EDUCATION_STORY_HEIGHT})</p>
               <img

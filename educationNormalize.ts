@@ -1,4 +1,9 @@
-import type { EducationCourse, EducationParticipant } from './types';
+import type { EducationCourse, EducationFeeCurrency, EducationParticipant } from './types';
+
+function normCurrency(raw: unknown): EducationFeeCurrency {
+  if (raw === 'IRR' || raw === 'USD') return raw;
+  return 'OMR';
+}
 
 export function normalizeEducationParticipant(p: EducationParticipant): EducationParticipant {
   return {
@@ -11,11 +16,17 @@ export function normalizeEducationParticipant(p: EducationParticipant): Educatio
 }
 
 export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
+  const opacity =
+    typeof c.storyBackgroundOpacity === 'number' && Number.isFinite(c.storyBackgroundOpacity)
+      ? Math.min(100, Math.max(0, Math.round(c.storyBackgroundOpacity)))
+      : 40;
   return {
     ...c,
     instructorResume: c.instructorResume ?? '',
     courseFee: c.courseFee ?? '',
-    courseFeeCurrency: c.courseFeeCurrency ?? 'OMR',
+    courseFeeCurrency: normCurrency(c.courseFeeCurrency),
+    storyBackgroundUrl: typeof c.storyBackgroundUrl === 'string' ? c.storyBackgroundUrl : '',
+    storyBackgroundOpacity: opacity,
     participants: (c.participants ?? []).map(normalizeEducationParticipant),
   };
 }
