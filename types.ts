@@ -864,3 +864,88 @@ export interface ContractDef {
   createdAt: number;
   updatedAt: number;
 }
+
+// ---- PROPOSALS ----
+
+export interface ProposalSection {
+  id: string;
+  /** e.g. "EXECUTIVE SUMMARY", "1", "2.1" */
+  sectionNum: string;
+  titleEn: string;
+  titleRtl: string;
+  contentEn: string;
+  contentRtl: string;
+}
+
+export interface ProposalParty {
+  id: string;
+  labelEn: string;
+  labelRtl: string;
+  companyEn: string;
+  companyRtl: string;
+  regNo: string;
+  country: string;
+  repNameEn: string;
+  repNameRtl: string;
+  repTitleEn: string;
+  repTitleRtl: string;
+  contactEmail: string;
+  contactPhone: string;
+}
+
+export interface ProposalLineItem {
+  id: string;
+  itemEn: string;
+  itemRtl: string;
+  qty: string;
+  unitPrice: string;
+  total: string;
+  notes: string;
+  selected: boolean;
+}
+
+export interface ProposalAddOn {
+  id: string;
+  nameEn: string;
+  nameRtl: string;
+  descEn: string;
+  descRtl: string;
+  price: string;
+  selected: boolean;
+}
+
+export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'declined';
+export type ProposalRtlLang = 'fa' | 'ar';
+
+export interface ProposalDef {
+  id: string;
+  refNo: string;
+  titleEn: string;
+  titleRtl: string;
+  subtitleEn: string;
+  subtitleRtl: string;
+  proposalDate: string;
+  validUntil: string;
+  logoUrl?: string;
+  logo2Url?: string;
+  contractLogoLayout?: ContractDef['contractLogoLayout'];
+  contractLogoAlign?: ContractDef['contractLogoAlign'];
+  contractLogoSize?: ContractDef['contractLogoSize'];
+  contractLogoSpread?: ContractDef['contractLogoSpread'];
+  contractLogoGapPx?: number;
+  contractLogoInsetPx?: number;
+  contractLogo1Side?: ContractDef['contractLogo1Side'];
+  contractLogo2Side?: ContractDef['contractLogo2Side'];
+  contractDraftWatermark?: boolean;
+  contractDraftWatermarkText?: string;
+  companyName?: string;
+  parties: ProposalParty[];
+  sections: ProposalSection[];
+  lineItems: ProposalLineItem[];
+  addOns: ProposalAddOn[];
+  currency: string;
+  rtlLanguage: ProposalRtlLang;
+  status: ProposalStatus;
+  createdAt: number;
+  updatedAt: number;
+}

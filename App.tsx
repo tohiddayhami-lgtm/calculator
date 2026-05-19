@@ -97,6 +97,13 @@ import {
   ContractAddOn,
   ContractStatus,
   ContractRtlLang,
+  ProposalDef,
+  ProposalSection,
+  ProposalParty,
+  ProposalLineItem,
+  ProposalAddOn,
+  ProposalStatus,
+  ProposalRtlLang,
 } from './types';
 import {
   computeVatFromNet,
@@ -501,6 +508,240 @@ function normalizeImportedContract(inner: Record<string, unknown>): ContractDef 
     status,
     createdAt: typeof inner.createdAt === 'number' ? inner.createdAt : now,
     updatedAt: now,
+  };
+}
+
+const PROPOSAL_JSON_SCHEMA_VERSION = '1.0';
+
+function newProposalPartId(): string {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildProposalAiExportEnvelope(p: ProposalDef): Record<string, unknown> {
+  return {
+    _schema_version: PROPOSAL_JSON_SCHEMA_VERSION,
+    _about:
+      'CloudExport Pro — bilingual commercial proposal JSON (English + RTL). Used by Forms → Proposals editor and print preview. NOT a legal contract.',
+    _for_ai_models:
+      'Return ONLY valid JSON. Use envelope with top-level "proposal", OR a flat root with the same keys. Preserve sections[] order. Each section needs sectionNum (e.g. EXECUTIVE SUMMARY, 1, 2), titleEn, titleRtl, contentEn, contentRtl. lineItems[] = priced packages; addOns[] = optional extras. Each array item needs string id. Omit id/createdAt/updatedAt on import — app assigns them.',
+    _root_keys:
+      'refNo, titleEn, titleRtl, subtitleEn, subtitleRtl, proposalDate, validUntil (YYYY-MM-DD), logoUrl?, logo2Url?, contractLogoLayout?, companyName?, parties[], sections[], lineItems[], addOns[], currency (e.g. OMR), rtlLanguage ("fa"|"ar"), status ("draft"|"sent"|"accepted"|"declined")',
+    proposal: JSON.parse(JSON.stringify(p)) as ProposalDef,
+  };
+}
+
+function extractProposalJsonRoot(parsed: unknown): Record<string, unknown> | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const o = parsed as Record<string, unknown>;
+  if (o.proposal && typeof o.proposal === 'object' && !Array.isArray(o.proposal)) {
+    return o.proposal as Record<string, unknown>;
+  }
+  if (Array.isArray(o.sections) || Array.isArray(o.parties)) return o;
+  return null;
+}
+
+function normalizeImportedProposal(inner: Record<string, unknown>): ProposalDef | null {
+  const nid = newProposalPartId;
+  const sectionsIn = inner.sections;
+  if (!Array.isArray(sectionsIn)) return null;
+
+  const normParty = (p: unknown): ProposalParty => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      labelEn: String(x.labelEn ?? ''),
+      labelRtl: String(x.labelRtl ?? ''),
+      companyEn: String(x.companyEn ?? ''),
+      companyRtl: String(x.companyRtl ?? ''),
+      regNo: String(x.regNo ?? ''),
+      country: String(x.country ?? ''),
+      repNameEn: String(x.repNameEn ?? ''),
+      repNameRtl: String(x.repNameRtl ?? ''),
+      repTitleEn: String(x.repTitleEn ?? ''),
+      repTitleRtl: String(x.repTitleRtl ?? ''),
+      contactEmail: String(x.contactEmail ?? ''),
+      contactPhone: String(x.contactPhone ?? ''),
+    };
+  };
+
+  const normSection = (p: unknown): ProposalSection => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      sectionNum: String(x.sectionNum ?? ''),
+      titleEn: String(x.titleEn ?? ''),
+      titleRtl: String(x.titleRtl ?? ''),
+      contentEn: String(x.contentEn ?? ''),
+      contentRtl: String(x.contentRtl ?? ''),
+    };
+  };
+
+  const normLineItem = (p: unknown): ProposalLineItem => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      itemEn: String(x.itemEn ?? ''),
+      itemRtl: String(x.itemRtl ?? ''),
+      qty: String(x.qty ?? ''),
+      unitPrice: String(x.unitPrice ?? ''),
+      total: String(x.total ?? ''),
+      notes: String(x.notes ?? ''),
+      selected: Boolean(x.selected),
+    };
+  };
+
+  const normAddOn = (p: unknown): ProposalAddOn => {
+    const x = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      id: typeof x.id === 'string' && x.id ? x.id : nid(),
+      nameEn: String(x.nameEn ?? ''),
+      nameRtl: String(x.nameRtl ?? ''),
+      descEn: String(x.descEn ?? ''),
+      descRtl: String(x.descRtl ?? ''),
+      price: String(x.price ?? ''),
+      selected: Boolean(x.selected),
+    };
+  };
+
+  const partiesRaw = Array.isArray(inner.parties) ? inner.parties : [];
+  const lineItemsRaw = Array.isArray(inner.lineItems) ? inner.lineItems : [];
+  const addOnsRaw = Array.isArray(inner.addOns) ? inner.addOns : [];
+
+  const rtlLanguage: ProposalRtlLang = inner.rtlLanguage === 'ar' ? 'ar' : 'fa';
+  let status: ProposalStatus = 'draft';
+  if (inner.status === 'sent' || inner.status === 'accepted' || inner.status === 'declined') status = inner.status;
+
+  const y = new Date().getFullYear();
+  const refNo =
+    typeof inner.refNo === 'string' && inner.refNo.trim()
+      ? inner.refNo.trim()
+      : `PROP-${y}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+
+  const now = Date.now();
+  const today = new Date().toISOString().split('T')[0];
+  const validDefault = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+
+  return {
+    id: typeof inner.id === 'string' && inner.id ? inner.id : String(now),
+    refNo,
+    titleEn: String(inner.titleEn ?? 'COMMERCIAL PROPOSAL'),
+    titleRtl: String(inner.titleRtl ?? ''),
+    subtitleEn: String(inner.subtitleEn ?? ''),
+    subtitleRtl: String(inner.subtitleRtl ?? ''),
+    proposalDate: typeof inner.proposalDate === 'string' && inner.proposalDate ? inner.proposalDate : today,
+    validUntil: typeof inner.validUntil === 'string' && inner.validUntil ? inner.validUntil : validDefault,
+    logoUrl: typeof inner.logoUrl === 'string' ? inner.logoUrl : '',
+    logo2Url: typeof inner.logo2Url === 'string' ? inner.logo2Url : '',
+    contractLogoLayout:
+      inner.contractLogoLayout === 'title-right' ||
+      inner.contractLogoLayout === 'banner-top' ||
+      inner.contractLogoLayout === 'corners' ||
+      inner.contractLogoLayout === 'corners-mirror'
+        ? inner.contractLogoLayout
+        : 'title-left',
+    contractLogoAlign:
+      inner.contractLogoAlign === 'left' || inner.contractLogoAlign === 'right'
+        ? inner.contractLogoAlign
+        : 'center',
+    contractLogoSize:
+      inner.contractLogoSize === 'sm' || inner.contractLogoSize === 'lg' ? inner.contractLogoSize : 'md',
+    contractLogoSpread: inner.contractLogoSpread === 'compact' ? 'compact' : 'wide',
+    contractLogoGapPx:
+      typeof inner.contractLogoGapPx === 'number' && Number.isFinite(inner.contractLogoGapPx)
+        ? Math.round(inner.contractLogoGapPx)
+        : undefined,
+    contractLogoInsetPx:
+      typeof inner.contractLogoInsetPx === 'number' && Number.isFinite(inner.contractLogoInsetPx)
+        ? Math.round(inner.contractLogoInsetPx)
+        : undefined,
+    contractLogo1Side:
+      inner.contractLogo1Side === 'left' || inner.contractLogo1Side === 'center' || inner.contractLogo1Side === 'right'
+        ? inner.contractLogo1Side
+        : 'left',
+    contractLogo2Side:
+      inner.contractLogo2Side === 'left' || inner.contractLogo2Side === 'center' || inner.contractLogo2Side === 'right'
+        ? inner.contractLogo2Side
+        : 'right',
+    contractDraftWatermark: Boolean(inner.contractDraftWatermark),
+    contractDraftWatermarkText:
+      typeof inner.contractDraftWatermarkText === 'string' ? inner.contractDraftWatermarkText : undefined,
+    companyName: typeof inner.companyName === 'string' ? inner.companyName : '',
+    parties: partiesRaw.length
+      ? partiesRaw.map(normParty)
+      : [
+          {
+            id: nid(),
+            labelEn: 'PROPOSER',
+            labelRtl: 'ارائه‌دهنده',
+            companyEn: '',
+            companyRtl: '',
+            regNo: '',
+            country: '',
+            repNameEn: '',
+            repNameRtl: '',
+            repTitleEn: '',
+            repTitleRtl: '',
+            contactEmail: '',
+            contactPhone: '',
+          },
+          {
+            id: nid(),
+            labelEn: 'CLIENT',
+            labelRtl: 'مشتری',
+            companyEn: '',
+            companyRtl: '',
+            regNo: '',
+            country: '',
+            repNameEn: '',
+            repNameRtl: '',
+            repTitleEn: '',
+            repTitleRtl: '',
+            contactEmail: '',
+            contactPhone: '',
+          },
+        ],
+    sections: sectionsIn.map(normSection),
+    lineItems: lineItemsRaw.map(normLineItem),
+    addOns: addOnsRaw.map(normAddOn),
+    currency: typeof inner.currency === 'string' && inner.currency.trim() ? inner.currency.trim() : 'OMR',
+    rtlLanguage,
+    status,
+    createdAt: typeof inner.createdAt === 'number' ? inner.createdAt : now,
+    updatedAt: now,
+  };
+}
+
+/** Reuse contract header/logo helpers in preview and Word export. */
+function proposalAsContractHeader(p: ProposalDef): ContractDef {
+  return {
+    id: p.id,
+    refNo: p.refNo,
+    titleEn: p.titleEn,
+    titleRtl: p.titleRtl,
+    subtitleEn: p.subtitleEn,
+    subtitleRtl: p.subtitleRtl,
+    effectiveDate: p.proposalDate,
+    logoUrl: p.logoUrl,
+    logo2Url: p.logo2Url,
+    contractLogoLayout: p.contractLogoLayout,
+    contractLogoAlign: p.contractLogoAlign,
+    contractLogoSize: p.contractLogoSize,
+    contractLogoSpread: p.contractLogoSpread,
+    contractLogoGapPx: p.contractLogoGapPx,
+    contractLogoInsetPx: p.contractLogoInsetPx,
+    contractLogo1Side: p.contractLogo1Side,
+    contractLogo2Side: p.contractLogo2Side,
+    contractDraftWatermark: p.contractDraftWatermark,
+    contractDraftWatermarkText: p.contractDraftWatermarkText,
+    companyName: p.companyName,
+    parties: [],
+    clauses: [],
+    scheduleRows: [],
+    addOns: [],
+    rtlLanguage: p.rtlLanguage,
+    status: 'draft',
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
   };
 }
 
@@ -1317,6 +1558,7 @@ function parseInvoiceTextPresetsFromStorage(raw: string | null): InvoiceTextPres
 const FORM_HEADER_PRESETS_STORAGE_KEY = 'exportcalc_form_header_presets_v1';
 const MAX_FORM_HEADER_PRESETS = 25;
 const CONTRACTS_STORAGE_KEY = 'exportcalc_contracts_v1';
+const PROPOSALS_STORAGE_KEY = 'exportcalc_proposals_v1';
 
 function parseFormHeaderPresetsFromStorage(raw: string | null): FormHeaderPreset[] {
   try {
@@ -2426,6 +2668,155 @@ function downloadContractAsWord(c: ContractDef) {
   const html = buildContractWordHtml(c);
   const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
   const safe = String(c.refNo || c.id).replace(/[^\w.-]+/g, '_') || 'contract';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safe}.doc`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildProposalWordHtml(p: ProposalDef): string {
+  const rtlFont = p.rtlLanguage === 'fa'
+    ? 'Vazirmatn,Tahoma,Segoe UI,sans-serif'
+    : 'Noto Naskh Arabic,Tahoma,Segoe UI,sans-serif';
+  const cForMedia = proposalAsContractHeader({
+    ...p,
+    logoUrl: p.logoUrl && safeCatalogMediaUrl(p.logoUrl) ? p.logoUrl : '',
+    logo2Url: p.logo2Url && safeCatalogMediaUrl(p.logo2Url) ? p.logo2Url : '',
+  });
+  const headerHtml = buildContractHeaderHtml(cForMedia, rtlFont);
+  const wm = normalizeContractDraftWatermark(cForMedia);
+  const watermarkHtml = wm.enabled ? contractDraftWatermarkBodyHtml(wm.text) : '';
+  const cur = escapeHtml(p.currency || 'OMR');
+
+  const partiesRows = p.parties
+    .map(
+      (party, pi) => `
+    <tr>
+      <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #cbd5e1;font-size:11pt;">
+        <div>${pi + 1}. ${escapeHtml(party.labelEn)}:</div>
+        ${party.companyEn ? `<div>${escapeHtml(party.companyEn)}</div>` : ''}
+        ${party.regNo ? `<div>Reg. No.: ${escapeHtml(party.regNo)}</div>` : ''}
+        ${party.country ? `<div>Country: ${escapeHtml(party.country)}</div>` : ''}
+        ${party.repNameEn ? `<div style="margin-top:4px">Contact: ${escapeHtml(party.repNameEn)}</div>` : ''}
+        ${party.repTitleEn ? `<div>${escapeHtml(party.repTitleEn)}</div>` : ''}
+        ${party.contactEmail ? `<div>Email: ${escapeHtml(party.contactEmail)}</div>` : ''}
+        ${party.contactPhone ? `<div>Phone: ${escapeHtml(party.contactPhone)}</div>` : ''}
+      </td>
+      <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #cbd5e1;font-size:11pt;direction:rtl;text-align:right;font-family:${rtlFont}">
+        <div style="font-weight:bold;margin-bottom:4px">${pi + 1}. ${escapeHtml(party.labelRtl)}:</div>
+        ${party.companyRtl ? `<div>${escapeHtml(party.companyRtl)}</div>` : ''}
+        ${party.regNo ? `<div>شماره ثبت: ${escapeHtml(party.regNo)}</div>` : ''}
+        ${party.country ? `<div>کشور: ${escapeHtml(party.country)}</div>` : ''}
+        ${party.repNameRtl ? `<div style="margin-top:4px">تماس: ${escapeHtml(party.repNameRtl)}</div>` : ''}
+        ${party.repTitleRtl ? `<div>${escapeHtml(party.repTitleRtl)}</div>` : ''}
+        ${party.contactEmail ? `<div>ایمیل: ${escapeHtml(party.contactEmail)}</div>` : ''}
+        ${party.contactPhone ? `<div>تلفن: ${escapeHtml(party.contactPhone)}</div>` : ''}
+      </td>
+    </tr>`,
+    )
+    .join('');
+
+  const sectionBlocks = p.sections
+    .map(sec => {
+      const head =
+        sec.titleEn || sec.titleRtl
+          ? `<tr style="background:#f1f5f9;">
+        <th style="width:50%;padding:6px 12px;font-size:11pt;border:1px solid #cbd5e1;text-align:left">${escapeHtml(sec.titleEn)}</th>
+        <th style="width:50%;padding:6px 12px;font-size:11pt;border:1px solid #cbd5e1;text-align:right;direction:rtl;font-family:${rtlFont}">${escapeHtml(sec.titleRtl)}</th>
+      </tr>`
+          : '';
+      return `<table style="width:100%;border-collapse:collapse;margin-bottom:0">${head ? `<thead>${head}</thead>` : ''}<tbody><tr>
+        <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #e2e8f0;font-size:11pt;line-height:1.65;white-space:pre-wrap">${escapeHtml(sec.contentEn).replace(/\n/g, '<br/>')}</td>
+        <td style="width:50%;padding:10px 12px;vertical-align:top;border:1px solid #e2e8f0;font-size:11pt;line-height:1.65;direction:rtl;text-align:right;font-family:${rtlFont};white-space:pre-wrap">${escapeHtml(sec.contentRtl).replace(/\n/g, '<br/>')}</td>
+      </tr></tbody></table>`;
+    })
+    .join('');
+
+  let pricingHtml = '';
+  if (p.lineItems.length > 0) {
+    const rows = p.lineItems
+      .map(
+        row => `<tr>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px">${escapeHtml(row.itemEn)}${row.itemRtl ? `<div dir="rtl" style="text-align:right;font-size:10pt;color:#64748b;font-family:${rtlFont}">${escapeHtml(row.itemRtl)}</div>` : ''}${row.notes ? `<div style="font-size:10pt;color:#64748b">${escapeHtml(row.notes)}</div>` : ''}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${escapeHtml(row.qty)}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${escapeHtml(row.unitPrice)}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${escapeHtml(row.total)}</td>
+        <td style="border:1px solid #e2e8f0;padding:6px 8px;text-align:center">${row.selected ? '☑' : '☐'}</td>
+      </tr>`,
+      )
+      .join('');
+    pricingHtml = `<h2 style="font-size:13pt;margin:16px 0 8px">PRICING OPTIONS / گزینه‌های قیمت‌گذاری</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:11pt">
+        <thead><tr style="background:#f1f5f9">
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:left">Package / بسته</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Qty</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Unit (${cur})</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Total (${cur})</th>
+          <th style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center">Sel.</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  let addOnHtml = '';
+  if (p.addOns.length > 0) {
+    const addRows = p.addOns
+      .map(
+        ao => `<tr>
+          <td style="border:1px solid #e2e8f0;padding:5px 8px"><b>${escapeHtml(ao.nameEn)}</b>${ao.nameRtl ? ` / <span dir="rtl" style="font-family:${rtlFont}">${escapeHtml(ao.nameRtl)}</span>` : ''}${ao.descEn ? `<div style="font-size:10pt;color:#64748b">${escapeHtml(ao.descEn)}</div>` : ''}${ao.descRtl ? `<div dir="rtl" style="font-size:10pt;color:#64748b;font-family:${rtlFont}">${escapeHtml(ao.descRtl)}</div>` : ''}</td>
+          <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:center">${escapeHtml(ao.price)} ${cur}</td>
+          <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:center">${ao.selected ? '☑' : '☐'}</td>
+        </tr>`,
+      )
+      .join('');
+    addOnHtml = `<h3 style="font-size:12pt;margin:12px 0 6px">Optional Add-Ons / افزونه‌های اختیاری</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:11pt">
+        <thead><tr style="background:#f8fafc"><th style="border:1px solid #cbd5e1;padding:5px 8px;text-align:left">Add-On</th><th style="border:1px solid #cbd5e1;padding:5px 8px;text-align:center">Price (${cur})</th><th style="border:1px solid #cbd5e1;padding:5px 8px;text-align:center">Sel.</th></tr></thead>
+        <tbody>${addRows}</tbody>
+      </table>`;
+  }
+
+  const metaRow = `<p style="font-size:10pt;color:#64748b;margin:8px 0 12px">Proposal date: ${escapeHtml(p.proposalDate)} | Valid until: ${escapeHtml(p.validUntil)} | Ref: ${escapeHtml(p.refNo)}</p>`;
+
+  const acceptCells = (p.parties.length > 0 ? p.parties.slice(0, 2) : [
+    { id: 'pr', labelEn: 'PROPOSER', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', contactEmail: '', contactPhone: '' },
+    { id: 'cl', labelEn: 'CLIENT', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', contactEmail: '', contactPhone: '' },
+  ])
+    .map(
+      (party, pi, arr) => `
+    <td style="width:${100 / arr.length}%;padding:14px;vertical-align:top;border:1px solid #cbd5e1;font-size:11pt">
+      <div style="font-weight:bold;margin-bottom:6px">${escapeHtml(party.labelEn).toUpperCase()} — ACCEPTANCE</div>
+      ${party.companyEn ? `<div>${escapeHtml(party.companyEn)}</div>` : ''}
+      <div style="margin-top:20px;font-size:10pt;color:#475569">Authorized signature:</div>
+      <div style="border-bottom:1px solid #94a3b8;margin-top:28px;width:85%"></div>
+      <div style="margin-top:8px;font-size:10pt;color:#475569">Date: ________________</div>
+    </td>`,
+    )
+    .join('');
+
+  return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="en">
+<head><meta charset="utf-8"><title>${escapeHtml(p.titleEn)}</title>
+<style>body{font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#1e293b;margin:24px;line-height:1.6}</style>
+</head><body>
+${watermarkHtml}
+${headerHtml}
+${metaRow}
+${p.parties.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr><th colspan="2" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">PARTIES / طرفین</th></tr></thead><tbody>${partiesRows}</tbody></table>` : ''}
+${sectionBlocks}
+${pricingHtml}
+${addOnHtml}
+<table style="width:100%;border-collapse:collapse;margin-top:20px"><thead><tr><th colspan="2" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:10pt">ACCEPTANCE / تأیید پیشنهاد</th></tr></thead><tbody><tr>${acceptCells}</tr></tbody></table>
+<p style="text-align:center;font-size:9pt;color:#94a3b8;margin-top:16px">${escapeHtml(p.titleEn)} | Proposal — not a binding contract until signed separately.</p>
+</body></html>`;
+}
+
+function downloadProposalAsWord(p: ProposalDef) {
+  const html = buildProposalWordHtml(p);
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const safe = String(p.refNo || p.id).replace(/[^\w.-]+/g, '_') || 'proposal';
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -4393,7 +4784,7 @@ function AppInner() {
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'archive'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'proposals' | 'archive'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
   const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
@@ -4431,6 +4822,19 @@ function AppInner() {
   const [contractsSubView, setContractsSubView] = useState<'list' | 'editor' | 'preview'>('list');
   const [editingContract, setEditingContract] = useState<ContractDef | null>(null);
   const [contractEditorTab, setContractEditorTab] = useState<'info' | 'parties' | 'clauses' | 'schedule'>('info');
+
+  // -- STATE: PROPOSALS --
+  const [proposals, setProposals] = useState<ProposalDef[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(PROPOSALS_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  });
+  const [proposalsSubView, setProposalsSubView] = useState<'list' | 'editor' | 'preview'>('list');
+  const [editingProposal, setEditingProposal] = useState<ProposalDef | null>(null);
+  const [proposalEditorTab, setProposalEditorTab] = useState<'info' | 'parties' | 'sections' | 'pricing'>('info');
 
   // -- STATE: COMMUNITY HUB --
   const [communityPosts, setCommunityPosts] = useState<any[]>([]);
@@ -4609,6 +5013,11 @@ function AppInner() {
     if (typeof window === 'undefined') return;
     try { localStorage.setItem(CONTRACTS_STORAGE_KEY, JSON.stringify(contracts)); } catch { /* ignore */ }
   }, [contracts]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(proposals)); } catch { /* ignore */ }
+  }, [proposals]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
@@ -16466,6 +16875,364 @@ function AppInner() {
     );
   };
 
+  const makeBlankProposal = (): ProposalDef => {
+    const ts = Date.now().toString();
+    const today = new Date().toISOString().split('T')[0];
+    const validUntil = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+    return {
+      id: ts,
+      refNo: `PROP-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      titleEn: 'COMMERCIAL PROPOSAL',
+      titleRtl: 'پیشنهاد تجاری',
+      subtitleEn: '', subtitleRtl: '',
+      proposalDate: today, validUntil,
+      logoUrl: '', logo2Url: '',
+      contractLogoLayout: 'title-left', contractLogoAlign: 'center', contractLogoSize: 'md',
+      contractLogoSpread: 'wide', contractLogoGapPx: 32, contractLogoInsetPx: 0,
+      contractLogo1Side: 'left', contractLogo2Side: 'right', contractDraftWatermark: false,
+      companyName: '',
+      parties: [
+        { id: 'pr_' + ts, labelEn: 'PROPOSER', labelRtl: 'ارائه‌دهنده', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', contactEmail: '', contactPhone: '' },
+        { id: 'cl_' + ts, labelEn: 'CLIENT', labelRtl: 'مشتری', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', contactEmail: '', contactPhone: '' },
+      ],
+      sections: [{ id: 's1_' + ts, sectionNum: 'EXECUTIVE SUMMARY', titleEn: 'EXECUTIVE SUMMARY', titleRtl: 'خلاصه مدیریتی', contentEn: 'We are pleased to submit this proposal...', contentRtl: 'با کمال میل این پیشنهاد را ارائه می‌نماییم...' }],
+      lineItems: [], addOns: [], currency: 'OMR', rtlLanguage: 'fa', status: 'draft', createdAt: Date.now(), updatedAt: Date.now(),
+    };
+  };
+
+  const makeExportProposalTemplate = (): ProposalDef => {
+    const tpl = makeBlankProposal();
+    const ts = tpl.id;
+    return {
+      ...tpl,
+      refNo: `PROP-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      titleEn: 'METAVERSE EXPORT PAVILION — COMMERCIAL PROPOSAL',
+      titleRtl: 'پیشنهاد تجاری غرفه صادراتی متاورسی',
+      subtitleEn: 'Tohid Meta Port — Digital Export Presence',
+      subtitleRtl: 'توحید متا پورت — حضور صادراتی دیجیتال',
+      contractLogoLayout: 'corners',
+      companyName: 'Tohid Dayhami Business Solutions Center SPC',
+      parties: [
+        { id: 'pr_' + ts, labelEn: 'PROPOSER', labelRtl: 'ارائه‌دهنده', companyEn: 'Tohid Dayhami Business Solutions Center SPC', companyRtl: 'مرکز راهکارهای کسب‌وکار توحید دیهمی', regNo: '1617064', country: 'Sultanate of Oman', repNameEn: 'Mr. Tohid Dayhami', repNameRtl: 'آقای توحید دیهمی', repTitleEn: 'Founder', repTitleRtl: 'بنیانگذار', contactEmail: 'info@example.com', contactPhone: '+968' },
+        { id: 'cl_' + ts, labelEn: 'CLIENT', labelRtl: 'مشتری', companyEn: '[Client Company]', companyRtl: '[نام شرکت]', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', contactEmail: '', contactPhone: '' },
+      ],
+      sections: [
+        { id: 'es_' + ts, sectionNum: 'EXECUTIVE SUMMARY', titleEn: 'EXECUTIVE SUMMARY', titleRtl: 'خلاصه مدیریتی', contentEn: 'Tohid Meta Port offers a 3D export pavilion on our metaverse platform (web, mobile, VR).\n\nThis document is a commercial proposal — not a binding contract.', contentRtl: 'توحید متا پورت پاویون صادراتی سه‌بعدی در پلتفرم متاورسی ارائه می‌دهد.\n\nاین سند پیشنهاد تجاری است — قرارداد الزام‌آور نیست.' },
+        { id: 'sc_' + ts, sectionNum: '1', titleEn: 'SCOPE & DELIVERABLES', titleRtl: 'دامنه و تحویل‌دادنی‌ها', contentEn: '3D design, product slots, inquiry forms, hall listing, hosting, reports, buyer outreach, interpretation per package.', contentRtl: 'طراحی سه‌بعدی، جایگاه محصول، فرم استعلام، ثبت در سالن، میزبانی، گزارش، جذب خریدار، ترجمه همزمان.' },
+        { id: 'tl_' + ts, sectionNum: '2', titleEn: 'TIMELINE', titleRtl: 'زمان‌بندی', contentEn: '~30 working days: brand intake → 3D build → integration → launch.', contentRtl: 'حدود ۳۰ روز کاری: دریافت برند → ساخت → یکپارچه‌سازی → راه‌اندازی.' },
+        { id: 'tv_' + ts, sectionNum: '3', titleEn: 'VALIDITY', titleRtl: 'اعتبار', contentEn: 'Valid until the Valid Until date. Prices indicative; final terms in services agreement.', contentRtl: 'تا تاریخ اعتبار معتبر است. قیمت‌ها راهنما؛ شرایط نهایی در قرارداد خدمات.' },
+      ],
+      lineItems: [
+        { id: 'li1_' + ts, itemEn: 'Booth — Shared Hall', itemRtl: 'غرفه — سالن مشترک', qty: '1', unitPrice: '1,500', total: '1,500', notes: 'Build', selected: false },
+        { id: 'li2_' + ts, itemEn: 'Pavilion — Standard (annual)', itemRtl: 'پاویون — استاندارد', qty: '1', unitPrice: '6,000', total: '6,000', notes: 'Build + ops', selected: false },
+        { id: 'li3_' + ts, itemEn: 'Pavilion — Premium (annual)', itemRtl: 'پاویون — ویژه', qty: '1', unitPrice: '10,800', total: '10,800', notes: 'Build + ops', selected: false },
+      ],
+      addOns: [
+        { id: 'ao1_' + ts, nameEn: 'Hall Banner', nameRtl: 'بنر سالن', descEn: 'Sector hall entrance banner', descRtl: 'بنر ورودی سالن', price: '350', selected: false },
+        { id: 'ao2_' + ts, nameEn: 'Featured Listing', nameRtl: 'نمایش ویژه', descEn: 'Top search placement', descRtl: 'جایگاه برتر جستجو', price: '500', selected: false },
+        { id: 'ao3_' + ts, nameEn: 'Outreach Campaign', nameRtl: 'کمپین جذب', descEn: 'Per campaign', descRtl: 'هر کمپین', price: '1,200', selected: false },
+      ],
+    };
+  };
+
+  const saveProposalsList = (updated: ProposalDef[]) => {
+    setProposals(updated);
+    try { localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(updated)); } catch {}
+  };
+
+  const renderProposalsList = () => {
+    const statusBadge = (s: ProposalStatus) => {
+      const map: Record<ProposalStatus, string> = { draft: 'bg-amber-50 border-amber-200 text-amber-700', sent: 'bg-blue-50 border-blue-200 text-blue-700', accepted: 'bg-green-50 border-green-200 text-green-700', declined: 'bg-red-50 border-red-200 text-red-700' };
+      return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${map[s]}`}>{s}</span>;
+    };
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Proposals</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Bilingual commercial proposals — proposal format (not contracts)</p>
+          </div>
+          <div className="flex gap-2 flex-wrap justify-end">
+            <button type="button" onClick={() => downloadJsonFile('proposal_schema_sample_export_template.json', buildProposalAiExportEnvelope(makeExportProposalTemplate()))}
+              className="flex items-center gap-2 text-sm border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg px-3 py-2 font-medium" title="AI sample JSON">
+              <Download className="w-4 h-4" /> Sample JSON
+            </button>
+            <button type="button" onClick={() => {
+              const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json';
+              input.onchange = (ev) => {
+                const file = (ev.target as HTMLInputElement).files?.[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  try {
+                    const root = extractProposalJsonRoot(JSON.parse(String(reader.result || '')));
+                    if (!root) { alert('Invalid proposal JSON.'); return; }
+                    const normalized = normalizeImportedProposal(root);
+                    if (!normalized) { alert('sections[] required.'); return; }
+                    const fresh = { ...normalized, id: `${Date.now()}`, createdAt: Date.now(), updatedAt: Date.now() };
+                    saveProposalsList([...proposals, fresh]); setEditingProposal(fresh); setProposalEditorTab('info'); setProposalsSubView('editor');
+                  } catch { alert('Could not parse JSON.'); }
+                };
+                reader.readAsText(file);
+              };
+              input.click();
+            }} className="flex items-center gap-2 text-sm border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 rounded-lg px-3 py-2 font-medium">
+              <Upload className="w-4 h-4" /> Import JSON
+            </button>
+            <button onClick={() => { setEditingProposal(makeExportProposalTemplate()); setProposalEditorTab('info'); setProposalsSubView('editor'); }}
+              className="flex items-center gap-2 text-sm border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-lg px-3 py-2 font-medium">
+              <FileText className="w-4 h-4" /> Export Template
+            </button>
+            <button onClick={() => { setEditingProposal(makeBlankProposal()); setProposalEditorTab('info'); setProposalsSubView('editor'); }}
+              className="flex items-center gap-2 text-sm bg-violet-600 text-white hover:bg-violet-700 rounded-lg px-3 py-2 font-medium">
+              <Plus className="w-4 h-4" /> New Proposal
+            </button>
+          </div>
+        </div>
+        {proposals.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
+            <p className="text-slate-500 mb-4">No proposals yet</p>
+            <button onClick={() => { setEditingProposal(makeExportProposalTemplate()); setProposalEditorTab('info'); setProposalsSubView('editor'); }} className="text-sm text-violet-600 hover:underline">Load template →</button>
+          </div>
+        ) : proposals.map(p => (
+          <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-4">
+            <FileText className="w-5 h-5 text-violet-500 mt-1" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{p.titleEn}</span>{statusBadge(p.status)}<span className="text-xs font-mono text-slate-400">{p.refNo}</span></div>
+              {p.titleRtl && <div dir="rtl" className="text-sm text-slate-500 text-right">{p.titleRtl}</div>}
+              <p className="text-xs text-slate-400 mt-1">{p.sections.length} sections · {p.lineItems.length} packages · {p.addOns.length} add-ons</p>
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => { setEditingProposal(p); setProposalsSubView('preview'); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Printer className="w-4 h-4" /></button>
+              <button onClick={() => { setEditingProposal(JSON.parse(JSON.stringify(p))); setProposalEditorTab('info'); setProposalsSubView('editor'); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Pencil className="w-4 h-4" /></button>
+              <button onClick={() => downloadJsonFile(`proposal_${p.refNo}.json`, buildProposalAiExportEnvelope(p))} className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Download className="w-4 h-4" /></button>
+              <button onClick={() => { if (confirm('Delete?')) saveProposalsList(proposals.filter(x => x.id !== p.id)); }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderProposalEditor = () => {
+    if (!editingProposal) return null;
+    const p = editingProposal;
+    const upd = (patch: Partial<ProposalDef>) => setEditingProposal({ ...p, ...patch, updatedAt: Date.now() });
+    const hdr = proposalAsContractHeader(p);
+    const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300';
+    const labelCls = 'text-xs text-slate-500 font-medium mb-1 block';
+    const rtlInputCls = inputCls + ' text-right';
+    const saveList = () => {
+      const updated = proposals.some(x => x.id === p.id) ? proposals.map(x => x.id === p.id ? p : x) : [...proposals, p];
+      saveProposalsList(updated);
+    };
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 bg-white rounded-xl border p-3 sticky top-0 z-10 print:hidden">
+          <button onClick={() => { setProposalsSubView('list'); setEditingProposal(null); }} className="text-sm text-slate-500 flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Back</button>
+          <input value={p.titleEn} onChange={e => upd({ titleEn: e.target.value })} className="flex-1 font-semibold bg-transparent border-none outline-none" />
+          <select value={p.status} onChange={e => upd({ status: e.target.value as ProposalStatus })} className="text-xs border rounded-full px-2 py-1">
+            <option value="draft">draft</option><option value="sent">sent</option><option value="accepted">accepted</option><option value="declined">declined</option>
+          </select>
+          <button onClick={() => { saveList(); setProposalsSubView('preview'); }} className="text-sm border rounded-lg px-3 py-1.5"><Printer className="w-4 h-4 inline" /> Preview</button>
+          <button onClick={() => downloadJsonFile(`proposal_${p.refNo}.json`, buildProposalAiExportEnvelope(p))} className="text-sm border rounded-lg px-3 py-1.5"><Download className="w-4 h-4 inline" /></button>
+          <button onClick={() => { saveList(); setProposalsSubView('list'); setEditingProposal(null); }} className="text-sm bg-violet-600 text-white rounded-lg px-3 py-1.5"><Save className="w-4 h-4 inline" /> Save</button>
+        </div>
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+          {(['info', 'parties', 'sections', 'pricing'] as const).map(tab => (
+            <button key={tab} onClick={() => setProposalEditorTab(tab)} className={`px-4 py-1.5 rounded-lg text-sm font-medium ${proposalEditorTab === tab ? 'bg-white shadow-sm' : 'text-slate-500'}`}>
+              {tab === 'info' ? 'Info' : tab === 'parties' ? 'Parties' : tab === 'sections' ? 'Sections' : 'Pricing & Add-ons'}
+            </button>
+          ))}
+        </div>
+        {proposalEditorTab === 'info' && (
+          <div className="bg-white rounded-xl border p-6 grid grid-cols-2 gap-4">
+            <div><label className={labelCls}>Ref</label><input value={p.refNo} onChange={e => upd({ refNo: e.target.value })} className={inputCls} /></div>
+            <div><label className={labelCls}>Currency</label><input value={p.currency} onChange={e => upd({ currency: e.target.value })} className={inputCls} /></div>
+            <div><label className={labelCls}>Proposal date</label><input type="date" value={p.proposalDate} onChange={e => upd({ proposalDate: e.target.value })} className={inputCls} /></div>
+            <div><label className={labelCls}>Valid until</label><input type="date" value={p.validUntil} onChange={e => upd({ validUntil: e.target.value })} className={inputCls} /></div>
+            <div><label className={labelCls}>Title EN</label><input value={p.titleEn} onChange={e => upd({ titleEn: e.target.value })} className={inputCls} /></div>
+            <div><label className={labelCls}>Title RTL</label><input dir="rtl" value={p.titleRtl} onChange={e => upd({ titleRtl: e.target.value })} className={rtlInputCls} /></div>
+            <div><label className={labelCls}>Subtitle EN</label><input value={p.subtitleEn} onChange={e => upd({ subtitleEn: e.target.value })} className={inputCls} /></div>
+            <div><label className={labelCls}>Subtitle RTL</label><input dir="rtl" value={p.subtitleRtl} onChange={e => upd({ subtitleRtl: e.target.value })} className={rtlInputCls} /></div>
+            <ContractLogosEditor c={hdr} onChange={patch => upd(patch as Partial<ProposalDef>)} inputCls={inputCls} labelCls={labelCls} />
+            <ContractDraftWatermarkEditor c={hdr} onChange={patch => upd(patch as Partial<ProposalDef>)} inputCls={inputCls} labelCls={labelCls} />
+            <div><label className={labelCls}>RTL language</label>
+              <select value={p.rtlLanguage} onChange={e => upd({ rtlLanguage: e.target.value as ProposalRtlLang })} className={inputCls}>
+                <option value="fa">Persian</option><option value="ar">Arabic</option>
+              </select>
+            </div>
+          </div>
+        )}
+        {proposalEditorTab === 'parties' && p.parties.map((party, pi) => (
+          <div key={party.id} className="bg-white rounded-xl border p-5 grid grid-cols-2 gap-3">
+            <h3 className="col-span-2 font-semibold">Party {pi + 1}</h3>
+            <input placeholder="Label EN" value={party.labelEn} onChange={e => upd({ parties: p.parties.map(x => x.id === party.id ? { ...x, labelEn: e.target.value } : x) })} className={inputCls} />
+            <input dir="rtl" placeholder="Label RTL" value={party.labelRtl} onChange={e => upd({ parties: p.parties.map(x => x.id === party.id ? { ...x, labelRtl: e.target.value } : x) })} className={rtlInputCls} />
+            <input placeholder="Company EN" value={party.companyEn} onChange={e => upd({ parties: p.parties.map(x => x.id === party.id ? { ...x, companyEn: e.target.value } : x) })} className={inputCls} />
+            <input dir="rtl" placeholder="Company RTL" value={party.companyRtl} onChange={e => upd({ parties: p.parties.map(x => x.id === party.id ? { ...x, companyRtl: e.target.value } : x) })} className={rtlInputCls} />
+            <input placeholder="Email" value={party.contactEmail} onChange={e => upd({ parties: p.parties.map(x => x.id === party.id ? { ...x, contactEmail: e.target.value } : x) })} className={inputCls} />
+            <input placeholder="Phone" value={party.contactPhone} onChange={e => upd({ parties: p.parties.map(x => x.id === party.id ? { ...x, contactPhone: e.target.value } : x) })} className={inputCls} />
+          </div>
+        ))}
+        {proposalEditorTab === 'sections' && (
+          <div className="space-y-3">
+            {p.sections.map((sec, idx) => (
+              <div key={sec.id} className="bg-white rounded-xl border p-4">
+                <div className="flex gap-2 mb-2">
+                  <input value={sec.sectionNum} onChange={e => upd({ sections: p.sections.map(s => s.id === sec.id ? { ...s, sectionNum: e.target.value } : s) })} className="w-28 text-xs font-mono border rounded px-2" />
+                  <button onClick={() => { const arr = [...p.sections]; if (idx > 0) { [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]]; upd({ sections: arr }); } }} className="text-xs">▲</button>
+                  <button onClick={() => { const arr = [...p.sections]; if (idx < arr.length - 1) { [arr[idx + 1], arr[idx]] = [arr[idx], arr[idx + 1]]; upd({ sections: arr }); } }} className="text-xs">▼</button>
+                  <button onClick={() => upd({ sections: p.sections.filter(s => s.id !== sec.id) })} className="ml-auto text-red-400"><Trash2 className="w-4 h-4" /></button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input value={sec.titleEn} onChange={e => upd({ sections: p.sections.map(s => s.id === sec.id ? { ...s, titleEn: e.target.value } : s) })} className={inputCls} placeholder="Title EN" />
+                  <input dir="rtl" value={sec.titleRtl} onChange={e => upd({ sections: p.sections.map(s => s.id === sec.id ? { ...s, titleRtl: e.target.value } : s) })} className={rtlInputCls} placeholder="Title RTL" />
+                  <textarea rows={5} value={sec.contentEn} onChange={e => upd({ sections: p.sections.map(s => s.id === sec.id ? { ...s, contentEn: e.target.value } : s) })} className={inputCls} />
+                  <textarea rows={5} dir="rtl" value={sec.contentRtl} onChange={e => upd({ sections: p.sections.map(s => s.id === sec.id ? { ...s, contentRtl: e.target.value } : s) })} className={rtlInputCls} />
+                </div>
+              </div>
+            ))}
+            <button onClick={() => upd({ sections: [...p.sections, { id: Date.now().toString(), sectionNum: String(p.sections.length + 1), titleEn: '', titleRtl: '', contentEn: '', contentRtl: '' }] })} className="text-sm text-violet-600 border border-violet-200 rounded-lg px-4 py-2"><Plus className="w-4 h-4 inline" /> Add section</button>
+          </div>
+        )}
+        {proposalEditorTab === 'pricing' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border p-5 overflow-x-auto">
+              <h3 className="font-semibold mb-3">Pricing packages</h3>
+              <table className="w-full text-sm"><thead><tr className="text-xs text-slate-500"><th>Item EN</th><th>Item RTL</th><th>Qty</th><th>Unit</th><th>Total</th><th>Sel</th><th></th></tr></thead>
+                <tbody>{p.lineItems.map(row => (
+                  <tr key={row.id} className={row.selected ? 'bg-violet-50' : ''}>
+                    <td className="p-1"><input value={row.itemEn} onChange={e => upd({ lineItems: p.lineItems.map(r => r.id === row.id ? { ...r, itemEn: e.target.value } : r) })} className="w-full border rounded px-1 text-sm" /></td>
+                    <td className="p-1"><input dir="rtl" value={row.itemRtl} onChange={e => upd({ lineItems: p.lineItems.map(r => r.id === row.id ? { ...r, itemRtl: e.target.value } : r) })} className="w-full border rounded px-1 text-sm text-right" /></td>
+                    <td className="p-1"><input value={row.qty} onChange={e => upd({ lineItems: p.lineItems.map(r => r.id === row.id ? { ...r, qty: e.target.value } : r) })} className="w-14 border rounded text-center text-sm" /></td>
+                    <td className="p-1"><input value={row.unitPrice} onChange={e => upd({ lineItems: p.lineItems.map(r => r.id === row.id ? { ...r, unitPrice: e.target.value } : r) })} className="w-20 border rounded text-center text-sm" /></td>
+                    <td className="p-1"><input value={row.total} onChange={e => upd({ lineItems: p.lineItems.map(r => r.id === row.id ? { ...r, total: e.target.value } : r) })} className="w-20 border rounded text-center text-sm" /></td>
+                    <td className="p-1 text-center"><input type="checkbox" checked={row.selected} onChange={e => upd({ lineItems: p.lineItems.map(r => r.id === row.id ? { ...r, selected: e.target.checked } : r) })} /></td>
+                    <td className="p-1"><button onClick={() => upd({ lineItems: p.lineItems.filter(r => r.id !== row.id) })} className="text-red-400"><Trash2 className="w-4 h-4" /></button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <button onClick={() => upd({ lineItems: [...p.lineItems, { id: Date.now().toString(), itemEn: '', itemRtl: '', qty: '1', unitPrice: '', total: '', notes: '', selected: false }] })} className="mt-2 text-xs text-violet-600">+ Add package</button>
+            </div>
+            <div className="bg-white rounded-xl border p-5">
+              <h3 className="font-semibold mb-3">Optional add-ons</h3>
+              {p.addOns.map(ao => (
+                <div key={ao.id} className="grid grid-cols-[1fr_1fr_80px_50px_32px] gap-2 mb-2 items-center">
+                  <input value={ao.nameEn} onChange={e => upd({ addOns: p.addOns.map(a => a.id === ao.id ? { ...a, nameEn: e.target.value } : a) })} className="border rounded px-2 py-1 text-sm" placeholder="Name EN" />
+                  <input dir="rtl" value={ao.nameRtl} onChange={e => upd({ addOns: p.addOns.map(a => a.id === ao.id ? { ...a, nameRtl: e.target.value } : a) })} className="border rounded px-2 py-1 text-sm text-right" />
+                  <input value={ao.price} onChange={e => upd({ addOns: p.addOns.map(a => a.id === ao.id ? { ...a, price: e.target.value } : a) })} className="border rounded px-2 py-1 text-sm text-center" />
+                  <input type="checkbox" checked={ao.selected} onChange={e => upd({ addOns: p.addOns.map(a => a.id === ao.id ? { ...a, selected: e.target.checked } : a) })} />
+                  <button onClick={() => upd({ addOns: p.addOns.filter(a => a.id !== ao.id) })} className="text-red-400"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              ))}
+              <button onClick={() => upd({ addOns: [...p.addOns, { id: Date.now().toString(), nameEn: '', nameRtl: '', descEn: '', descRtl: '', price: '', selected: false }] })} className="text-xs text-violet-600">+ Add add-on</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderProposalPreview = () => {
+    if (!editingProposal) return null;
+    const p = editingProposal;
+    const hdr = proposalAsContractHeader(p);
+    const draftWm = normalizeContractDraftWatermark(hdr);
+    const rtlFont = p.rtlLanguage === 'fa' ? 'Vazirmatn, Tahoma, sans-serif' : '"Noto Naskh Arabic", Tahoma, sans-serif';
+    const patch = (patch: Partial<ProposalDef>) => {
+      const next = { ...p, ...patch, updatedAt: Date.now() };
+      setEditingProposal(next);
+      if (proposals.some(x => x.id === p.id)) saveProposalsList(proposals.map(x => x.id === p.id ? next : x));
+    };
+    return (
+      <div>
+        <div className="flex gap-3 mb-4 print:hidden">
+          <button onClick={() => setProposalsSubView('editor')} className="text-sm text-slate-500 flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Editor</button>
+          <span className="text-sm font-mono text-slate-400">{p.refNo}</span>
+          <label className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+            <input type="checkbox" checked={draftWm.enabled} onChange={e => patch({ contractDraftWatermark: e.target.checked })} /> DRAFT
+          </label>
+          <div className="flex-1" />
+          <button onClick={() => window.print()} className="bg-violet-600 text-white rounded-lg px-4 py-2 text-sm"><Printer className="w-4 h-4 inline" /> Print</button>
+          <button onClick={() => downloadProposalAsWord(p)} className="border rounded-lg px-4 py-2 text-sm"><FileText className="w-4 h-4 inline" /> Word</button>
+        </div>
+        <style>{`${contractDraftWatermarkPrintCss()}
+          @media print {
+            body * { visibility: hidden; }
+            #proposal-preview-root, #proposal-preview-root * { visibility: visible; }
+            #proposal-preview-root { position: absolute; left: 0; top: 0; width: 100%; margin: 0; box-shadow: none; }
+            .print\\:hidden { display: none !important; }
+            @page { size: A4; margin: 15mm; }
+          }`}</style>
+        <div id="proposal-preview-root" className="relative bg-white mx-auto shadow-lg rounded-xl" style={{ maxWidth: '210mm', fontFamily: 'Georgia, serif', fontSize: '9.5pt', lineHeight: 1.65, color: '#1e293b' }}>
+          {draftWm.enabled && <ContractDraftWatermark text={draftWm.text} />}
+          <ContractHeaderBlock c={hdr} rtlFont={rtlFont} />
+          <p style={{ padding: '8px 14px', fontSize: '8.5pt', color: '#64748b' }}>Proposal date: {p.proposalDate} | Valid until: {p.validUntil} | {p.currency}</p>
+          {p.parties.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr><th colSpan={2} style={{ background: '#4c1d95', color: '#fff', padding: '6px 12px', fontSize: '9pt' }}><span>PARTIES</span><span dir="rtl" style={{ float: 'right', fontFamily: rtlFont }}>طرفین</span></th></tr></thead>
+              <tbody>{p.parties.map((party, pi) => (
+                <tr key={party.id}><td style={{ width: '50%', padding: 10, borderRight: '1px solid #cbd5e1', verticalAlign: 'top' }}>
+                  <b>{pi + 1}. {party.labelEn}</b><br/>{party.companyEn}{party.contactEmail && <><br/>{party.contactEmail}</>}{party.contactPhone && <><br/>{party.contactPhone}</>}
+                </td><td style={{ width: '50%', padding: 10, direction: 'rtl', textAlign: 'right', fontFamily: rtlFont }}>
+                  <b>{pi + 1}. {party.labelRtl}</b><br/>{party.companyRtl}
+                </td></tr>
+              ))}</tbody>
+            </table>
+          )}
+          {p.sections.map(sec => (
+            <div key={sec.id}>
+              {(sec.titleEn || sec.titleRtl) && <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody><tr style={{ background: '#f5f3ff' }}>
+                <td style={{ width: '50%', padding: 6, fontWeight: 700, borderRight: '1px solid #cbd5e1' }}>{sec.titleEn}</td>
+                <td style={{ width: '50%', padding: 6, fontWeight: 700, textAlign: 'right', direction: 'rtl', fontFamily: rtlFont }}>{sec.titleRtl}</td>
+              </tr></tbody></table>}
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody><tr>
+                <td style={{ width: '50%', padding: 10, borderRight: '1px solid #cbd5e1', whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>{sec.contentEn}</td>
+                <td style={{ width: '50%', padding: 10, direction: 'rtl', textAlign: 'right', fontFamily: rtlFont, whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>{sec.contentRtl}</td>
+              </tr></tbody></table>
+            </div>
+          ))}
+          {p.lineItems.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}><thead>
+              <tr><th colSpan={5} style={{ background: '#4c1d95', color: '#fff', padding: 6, fontSize: '9pt' }}>PRICING OPTIONS / گزینه‌های قیمت</th></tr>
+              <tr style={{ background: '#f5f3ff', fontSize: '8pt' }}><th>Package</th><th>Qty</th><th>Unit</th><th>Total</th><th>Sel</th></tr>
+            </thead><tbody>{p.lineItems.map(row => (
+              <tr key={row.id} style={{ background: row.selected ? '#ede9fe' : undefined }}>
+                <td style={{ padding: 6, borderBottom: '1px solid #e2e8f0' }}>{row.itemEn}{row.itemRtl && <div dir="rtl" style={{ fontFamily: rtlFont, color: '#64748b', fontSize: '8pt' }}>{row.itemRtl}</div>}</td>
+                <td style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>{row.qty}</td>
+                <td style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>{row.unitPrice}</td>
+                <td style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>{row.total}</td>
+                <td style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>{row.selected ? '☑' : '☐'}</td>
+              </tr>
+            ))}</tbody></table>
+          )}
+          {p.addOns.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}><thead>
+              <tr><th colSpan={3} style={{ background: '#f5f3ff', padding: 5, fontSize: '8.5pt' }}>Optional Add-Ons / افزونه‌های اختیاری</th></tr>
+            </thead><tbody>{p.addOns.map(ao => (
+              <tr key={ao.id}><td style={{ padding: 5, borderBottom: '1px solid #e2e8f0' }}><b>{ao.nameEn}</b>{ao.nameRtl && ` / ${ao.nameRtl}`}{ao.descEn && <div style={{ fontSize: '8pt', color: '#64748b' }}>{ao.descEn}</div>}</td>
+                <td style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>{ao.price} {p.currency}</td>
+                <td style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>{ao.selected ? '☑' : '☐'}</td></tr>
+            ))}</tbody></table>
+          )}
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 16 }}><thead><tr><th colSpan={2} style={{ background: '#4c1d95', color: '#fff', padding: 6, fontSize: '9pt' }}>ACCEPTANCE / تأیید پیشنهاد</th></tr></thead>
+            <tbody><tr>{(p.parties.length ? p.parties.slice(0, 2) : [{ id: 'a', labelEn: 'PROPOSER', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', contactEmail: '', contactPhone: '' }, { id: 'b', labelEn: 'CLIENT', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', contactEmail: '', contactPhone: '' }]).map(party => (
+              <td key={party.id} style={{ width: '50%', padding: 14, border: '1px solid #cbd5e1', verticalAlign: 'top' }}>
+                <b>{party.labelEn}</b><br/><br/>Signature: ________________<br/>Date: ________________
+              </td>
+            ))}</tr></tbody>
+          </table>
+          <p style={{ textAlign: 'center', fontSize: '8pt', color: '#94a3b8', padding: 8 }}>Commercial proposal — not a binding contract until a separate agreement is signed.</p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderProposals = () => {
+    if (proposalsSubView === 'editor' && editingProposal) return renderProposalEditor();
+    if (proposalsSubView === 'preview' && editingProposal) return renderProposalPreview();
+    return renderProposalsList();
+  };
+
   const renderContracts = () => {
     if (contractsSubView === 'editor' && editingContract) return renderContractEditor();
     if (contractsSubView === 'preview' && editingContract) return renderContractPreview();
@@ -16483,6 +17250,11 @@ function AppInner() {
         <button onClick={() => { setFormsSubView('contracts'); setContractsSubView('list'); }}
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'contracts' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
           <FileText className="w-4 h-4" /> Contracts
+        </button>
+        <div className="w-px bg-slate-200" />
+        <button onClick={() => { setFormsSubView('proposals'); setProposalsSubView('list'); }}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'proposals' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <FileText className="w-4 h-4" /> Proposals
         </button>
         <div className="w-px bg-slate-200" />
         <button onClick={() => setFormsSubView('packinglist')}
@@ -16507,6 +17279,7 @@ function AppInner() {
       </div>
       {formsSubView === 'list' && renderCustomFormsList()}
       {formsSubView === 'contracts' && renderContracts()}
+      {formsSubView === 'proposals' && renderProposals()}
       {formsSubView === 'packinglist' && renderPackingList()}
       {formsSubView === 'archive' && renderFormArchive()}
     </div>
