@@ -3,6 +3,7 @@ import type {
   EducationFeeCurrency,
   EducationInstructorMediaItem,
   EducationParticipant,
+  EducationVipGuest,
 } from './types';
 import { currencyShort } from './educationFormat';
 
@@ -45,6 +46,20 @@ function normResumeMedia(raw: unknown): EducationInstructorMediaItem[] {
     .filter(Boolean) as EducationInstructorMediaItem[];
 }
 
+function normVipGuests(raw: unknown): EducationVipGuest[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x: unknown) => {
+      const o = x as Record<string, unknown>;
+      const id = typeof o.id === 'string' ? o.id : '';
+      const fullName = typeof o.fullName === 'string' ? o.fullName : '';
+      const resume = typeof o.resume === 'string' ? o.resume : '';
+      if (!id) return null;
+      return { id, fullName, resume };
+    })
+    .filter(Boolean) as EducationVipGuest[];
+}
+
 export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
   const opacity =
     typeof c.storyBackgroundOpacity === 'number' && Number.isFinite(c.storyBackgroundOpacity)
@@ -53,6 +68,7 @@ export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
   return {
     ...c,
     instructorResume: c.instructorResume ?? '',
+    instructorPhotoUrl: typeof c.instructorPhotoUrl === 'string' ? c.instructorPhotoUrl : '',
     courseFee: c.courseFee ?? '',
     courseFeeCurrency: normCurrency(c.courseFeeCurrency),
     courseFeeCurrencyLabel:
@@ -72,5 +88,6 @@ export function normalizeEducationCourse(c: EducationCourse): EducationCourse {
         ? Math.min(40, Math.max(14, Math.round(c.storyFootNoteFontSize)))
         : 22,
     participants: (c.participants ?? []).map(normalizeEducationParticipant),
+    vipGuests: normVipGuests(c.vipGuests),
   };
 }

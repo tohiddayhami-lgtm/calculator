@@ -975,6 +975,15 @@ export interface EducationInstructorMediaItem {
   addedAt: number;
 }
 
+/** VIP guest (honorary); does not occupy a seat */
+export interface EducationVipGuest {
+  id: string;
+  /** Full display name */
+  fullName: string;
+  /** Optional short resume / title line for story */
+  resume: string;
+}
+
 export interface EducationParticipant {
   id: string;
   firstName: string;
@@ -997,6 +1006,8 @@ export interface EducationCourse {
   id: string;
   title: string;
   instructorName: string;
+  /** Portrait photo (data URL); shown next to name in UI and story */
+  instructorPhotoUrl?: string;
   /** Short bio / resume for story export */
   instructorResume: string;
   /** Photos, videos, documents for this instructor (course-scoped) */
@@ -1022,6 +1033,8 @@ export interface EducationCourse {
   syllabus: EducationSyllabusItem[];
   seatCapacity: number;
   participants: EducationParticipant[];
+  /** Optional honorary VIP guests (name + optional resume for story) */
+  vipGuests?: EducationVipGuest[];
   createdAt: number;
   updatedAt: number;
 }

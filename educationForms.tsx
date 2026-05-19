@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft,
   BookOpen,
+  Crown,
   Download,
   FileVideo,
   FileText,
@@ -20,6 +21,7 @@ import type {
   EducationInstructorMediaItem,
   EducationParticipant,
   EducationRegistrationStatus,
+  EducationVipGuest,
 } from './types';
 import { normalizeEducationCourse } from './educationNormalize';
 import {
@@ -40,6 +42,7 @@ import {
 export const EDUCATION_STORAGE_KEY = 'exportcalc_education_courses_v1';
 
 const EDUCATION_RESUME_MEDIA_MAX_BYTES = 12 * 1024 * 1024;
+const INSTRUCTOR_PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 
 function resumeMediaKind(mime: string): EducationInstructorMediaItem['kind'] {
   if (mime.startsWith('image/')) return 'image';
@@ -58,6 +61,7 @@ export function makeBlankEducationCourse(): EducationCourse {
     id: String(now),
     title: '',
     instructorName: '',
+    instructorPhotoUrl: '',
     instructorResume: '',
     instructorResumeMedia: [],
     storyFootNote: '',
@@ -74,6 +78,7 @@ export function makeBlankEducationCourse(): EducationCourse {
     syllabus: [{ id: newId(), text: '' }],
     seatCapacity: 50,
     participants: [],
+    vipGuests: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -192,6 +197,44 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
     upd({
       instructorResumeMedia: (editing.instructorResumeMedia ?? []).filter(m => m.id !== id),
     });
+  };
+
+  const onInstructorPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const picked = input.files?.length ? Array.from(input.files) : [];
+    input.value = '';
+    const file = picked[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('فقط فایل تصویر برای عکس مدرس مجاز است.');
+      return;
+    }
+    if (file.size > INSTRUCTOR_PHOTO_MAX_BYTES) {
+      alert('حجم تصویر مدرس حداکثر ۴ مگابایت باشد.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => upd({ instructorPhotoUrl: String(reader.result || '') });
+    reader.readAsDataURL(file);
+  };
+
+  const updateVipGuest = (id: string, patch: Partial<EducationVipGuest>) => {
+    if (!editing) return;
+    upd({
+      vipGuests: (editing.vipGuests ?? []).map(g => (g.id === id ? { ...g, ...patch } : g)),
+    });
+  };
+
+  const addVipGuest = () => {
+    if (!editing) return;
+    upd({
+      vipGuests: [...(editing.vipGuests ?? []), { id: newId(), fullName: '', resume: '' }],
+    });
+  };
+
+  const removeVipGuest = (id: string) => {
+    if (!editing) return;
+    upd({ vipGuests: (editing.vipGuests ?? []).filter(g => g.id !== id) });
   };
 
   const filled = editing?.participants.length ?? 0;
@@ -387,7 +430,22 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-slate-900 truncate">{c.title || 'بدون عنوان'}</div>
-                    <p className="text-sm text-slate-500 mt-0.5">{c.instructorName || '—'}</p>
+                    <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                      {c.instructorPhotoUrl ? (
+                        <img
+                          src={c.instructorPhotoUrl}
+                          alt=""
+                          className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0"
+                        />
+                      ) : null}
+                      <span>{c.instructorName || '—'}</span>
+                    </p>
+                    {(c.vipGuests ?? []).some(g => g.fullName?.trim()) ? (
+                      <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                        <Crown className="w-3.5 h-3.5 shrink-0" />
+                        VIP: {(c.vipGuests ?? []).filter(g => g.fullName?.trim()).length} نفر
+                      </p>
+                    ) : null}
                     {c.courseFee?.trim() ? (
                       <p className="text-xs text-amber-700 mt-1">
                         هزینه: {formatAmountWithCurrency(c.courseFee, c.courseFeeCurrency || 'OMR', c.courseFeeCurrencyLabel)}
@@ -503,7 +561,47 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
             </div>
             <div>
               <label className={labelCls}>نام استاد</label>
-              <input value={editing.instructorName} onChange={e => upd({ instructorName: e.target.value })} className={inputCls} dir="rtl" />
+              <div className="flex flex-col sm:flex-row gap-4 items-start">
+                <div className="flex-1 min-w-0 w-full">
+                  <input
+                    value={editing.instructorName}
+                    onChange={e => upd({ instructorName: e.target.value })}
+                    className={inputCls}
+                    dir="rtl"
+                  />
+                </div>
+                <div className="shrink-0 flex flex-col items-center gap-2 w-full sm:w-auto">
+                  <span className="text-xs text-slate-500 font-medium">تصویر مدرس</span>
+                  {editing.instructorPhotoUrl ? (
+                    <div className="relative">
+                      <img
+                        src={editing.instructorPhotoUrl}
+                        alt=""
+                        className="w-24 h-24 rounded-full object-cover border-2 border-slate-200 shadow-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => upd({ instructorPhotoUrl: '' })}
+                        className="absolute -top-1 -left-1 bg-slate-800 text-white rounded-full p-1 hover:bg-red-600"
+                        title="حذف عکس"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center text-[10px] text-slate-400 text-center px-1">
+                      بدون عکس
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="text-[11px] w-full max-w-[160px]"
+                    onChange={onInstructorPhotoChange}
+                  />
+                  <p className="text-[10px] text-slate-400 text-center max-w-[160px]">حداکثر ۴ مگابایت</p>
+                </div>
+              </div>
             </div>
             <div>
               <label className={labelCls}>رزومه استاد (در استوری)</label>
@@ -571,6 +669,56 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
                 </ul>
               ) : (
                 <p className="text-xs text-slate-400">هنوز پیوستی اضافه نشده.</p>
+              )}
+            </div>
+            <div className="border border-amber-200 rounded-xl p-4 space-y-3 bg-amber-50/50">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className={`${labelCls} mb-0 flex items-center gap-1.5`}>
+                  <Crown className="w-4 h-4 text-amber-600 shrink-0" />
+                  مهمانان VIP (اختیاری)
+                </label>
+                <button
+                  type="button"
+                  onClick={addVipGuest}
+                  className="text-xs text-teal-700 border border-teal-200 rounded-lg px-3 py-1.5 hover:bg-teal-50 font-medium"
+                >
+                  + افزودن مهمان
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                صندلی اشغال نمی‌کنند. نام و در صورت تمایل رزومهٔ کوتاه در استوری نمایش داده می‌شود.
+              </p>
+              {(editing.vipGuests ?? []).length === 0 ? (
+                <p className="text-xs text-slate-400">مهمان VIP ثبت نشده.</p>
+              ) : (
+                <div className="space-y-3">
+                  {(editing.vipGuests ?? []).map(g => (
+                    <div key={g.id} className="border border-slate-200 rounded-lg p-3 bg-white space-y-2">
+                      <input
+                        placeholder="نام و نام خانوادگی"
+                        value={g.fullName}
+                        onChange={e => updateVipGuest(g.id, { fullName: e.target.value })}
+                        className={inputCls}
+                        dir="rtl"
+                      />
+                      <textarea
+                        placeholder="رزومه کوتاه (اختیاری)"
+                        value={g.resume}
+                        onChange={e => updateVipGuest(g.id, { resume: e.target.value })}
+                        rows={2}
+                        className={inputCls}
+                        dir="rtl"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeVipGuest(g.id)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        حذف این مهمان
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">

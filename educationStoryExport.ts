@@ -165,6 +165,33 @@ function drawCoverImage(
   ctx.restore();
 }
 
+/** Circular crop portrait (instructor) */
+function drawCircleImage(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  r: number,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  const scale = (2 * r) / Math.min(img.width, img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  const dx = cx - dw / 2;
+  const dy = cy - dh / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+}
+
 function participantBySeat(course: EducationCourse, seatNum: number): EducationParticipant | undefined {
   return course.participants.find(p => p.seatNumber === seatNum);
 }
@@ -247,7 +274,10 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   const confirmed = course.participants.filter(p => p.registrationStatus === 'confirmed').length;
   const reserved = filled - confirmed;
 
-  const bgImg = await loadBackgroundImage(course.storyBackgroundUrl || '');
+  const [bgImg, instructorFace] = await Promise.all([
+    loadBackgroundImage(course.storyBackgroundUrl || ''),
+    loadBackgroundImage(course.instructorPhotoUrl || ''),
+  ]);
   const imgOpacity = Math.min(100, Math.max(0, course.storyBackgroundOpacity ?? 40)) / 100;
 
   const grad = ctx.createLinearGradient(0, 0, W, H);
@@ -286,9 +316,36 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
   ctx.font = `700 48px ${FONT}`;
   contentY = drawRtlWrapped(ctx, course.title || 'بدون عنوان', textRight, contentY, innerW - 48, 56, 2, '#ffffff') + 8;
 
-  if (course.instructorName) {
-    ctx.font = `500 30px ${FONT}`;
-    contentY = drawRtlWrapped(ctx, `استاد: ${course.instructorName}`, textRight, contentY, innerW - 48, 38, 1, '#e2e8f0') + 4;
+  if (course.instructorName?.trim() || instructorFace) {
+    const photoR = 48;
+    const photoGap = 18;
+    const baseY = contentY;
+    let rowBottom = baseY + 8;
+    if (instructorFace) {
+      const cx = textRight - photoR;
+      const cy = baseY + photoR + 8;
+      drawCircleImage(ctx, instructorFace, cx, cy, photoR);
+      rowBottom = Math.max(rowBottom, cy + photoR + 14);
+    }
+    const label =
+      course.instructorName?.trim() ? `استاد: ${course.instructorName.trim()}` : instructorFace ? 'استاد' : '';
+    if (label) {
+      ctx.font = `500 30px ${FONT}`;
+      const textRightAdj = instructorFace ? textRight - photoR * 2 - photoGap : textRight;
+      const maxW = innerW - 48 - (instructorFace ? photoR * 2 + photoGap : 0);
+      const lines = wrapTextLines(ctx, label, maxW, 3);
+      const lnH = 36;
+      ctx.fillStyle = '#e2e8f0';
+      ctx.textAlign = 'right';
+      ctx.direction = 'rtl';
+      let ty = baseY + 32;
+      for (const ln of lines) {
+        ctx.fillText(ln, textRightAdj, ty);
+        ty += lnH;
+      }
+      rowBottom = Math.max(rowBottom, ty + 8);
+    }
+    contentY = rowBottom;
   }
 
   if (course.courseFee?.trim()) {
@@ -328,6 +385,25 @@ export async function renderEducationStoryPng(course: EducationCourse): Promise<
     ctx.font = `400 22px ${FONT}`;
     contentY =
       drawRtlLinearLines(ctx, course.instructorResume.trim(), textRight, contentY, innerW - 48, 28, '#94a3b8') + 8;
+  }
+
+  const vips = (course.vipGuests ?? []).filter(g => g.fullName?.trim());
+  if (vips.length) {
+    contentY += 6;
+    ctx.font = `600 24px ${FONT}`;
+    drawRtlBlock(ctx, ['مهمانان VIP'], textRight, contentY, 30, '#fcd34d');
+    contentY += 34;
+    for (const g of vips) {
+      ctx.font = `600 22px ${FONT}`;
+      contentY =
+        drawRtlWrapped(ctx, g.fullName.trim(), textRight, contentY, innerW - 48, 28, 2, '#fef9c3') + 4;
+      if (g.resume?.trim()) {
+        ctx.font = `400 20px ${FONT}`;
+        contentY =
+          drawRtlLinearLines(ctx, g.resume.trim(), textRight, contentY, innerW - 52, 26, '#cbd5e1') + 8;
+      }
+      contentY += 4;
+    }
   }
 
   const syllabus = course.syllabus.map(s => s.text.trim()).filter(Boolean);
