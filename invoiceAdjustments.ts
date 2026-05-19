@@ -1,5 +1,10 @@
 import type { InvoiceExtraCharge } from './types';
-import { totalsByCurrency, type ServiceInvoiceLine } from './serviceInvoice';
+import {
+  DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES,
+  totalsByCurrency,
+  type ServiceInvoiceDecimalPlaces,
+  type ServiceInvoiceLine,
+} from './serviceInvoice';
 
 export type InvoiceVatMode = 'exclusive' | 'inclusive';
 
@@ -97,8 +102,10 @@ export function computeServiceInvoiceByCurrency(params: {
   vatPercent: number;
   vatMode: InvoiceVatMode;
   extraCharges: InvoiceExtraCharge[];
+  decimalPlaces?: ServiceInvoiceDecimalPlaces;
 }): ServiceCurrencyAdjustment[] {
-  const subtotals = totalsByCurrency(params.lines);
+  const places = params.decimalPlaces ?? DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES;
+  const subtotals = totalsByCurrency(params.lines, places);
   const currencies = Object.keys(subtotals).sort();
   const discCcy = (params.discountCurrency || 'USD').trim().toUpperCase() || 'USD';
   const vatRate = params.vatEnabled ? Math.max(0, Number(params.vatPercent) || 0) : 0;

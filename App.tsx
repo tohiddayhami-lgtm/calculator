@@ -115,7 +115,13 @@ import {
   sumEnabledInvoiceExtras,
   type InvoiceVatMode,
 } from './invoiceAdjustments';
-import { parseSavedServices, parseServiceInvoiceLines } from './serviceInvoice';
+import {
+  parseSavedServices,
+  parseServiceInvoiceDecimalPlaces,
+  parseServiceInvoiceLines,
+  roundServiceLineAmount,
+  type ServiceInvoiceDecimalPlaces,
+} from './serviceInvoice';
 import { InvoiceDocKindTabs, ServiceInvoicePanel, type InvoiceDocKind } from './serviceInvoiceUi';
 import { BuyersPanel } from './buyersUi';
 import {
@@ -4778,6 +4784,8 @@ function AppInner() {
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
   const [serviceInvoiceDiscountCurrency, setServiceInvoiceDiscountCurrency] = useState('USD');
+  const [serviceInvoiceDecimalPlaces, setServiceInvoiceDecimalPlaces] =
+    useState<ServiceInvoiceDecimalPlaces>(2);
   const [savedServices, setSavedServices] = useState<SavedService[]>([]);
   const [savedServicesReady, setSavedServicesReady] = useState(false);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
@@ -7125,6 +7133,7 @@ function AppInner() {
         invoiceDocKind,
         serviceInvoiceLines,
         serviceInvoiceDiscountCurrency,
+        serviceInvoiceDecimalPlaces,
         savedServices
     };
 
@@ -7340,7 +7349,17 @@ function AppInner() {
     setSelectedBuyerId('');
     const loadedKind = (project.data as any).invoiceDocKind;
     setInvoiceDocKind(loadedKind === 'services' ? 'services' : 'products');
-    setServiceInvoiceLines(parseServiceInvoiceLines((project.data as any).serviceInvoiceLines));
+    const loadedSvcDecimals = parseServiceInvoiceDecimalPlaces(
+      (project.data as any).serviceInvoiceDecimalPlaces,
+    );
+    setServiceInvoiceDecimalPlaces(loadedSvcDecimals);
+    setServiceInvoiceLines(
+      parseServiceInvoiceLines((project.data as any).serviceInvoiceLines).map((l) => ({
+        ...l,
+        qty: roundServiceLineAmount(l.qty, loadedSvcDecimals),
+        unitPrice: roundServiceLineAmount(l.unitPrice, loadedSvcDecimals),
+      })),
+    );
     const loadedSvcDiscCcy = String((project.data as any).serviceInvoiceDiscountCurrency ?? '').trim().toUpperCase();
     setServiceInvoiceDiscountCurrency(loadedSvcDiscCcy || config.outputCurrency || 'USD');
     setSavedServices((prev) =>
@@ -8378,6 +8397,7 @@ function AppInner() {
             invoiceDocKind,
             serviceInvoiceLines,
             serviceInvoiceDiscountCurrency,
+            serviceInvoiceDecimalPlaces,
             savedServices
           }
         };
@@ -8453,6 +8473,7 @@ function AppInner() {
     invoiceDocKind,
     serviceInvoiceLines,
     serviceInvoiceDiscountCurrency,
+    serviceInvoiceDecimalPlaces,
     savedServices
   ]);
 
@@ -8749,6 +8770,7 @@ function AppInner() {
     setInvoiceDocKind('products');
     setServiceInvoiceLines([]);
     setServiceInvoiceDiscountCurrency(config.outputCurrency || 'USD');
+    setServiceInvoiceDecimalPlaces(2);
     setPackingListConfig(createDefaultPackingListConfig());
     setCatalogConfig(createDefaultCatalogConfig());
     setImportCandidateProject(null);
@@ -12777,6 +12799,8 @@ function AppInner() {
           setInvoiceGlobalDiscountValue={setInvoiceGlobalDiscountValue}
           serviceInvoiceDiscountCurrency={serviceInvoiceDiscountCurrency}
           setServiceInvoiceDiscountCurrency={setServiceInvoiceDiscountCurrency}
+          serviceInvoiceDecimalPlaces={serviceInvoiceDecimalPlaces}
+          setServiceInvoiceDecimalPlaces={setServiceInvoiceDecimalPlaces}
           invoiceVatEnabled={invoiceVatEnabled}
           setInvoiceVatEnabled={setInvoiceVatEnabled}
           invoiceVatPercent={invoiceVatPercent}

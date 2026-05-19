@@ -21,6 +21,20 @@ export interface SavedService {
   updatedAt: number;
 }
 
+import { parseMaxDecimalPlaces, roundToDecimalPlaces, type MaxDecimalPlaces } from './numericInputFormat';
+
+export type ServiceInvoiceDecimalPlaces = MaxDecimalPlaces;
+
+export const DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES: ServiceInvoiceDecimalPlaces = 2;
+
+export function parseServiceInvoiceDecimalPlaces(raw: unknown): ServiceInvoiceDecimalPlaces {
+  return parseMaxDecimalPlaces(raw, DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES);
+}
+
+export function roundServiceLineAmount(n: number, places: ServiceInvoiceDecimalPlaces): number {
+  return roundToDecimalPlaces(Math.max(0, n), places);
+}
+
 export const SERVICE_INVOICE_CURRENCIES = [
   'USD',
   'EUR',
@@ -108,17 +122,26 @@ export function createEmptyServiceLine(defaultCurrency = 'USD'): ServiceInvoiceL
   };
 }
 
-export function serviceLineTotal(line: ServiceInvoiceLine): number {
-  const q = Math.max(0, Number(line.qty) || 0);
-  const p = Math.max(0, Number(line.unitPrice) || 0);
-  return q * p;
+export function serviceLineTotal(
+  line: ServiceInvoiceLine,
+  decimalPlaces: ServiceInvoiceDecimalPlaces = DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES,
+): number {
+  const q = roundServiceLineAmount(Number(line.qty) || 0, decimalPlaces);
+  const p = roundServiceLineAmount(Number(line.unitPrice) || 0, decimalPlaces);
+  return roundServiceLineAmount(q * p, decimalPlaces);
 }
 
-export function totalsByCurrency(lines: ServiceInvoiceLine[]): Record<string, number> {
+export function totalsByCurrency(
+  lines: ServiceInvoiceLine[],
+  decimalPlaces: ServiceInvoiceDecimalPlaces = DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES,
+): Record<string, number> {
   const out: Record<string, number> = {};
   for (const line of lines) {
     const ccy = (line.currency || 'USD').trim().toUpperCase() || 'USD';
-    out[ccy] = (out[ccy] || 0) + serviceLineTotal(line);
+    out[ccy] = roundServiceLineAmount(
+      (out[ccy] || 0) + serviceLineTotal(line, decimalPlaces),
+      decimalPlaces,
+    );
   }
   return out;
 }

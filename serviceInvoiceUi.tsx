@@ -18,14 +18,17 @@ import {
   createEmptyServiceLine,
   lineFromSavedService,
   normalizeServiceLine,
+  roundServiceLineAmount,
   savedServiceFromLine,
   serviceLineHasDetailNotes,
   serviceLineInvoiceDescription,
   serviceLineTotal,
   totalsByCurrency,
   type SavedService,
+  type ServiceInvoiceDecimalPlaces,
   type ServiceInvoiceLine,
 } from './serviceInvoice';
+import { ServiceInvoiceAmountInput } from './serviceInvoiceAmountInput';
 import type { InvoiceExtraCharge } from './types';
 import type { InvoiceCustomerFields } from './invoiceCustomer';
 import { InvoiceAccentColorPicker, invoiceThemeStyle } from './invoiceTheme';
@@ -89,6 +92,8 @@ export type ServiceInvoicePanelProps = {
   setInvoiceGlobalDiscountValue: (v: number) => void;
   serviceInvoiceDiscountCurrency: string;
   setServiceInvoiceDiscountCurrency: (c: string) => void;
+  serviceInvoiceDecimalPlaces: ServiceInvoiceDecimalPlaces;
+  setServiceInvoiceDecimalPlaces: (p: ServiceInvoiceDecimalPlaces) => void;
   invoiceVatEnabled: boolean;
   setInvoiceVatEnabled: (v: boolean) => void;
   invoiceVatPercent: number;
@@ -189,6 +194,8 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
     setInvoiceGlobalDiscountValue,
     serviceInvoiceDiscountCurrency,
     setServiceInvoiceDiscountCurrency,
+    serviceInvoiceDecimalPlaces,
+    setServiceInvoiceDecimalPlaces,
     invoiceVatEnabled,
     setInvoiceVatEnabled,
     invoiceVatPercent,
@@ -206,7 +213,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
 
   const [pickSavedId, setPickSavedId] = React.useState('');
 
-  const currencyTotals = totalsByCurrency(lines);
+  const currencyTotals = totalsByCurrency(lines, serviceInvoiceDecimalPlaces);
   const sortedCurrencies = Object.keys(currencyTotals).sort();
 
   const currencyOptions = React.useMemo(() => {
@@ -230,7 +237,19 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
     vatPercent: invoiceVatPercent,
     vatMode: invoiceVatMode,
     extraCharges: invoiceExtraCharges,
+    decimalPlaces: serviceInvoiceDecimalPlaces,
   });
+
+  const onDecimalPlacesChange = (places: ServiceInvoiceDecimalPlaces) => {
+    setServiceInvoiceDecimalPlaces(places);
+    setLines((prev) =>
+      prev.map((l) => ({
+        ...l,
+        qty: roundServiceLineAmount(l.qty, places),
+        unitPrice: roundServiceLineAmount(l.unitPrice, places),
+      })),
+    );
+  };
 
   const showGlobalDiscount =
     invoiceGlobalDiscountMode !== 'none' && invoiceGlobalDiscountValue > 0;
@@ -376,6 +395,23 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
             <p className="text-[10px] text-indigo-700 leading-snug">
               هر ردیف می‌تواند ارز جدا داشته باشد. جمع‌ها در پایین فاکتور به تفکیک ارز نمایش داده می‌شوند.
             </p>
+            <div>
+              <label className="text-[10px] font-semibold text-indigo-800 block mb-0.5">
+                اعشار تعداد و قیمت واحد
+              </label>
+              <select
+                value={serviceInvoiceDecimalPlaces}
+                onChange={(e) =>
+                  onDecimalPlacesChange(Number(e.target.value) as ServiceInvoiceDecimalPlaces)
+                }
+                className="w-full text-xs border border-indigo-200 rounded px-2 py-1.5 bg-white"
+              >
+                <option value={0}>بدون اعشار (اعداد صحیح)</option>
+                <option value={1}>تا ۱ رقم اعشار</option>
+                <option value={2}>تا ۲ رقم اعشار</option>
+                <option value={3}>تا ۳ رقم اعشار</option>
+              </select>
+            </div>
             <button
               type="button"
               onClick={addLine}
@@ -467,22 +503,20 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                     />
                   ) : null}
                   <div className="grid grid-cols-3 gap-1">
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={line.qty || ''}
-                      onChange={(e) => updateLine(line.id, { qty: Number(e.target.value) || 0 })}
-                      className="text-xs border border-slate-200 rounded px-1 py-0.5"
-                      title="Qty"
+                    <ServiceInvoiceAmountInput
+                      value={line.qty}
+                      onChange={(qty) => updateLine(line.id, { qty })}
+                      maxDecimalPlaces={serviceInvoiceDecimalPlaces}
+                      className="text-xs border border-slate-200 rounded px-1 py-0.5 w-full"
+                      placeholder="Qty"
+                      title="تعداد"
                     />
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={line.unitPrice || ''}
-                      onChange={(e) => updateLine(line.id, { unitPrice: Number(e.target.value) || 0 })}
-                      className="text-xs border border-slate-200 rounded px-1 py-0.5"
+                    <ServiceInvoiceAmountInput
+                      value={line.unitPrice}
+                      onChange={(unitPrice) => updateLine(line.id, { unitPrice })}
+                      maxDecimalPlaces={serviceInvoiceDecimalPlaces}
+                      className="text-xs border border-slate-200 rounded px-1 py-0.5 w-full"
+                      placeholder="قیمت"
                       title="Unit price"
                     />
                     <select
@@ -908,7 +942,9 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                     </td>
                     <td className="center">{line.qty}</td>
                     <td className="num">{formatMoney(line.unitPrice, line.currency)}</td>
-                    <td className="num line-total">{formatMoney(serviceLineTotal(line), line.currency)}</td>
+                    <td className="num line-total">
+                      {formatMoney(serviceLineTotal(line, serviceInvoiceDecimalPlaces), line.currency)}
+                    </td>
                   </tr>
                 ))
               )}
