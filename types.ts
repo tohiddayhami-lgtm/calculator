@@ -126,6 +126,16 @@ export interface InvoiceTextPreset {
   updatedAt: number;
 }
 
+/** Image attached to an invoice annex page (data URL or cloud URL). */
+export interface InvoiceAnnexImage {
+  id: string;
+  src: string;
+  /** Original file name when uploaded from disk. */
+  name?: string;
+  /** Optional caption under the image on print. */
+  caption?: string;
+}
+
 /** Optional annex page appended after the main proforma (e.g. MoU / تفاهم‌نامه). */
 export interface InvoiceAnnex {
   id: string;
@@ -133,6 +143,8 @@ export interface InvoiceAnnex {
   body: string;
   /** When false, kept in editor but omitted from print. */
   includeInPrint: boolean;
+  /** Multiple images (project photos, diagrams, etc.). */
+  images?: InvoiceAnnexImage[];
 }
 
 /** Saved annex template (title + body) in browser storage. */

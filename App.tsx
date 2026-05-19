@@ -140,6 +140,8 @@ import { InvoiceNumberingPanel } from './invoiceNumberingUi';
 import {
   INVOICE_ANNEX_PRESETS_STORAGE_KEY,
   MAX_INVOICE_ANNEX_PRESETS,
+  annexHasPrintableContent,
+  collectProjectAnnexImageOptions,
   parseInvoiceAnnexPresetsFromStorage,
   parseInvoiceAnnexes,
 } from './invoiceAnnex';
@@ -5222,6 +5224,11 @@ function AppInner() {
     setInvoiceAnnexPresets((prev) => prev.filter((x) => x.id !== id));
   };
 
+  const projectAnnexImageOptions = useMemo(
+    () => collectProjectAnnexImageOptions(products),
+    [products],
+  );
+
   const renderInvoiceAnnexEditorPanel = () => (
     <InvoiceAnnexEditorPanel
       enabled={invoiceAnnexesEnabled}
@@ -5232,6 +5239,8 @@ function AppInner() {
       onSavePreset={saveInvoiceAnnexPreset}
       onDeletePreset={deleteInvoiceAnnexPreset}
       invoiceRef={invoiceRef}
+      projectImages={projectAnnexImageOptions}
+      compressImageSrc={compressImage}
     />
   );
 
@@ -6833,7 +6842,7 @@ function AppInner() {
       payments: [],
       projectId: loadedProjectId || '',
       invoiceAnnexesEnabled,
-      invoiceAnnexes: invoiceAnnexes.filter((a) => a.title.trim() || a.body.trim()),
+      invoiceAnnexes: invoiceAnnexes.filter(annexHasPrintableContent),
     };
   };
 
@@ -6877,7 +6886,7 @@ function AppInner() {
             decimalPlaces: serviceInvoiceDecimalPlaces,
             projectId: loadedProjectId || '',
             invoiceAnnexesEnabled,
-            invoiceAnnexes: invoiceAnnexes.filter((a) => a.title.trim() || a.body.trim()),
+            invoiceAnnexes: invoiceAnnexes.filter(annexHasPrintableContent),
           })
         : buildArchiveSnapshot(status);
     if (!snapshot) {
@@ -18600,6 +18609,13 @@ function AppInner() {
         .invoice-annex-page {
             page-break-before: always;
             break-before: page;
+        }
+        .invoice-doc .annex-images-grid img {
+            max-width: 100%;
+        }
+        .invoice-doc .annex-image-cell {
+            break-inside: avoid;
+            page-break-inside: avoid;
         }
 
         /* ─────────────────────────────────────────────────────────────────

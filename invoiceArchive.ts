@@ -13,7 +13,7 @@ import type {
   InvoiceAnnex,
   InvoiceExtraCharge,
 } from './types';
-import { parseInvoiceAnnexes } from './invoiceAnnex';
+import { annexHasPrintableContent, parseInvoiceAnnexes } from './invoiceAnnex';
 import type { InvoiceVatMode } from './invoiceAdjustments';
 
 export function normalizeArchivedInvoiceKind(raw: unknown): ArchivedInvoiceKind {
@@ -197,7 +197,7 @@ export function buildServiceArchiveSnapshot(
     projectId: params.projectId || '',
     invoiceAnnexesEnabled: !!params.invoiceAnnexesEnabled,
     invoiceAnnexes: params.invoiceAnnexesEnabled
-      ? parseInvoiceAnnexes(params.invoiceAnnexes).filter((a) => a.title.trim() || a.body.trim())
+      ? parseInvoiceAnnexes(params.invoiceAnnexes).filter(annexHasPrintableContent)
       : [],
   };
 }
