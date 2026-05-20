@@ -259,7 +259,8 @@ const FORM_APPENDIX_MAX_IMAGES = 6;
 const FORM_APPENDIX_IMAGE_MAX_DIMENSION = 1400;
 const FORM_APPENDIX_IMAGE_QUALITY = 0.78;
 const FORM_APPENDIX_IMAGE_TARGET_BYTES = 140 * 1024;
-const FORM_HTML_EMBED_MAX_BYTES = 900 * 1024;
+const FORM_HTML_EMBED_INLINE_MAX_BYTES = 900 * 1024;
+const FORM_HTML_EMBED_MAX_BYTES = 10 * 1024 * 1024;
 
 type FormArchiveFolder = {
   id: string;
@@ -2573,6 +2574,15 @@ function getHtmlPresentationUrl(rawUrl: string | undefined): { embedUrl: string;
   } catch {
     return null;
   }
+}
+
+function sanitizeFormHtmlFileName(name: string): string {
+  const clean = name
+    .replace(/[/\\?%*:|"<>]/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/[^\w.\-]/g, '_')
+    .slice(0, 90);
+  return clean || 'presentation.html';
 }
 
 function sanitizeCustomFormAppendixHtml(raw: string | undefined): string {
@@ -6375,6 +6385,13 @@ function AppInner() {
     const form = customForms.find((f) => f.id === formId);
     if (form?.publishedKey) {
       try { await withTimeout(deleteDoc(doc(db, 'publicForms', form.publishedKey)), 10000, 'Delete public form'); } catch {}
+    }
+    if (storage && form?.fields?.length) {
+      for (const field of form.fields) {
+        if (field.type === 'html_embed' && field.htmlStoragePath) {
+          try { await deleteObject(storageRef(storage, field.htmlStoragePath)); } catch {}
+        }
+      }
     }
     try {
       await withTimeout(deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId)), 10000, 'Delete form');
@@ -21372,23 +21389,70 @@ function AppInner() {
                                           alert(`HTML file is too large. Max ${(FORM_HTML_EMBED_MAX_BYTES / 1024).toFixed(0)} KB.`);
                                           return;
                                         }
-                                        const reader = new FileReader();
-                                        reader.onload = () => {
+                                        const applyUploaded = (patch: Partial<FormField>) => {
                                           upd({
-                                            htmlContent: String(reader.result || ''),
+                                            ...patch,
                                             htmlFileName: file.name,
                                             htmlFrameTitle: field.htmlFrameTitle || file.name.replace(/\.html?$/i, ''),
                                           });
                                         };
-                                        reader.onerror = () => alert('Could not read this HTML file.');
-                                        reader.readAsText(file);
+                                        if (storage && user && !isDemoMode && user.uid !== DEMO_USER_ID) {
+                                          const previousPath = field.htmlStoragePath;
+                                          const safeName = sanitizeFormHtmlFileName(file.name);
+                                          const path = `users/${user.uid}/formPresentations/${Date.now()}_${safeName}`;
+                                          const sRef = storageRef(storage, path);
+                                          uploadBytes(sRef, file, {
+                                            contentType: 'text/html; charset=utf-8',
+                                            cacheControl: 'public,max-age=300',
+                                          })
+                                            .then(() => getDownloadURL(sRef))
+                                            .then((downloadURL) => {
+                                              applyUploaded({
+                                                htmlContent: undefined,
+                                                htmlUrl: downloadURL,
+                                                htmlStoragePath: path,
+                                              });
+                                              if (previousPath && previousPath !== path) {
+                                                deleteObject(storageRef(storage, previousPath)).catch(() => {});
+                                              }
+                                            })
+                                            .catch((err) => alert('Failed to upload HTML presentation: ' + (err?.message || err)));
+                                        } else {
+                                          if (file.size > FORM_HTML_EMBED_INLINE_MAX_BYTES) {
+                                            alert(
+                                              `Storage is not available, so inline HTML is limited to ${(FORM_HTML_EMBED_INLINE_MAX_BYTES / 1024).toFixed(0)} KB. Sign in with Firebase Storage enabled for files up to 10 MB.`
+                                            );
+                                            return;
+                                          }
+                                          const reader = new FileReader();
+                                          reader.onload = () => {
+                                            applyUploaded({
+                                              htmlContent: String(reader.result || ''),
+                                              htmlUrl: undefined,
+                                              htmlStoragePath: undefined,
+                                            });
+                                          };
+                                          reader.onerror = () => alert('Could not read this HTML file.');
+                                          reader.readAsText(file);
+                                        }
                                       }}
                                     />
                                   </label>
-                                  {field.htmlContent ? (
+                                  {field.htmlContent || field.htmlStoragePath ? (
                                     <button
                                       type="button"
-                                      onClick={() => upd({ htmlContent: undefined, htmlFileName: undefined })}
+                                      onClick={() => {
+                                        const previousPath = field.htmlStoragePath;
+                                        upd({
+                                          htmlContent: undefined,
+                                          htmlFileName: undefined,
+                                          htmlStoragePath: undefined,
+                                          htmlUrl: previousPath ? undefined : field.htmlUrl,
+                                        });
+                                        if (previousPath && storage) {
+                                          deleteObject(storageRef(storage, previousPath)).catch(() => {});
+                                        }
+                                      }}
                                       className="px-2 py-1.5 text-xs rounded border border-red-100 bg-red-50 text-red-600 hover:bg-red-100"
                                     >
                                       Clear
