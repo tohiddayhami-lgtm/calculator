@@ -5980,6 +5980,8 @@ function AppInner() {
   const [profitLossReportTerm, setProfitLossReportTerm] = useState<'' | 'EXW' | 'FCA' | 'FOB' | 'CIF' | 'DDP'>('');
   const [buyerProfitPercent, setBuyerProfitPercent] = useState<number>(20);
   const [buyerProfitType, setBuyerProfitType] = useState<'markup' | 'margin'>('markup');
+  const [buyerManualResaleValue, setBuyerManualResaleValue] = useState<number | undefined>(undefined);
+  const [buyerManualResaleCurrency, setBuyerManualResaleCurrency] = useState<string>('OMR');
 
   // Invoice Specific
   const [customerName, setCustomerName] = useState('');
@@ -9399,7 +9401,7 @@ function AppInner() {
         invoiceOrientation,
         invoiceLayout,
         invoiceWelteTrade,
-        containerCapacity, containerType, loadUnitType, palletTypeLabel, profitLossReportTerm, buyerProfitPercent, buyerProfitType,
+        containerCapacity, containerType, loadUnitType, palletTypeLabel, profitLossReportTerm, buyerProfitPercent, buyerProfitType, buyerManualResaleValue, buyerManualResaleCurrency,
         invoiceIssueDateMs,
         invoiceDueDateMs,
         editingArchiveInvoiceId,
@@ -9625,6 +9627,8 @@ function AppInner() {
     setProfitLossReportTerm((['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].includes((project.data as any).profitLossReportTerm) ? (project.data as any).profitLossReportTerm : '') as any);
     setBuyerProfitPercent(Number((project.data as any).buyerProfitPercent ?? 20));
     setBuyerProfitType((project.data as any).buyerProfitType === 'margin' ? 'margin' : 'markup');
+    setBuyerManualResaleValue((project.data as any).buyerManualResaleValue !== undefined ? Number((project.data as any).buyerManualResaleValue) : undefined);
+    setBuyerManualResaleCurrency(String((project.data as any).buyerManualResaleCurrency || config.outputCurrency || 'OMR'));
 
     setSuppliers(project.data.suppliers || []);
     setBuyers((prev) =>
@@ -10305,8 +10309,24 @@ function AppInner() {
         
         const lineCost = isActive ? unitCostOutput * p.qty : 0;
         
-        // Use custom profit if defined, else global config
-        const effectiveProfitPercent = (p.customProfit !== undefined && p.customProfit !== null) ? p.customProfit : config.profitPercent;
+        const baseCost_EXW = unitCostOutput + uExwExtra;
+        const baseCost_FOB = baseCost_EXW + uInland + uPort;
+        const baseCost_CIF = baseCost_FOB + uFreight + uInsurance;
+        const dutyVal = baseCost_CIF * (logistics.dutyPercent / 100);
+        const baseCost_DDP = baseCost_CIF + uDest + dutyVal + uExtras;
+        const manualSellPriceOutput = p.manualUnitSellPrice && p.manualUnitSellPrice > 0
+          ? toOutput(toBase(p.manualUnitSellPrice, p.manualSellCurrency || config.outputCurrency))
+          : undefined;
+        const manualProfitPercentMarkup = manualSellPriceOutput !== undefined && baseCost_EXW > 0
+          ? ((manualSellPriceOutput - baseCost_EXW) / baseCost_EXW) * 100
+          : undefined;
+        const manualProfitPercentMargin = manualSellPriceOutput !== undefined && manualSellPriceOutput > 0
+          ? ((manualSellPriceOutput - baseCost_EXW) / manualSellPriceOutput) * 100
+          : undefined;
+        const configuredProfitPercent = (p.customProfit !== undefined && p.customProfit !== null) ? p.customProfit : config.profitPercent;
+        const effectiveProfitPercent = manualSellPriceOutput !== undefined
+          ? (config.profitType === 'margin' ? manualProfitPercentMargin : manualProfitPercentMarkup) ?? configuredProfitPercent
+          : configuredProfitPercent;
 
         // Apply Profit per Product (including its share of logistics)
         const productSell = applyProfit(productCostOut, config.profitFlags.exw, effectiveProfitPercent);
@@ -10327,27 +10347,19 @@ function AppInner() {
             if (config.pricingMethod === 'fixed_unit_markup') {
                 // FIXED MARKUP MODE
                 const multipliers = config.termMultipliers || { exw: 0, fob: 0, cif: 0, ddp: 0 };
-                
-                // Base Costs for each term
-                const baseCost_EXW = unitCostOutput + uExwExtra;
-                const baseCost_FOB = baseCost_EXW + uInland + uPort;
-                const baseCost_CIF = baseCost_FOB + uFreight + uInsurance;
-                
-                const dutyVal = baseCost_CIF * (logistics.dutyPercent / 100);
-                const baseCost_DDP = baseCost_CIF + uDest + dutyVal + uExtras;
 
                 // Apply Multiplier (Cost * (1 + Markup%))
-                exwSell = baseCost_EXW * (1 + ((multipliers.exw || 0) / 100));
-                fcaSell = (baseCost_EXW + uInland) * (1 + ((multipliers.fob || 0) / 100));
-                fobSell = baseCost_FOB * (1 + ((multipliers.fob || 0) / 100));
-                cifSell = baseCost_CIF * (1 + ((multipliers.cif || 0) / 100));
-                ddpSell = baseCost_DDP * (1 + ((multipliers.ddp || 0) / 100));
+                exwSell = manualSellPriceOutput ?? baseCost_EXW * (1 + ((multipliers.exw || 0) / 100));
+                fcaSell = manualSellPriceOutput !== undefined ? exwSell + (uInland * (1 + ((multipliers.fob || 0) / 100))) : (baseCost_EXW + uInland) * (1 + ((multipliers.fob || 0) / 100));
+                fobSell = manualSellPriceOutput !== undefined ? exwSell + ((uInland + uPort) * (1 + ((multipliers.fob || 0) / 100))) : baseCost_FOB * (1 + ((multipliers.fob || 0) / 100));
+                cifSell = manualSellPriceOutput !== undefined ? fobSell + ((uFreight + uInsurance) * (1 + ((multipliers.cif || 0) / 100))) : baseCost_CIF * (1 + ((multipliers.cif || 0) / 100));
+                ddpSell = manualSellPriceOutput !== undefined ? cifSell + ((uDest + dutyVal + uExtras) * (1 + ((multipliers.ddp || 0) / 100))) : baseCost_DDP * (1 + ((multipliers.ddp || 0) / 100));
 
                 unitSellPrice = exwSell;
                 unitProfit = unitSellPrice - baseCost_EXW;
             } else {
                 // COST PLUS (ACCUMULATED) MODE
-                unitSellPrice = productSell + exwExtraSell; 
+                unitSellPrice = manualSellPriceOutput ?? (productSell + exwExtraSell);
                 unitProfit = unitSellPrice - (unitCostOutput + uExwExtra); 
 
                 exwSell = unitSellPrice;
@@ -10441,6 +10453,9 @@ function AppInner() {
             packPrice,
             scenarioPrices: { EXW: exwSell, FCA: fcaSell, FOB: fobSell, CIF: cifSell, DDP: ddpSell },
             scenarioPackPrices,
+            manualSellPriceOutput,
+            manualProfitPercentMarkup,
+            manualProfitPercentMargin,
             packagingUnitCostStandard,
             packagingUnitCostLuxury,
             packagingUnitSellStandard,
@@ -10594,6 +10609,9 @@ function AppInner() {
     const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
     const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
     const selectedTermRow = calculations.breakdown.find((row) => row.term === selectedTerm) || calculations.breakdown[0];
+    const buyerManualResaleOutput = buyerManualResaleValue && buyerManualResaleValue > 0
+      ? convert(buyerManualResaleValue, buyerManualResaleCurrency || config.outputCurrency)
+      : 0;
     const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
     const applyBuyerProfit = (cost: number) => {
       if (buyerProfitType === 'margin') {
@@ -10602,9 +10620,14 @@ function AppInner() {
       }
       return cost * (1 + buyerMarkup / 100);
     };
-    const buyerResaleRevenue = applyBuyerProfit(selectedTermRow?.totalSell || 0);
+    const buyerResaleRevenue = buyerManualResaleOutput > 0 ? buyerManualResaleOutput : applyBuyerProfit(selectedTermRow?.totalSell || 0);
     const buyerGrossProfit = buyerResaleRevenue - (selectedTermRow?.totalSell || 0);
     const buyerMargin = buyerResaleRevenue > 0 ? (buyerGrossProfit / buyerResaleRevenue) * 100 : 0;
+    const buyerAutoPercent = selectedTermRow?.totalSell
+      ? buyerProfitType === 'margin'
+        ? ((buyerResaleRevenue - selectedTermRow.totalSell) / buyerResaleRevenue) * 100
+        : ((buyerResaleRevenue - selectedTermRow.totalSell) / selectedTermRow.totalSell) * 100
+      : 0;
     const fmt = (value: number) => formatMoney(value || 0, config.outputCurrency);
     const pct = (value: number) => `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`;
     const title = projectName.trim() || 'Export Shipment';
@@ -10634,7 +10657,9 @@ function AppInner() {
       const lineSell = termRow?.lineSell ?? unitSell * (p.qty || 0);
       const lineProfit = termRow?.lineProfit ?? lineSell - lineCost;
       const lineMargin = termRow?.profitMargin ?? (lineSell > 0 ? (lineProfit / lineSell) * 100 : 0);
-      const buyerUnitResale = applyBuyerProfit(unitSell);
+      const buyerUnitResale = buyerManualResaleOutput > 0 && selectedTermRow?.totalSell
+        ? ((lineSell / selectedTermRow.totalSell) * buyerResaleRevenue) / (p.qty || 1)
+        : applyBuyerProfit(unitSell);
       const buyerUnitProfit = buyerUnitResale - unitSell;
       const buyerLineRevenue = buyerUnitResale * (p.qty || 0);
       const buyerLineProfit = buyerLineRevenue - lineSell;
@@ -10745,7 +10770,7 @@ function AppInner() {
     <div class="kpi"><span class="label">Selected term</span><div class="value">${escapeHtml(selectedTermRow?.term || selectedTerm)}</div><div class="hint">chosen report basis</div></div>
     <div class="kpi"><span class="label">Your revenue</span><div class="value">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</div><div class="hint">sell value at selected term</div></div>
     <div class="kpi"><span class="label">Your gross profit</span><div class="value" style="color:${marginColor}">${escapeHtml(fmt(selectedTermRow?.totalProfit || 0))}</div><div class="hint">${escapeHtml(pct(selectedTermRow?.profitMargin || 0))} margin</div></div>
-    <div class="kpi"><span class="label">Buyer resale</span><div class="value">${escapeHtml(fmt(buyerResaleRevenue))}</div><div class="hint">${escapeHtml(pct(buyerMarkup))} ${escapeHtml(buyerProfitType)} for buyer</div></div>
+    <div class="kpi"><span class="label">Buyer resale</span><div class="value">${escapeHtml(fmt(buyerResaleRevenue))}</div><div class="hint">${escapeHtml(pct(buyerAutoPercent))} ${escapeHtml(buyerProfitType)} for buyer</div></div>
   </div>
 
   <div class="financial-grid">
@@ -10773,8 +10798,8 @@ function AppInner() {
     <h2>Buyer profit simulation</h2>
     <table><tbody>
       <tr><td><strong>Buyer purchase value</strong><span>Your selling value at selected Incoterm: ${escapeHtml(selectedTerm)}</span></td><td class="num">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</td></tr>
-      <tr><td><strong>Buyer ${escapeHtml(buyerProfitType)}</strong><span>Optional resale profit entered in the dashboard</span></td><td class="num">${escapeHtml(pct(buyerMarkup))}</td></tr>
-      <tr><td><strong>Buyer resale revenue</strong><span>${escapeHtml(buyerProfitType === 'margin' ? 'Purchase value / (1 - buyer margin)' : 'Purchase value × (1 + buyer markup)')}</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
+      <tr><td><strong>Buyer ${escapeHtml(buyerProfitType)}</strong><span>${buyerManualResaleOutput > 0 ? 'Automatically derived from manual buyer resale price' : 'Optional resale profit entered in the dashboard'}</span></td><td class="num">${escapeHtml(pct(buyerAutoPercent))}</td></tr>
+      <tr><td><strong>Buyer resale revenue</strong><span>${escapeHtml(buyerManualResaleOutput > 0 ? 'Manual buyer resale total converted to output currency' : buyerProfitType === 'margin' ? 'Purchase value / (1 - buyer margin)' : 'Purchase value × (1 + buyer markup)')}</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
       <tr class="total-row"><td>Buyer gross profit<span>Buyer resale revenue - buyer purchase value</span></td><td class="num">${escapeHtml(fmt(buyerGrossProfit))} <span>${escapeHtml(pct(buyerMargin))} buyer margin</span></td></tr>
     </tbody></table>
   </section>
@@ -10964,6 +10989,8 @@ function AppInner() {
             profitLossReportTerm,
             buyerProfitPercent,
             buyerProfitType,
+            buyerManualResaleValue,
+            buyerManualResaleCurrency,
             invoiceIssueDateMs,
             invoiceDueDateMs,
             editingArchiveInvoiceId,
@@ -11050,6 +11077,8 @@ function AppInner() {
     profitLossReportTerm,
     buyerProfitPercent,
     buyerProfitType,
+    buyerManualResaleValue,
+    buyerManualResaleCurrency,
     invoiceIssueDateMs,
     invoiceDueDateMs,
     editingArchiveInvoiceId,
@@ -11317,6 +11346,8 @@ function AppInner() {
     setProfitLossReportTerm('');
     setBuyerProfitPercent(20);
     setBuyerProfitType('markup');
+    setBuyerManualResaleValue(undefined);
+    setBuyerManualResaleCurrency(config.outputCurrency || 'OMR');
     setCustomerName('');
     setCustomerFirstName('');
     setCustomerLastName('');
@@ -12104,6 +12135,10 @@ function AppInner() {
                             {basis === 'unit' ? 'Unit' : 'Pack'} Cost ({config.outputCurrency})
                         </th>
                         <th className="px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50">Total Cost</th>
+                        <th className="px-4 py-2 w-44 min-w-[170px] bg-cyan-50 text-cyan-800" title="Optional manual selling price per unit. Profit % is calculated automatically.">
+                            Manual Sell
+                            <span className="block text-[9px] font-normal text-cyan-600/90">/ unit · auto profit%</span>
+                        </th>
                         
                         <th className="px-4 py-2 w-20 bg-slate-50 text-right">Profit %</th>
 
@@ -12284,17 +12319,49 @@ function AppInner() {
                                     {formatMoney((p.unitCostOutput || 0) * viewMult, config.outputCurrency)}
                                 </td>
                                 <td className="px-4 py-2 text-right text-slate-600">{formatMoney(p.lineCost || 0, config.outputCurrency)}</td>
+                                <td className="px-4 py-2 bg-cyan-50/30 align-top">
+                                    <div className="flex items-center gap-1">
+                                        <FormattedNumberInput
+                                            optional
+                                            value={p.manualUnitSellPrice}
+                                            onChange={(val) => updateProduct(p.id, 'manualUnitSellPrice', val)}
+                                            className="w-24 bg-white border border-cyan-200 rounded px-2 py-1 text-xs text-right text-cyan-900 font-semibold"
+                                            placeholder="Auto"
+                                        />
+                                        <select
+                                            value={p.manualSellCurrency || config.outputCurrency}
+                                            onChange={(e) => updateProduct(p.id, 'manualSellCurrency', e.target.value)}
+                                            className="text-[10px] bg-white border border-cyan-100 rounded px-1 py-1 text-cyan-700"
+                                        >
+                                            {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                    {p.manualSellPriceOutput !== undefined ? (
+                                        <div className="mt-1 text-[10px] text-cyan-700 text-right">
+                                            {config.profitType === 'margin' ? 'Margin' : 'Markup'} {((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%
+                                        </div>
+                                    ) : (
+                                        <div className="mt-1 text-[10px] text-slate-400 text-right">auto formula</div>
+                                    )}
+                                </td>
                                 
                                 <td className="px-4 py-2 text-right">
                                     {/* DISABLE PER-PRODUCT PROFIT IN FIXED MODE */}
-                                    <FormattedNumberInput
-                                        optional
-                                        value={p.customProfit}
-                                        onChange={(val) => updateProduct(p.id, 'customProfit', val)}
-                                        disabled={config.pricingMethod === 'fixed_unit_markup'}
-                                        placeholder={String(config.profitPercent)}
-                                        className={`w-14 text-right bg-transparent border-b ${p.customProfit !== undefined ? 'border-purple-300 text-purple-700 font-medium' : 'border-slate-200 text-slate-400'} focus:border-purple-500 outline-none text-xs px-1 ${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                    />
+                                    {p.manualSellPriceOutput !== undefined ? (
+                                        <div className="text-xs font-bold text-cyan-700">
+                                            {((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%
+                                            <span className="block text-[9px] text-cyan-500 font-medium">manual</span>
+                                        </div>
+                                    ) : (
+                                        <FormattedNumberInput
+                                            optional
+                                            value={p.customProfit}
+                                            onChange={(val) => updateProduct(p.id, 'customProfit', val)}
+                                            disabled={config.pricingMethod === 'fixed_unit_markup'}
+                                            placeholder={String(config.profitPercent)}
+                                            className={`w-14 text-right bg-transparent border-b ${p.customProfit !== undefined ? 'border-purple-300 text-purple-700 font-medium' : 'border-slate-200 text-slate-400'} focus:border-purple-500 outline-none text-xs px-1 ${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                        />
+                                    )}
                                 </td>
 
                                 <td className="px-4 py-2 text-right text-emerald-600 font-medium">
@@ -12459,7 +12526,7 @@ function AppInner() {
                     })}
                     {products.length === 0 && (
                         <tr>
-                            <td colSpan={showPackInfo ? 23 : 21} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
+                            <td colSpan={showPackInfo ? 24 : 22} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
                         </tr>
                     )}
                 </tbody>
@@ -13252,6 +13319,9 @@ function AppInner() {
         const totalDdpCost = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc + calculations.costs.ddp_inc;
         const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
         const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
+        const buyerManualResaleOutput = buyerManualResaleValue && buyerManualResaleValue > 0
+          ? convert(buyerManualResaleValue, buyerManualResaleCurrency || config.outputCurrency)
+          : 0;
         const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
         const calcBuyerResale = (cost: number) => {
           if (buyerProfitType === 'margin') {
@@ -13260,8 +13330,13 @@ function AppInner() {
           }
           return cost * (1 + buyerMarkup / 100);
         };
-        const buyerResaleRevenue = calcBuyerResale(selectedReportRow?.totalSell || 0);
+        const buyerResaleRevenue = buyerManualResaleOutput > 0 ? buyerManualResaleOutput : calcBuyerResale(selectedReportRow?.totalSell || 0);
         const buyerGrossProfit = buyerResaleRevenue - (selectedReportRow?.totalSell || 0);
+        const buyerAutoPercent = selectedReportRow?.totalSell && buyerResaleRevenue > 0
+          ? buyerProfitType === 'margin'
+            ? ((buyerResaleRevenue - selectedReportRow.totalSell) / buyerResaleRevenue) * 100
+            : ((buyerResaleRevenue - selectedReportRow.totalSell) / selectedReportRow.totalSell) * 100
+          : buyerMarkup;
         const costCards = [
           { label: 'Product + EXW', value: calculations.costs.exw, tone: 'from-slate-700 to-slate-900' },
           { label: 'Inland + Port', value: calculations.costs.fob_inc, tone: 'from-blue-600 to-indigo-700' },
@@ -13291,7 +13366,7 @@ function AppInner() {
                 </button>
               </div>
 
-              <div className="grid md:grid-cols-[1fr_1.15fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
+              <div className="grid md:grid-cols-[1fr_1.15fr_1.15fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
                 <label>
                   <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">مبنای گزارش سود و زیان</span>
                   <select
@@ -13322,6 +13397,28 @@ function AppInner() {
                     </select>
                   </div>
                 </label>
+                <label>
+                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">قیمت فروش دستی خریدار</span>
+                  <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
+                    <FormattedNumberInput
+                      optional
+                      value={buyerManualResaleValue}
+                      onChange={(val) => setBuyerManualResaleValue(val && val > 0 ? val : undefined)}
+                      className="w-full text-sm text-slate-900 font-bold outline-none"
+                      placeholder="Auto"
+                    />
+                    <select
+                      value={buyerManualResaleCurrency || config.outputCurrency}
+                      onChange={(e) => setBuyerManualResaleCurrency(e.target.value)}
+                      className="text-xs border-l border-slate-200 pl-2 text-slate-700 font-bold outline-none bg-white"
+                    >
+                      {Object.keys(rates).map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  {buyerManualResaleOutput > 0 ? (
+                    <span className="text-[10px] text-emerald-100 mt-1 block">Auto {buyerProfitType}: {buyerAutoPercent.toFixed(1)}%</span>
+                  ) : null}
+                </label>
                 <div className="rounded-xl bg-slate-950/30 border border-white/10 px-3 py-2 min-w-[12rem]">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer resale revenue</p>
                   <p className="font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : 'Term را انتخاب کن'}</p>
@@ -13344,7 +13441,7 @@ function AppInner() {
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer Profit</p>
                   <p className="text-xl font-black mt-1">{profitLossReportTerm ? formatMoney(buyerGrossProfit, config.outputCurrency) : '-'}</p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">{buyerMarkup.toFixed(1)}% buyer {buyerProfitType}</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">{buyerAutoPercent.toFixed(1)}% buyer {buyerProfitType}</p>
                 </div>
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Shipment</p>

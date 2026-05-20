@@ -68,6 +68,9 @@ export interface Product {
   // Optional: Target price (per unit) requested by buyer / target market
   targetPrice?: number;
   targetPriceCurrency?: string;
+  /** Optional manual selling price per unit. When set, export profit % is derived from this price. */
+  manualUnitSellPrice?: number;
+  manualSellCurrency?: string;
 
   /** Optional: compare unit sell with standard vs luxury packaging (extra cost per unit in `currency`) */
   packagingEnabled?: boolean;
@@ -100,6 +103,9 @@ export interface Product {
   totalPacks?: number; // New: Calculated number of packs (qty / itemsPerPack)
   scenarioPrices?: { [key: string]: number };
   scenarioPackPrices?: { [key: string]: number }; // New: Pack prices for each scenario
+  manualSellPriceOutput?: number;
+  manualProfitPercentMarkup?: number;
+  manualProfitPercentMargin?: number;
   packagingUnitCostStandard?: number;
   packagingUnitCostLuxury?: number;
   packagingUnitSellStandard?: number;
