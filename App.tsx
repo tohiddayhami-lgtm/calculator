@@ -10681,6 +10681,36 @@ function AppInner() {
         </tr>
       `;
     }).join('');
+    const buyerAnalysisRows = activeProducts.map((p, index) => {
+      const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
+      const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+      const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+      const q = p.qty || 0;
+      const packSize = p.itemsPerPack || 0;
+      const sellerPackPrice = unitSell * (packSize || 1);
+      const lineSell = termRow?.lineSell ?? unitSell * q;
+      const buyerUnitResale = buyerManualResaleOutput > 0 && selectedTermRow?.totalSell
+        ? ((lineSell / selectedTermRow.totalSell) * buyerResaleRevenue) / (q || 1)
+        : applyBuyerProfit(unitSell);
+      const buyerUnitProfit = buyerUnitResale - unitSell;
+      const buyerPackPrice = buyerUnitResale * (packSize || 1);
+      const buyerLineRevenue = buyerUnitResale * q;
+      const buyerLineProfit = buyerLineRevenue - lineSell;
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td><strong>${escapeHtml(p.name || 'Item')}</strong><span>${escapeHtml([p.sku ? `SKU ${p.sku}` : '', packSize ? `${packSize} / pack` : 'No pack size'].filter(Boolean).join(' · '))}</span></td>
+          <td class="num">${escapeHtml((q || 0).toLocaleString())}</td>
+          <td class="num">${escapeHtml(packSize ? packSize.toLocaleString() : '-')}</td>
+          <td class="num">${escapeHtml(fmt(unitSell))}</td>
+          <td class="num">${escapeHtml(fmt(sellerPackPrice))}</td>
+          <td class="num">${escapeHtml(fmt(buyerUnitResale))}</td>
+          <td class="num">${escapeHtml(fmt(buyerPackPrice))}</td>
+          <td class="num profit">${escapeHtml(fmt(buyerUnitProfit))}</td>
+          <td class="num profit">${escapeHtml(fmt(buyerLineProfit))}</td>
+        </tr>
+      `;
+    }).join('');
     const termRows = calculations.breakdown.map((row) => `
       <tr>
         <td><span class="term">${escapeHtml(row.term)}</span></td>
@@ -10747,6 +10777,13 @@ function AppInner() {
   .pl-table th:nth-child(4),.pl-table td:nth-child(4){width:22%}
   .pl-table th:nth-child(5),.pl-table td:nth-child(5),
   .pl-table th:nth-child(6),.pl-table td:nth-child(6){width:11%}
+  .buyer-table{table-layout:fixed;font-size:8.5px}
+  .buyer-table th,.buyer-table td{padding:5px 4px}
+  .buyer-table th:nth-child(1),.buyer-table td:nth-child(1){width:5%}
+  .buyer-table th:nth-child(2),.buyer-table td:nth-child(2){width:23%}
+  .buyer-table th:nth-child(3),.buyer-table td:nth-child(3),
+  .buyer-table th:nth-child(4),.buyer-table td:nth-child(4){width:8%}
+  .buyer-table th:nth-child(n+5),.buyer-table td:nth-child(n+5){width:9.33%}
   .total-row td{background:#ecfdf5;font-weight:900;color:#065f46}
   .note{font-size:9px;color:#64748b;line-height:1.5;padding:9px 11px;background:#f8fafc}
   .signatures{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:22px}.sig{border-top:1px solid #94a3b8;text-align:center;padding-top:7px;font-size:9px;color:#64748b}
@@ -10801,6 +10838,13 @@ function AppInner() {
       <tr><td><strong>Buyer ${escapeHtml(buyerProfitType)}</strong><span>${buyerManualResaleOutput > 0 ? 'Automatically derived from manual buyer resale price' : 'Optional resale profit entered in the dashboard'}</span></td><td class="num">${escapeHtml(pct(buyerAutoPercent))}</td></tr>
       <tr><td><strong>Buyer resale revenue</strong><span>${escapeHtml(buyerManualResaleOutput > 0 ? 'Manual buyer resale total converted to output currency' : buyerProfitType === 'margin' ? 'Purchase value / (1 - buyer margin)' : 'Purchase value × (1 + buyer markup)')}</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
       <tr class="total-row"><td>Buyer gross profit<span>Buyer resale revenue - buyer purchase value</span></td><td class="num">${escapeHtml(fmt(buyerGrossProfit))} <span>${escapeHtml(pct(buyerMargin))} buyer margin</span></td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="section">
+    <h2>Buyer unit &amp; pack price analysis</h2>
+    <table class="buyer-table"><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Pack size</th><th class="num">Your unit sell</th><th class="num">Your pack price</th><th class="num">Buyer unit sell</th><th class="num">Buyer pack price</th><th class="num">Buyer unit profit</th><th class="num">Buyer line profit</th></tr></thead><tbody>
+      ${buyerAnalysisRows || '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
     </tbody></table>
   </section>
 
