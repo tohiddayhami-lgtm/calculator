@@ -6328,7 +6328,23 @@ function AppInner() {
           });
         }
       },
-      (err: any) => console.error('User profile listener failed:', err)
+      (err: any) => {
+        console.error('User profile listener failed:', err);
+        setCurrentUserProfile({
+          uid: user.uid,
+          email: emailValue,
+          displayName: user.displayName || '',
+          role: shouldBeMaster ? 'master' : 'user',
+          status: 'active',
+          disabled: false,
+          permissions: shouldBeMaster ? MASTER_USER_PERMISSIONS : DEFAULT_USER_PERMISSIONS,
+          subscriptionStartsAt: now,
+          subscriptionEndsAt: shouldBeMaster ? null : addDays(now, DEFAULT_NEW_USER_SUBSCRIPTION_DAYS),
+          createdAt: now,
+          updatedAt: now,
+          lastLoginAt: now,
+        });
+      }
     );
 
     return () => unsub();
@@ -20371,13 +20387,12 @@ function AppInner() {
         })()
       : null;
 
-  const waitingForUserProfile = !!user && !isDemoMode && user.uid !== DEMO_USER_ID && !!db && !currentUserProfile;
-  if ((authLoading || waitingForUserProfile) && !publicFormUrlKey) {
+  if (authLoading && !publicFormUrlKey) {
     return (
       <div className="fixed inset-0 bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
           <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-600" />
-          <p className="text-sm text-slate-700">{authLoading ? 'Checking authentication...' : 'Loading workspace...'}</p>
+          <p className="text-sm text-slate-700">Checking authentication...</p>
         </div>
       </div>
     );
