@@ -13,11 +13,17 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/artifacts/$(appId)/userProfiles/$(userId)).data;
     }
 
+    function isConfiguredMasterEmail() {
+      return signedIn()
+             && request.auth.token.email == 'tohid.dayhami@gmail.com';
+    }
+
     function isMaster(appId) {
       return signedIn()
              && (
                request.auth.token.admin == true
                || request.auth.token.master == true
+               || isConfiguredMasterEmail()
                || (
                  profileExists(appId, request.auth.uid)
                  && profile(appId, request.auth.uid).role == 'master'
@@ -56,7 +62,13 @@ service cloud.firestore {
                         request.auth.uid == profileUserId
                         && request.resource.data.uid == profileUserId
                         && request.resource.data.email == request.auth.token.email
-                        && request.resource.data.role == 'user'
+                        && (
+                          request.resource.data.role == 'user'
+                          || (
+                            request.resource.data.role == 'master'
+                            && isConfiguredMasterEmail()
+                          )
+                        )
                       )
                     );
       allow update: if signedIn()

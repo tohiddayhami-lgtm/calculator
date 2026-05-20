@@ -8586,6 +8586,7 @@ function AppInner() {
           const secondaryAuth = getAuth(secondaryApp);
           const cred = await createUserWithEmailAndPassword(secondaryAuth, emailToCreate, passwordToCreate);
           await signOut(secondaryAuth);
+          let profileSaved = true;
           if (db) {
             const now = Date.now();
             const profile: ManagedUserProfile = {
@@ -8602,13 +8603,18 @@ function AppInner() {
               updatedAt: now,
               createdBy: user?.uid,
             };
-            await withTimeout(
-              setDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', cred.user.uid), stripUndefinedDeep(profile), { merge: true }),
-              10000,
-              'Create managed user profile'
-            );
+            try {
+              await withTimeout(
+                setDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', cred.user.uid), stripUndefinedDeep(profile), { merge: true }),
+                10000,
+                'Create managed user profile'
+              );
+            } catch (profileErr: any) {
+              profileSaved = false;
+              console.warn('Managed user profile save failed after Auth creation:', profileErr);
+            }
           }
-          return cred.user.uid;
+          return { uid: cred.user.uid, profileSaved };
       } finally {
           if (secondaryApp) {
               try {
@@ -8683,28 +8689,36 @@ function AppInner() {
               return;
             } catch (err: any) {
               if (!isCloudFunctionUnavailableError(err)) throw err;
-              const uid = await createUserWithClientFallback(emailToCreate, newUserPassword, expiresAt);
+              const fallback = await createUserWithClientFallback(emailToCreate, newUserPassword, expiresAt);
               setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
               setNewUserEmail('');
               setNewUserDisplayName('');
               setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
               setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
               setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
-              setMasterActionMessage(`User created with client fallback. Deploy Functions for Sync/delete/reset. Login: ${emailToCreate} / ${newUserPassword}`);
-              if (uid) setAdminWorkspaceUid(uid);
+              setMasterActionMessage(
+                fallback.profileSaved
+                  ? `User created with client fallback. Deploy Functions for Sync/delete/reset. Login: ${emailToCreate} / ${newUserPassword}`
+                  : `Auth user created, but profile save needs Firestore rules deploy. Login: ${emailToCreate} / ${newUserPassword}`
+              );
+              if (fallback.uid) setAdminWorkspaceUid(fallback.uid);
               return;
             }
           }
 
-          const uid = await createUserWithClientFallback(emailToCreate, newUserPassword, expiresAt);
+          const fallback = await createUserWithClientFallback(emailToCreate, newUserPassword, expiresAt);
           setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
           setNewUserEmail('');
           setNewUserDisplayName('');
           setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
           setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
           setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
-          setMasterActionMessage(`User created. Login: ${emailToCreate} / ${newUserPassword}`);
-          if (uid) setAdminWorkspaceUid(uid);
+          setMasterActionMessage(
+            fallback.profileSaved
+              ? `User created. Login: ${emailToCreate} / ${newUserPassword}`
+              : `Auth user created, but profile save needs Firestore rules deploy. Login: ${emailToCreate} / ${newUserPassword}`
+          );
+          if (fallback.uid) setAdminWorkspaceUid(fallback.uid);
       } catch (error: any) {
           setMasterActionMessage(error?.message || 'Failed to create user.');
       } finally {
