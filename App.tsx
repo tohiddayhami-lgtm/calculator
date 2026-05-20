@@ -10565,6 +10565,195 @@ function AppInner() {
     };
   }, [products, logistics, config, rates]);
 
+  const printShipmentProfitLossReport = () => {
+    if (typeof window === 'undefined') return;
+    const activeProducts = calculations.processedProducts.filter((p) => p.isActive && p.qty > 0);
+    const productCost = activeProducts.reduce((sum, p) => sum + (p.lineCost || 0), 0);
+    const exwExtrasTotal = (logistics.exwExtras || []).reduce((sum, item) => sum + convert(item.val, item.curr), 0);
+    const inland = convert(logistics.inland.val, logistics.inland.curr);
+    const port = convert(logistics.port.val, logistics.port.curr);
+    const freight = convert(logistics.freight.val, logistics.freight.curr);
+    const insurance = convert(logistics.insurance.val, logistics.insurance.curr);
+    const destination = convert(logistics.destination.val, logistics.destination.curr);
+    const destinationExtras = (logistics.extras || []).reduce((sum, item) => sum + convert(item.val, item.curr), 0);
+    const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
+    const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
+    const preferredTerm =
+      calculations.breakdown.find((row) => row.term === 'FOB')
+      || calculations.breakdown.find((row) => row.term === 'CIF')
+      || calculations.breakdown.find((row) => row.term === 'DDP')
+      || calculations.breakdown[0];
+    const bestTerm = calculations.breakdown.reduce((best, row) => row.totalProfit > best.totalProfit ? row : best, calculations.breakdown[0] || preferredTerm);
+    const fmt = (value: number) => formatMoney(value || 0, config.outputCurrency);
+    const pct = (value: number) => `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`;
+    const title = projectName.trim() || 'Export Shipment';
+    const costRows = [
+      ['Product purchase cost', 'Active product line costs', productCost],
+      ['EXW / origin charges', 'Certificates, labels, packing labour, documentation', exwExtrasTotal],
+      ['Inland transport', 'Factory to port / handover point', inland],
+      ['Port & terminal', 'Loading, THC, port fees and handling', port],
+      ['International freight', 'Main carriage', freight],
+      ['Insurance', 'Cargo insurance', insurance],
+      ['Destination handling', 'Destination port / local clearance handling', destination],
+      [`Customs duty (${pct(logistics.dutyPercent || 0)})`, 'Calculated on CIF landed cost base', duty],
+      ['Other destination extras', 'Local extras and post-clearance costs', destinationExtras],
+    ];
+    const extraOriginRows = (logistics.exwExtras || []).filter((x) => x.val).map((x) => `
+      <tr><td>${escapeHtml(x.name || 'Origin extra')}</td><td>${escapeHtml(formatMoney(x.val || 0, x.curr))}</td><td>${escapeHtml(fmt(convert(x.val, x.curr)))}</td></tr>
+    `).join('');
+    const extraDestinationRows = (logistics.extras || []).filter((x) => x.val).map((x) => `
+      <tr><td>${escapeHtml(x.name || 'Destination extra')}</td><td>${escapeHtml(formatMoney(x.val || 0, x.curr))}</td><td>${escapeHtml(fmt(convert(x.val, x.curr)))}</td></tr>
+    `).join('');
+    const productRows = activeProducts.map((p, index) => {
+      const fob = p.scenarioPrices?.FOB || p.unitSellPrice || 0;
+      const ddp = p.scenarioPrices?.DDP || 0;
+      const unitCost = p.unitCostOutput || 0;
+      const lineCost = p.lineCost || 0;
+      const lineFobSell = fob * (p.qty || 0);
+      const lineFobProfit = lineFobSell - lineCost;
+      const lineMargin = lineFobSell > 0 ? (lineFobProfit / lineFobSell) * 100 : 0;
+      const supplier = p.supplierId ? suppliers.find((s) => s.id === p.supplierId) : undefined;
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>
+            <strong>${escapeHtml(p.name || 'Item')}</strong>
+            <span>${escapeHtml([p.sku ? `SKU ${p.sku}` : '', p.hsCode ? `HS ${p.hsCode}` : '', supplier ? getSupplierDisplayName(supplier) : ''].filter(Boolean).join(' · '))}</span>
+          </td>
+          <td class="num">${escapeHtml((p.qty || 0).toLocaleString())}</td>
+          <td class="num">${escapeHtml(fmt(unitCost))}</td>
+          <td class="num">${escapeHtml(fmt(lineCost))}</td>
+          <td class="num">${escapeHtml(fmt(fob))}</td>
+          <td class="num">${escapeHtml(fmt(ddp))}</td>
+          <td class="num profit">${escapeHtml(fmt(lineFobProfit))}<small>${escapeHtml(pct(lineMargin))}</small></td>
+        </tr>
+      `;
+    }).join('');
+    const termRows = calculations.breakdown.map((row) => `
+      <tr>
+        <td><span class="term">${escapeHtml(row.term)}</span></td>
+        <td class="num">${escapeHtml(fmt(row.totalCost))}</td>
+        <td class="num">${escapeHtml(fmt(row.totalSell))}</td>
+        <td class="num profit">${escapeHtml(fmt(row.totalProfit))}</td>
+        <td class="num">${escapeHtml(pct(row.markupPercent))}</td>
+        <td class="num">${escapeHtml(pct(row.profitMargin))}</td>
+      </tr>
+    `).join('');
+    const costTableRows = costRows.map(([label, note, amount]) => `
+      <tr>
+        <td><strong>${escapeHtml(String(label))}</strong><span>${escapeHtml(String(note))}</span></td>
+        <td class="num">${escapeHtml(fmt(Number(amount) || 0))}</td>
+      </tr>
+    `).join('');
+    const packagingRows = activeProducts
+      .filter((p) => p.packagingEnabled)
+      .map((p) => `
+        <tr>
+          <td>${escapeHtml(p.name || 'Item')}</td>
+          <td class="num">${escapeHtml(fmt(p.packagingUnitCostStandard || 0))}</td>
+          <td class="num">${escapeHtml(fmt(p.packagingUnitSellStandard || 0))}</td>
+          <td class="num">${escapeHtml(fmt(p.packagingUnitCostLuxury || 0))}</td>
+          <td class="num">${escapeHtml(fmt(p.packagingUnitSellLuxury || 0))}</td>
+        </tr>
+      `).join('');
+    const marginColor = (preferredTerm?.profitMargin || 0) >= 20 ? '#059669' : (preferredTerm?.profitMargin || 0) >= 10 ? '#d97706' : '#dc2626';
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8" />
+<title>Shipment Profit & Loss — ${escapeHtml(title)}</title>
+<style>
+  *{box-sizing:border-box}
+  @page{size:A4 portrait;margin:10mm}
+  body{margin:0;background:#e2e8f0;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}
+  .sheet{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:14mm;position:relative;overflow:hidden}
+  .sheet:before{content:"";position:absolute;inset:0 0 auto 0;height:82mm;background:linear-gradient(135deg,#0f172a,#1d4ed8 58%,#059669);z-index:0}
+  .content{position:relative;z-index:1}
+  .hero{color:#fff;padding-bottom:18px}
+  .eyebrow{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#bfdbfe;font-weight:800}
+  h1{margin:5px 0 6px;font-size:28px;line-height:1.08;letter-spacing:-.04em}
+  .subtitle{max-width:640px;color:#dbeafe;font-size:11px;line-height:1.55}
+  .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:15px}
+  .meta div,.kpi{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:9px 10px}
+  .label{font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}
+  .meta .label{color:#bfdbfe}.meta b{display:block;font-size:12px;margin-top:3px;color:#fff}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:14px 0 12px}
+  .kpi{background:#fff;color:#0f172a;box-shadow:0 12px 26px rgba(15,23,42,.12);border-color:#e2e8f0}
+  .kpi .value{font-size:16px;font-weight:900;margin-top:4px;letter-spacing:-.03em}.kpi .hint{font-size:9px;color:#64748b;margin-top:2px}
+  .section{background:#fff;border:1px solid #e2e8f0;border-radius:14px;margin-top:10px;overflow:hidden}
+  .section h2{margin:0;padding:9px 11px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th{background:#f8fafc;color:#475569;font-size:8px;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:7px;border-bottom:1px solid #e2e8f0}
+  td{padding:7px;border-bottom:1px solid #e2e8f0;vertical-align:top}tr:last-child td{border-bottom:0}
+  td span{display:block;color:#64748b;font-size:8.5px;margin-top:2px}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.profit{font-weight:900;color:#059669}.profit small{display:block;color:#64748b;font-size:8px;font-weight:600}
+  .term{display:inline-block;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:3px 7px;font-weight:900}
+  .grid2{display:grid;grid-template-columns:1.05fr .95fr;gap:10px;margin-top:10px}
+  .total-row td{background:#ecfdf5;font-weight:900;color:#065f46}
+  .note{font-size:9px;color:#64748b;line-height:1.5;padding:9px 11px;background:#f8fafc}
+  .signatures{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:22px}.sig{border-top:1px solid #94a3b8;text-align:center;padding-top:7px;font-size:9px;color:#64748b}
+  .footer{margin-top:12px;text-align:center;font-size:8px;color:#94a3b8}
+  @media print{body{background:#fff}.sheet{margin:0;box-shadow:none}.no-print{display:none!important}}
+</style></head>
+<body><div class="sheet"><div class="content">
+  <section class="hero">
+    <div class="eyebrow">Commercial Shipment Statement</div>
+    <h1>Shipment Profit &amp; Loss Report</h1>
+    <div class="subtitle">A complete financial view of one export shipment, including product cost, logistics layers, customs duty, sell scenarios, gross profit and margin.</div>
+    <div class="meta">
+      <div><span class="label">Project</span><b>${escapeHtml(title)}</b></div>
+      <div><span class="label">Currency</span><b>${escapeHtml(config.outputCurrency)}</b></div>
+      <div><span class="label">Issue date</span><b>${escapeHtml(new Date().toLocaleDateString())}</b></div>
+      <div><span class="label">Pricing</span><b>${escapeHtml(config.pricingMethod === 'fixed_unit_markup' ? 'Term markup' : `${config.profitPercent}% ${config.profitType}`)}</b></div>
+    </div>
+  </section>
+
+  <div class="kpis">
+    <div class="kpi"><span class="label">Reference term</span><div class="value">${escapeHtml(preferredTerm?.term || 'FOB')}</div><div class="hint">commercial P&amp;L basis</div></div>
+    <div class="kpi"><span class="label">Revenue</span><div class="value">${escapeHtml(fmt(preferredTerm?.totalSell || 0))}</div><div class="hint">total sell value</div></div>
+    <div class="kpi"><span class="label">Gross profit</span><div class="value" style="color:${marginColor}">${escapeHtml(fmt(preferredTerm?.totalProfit || 0))}</div><div class="hint">${escapeHtml(pct(preferredTerm?.profitMargin || 0))} margin</div></div>
+    <div class="kpi"><span class="label">Best scenario</span><div class="value">${escapeHtml(bestTerm?.term || '-')}</div><div class="hint">${escapeHtml(fmt(bestTerm?.totalProfit || 0))} profit</div></div>
+  </div>
+
+  <div class="grid2">
+    <section class="section">
+      <h2>Cost structure</h2>
+      <table><tbody>
+        ${costTableRows}
+        <tr class="total-row"><td>Total DDP landed cost<span>Product + all logistics + duty</span></td><td class="num">${escapeHtml(fmt(calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc + calculations.costs.ddp_inc))}</td></tr>
+      </tbody></table>
+    </section>
+    <section class="section">
+      <h2>P&amp;L by Incoterm</h2>
+      <table><thead><tr><th>Term</th><th class="num">Cost</th><th class="num">Sell</th><th class="num">Profit</th><th class="num">Markup</th><th class="num">Margin</th></tr></thead><tbody>${termRows}</tbody></table>
+    </section>
+  </div>
+
+  <section class="section">
+    <h2>Product line profitability</h2>
+    <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">FOB unit sell</th><th class="num">DDP unit sell</th><th class="num">FOB profit</th></tr></thead><tbody>
+      ${productRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
+    </tbody></table>
+  </section>
+
+  ${(extraOriginRows || extraDestinationRows) ? `<div class="grid2">
+    <section class="section"><h2>Origin extra cost lines</h2><table><thead><tr><th>Line</th><th>Input</th><th class="num">Output</th></tr></thead><tbody>${extraOriginRows || '<tr><td colspan="3" style="color:#94a3b8">No origin extras.</td></tr>'}</tbody></table></section>
+    <section class="section"><h2>Destination extra cost lines</h2><table><thead><tr><th>Line</th><th>Input</th><th class="num">Output</th></tr></thead><tbody>${extraDestinationRows || '<tr><td colspan="3" style="color:#94a3b8">No destination extras.</td></tr>'}</tbody></table></section>
+  </div>` : ''}
+
+  ${packagingRows ? `<section class="section"><h2>Packaging comparison</h2><table><thead><tr><th>Product</th><th class="num">Standard cost</th><th class="num">Standard sell</th><th class="num">Luxury cost</th><th class="num">Luxury sell</th></tr></thead><tbody>${packagingRows}</tbody></table></section>` : ''}
+
+  <div class="note"><strong>Commercial note:</strong> This statement is a gross shipment P&amp;L based on the current calculator data. Banking fees, tax effects, credit risk, after-sales claims and realized exchange-rate differences should be reviewed separately if applicable.</div>
+  <div class="signatures"><div class="sig">Prepared by / Commercial analyst</div><div class="sig">Reviewed by / Management</div></div>
+  <div class="footer">Generated by Tohid Dayhami Export⁺ — ${escapeHtml(new Date().toLocaleString())}</div>
+</div></div><script>setTimeout(function(){window.focus();window.print();},300);</script></body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Pop-up blocked. Allow pop-ups to print the shipment P&L report.');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
   // --- CATALOG PAGINATION HELPERS ---
   const chunkArray = <T,>(array: T[], size: number): T[][] => {
     const chunked: T[][] = [];
@@ -12958,7 +13147,128 @@ function AppInner() {
         );
       })()}
 
-      {/* 6. Dashboard research & reports */}
+      {/* 6. Printable shipment P&L statement */}
+      {(() => {
+        const activeProducts = calculations.processedProducts.filter((p) => p.isActive && p.qty > 0);
+        const fobRow = calculations.breakdown.find((b) => b.term === 'FOB') || calculations.breakdown[0];
+        const ddpRow = calculations.breakdown.find((b) => b.term === 'DDP') || calculations.breakdown[calculations.breakdown.length - 1];
+        const totalDdpCost = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc + calculations.costs.ddp_inc;
+        const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
+        const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
+        const costCards = [
+          { label: 'Product + EXW', value: calculations.costs.exw, tone: 'from-slate-700 to-slate-900' },
+          { label: 'Inland + Port', value: calculations.costs.fob_inc, tone: 'from-blue-600 to-indigo-700' },
+          { label: 'Freight + Insurance', value: calculations.costs.cif_inc, tone: 'from-violet-600 to-purple-700' },
+          { label: 'Destination + Duty', value: calculations.costs.ddp_inc, tone: 'from-emerald-600 to-teal-700' },
+        ];
+        const margin = fobRow?.profitMargin || 0;
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 text-white p-5 md:p-6">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-200 font-black">A4 Commercial Document</p>
+                  <h2 className="text-2xl md:text-3xl font-black mt-2">گزارش کامل سود و زیان محموله</h2>
+                  <p className="text-sm text-blue-100/85 mt-2 max-w-3xl leading-6">
+                    سند حرفه‌ای قابل فروش برای نمایش قیمت خرید، هزینه‌های حمل، گمرک، قیمت فروش، سود ناخالص و Margin معامله صادراتی.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={printShipmentProfitLossReport}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white text-slate-950 text-sm font-black hover:bg-emerald-50 shadow-lg"
+                >
+                  <Printer className="w-4 h-4" />
+                  Print A4 / PDF
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">FOB Profit</p>
+                  <p className={`text-xl font-black mt-1 ${margin >= 20 ? 'text-emerald-200' : margin >= 10 ? 'text-amber-200' : 'text-rose-200'}`}>
+                    {formatMoney(fobRow?.totalProfit || 0, config.outputCurrency)}
+                  </p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">{margin.toFixed(1)}% margin</p>
+                </div>
+                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">FOB Revenue</p>
+                  <p className="text-xl font-black mt-1">{formatMoney(fobRow?.totalSell || 0, config.outputCurrency)}</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">commercial selling value</p>
+                </div>
+                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">DDP Cost</p>
+                  <p className="text-xl font-black mt-1">{formatMoney(totalDdpCost, config.outputCurrency)}</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">full landed cost</p>
+                </div>
+                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Shipment</p>
+                  <p className="text-xl font-black mt-1">{calculations.totalQty.toLocaleString()}</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">{activeProducts.length} active products</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 md:p-6 grid xl:grid-cols-[1.05fr_0.95fr] gap-5">
+              <div className="space-y-4">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {costCards.map((card) => (
+                    <div key={card.label} className={`rounded-2xl p-4 text-white bg-gradient-to-br ${card.tone}`}>
+                      <p className="text-[10px] uppercase tracking-wider text-white/70 font-bold">{card.label}</p>
+                      <p className="text-lg font-black mt-1">{formatMoney(card.value, config.outputCurrency)}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="font-black text-slate-900 mb-3 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    محتوای سند چاپی
+                  </h3>
+                  <div className="grid sm:grid-cols-2 gap-2 text-sm text-slate-600">
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">خلاصه اجرایی سود و زیان</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">ریز هزینه‌ها تا DDP</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">سود و Margin برای EXW تا DDP</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">جدول سود هر کالا</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">هزینه‌های اضافه مبدا/مقصد</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">بخش امضا و تایید مدیریت</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <h3 className="font-black text-slate-900">پیش‌نمایش سود و زیان</h3>
+                  <span className="text-xs text-slate-500">{projectName || 'Unsaved Project'}</span>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {[
+                    ['FOB Total Cost', fobRow?.totalCost || 0],
+                    ['FOB Total Sell', fobRow?.totalSell || 0],
+                    ['FOB Gross Profit', fobRow?.totalProfit || 0],
+                    ['DDP Total Sell', ddpRow?.totalSell || 0],
+                    [`Customs Duty (${(logistics.dutyPercent || 0).toFixed(1)}%)`, duty],
+                    ['Full DDP Landed Cost', totalDdpCost],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="px-4 py-3 flex items-center justify-between gap-3">
+                      <span className="text-sm text-slate-600">{String(label)}</span>
+                      <span className={`text-sm font-black font-mono ${String(label).includes('Profit') ? 'text-emerald-700' : 'text-slate-900'}`}>
+                        {formatMoney(Number(value) || 0, config.outputCurrency)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100">
+                  <p className="text-xs text-emerald-900 leading-5">
+                    این گزارش در پنجره چاپ جداگانه با سایز A4 باز می‌شود و برای ذخیره به PDF یا چاپ مستقیم آماده است.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 7. Dashboard research & reports */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="min-w-0">
