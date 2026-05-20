@@ -2857,6 +2857,7 @@ function sanitizeCustomFormAppendixHtml(raw: string | undefined): string {
 
   const allowedTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'P', 'DIV', 'SPAN', 'UL', 'OL', 'LI', 'H2', 'H3', 'BLOCKQUOTE']);
   const allowedAlign = new Set(['left', 'center', 'right', 'justify']);
+  const allowedFontSizes = new Set(['12px', '14px', '16px', '18px', '22px', '28px']);
   const root = document.createElement('div');
   root.innerHTML = raw;
   root.querySelectorAll('script,style,iframe,object,embed,link,meta').forEach((el) => el.remove());
@@ -2875,9 +2876,11 @@ function sanitizeCustomFormAppendixHtml(raw: string | undefined): string {
     }
 
     const textAlign = el.style.textAlign?.toLowerCase();
+    const fontSize = el.style.fontSize?.toLowerCase();
     const dir = el.getAttribute('dir');
     Array.from(el.attributes).forEach((attr) => el.removeAttribute(attr.name));
     if (allowedAlign.has(textAlign)) el.style.textAlign = textAlign;
+    if (allowedFontSizes.has(fontSize)) el.style.fontSize = fontSize;
     if (dir === 'rtl' || dir === 'ltr') el.setAttribute('dir', dir);
   };
 
@@ -5440,6 +5443,8 @@ function AppInner() {
   const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
   const [publicHtmlFrameOpenId, setPublicHtmlFrameOpenId] = useState<string | null>(null);
   const [publicHtmlFramePortrait, setPublicHtmlFramePortrait] = useState<Record<string, boolean>>({});
+  const formAppendixEditorRef = useRef<HTMLDivElement | null>(null);
+  const formAppendixEditorKeyRef = useRef('');
   const [formHeaderPresets, setFormHeaderPresets] = useState<FormHeaderPreset[]>([]);
   const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
   const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
@@ -5453,6 +5458,19 @@ function AppInner() {
       document.body.style.overflow = prevOverflow;
     };
   }, [publicHtmlFrameOpenId]);
+
+  useEffect(() => {
+    const el = formAppendixEditorRef.current;
+    if (!showFormBuilder || !formBuilderDraft?.appendixEnabled) {
+      formAppendixEditorKeyRef.current = '';
+      return;
+    }
+    if (!el) return;
+    const editorKey = formBuilderDraft.id || 'new-form';
+    if (formAppendixEditorKeyRef.current === editorKey) return;
+    el.innerHTML = sanitizeCustomFormAppendixHtml(formBuilderDraft.appendixHtml || '');
+    formAppendixEditorKeyRef.current = editorKey;
+  }, [showFormBuilder, formBuilderDraft?.id, formBuilderDraft?.appendixEnabled]);
 
   // -- STATE: CONTRACTS --
   const [contracts, setContracts] = useState<ContractDef[]>(() => {
@@ -6589,14 +6607,64 @@ function AppInner() {
   };
 
   const syncFormAppendixEditorToDraft = () => {
-    const el = document.getElementById('form-appendix-editor');
+    const el = formAppendixEditorRef.current || document.getElementById('form-appendix-editor');
     if (!el) return;
     setFormBuilderDraft((draft) => draft ? { ...draft, appendixHtml: sanitizeCustomFormAppendixHtml(el.innerHTML) } : draft);
+  };
+
+  const currentFormAppendixEditorHtml = () => {
+    const el = formAppendixEditorRef.current || document.getElementById('form-appendix-editor');
+    return el ? sanitizeCustomFormAppendixHtml(el.innerHTML) : undefined;
   };
 
   const formatFormAppendixText = (command: string, value?: string) => {
     document.execCommand(command, false, value);
     setTimeout(syncFormAppendixEditorToDraft, 0);
+  };
+
+  const normalizeFormAppendixFontTags = (fallbackSize: string) => {
+    const el = formAppendixEditorRef.current || document.getElementById('form-appendix-editor');
+    if (!el) return;
+    const sizeMap: Record<string, string> = {
+      '1': '12px',
+      '2': '14px',
+      '3': '16px',
+      '4': '18px',
+      '5': '22px',
+      '6': '28px',
+      '7': '28px',
+    };
+    el.querySelectorAll('font[size]').forEach((font) => {
+      const span = document.createElement('span');
+      span.style.fontSize = sizeMap[font.getAttribute('size') || ''] || fallbackSize;
+      while (font.firstChild) span.appendChild(font.firstChild);
+      font.replaceWith(span);
+    });
+  };
+
+  const formatFormAppendixFontSize = (size: 'small' | 'normal' | 'large' | 'xlarge') => {
+    const sizeToCommand: Record<typeof size, string> = {
+      small: '2',
+      normal: '3',
+      large: '5',
+      xlarge: '6',
+    };
+    const sizeToPx: Record<typeof size, string> = {
+      small: '14px',
+      normal: '16px',
+      large: '22px',
+      xlarge: '28px',
+    };
+    const editor = formAppendixEditorRef.current;
+    editor?.focus();
+    document.execCommand('fontSize', false, sizeToCommand[size]);
+    normalizeFormAppendixFontTags(sizeToPx[size]);
+    setTimeout(syncFormAppendixEditorToDraft, 0);
+  };
+
+  const formBuilderDraftWithCurrentAppendix = (draft: CustomFormDef): CustomFormDef => {
+    const appendixHtml = currentFormAppendixEditorHtml();
+    return appendixHtml === undefined ? draft : { ...draft, appendixHtml };
   };
 
   const handleAppendixImageUpload = async (files: FileList | null) => {
@@ -21378,24 +21446,34 @@ function AppInner() {
                         <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('justifyRight'); }} className="w-8 h-8 border border-slate-300 rounded bg-white hover:bg-slate-50"><AlignRight className="w-4 h-4 mx-auto" /></button>
                         <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('insertUnorderedList'); }} className="px-2 h-8 border border-slate-300 rounded bg-white text-xs hover:bg-slate-50">• List</button>
                         <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('insertOrderedList'); }} className="px-2 h-8 border border-slate-300 rounded bg-white text-xs hover:bg-slate-50">1. List</button>
+                        {[
+                          ['small', 'A-'],
+                          ['normal', 'A'],
+                          ['large', 'A+'],
+                          ['xlarge', 'A++'],
+                        ].map(([size, label]) => (
+                          <button
+                            key={size}
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); formatFormAppendixFontSize(size as 'small' | 'normal' | 'large' | 'xlarge'); }}
+                            className="px-2 h-8 border border-violet-200 rounded bg-white text-[11px] font-semibold text-violet-700 hover:bg-violet-50"
+                            title="Text size"
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
                       <div
                         id="form-appendix-editor"
+                        ref={formAppendixEditorRef}
                         contentEditable
                         suppressContentEditableWarning
                         dir="auto"
                         className="min-h-[140px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-7 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                        onInput={(e) =>
-                          setFormBuilderDraft({
-                            ...formBuilderDraft,
-                            appendixHtml: sanitizeCustomFormAppendixHtml((e.currentTarget as HTMLDivElement).innerHTML),
-                          })
-                        }
                         onBlur={syncFormAppendixEditorToDraft}
-                        dangerouslySetInnerHTML={{ __html: sanitizeCustomFormAppendixHtml(formBuilderDraft.appendixHtml || '') }}
                       />
                       <p className="text-[10px] text-slate-400 mt-1">
-                        Supports bold, italic, underline, lists, and alignment. Images are shown below the text.
+                        Supports bold, italic, underline, lists, alignment, and text size. Images are shown below the text.
                       </p>
                     </div>
 
@@ -21964,7 +22042,7 @@ function AppInner() {
             <div className="p-4 border-t border-slate-200 flex justify-between items-center gap-3 bg-slate-50">
               <button onClick={() => { setShowFormBuilder(false); setEditingForm(null); setFormBuilderDraft(null); }}
                 className="px-4 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-100">Cancel</button>
-              <button onClick={() => { if (formBuilderDraft) handleSaveForm(formBuilderDraft); }} disabled={formBuilderSaving || !formBuilderDraft?.name?.trim()}
+              <button onClick={() => { if (formBuilderDraft) handleSaveForm(formBuilderDraftWithCurrentAppendix(formBuilderDraft)); }} disabled={formBuilderSaving || !formBuilderDraft?.name?.trim()}
                 className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50">
                 {formBuilderSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Form
               </button>
