@@ -1123,9 +1123,6 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   border: 1px solid #cbd5e1;
   background: #020617;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
-  touch-action: none;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: auto;
 }
 .public-form-doc .pf-html-frame-wrap--portrait {
   aspect-ratio: 9 / 16;
@@ -1140,39 +1137,30 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   height: 100%;
   border: 0;
   background: #fff;
-  touch-action: none;
 }
 .public-form-doc .pf-html-controls {
   position: absolute;
-  right: 6px;
-  top: 6px;
+  right: 8px;
+  bottom: 8px;
   display: flex;
-  gap: 4px;
+  gap: 6px;
   z-index: 2;
   pointer-events: auto;
 }
 .public-form-doc .pf-html-controls button,
 .pf-html-modal-btn {
   border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(15,23,42,0.68);
+  background: rgba(15,23,42,0.82);
   color: #fff;
   border-radius: 999px;
-  padding: 4px 7px;
-  font-size: 9px;
+  padding: 7px 10px;
+  font-size: 11px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
   cursor: pointer;
   backdrop-filter: blur(8px);
-}
-.public-form-doc .pf-html-controls button:hover,
-.pf-html-modal-btn:hover {
-  background: rgba(15,23,42,0.88);
-}
-.public-form-doc .pf-html-controls svg {
-  width: 12px;
-  height: 12px;
 }
 .pf-html-modal {
   position: fixed;
@@ -1184,8 +1172,6 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   align-items: center;
   justify-content: center;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-  overscroll-behavior: contain;
-  touch-action: none;
 }
 .pf-html-modal-toolbar {
   position: absolute;
@@ -1208,7 +1194,7 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 }
 .pf-html-modal-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .pf-html-modal-frame {
@@ -1220,8 +1206,6 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   border: 1px solid rgba(255,255,255,0.18);
   background: #000;
   box-shadow: 0 24px 80px rgba(0,0,0,0.45);
-  touch-action: none;
-  overscroll-behavior: contain;
 }
 .pf-html-modal-frame--portrait {
   width: min(92vw, 560px);
@@ -1233,7 +1217,6 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   height: 100%;
   border: 0;
   background: #fff;
-  touch-action: none;
 }
 .public-form-doc .pf-html-empty {
   aspect-ratio: 16 / 9;
@@ -1618,45 +1601,6 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   .public-form-doc .pf-html-frame-wrap,
   .public-form-doc .pf-html-empty {
     aspect-ratio: 16 / 9;
-  }
-  .public-form-doc .pf-html-controls {
-    right: 5px;
-    top: 5px;
-    gap: 3px;
-  }
-  .public-form-doc .pf-html-controls button {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-    background: rgba(15,23,42,0.58);
-  }
-  .public-form-doc .pf-html-controls svg {
-    width: 13px;
-    height: 13px;
-  }
-  .pf-html-modal-toolbar {
-    top: max(8px, env(safe-area-inset-top));
-    left: max(8px, env(safe-area-inset-left));
-    right: max(8px, env(safe-area-inset-right));
-  }
-  .pf-html-modal-title {
-    font-size: 11px;
-  }
-  .pf-html-modal-actions {
-    gap: 5px;
-  }
-  .pf-html-modal-btn {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-  }
-  .pf-html-modal-btn svg {
-    width: 14px;
-    height: 14px;
   }
   .public-form-doc .pf-appendix-grid {
     grid-template-columns: 1fr;
@@ -5318,18 +5262,6 @@ function AppInner() {
   const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
   const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
   const [headerPresetSaveName, setHeaderPresetSaveName] = useState('');
-
-  useEffect(() => {
-    if (!publicHtmlFrameOpenId || typeof document === 'undefined') return;
-    const prevOverflow = document.body.style.overflow;
-    const prevTouchAction = document.body.style.touchAction;
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.style.touchAction = prevTouchAction;
-    };
-  }, [publicHtmlFrameOpenId]);
 
   // -- STATE: CONTRACTS --
   const [contracts, setContracts] = useState<ContractDef[]>(() => {
