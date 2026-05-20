@@ -1140,27 +1140,48 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 }
 .public-form-doc .pf-html-controls {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 5px;
+  top: 5px;
   display: flex;
-  gap: 6px;
+  gap: 3px;
   z-index: 2;
   pointer-events: auto;
 }
 .public-form-doc .pf-html-controls button,
 .pf-html-modal-btn {
   border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(15,23,42,0.82);
+  background: rgba(15,23,42,0.58);
   color: #fff;
   border-radius: 999px;
-  padding: 7px 10px;
-  font-size: 11px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 0;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 0;
   cursor: pointer;
   backdrop-filter: blur(8px);
+}
+.public-form-doc .pf-html-controls button {
+  opacity: 0.72;
+}
+.public-form-doc .pf-html-controls button:hover,
+.public-form-doc .pf-html-controls button:focus-visible,
+.pf-html-modal-btn:hover,
+.pf-html-modal-btn:focus-visible {
+  opacity: 1;
+  background: rgba(15,23,42,0.84);
+}
+.public-form-doc .pf-html-controls svg {
+  width: 11px;
+  height: 11px;
+}
+.public-form-doc .pf-html-controls .pf-html-skip-label {
+  font-size: 9px;
+  line-height: 1;
 }
 .pf-html-modal {
   position: fixed;
@@ -1194,8 +1215,20 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 }
 .pf-html-modal-actions {
   display: flex;
-  gap: 8px;
+  gap: 5px;
   flex-shrink: 0;
+}
+.pf-html-modal-btn {
+  width: 30px;
+  height: 30px;
+}
+.pf-html-modal-btn svg {
+  width: 13px;
+  height: 13px;
+}
+.pf-html-modal-btn .pf-html-skip-label {
+  font-size: 10px;
+  line-height: 1;
 }
 .pf-html-modal-frame {
   width: min(96vw, 1280px);
@@ -1217,6 +1250,25 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   height: 100%;
   border: 0;
   background: #fff;
+}
+.public-form-doc .pf-html-frame-wrap:fullscreen,
+.pf-html-modal-frame:fullscreen,
+.public-form-doc .pf-html-frame-wrap:-webkit-full-screen,
+.pf-html-modal-frame:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+  border-radius: 0;
+  background: #000;
+}
+.public-form-doc .pf-html-frame-wrap:fullscreen iframe,
+.pf-html-modal-frame:fullscreen iframe,
+.public-form-doc .pf-html-frame-wrap:-webkit-full-screen iframe,
+.pf-html-modal-frame:-webkit-full-screen iframe {
+  width: 100%;
+  height: 100%;
 }
 .public-form-doc .pf-html-empty {
   aspect-ratio: 16 / 9;
@@ -2625,6 +2677,35 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+const HTML_PRESENTATION_CONTROL_MARKER = 'data-custom-form-video-controls';
+
+function withHtmlPresentationControls(html: string): string {
+  const value = String(html || '');
+  if (!value.trim() || value.includes(HTML_PRESENTATION_CONTROL_MARKER)) return value;
+  const script = `<script ${HTML_PRESENTATION_CONTROL_MARKER}="1">
+(function(){
+  window.addEventListener('message', function(event) {
+    var data = event.data || {};
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch (e) { return; }
+    }
+    if (!data || data.type !== 'custom-form-video-skip') return;
+    var seconds = Number(data.seconds || 0);
+    if (!isFinite(seconds) || !seconds) return;
+    var videos = document.querySelectorAll('video');
+    videos.forEach(function(video) {
+      try {
+        var duration = isFinite(video.duration) ? video.duration : Number.MAX_SAFE_INTEGER;
+        video.currentTime = Math.max(0, Math.min(duration, video.currentTime + seconds));
+      } catch (e) {}
+    });
+  });
+})();
+</script>`;
+  if (/<\/body>/i.test(value)) return value.replace(/<\/body>/i, script + '</body>');
+  return value + script;
+}
+
 function getYouTubeEmbedUrl(rawUrl: string | undefined): string {
   const value = String(rawUrl || '').trim();
   if (!value) return '';
@@ -2641,8 +2722,14 @@ function getYouTubeEmbedUrl(rawUrl: string | undefined): string {
     }
     if (!/^[A-Za-z0-9_-]{6,}$/.test(videoId)) return '';
     const start = url.searchParams.get('start') || url.searchParams.get('t') || '';
-    const startSeconds = /^\d+$/.test(start) ? `?start=${start}` : '';
-    return `https://www.youtube.com/embed/${videoId}${startSeconds}`;
+    const params = new URLSearchParams({
+      enablejsapi: '1',
+      playsinline: '1',
+      rel: '0',
+    });
+    if (typeof window !== 'undefined' && window.location.origin) params.set('origin', window.location.origin);
+    if (/^\d+$/.test(start)) params.set('start', start);
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
   } catch {
     return '';
   }
@@ -5258,10 +5345,50 @@ function AppInner() {
   const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
   const [publicHtmlFrameOpenId, setPublicHtmlFrameOpenId] = useState<string | null>(null);
   const [publicHtmlFramePortrait, setPublicHtmlFramePortrait] = useState<Record<string, boolean>>({});
+  const [publicYouTubeTimes, setPublicYouTubeTimes] = useState<Record<string, number>>({});
+  const publicYouTubePollersRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const [formHeaderPresets, setFormHeaderPresets] = useState<FormHeaderPreset[]>([]);
   const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
   const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
   const [headerPresetSaveName, setHeaderPresetSaveName] = useState('');
+
+  useEffect(() => {
+    if (!publicHtmlFrameOpenId || typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    const prevTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouchAction;
+    };
+  }, [publicHtmlFrameOpenId]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (typeof document === 'undefined') return;
+      let payload: any = event.data;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch { return; }
+      }
+      const currentTime = payload?.info?.currentTime;
+      if (typeof currentTime !== 'number') return;
+      const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>('iframe[data-yt-field]'));
+      const matched = frames.find((frame) => frame.contentWindow === event.source);
+      const fieldId = matched?.getAttribute('data-yt-field');
+      if (!fieldId) return;
+      setPublicYouTubeTimes((prev) => ({ ...prev, [fieldId]: currentTime }));
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      Object.values(publicYouTubePollersRef.current).forEach((timer) => clearInterval(timer));
+      publicYouTubePollersRef.current = {};
+    };
+  }, []);
 
   // -- STATE: CONTRACTS --
   const [contracts, setContracts] = useState<ContractDef[]>(() => {
@@ -15845,6 +15972,62 @@ function AppInner() {
     const rawAccent = (form.headerBgColor || '#0f172a').trim();
     const accentHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawAccent) ? rawAccent : '#0f172a';
 
+    const postYouTubeCommand = (fieldId: string, func: string, args: any[] = []) => {
+      if (typeof document === 'undefined') return;
+      document.querySelectorAll<HTMLIFrameElement>('iframe[data-yt-field]').forEach((frame) => {
+        if (frame.getAttribute('data-yt-field') !== fieldId) return;
+        frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+      });
+    };
+
+    const registerYouTubeFrame = (fieldId: string) => {
+      if (publicYouTubePollersRef.current[fieldId]) return;
+      const listen = () => {
+        if (typeof document === 'undefined') return;
+        document.querySelectorAll<HTMLIFrameElement>('iframe[data-yt-field]').forEach((frame) => {
+          if (frame.getAttribute('data-yt-field') !== fieldId) return;
+          frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: fieldId }), '*');
+        });
+      };
+      const ping = () => {
+        listen();
+        postYouTubeCommand(fieldId, 'getCurrentTime');
+      };
+      window.setTimeout(ping, 500);
+      publicYouTubePollersRef.current[fieldId] = setInterval(ping, 1000);
+    };
+
+    const skipYouTubeSeconds = (fieldId: string, delta: number) => {
+      const current = publicYouTubeTimes[fieldId] || 0;
+      postYouTubeCommand(fieldId, 'seekTo', [Math.max(0, current + delta), true]);
+    };
+
+    const skipUploadedHtmlVideoSeconds = (fieldId: string, delta: number) => {
+      if (typeof document === 'undefined') return;
+      document.querySelectorAll<HTMLIFrameElement>('iframe[data-html-field]').forEach((frame) => {
+        if (frame.getAttribute('data-html-field') !== fieldId) return;
+        frame.contentWindow?.postMessage({ type: 'custom-form-video-skip', seconds: delta }, '*');
+      });
+    };
+
+    const skipPresentationSeconds = (field: FormField, delta: number, isYouTube: boolean) => {
+      if (isYouTube) skipYouTubeSeconds(field.id, delta);
+      else skipUploadedHtmlVideoSeconds(field.id, delta);
+    };
+
+    const requestHtmlFrameFullscreen = (fieldId: string, targetId?: string) => {
+      const el = document.getElementById(targetId || `pf-html-frame-${fieldId}`);
+      const request = (el as any)?.requestFullscreen || (el as any)?.webkitRequestFullscreen || (el as any)?.msRequestFullscreen;
+      if (request) {
+        try {
+          const result = request.call(el);
+          if (result && typeof result.catch === 'function') result.catch(() => setPublicHtmlFrameOpenId(fieldId));
+          return;
+        } catch {}
+      }
+      setPublicHtmlFrameOpenId(fieldId);
+    };
+
     const renderField = (field: FormField) => {
       const setVal = (v: string) => setPublicFormData((prev) => ({ ...prev, [field.id]: v }));
       const val = publicFormData[field.id] || '';
@@ -15954,23 +16137,31 @@ function AppInner() {
         const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
         const hasPresentation = !!linkedPresentation || !!field.htmlContent;
         const isPortrait = !!publicHtmlFramePortrait[field.id];
+        const isYouTube = linkedPresentation?.kind === 'youtube';
+        const canSkipPresentation = isYouTube || !!field.htmlContent || !!field.htmlStoragePath;
         const frame = linkedPresentation ? (
           <iframe
             title={title}
             src={linkedPresentation.embedUrl}
+            data-yt-field={isYouTube ? field.id : undefined}
+            data-html-field={!isYouTube && field.htmlStoragePath ? field.id : undefined}
+            onLoad={isYouTube ? () => registerYouTubeFrame(field.id) : undefined}
             sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
             allow="fullscreen; autoplay; encrypted-media"
             allowFullScreen
             loading="lazy"
+            style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
           />
         ) : field.htmlContent ? (
           <iframe
             title={title}
-            srcDoc={field.htmlContent}
+            srcDoc={withHtmlPresentationControls(field.htmlContent)}
+            data-html-field={field.id}
             sandbox="allow-scripts allow-forms allow-popups allow-presentation"
             allow="fullscreen; autoplay; encrypted-media"
             allowFullScreen
             loading="lazy"
+            style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
           />
         ) : null;
         return (
@@ -15993,19 +16184,35 @@ function AppInner() {
               </p>
             ) : null}
             {hasPresentation ? (
-              <div className={`pf-html-frame-wrap ${isPortrait ? 'pf-html-frame-wrap--portrait' : ''}`}>
+              <div
+                id={`pf-html-frame-${field.id}`}
+                className={`pf-html-frame-wrap ${isPortrait ? 'pf-html-frame-wrap--portrait' : ''}`}
+                style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+              >
                 {frame}
                 <div className="pf-html-controls pf-print-hide">
+                  {canSkipPresentation ? (
+                    <>
+                      <button type="button" title="Back 3 seconds" aria-label="Back 3 seconds" onClick={() => skipPresentationSeconds(field, -3, isYouTube)}>
+                        <span className="pf-html-skip-label">-3</span>
+                      </button>
+                      <button type="button" title="Forward 3 seconds" aria-label="Forward 3 seconds" onClick={() => skipPresentationSeconds(field, 3, isYouTube)}>
+                        <span className="pf-html-skip-label">+3</span>
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     type="button"
+                    title="Rotate"
+                    aria-label="Rotate"
                     onClick={() =>
                       setPublicHtmlFramePortrait((prev) => ({ ...prev, [field.id]: !prev[field.id] }))
                     }
                   >
                     <RotateCw className="w-3.5 h-3.5" /> Rotate
                   </button>
-                  <button type="button" onClick={() => setPublicHtmlFrameOpenId(field.id)}>
-                    <Maximize2 className="w-3.5 h-3.5" /> Maximize
+                  <button type="button" title="Fullscreen" aria-label="Fullscreen" onClick={() => requestHtmlFrameFullscreen(field.id)}>
+                    <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
                   </button>
                 </div>
               </div>
@@ -16405,21 +16612,29 @@ function AppInner() {
       const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
       const title = field.htmlFrameTitle || field.label || 'Presentation';
       const isPortrait = !!publicHtmlFramePortrait[field.id];
+      const isYouTube = linkedPresentation?.kind === 'youtube';
+      const canSkipPresentation = isYouTube || !!field.htmlContent || !!field.htmlStoragePath;
       const frame = linkedPresentation ? (
         <iframe
           title={title}
           src={linkedPresentation.embedUrl}
+          data-yt-field={isYouTube ? field.id : undefined}
+          data-html-field={!isYouTube && field.htmlStoragePath ? field.id : undefined}
+          onLoad={isYouTube ? () => registerYouTubeFrame(field.id) : undefined}
           sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
           allow="fullscreen; autoplay; encrypted-media"
           allowFullScreen
+          style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
         />
       ) : field.htmlContent ? (
         <iframe
           title={title}
-          srcDoc={field.htmlContent}
+          srcDoc={withHtmlPresentationControls(field.htmlContent)}
+          data-html-field={field.id}
           sandbox="allow-scripts allow-forms allow-popups allow-presentation"
           allow="fullscreen; autoplay; encrypted-media"
           allowFullScreen
+          style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
         />
       ) : null;
       if (!frame) return null;
@@ -16428,21 +16643,46 @@ function AppInner() {
           <div className="pf-html-modal-toolbar">
             <div className="pf-html-modal-title">{title}</div>
             <div className="pf-html-modal-actions">
+              {canSkipPresentation ? (
+                <>
+                  <button type="button" className="pf-html-modal-btn" title="Back 3 seconds" aria-label="Back 3 seconds" onClick={() => skipPresentationSeconds(field, -3, isYouTube)}>
+                    <span className="pf-html-skip-label">-3</span>
+                  </button>
+                  <button type="button" className="pf-html-modal-btn" title="Forward 3 seconds" aria-label="Forward 3 seconds" onClick={() => skipPresentationSeconds(field, 3, isYouTube)}>
+                    <span className="pf-html-skip-label">+3</span>
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 className="pf-html-modal-btn"
+                title="Rotate"
+                aria-label="Rotate"
                 onClick={() =>
                   setPublicHtmlFramePortrait((prev) => ({ ...prev, [field.id]: !prev[field.id] }))
                 }
               >
                 <RotateCw className="w-4 h-4" /> Rotate
               </button>
-              <button type="button" className="pf-html-modal-btn" onClick={() => setPublicHtmlFrameOpenId(null)}>
+              <button
+                type="button"
+                className="pf-html-modal-btn"
+                title="Fullscreen"
+                aria-label="Fullscreen"
+                onClick={() => requestHtmlFrameFullscreen(field.id, `pf-html-modal-frame-${field.id}`)}
+              >
+                <Maximize2 className="w-4 h-4" /> Fullscreen
+              </button>
+              <button type="button" className="pf-html-modal-btn" title="Close" aria-label="Close" onClick={() => setPublicHtmlFrameOpenId(null)}>
                 <X className="w-4 h-4" /> Close
               </button>
             </div>
           </div>
-          <div className={`pf-html-modal-frame ${isPortrait ? 'pf-html-modal-frame--portrait' : ''}`}>
+          <div
+            id={`pf-html-modal-frame-${field.id}`}
+            className={`pf-html-modal-frame ${isPortrait ? 'pf-html-modal-frame--portrait' : ''}`}
+            style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+          >
             {frame}
           </div>
         </div>
@@ -21557,10 +21797,13 @@ function AppInner() {
                                           const safeName = sanitizeFormHtmlFileName(file.name);
                                           const path = `users/${user.uid}/formPresentations/${Date.now()}_${safeName}`;
                                           const sRef = storageRef(storage, path);
-                                          uploadBytes(sRef, file, {
-                                            contentType: 'text/html; charset=utf-8',
-                                            cacheControl: 'public,max-age=300',
-                                          })
+                                          file.text()
+                                            .then((rawHtml) =>
+                                              uploadString(sRef, withHtmlPresentationControls(rawHtml), 'raw', {
+                                                contentType: 'text/html; charset=utf-8',
+                                                cacheControl: 'public,max-age=300',
+                                              })
+                                            )
                                             .then(() => getDownloadURL(sRef))
                                             .then((downloadURL) => {
                                               applyUploaded({
@@ -21583,7 +21826,7 @@ function AppInner() {
                                           const reader = new FileReader();
                                           reader.onload = () => {
                                             applyUploaded({
-                                              htmlContent: String(reader.result || ''),
+                                              htmlContent: withHtmlPresentationControls(String(reader.result || '')),
                                               htmlUrl: undefined,
                                               htmlStoragePath: undefined,
                                             });
