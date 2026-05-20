@@ -208,6 +208,110 @@ import {
 import { InvoiceAccentColorPicker, invoiceThemeStyle, normalizeInvoiceAccentColor } from './invoiceTheme';
 import { InvoiceBillToBlock, InvoiceCustomerEditor, InvoiceHeaderRow } from './invoiceShared';
 
+type ProductTableColumnKey =
+  | 'status'
+  | 'group'
+  | 'supplier'
+  | 'item'
+  | 'sku'
+  | 'hsCode'
+  | 'image'
+  | 'qty'
+  | 'itemsPerPack'
+  | 'totalPacks'
+  | 'packPrice'
+  | 'costInput'
+  | 'unitCost'
+  | 'totalCost'
+  | 'manualSell'
+  | 'profitPercent'
+  | 'unitProfit'
+  | 'totalProfit'
+  | 'unitSell'
+  | 'totalSell'
+  | 'packaging'
+  | 'packagingSell'
+  | 'targetPrice'
+  | 'actions';
+
+type ProductTableColumnSettings = {
+  order: ProductTableColumnKey[];
+  hidden: ProductTableColumnKey[];
+  labels: Partial<Record<ProductTableColumnKey, string>>;
+};
+
+const PRODUCT_TABLE_COLUMN_ORDER: ProductTableColumnKey[] = [
+  'status',
+  'group',
+  'supplier',
+  'item',
+  'sku',
+  'hsCode',
+  'image',
+  'qty',
+  'itemsPerPack',
+  'totalPacks',
+  'packPrice',
+  'costInput',
+  'unitCost',
+  'totalCost',
+  'manualSell',
+  'profitPercent',
+  'unitProfit',
+  'totalProfit',
+  'unitSell',
+  'totalSell',
+  'packaging',
+  'packagingSell',
+  'targetPrice',
+  'actions',
+];
+
+const PRODUCT_TABLE_DEFAULT_LABELS: Record<ProductTableColumnKey, string> = {
+  status: '',
+  group: 'Group',
+  supplier: 'Supplier',
+  item: 'Item',
+  sku: 'SKU',
+  hsCode: 'HS Code',
+  image: 'Img',
+  qty: 'Qty',
+  itemsPerPack: 'Items/Pack',
+  totalPacks: 'Total Packs',
+  packPrice: 'Pack Price',
+  costInput: 'Cost Input',
+  unitCost: 'Unit Cost',
+  totalCost: 'Total Cost',
+  manualSell: 'Manual Sell',
+  profitPercent: 'Profit %',
+  unitProfit: 'Unit Profit',
+  totalProfit: 'Total Profit',
+  unitSell: 'Unit Sell',
+  totalSell: 'Total Sell',
+  packaging: 'بسته‌بندی',
+  packagingSell: 'فروش با بسته‌بندی',
+  targetPrice: 'Target Price',
+  actions: '',
+};
+
+const normalizeProductTableColumnSettings = (raw?: Partial<ProductTableColumnSettings> | null): ProductTableColumnSettings => {
+  const valid = new Set<ProductTableColumnKey>(PRODUCT_TABLE_COLUMN_ORDER);
+  const incomingOrder = Array.isArray(raw?.order)
+    ? raw.order.filter((key): key is ProductTableColumnKey => valid.has(key as ProductTableColumnKey))
+    : [];
+  const order = [
+    ...incomingOrder,
+    ...PRODUCT_TABLE_COLUMN_ORDER.filter((key) => !incomingOrder.includes(key)),
+  ];
+  const hidden = Array.isArray(raw?.hidden)
+    ? raw.hidden.filter((key): key is ProductTableColumnKey => valid.has(key as ProductTableColumnKey))
+    : [];
+  const labels = Object.fromEntries(
+    Object.entries(raw?.labels || {}).filter(([key]) => valid.has(key as ProductTableColumnKey)),
+  ) as Partial<Record<ProductTableColumnKey, string>>;
+  return { order, hidden, labels };
+};
+
 function formFieldLtrTitle(f: Pick<FormField, 'label' | 'labelLtr'>): string {
   return String(f.labelLtr ?? f.label ?? '').trim();
 }
@@ -5971,6 +6075,8 @@ function AppInner() {
   const [invoiceTerms, setInvoiceTerms] = useState<string[]>(['FOB', 'DDP']);
   const [showImages, setShowImages] = useState(false);
   const [showPackInfo, setShowPackInfo] = useState(true); 
+  const [showProductColumnSettings, setShowProductColumnSettings] = useState(false);
+  const [productColumnSettings, setProductColumnSettings] = useState<ProductTableColumnSettings>(() => normalizeProductTableColumnSettings());
   const [basis, setBasis] = useState<'unit' | 'pack'>('unit'); 
   const [notes, setNotes] = useState('');
   const [containerCapacity, setContainerCapacity] = useState<number>(1000);
@@ -9389,7 +9495,7 @@ function AppInner() {
         customerName, customerAddress, customerFirstName, customerLastName, customerCompany, customerEmail, customerPhone,
         invoiceRef, invoiceAccentColor,
         billedFrom, billedFromDetails, invoiceLogo, invoiceSellerEmail, invoiceSellerPhone, invoiceSellerWebsite, invoiceSellerTaxId,
-        paymentTerms, showImages, showPackInfo,
+        paymentTerms, showImages, showPackInfo, productColumnSettings,
         invoiceTitle, bankDetails, catalogConfig, invoiceBasis, packingListConfig, suppliers, buyers, isInvoiceEditable, invoiceOverrides,
         invoiceGlobalDiscountMode,
         invoiceGlobalDiscountValue,
@@ -9589,6 +9695,7 @@ function AppInner() {
     setInvoiceRef(loadedInvoiceRef || String(Math.floor(Math.random() * 10000)));
     setShowImages(project.data.showImages || false);
     setShowPackInfo(project.data.showPackInfo !== undefined ? project.data.showPackInfo : true);
+    setProductColumnSettings(normalizeProductTableColumnSettings((project.data as any).productColumnSettings));
     setInvoiceTitle(project.data.invoiceTitle || 'Proforma Invoice');
     const iss = (project.data as any).invoiceIssueDateMs;
     setInvoiceIssueDateMs(typeof iss === 'number' && Number.isFinite(iss) && iss > 0 ? iss : Date.now());
@@ -10145,6 +10252,37 @@ function AppInner() {
       setProducts(products.map(p => p.id === id ? { ...p, [field]: val } : p)); 
   };
   
+  const updateProductColumnLabel = (key: ProductTableColumnKey, label: string) => {
+      setProductColumnSettings((prev) => ({
+          ...prev,
+          labels: { ...prev.labels, [key]: label },
+      }));
+  };
+
+  const toggleProductColumnHidden = (key: ProductTableColumnKey) => {
+      setProductColumnSettings((prev) => ({
+          ...prev,
+          hidden: prev.hidden.includes(key)
+              ? prev.hidden.filter((item) => item !== key)
+              : [...prev.hidden, key],
+      }));
+  };
+
+  const moveProductColumn = (key: ProductTableColumnKey, direction: -1 | 1) => {
+      setProductColumnSettings((prev) => {
+          const order = [...prev.order];
+          const index = order.indexOf(key);
+          const nextIndex = index + direction;
+          if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return prev;
+          [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+          return { ...prev, order };
+      });
+  };
+
+  const resetProductColumns = () => {
+      setProductColumnSettings(normalizeProductTableColumnSettings());
+  };
+
   const toggleProductActive = (id: number) => { 
       setProducts(products.map(p => p.id === id ? { ...p, active: !p.active } : p)); 
   };
@@ -10621,17 +10759,12 @@ function AppInner() {
       }
       return cost * (1 + buyerMarkup / 100);
     };
-    const buyerUnitResaleForProduct = (p: Product, unitSell: number) => {
-      if (p.buyerManualUnitSellPrice !== undefined && p.buyerManualUnitSellPrice > 0) {
-        return convert(p.buyerManualUnitSellPrice, p.buyerManualSellCurrency || config.outputCurrency);
-      }
-      return applyBuyerProfit(unitSell);
-    };
+    const buyerUnitResaleForProduct = (unitSell: number) => applyBuyerProfit(unitSell);
     const buyerResaleRevenue = activeProducts.reduce((sum, p) => {
       const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
       const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
       const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
-      return sum + buyerUnitResaleForProduct(p, unitSell) * (p.qty || 0);
+      return sum + buyerUnitResaleForProduct(unitSell) * (p.qty || 0);
     }, 0);
     const buyerGrossProfit = buyerResaleRevenue - (selectedTermRow?.totalSell || 0);
     const buyerMargin = buyerResaleRevenue > 0 ? (buyerGrossProfit / buyerResaleRevenue) * 100 : 0;
@@ -10669,7 +10802,7 @@ function AppInner() {
       const lineSell = termRow?.lineSell ?? unitSell * (p.qty || 0);
       const lineProfit = termRow?.lineProfit ?? lineSell - lineCost;
       const lineMargin = termRow?.profitMargin ?? (lineSell > 0 ? (lineProfit / lineSell) * 100 : 0);
-      const buyerUnitResale = buyerUnitResaleForProduct(p, unitSell);
+      const buyerUnitResale = buyerUnitResaleForProduct(unitSell);
       const buyerUnitProfit = buyerUnitResale - unitSell;
       const buyerLineRevenue = buyerUnitResale * (p.qty || 0);
       const buyerLineProfit = buyerLineRevenue - lineSell;
@@ -10699,7 +10832,7 @@ function AppInner() {
       const packSize = p.itemsPerPack || 0;
       const sellerPackPrice = unitSell * (packSize || 1);
       const lineSell = termRow?.lineSell ?? unitSell * q;
-      const buyerUnitResale = buyerUnitResaleForProduct(p, unitSell);
+      const buyerUnitResale = buyerUnitResaleForProduct(unitSell);
       const buyerUnitProfit = buyerUnitResale - unitSell;
       const buyerPackPrice = buyerUnitResale * (packSize || 1);
       const buyerLineRevenue = buyerUnitResale * q;
@@ -11024,6 +11157,7 @@ function AppInner() {
             paymentTerms,
             showImages,
             showPackInfo,
+            productColumnSettings,
             invoiceTitle,
             bankDetails,
             catalogConfig,
@@ -11112,6 +11246,7 @@ function AppInner() {
     paymentTerms,
     showImages,
     showPackInfo,
+    productColumnSettings,
     invoiceTitle,
     bankDetails,
     catalogConfig,
@@ -11399,6 +11534,7 @@ function AppInner() {
     setNotes('');
     setShowImages(false);
     setShowPackInfo(true);
+    resetProductColumns();
     setBasis('unit');
     setContainerCapacity(1000);
     setContainerType('20ft');
@@ -12146,462 +12282,401 @@ function AppInner() {
       </details>
 
       {/* 2. PRODUCT INPUT */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        {/* ... existing product table ... */}
-        {/* I will reuse existing rendering logic here to avoid code duplication */}
-        {/* Just assume the table is rendered here as before */}
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-            <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+      {(() => {
+        const productColumnDefs: Record<ProductTableColumnKey, {
+          defaultLabel: string;
+          subLabel?: React.ReactNode;
+          headerClassName: string;
+          title?: string;
+          enabled?: boolean;
+          canHide?: boolean;
+          renderCell: (p: Product, viewMult: number) => React.ReactNode;
+        }> = {
+          status: {
+            defaultLabel: '',
+            headerClassName: 'px-4 py-2 w-10 bg-slate-50',
+            canHide: false,
+            renderCell: (p) => (
+              <td className="px-4 py-2 text-center">
+                <button onClick={() => toggleProductActive(p.id)} className="text-slate-400 hover:text-blue-600 transition-colors">
+                  {p.active ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Circle className="w-4 h-4" />}
+                </button>
+              </td>
+            ),
+          },
+          group: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.group,
+            headerClassName: 'px-4 py-2 bg-slate-50 w-24',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <input type="text" placeholder="Group" value={p.group || ''} onChange={(e) => updateProduct(p.id, 'group', e.target.value)} className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-500 font-medium w-full outline-none" />
+              </td>
+            ),
+          },
+          supplier: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.supplier,
+            headerClassName: 'px-4 py-2 bg-slate-50 w-32',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <select value={p.supplierId || ''} onChange={(e) => updateProduct(p.id, 'supplierId', e.target.value ? Number(e.target.value) : undefined)} className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-500 font-medium w-full outline-none">
+                  <option value="">Select...</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{getSupplierDisplayName(s)}</option>)}
+                </select>
+              </td>
+            ),
+          },
+          item: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.item,
+            headerClassName: 'px-4 py-2 bg-slate-50 min-w-[160px]',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <div className="flex items-center gap-1">
+                  <input type="text" placeholder="Item Name" value={p.name} onChange={(e) => updateProduct(p.id, 'name', e.target.value)} className="bg-transparent border-none p-0 focus:ring-0 font-medium text-slate-800 placeholder-slate-300 w-full" style={{ minWidth: '80px' }} />
+                  <button onClick={() => setEditingCatalogDetailsId(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-blue-600" title="Edit Catalog Details (Description, etc)">
+                    <FileText className="w-3 h-3" />
+                  </button>
+                </div>
+              </td>
+            ),
+          },
+          sku: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.sku,
+            headerClassName: 'px-4 py-2 w-24 bg-slate-50',
+            title: 'Auto-generated unique product code',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <input type="text" placeholder="Auto" value={p.sku || ''} onChange={(e) => updateProduct(p.id, 'sku', e.target.value)} className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-600 font-mono w-20 outline-none" />
+              </td>
+            ),
+          },
+          hsCode: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.hsCode,
+            headerClassName: 'px-4 py-2 w-24 bg-slate-50',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <input type="text" placeholder="HS" value={p.hsCode || ''} onChange={(e) => updateProduct(p.id, 'hsCode', e.target.value)} className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-600 w-20 outline-none" />
+              </td>
+            ),
+          },
+          image: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.image,
+            headerClassName: 'px-4 py-2 w-12 text-center bg-slate-50',
+            renderCell: (p) => (
+              <td className="px-4 py-2 text-center">
+                <label className="cursor-pointer flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors">
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(p.id, e)} />
+                  {p.image ? <ImageIcon className="w-4 h-4 text-blue-600" /> : <Upload className="w-4 h-4" />}
+                </label>
+              </td>
+            ),
+          },
+          qty: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.qty,
+            headerClassName: 'px-4 py-2 w-24 bg-slate-50',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <FormattedNumberInput value={p.qty} onChange={(val) => updateProduct(p.id, 'qty', val ?? 0)} className="bg-transparent border-none p-0 focus:ring-0 text-slate-600" style={{ minWidth: '100%', width: `${Math.max(formatNumber(p.qty).length, 3) + 2}ch` }} />
+              </td>
+            ),
+          },
+          itemsPerPack: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.itemsPerPack,
+            headerClassName: 'px-4 py-2 w-28 bg-slate-50',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <div className="flex items-center gap-1">
+                  <FormattedNumberInput value={p.itemsPerPack} onChange={(val) => updateProduct(p.id, 'itemsPerPack', val ?? 0)} className="bg-slate-50 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 py-1 text-slate-600 w-14 text-center text-xs" placeholder="0" />
+                  <input type="text" value={p.measurementUnit || ''} onChange={(e) => updateProduct(p.id, 'measurementUnit', e.target.value)} className="w-10 bg-transparent border-b border-slate-200 text-[10px] text-center focus:border-blue-500 outline-none text-slate-500 placeholder-slate-300" placeholder="Pcs" />
+                </div>
+              </td>
+            ),
+          },
+          totalPacks: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.totalPacks,
+            headerClassName: 'px-4 py-2 w-20 bg-indigo-50 text-indigo-700',
+            enabled: showPackInfo,
+            renderCell: (p) => (
+              <td className="px-4 py-2 bg-indigo-50/30">
+                <FormattedNumberInput value={p.totalPacks || 0} onChange={(val) => updateProduct(p.id, 'qty', (val ?? 0) * (p.itemsPerPack || 0))} className="bg-transparent border border-transparent hover:border-indigo-300 focus:border-indigo-500 rounded px-1 py-1 text-indigo-700 font-medium text-center w-full outline-none" placeholder="0" />
+              </td>
+            ),
+          },
+          packPrice: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.packPrice,
+            headerClassName: 'px-4 py-2 w-28 bg-indigo-50 text-indigo-700 text-right',
+            enabled: showPackInfo,
+            renderCell: (p) => <td className="px-4 py-2 bg-indigo-50/30 text-indigo-700 font-medium text-right">{formatMoney(p.packPrice || 0, config.outputCurrency)}</td>,
+          },
+          costInput: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.costInput,
+            headerClassName: 'px-4 py-2 w-48 min-w-[200px] bg-slate-50',
+            renderCell: (p) => (
+              <td className="px-4 py-2">
+                <div className="flex gap-2 items-center">
+                  <FormattedNumberInput value={p.unitPrice} onChange={(val) => updateProduct(p.id, 'unitPrice', val ?? 0)} className="bg-transparent border-none p-0 focus:ring-0 text-slate-600" style={{ minWidth: '60px', width: `${Math.max(formatNumber(p.unitPrice).length, 6) + 2}ch` }} />
+                  <div className="flex flex-col gap-1">
+                    <select value={p.currency} onChange={(e) => updateProduct(p.id, 'currency', e.target.value)} className="bg-slate-100 rounded px-1 text-xs border-none focus:ring-0 text-slate-500">
+                      {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select value={p.priceInputMode || 'unit'} onChange={(e) => updateProduct(p.id, 'priceInputMode', e.target.value)} className="bg-transparent text-[10px] text-slate-400 border-none p-0 focus:ring-0 cursor-pointer hover:text-blue-600">
+                      <option value="unit">/ Unit</option>
+                      <option value="pack">/ Pack</option>
+                    </select>
+                  </div>
+                </div>
+              </td>
+            ),
+          },
+          unitCost: {
+            defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Cost (${config.outputCurrency})`,
+            headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50',
+            renderCell: (p, viewMult) => <td className="px-4 py-2 text-right text-slate-500">{formatMoney((p.unitCostOutput || 0) * viewMult, config.outputCurrency)}</td>,
+          },
+          totalCost: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.totalCost,
+            headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50',
+            renderCell: (p) => <td className="px-4 py-2 text-right text-slate-600">{formatMoney(p.lineCost || 0, config.outputCurrency)}</td>,
+          },
+          manualSell: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.manualSell,
+            subLabel: <span className="block text-[9px] font-normal text-cyan-600/90">/ unit · auto profit%</span>,
+            headerClassName: 'px-4 py-2 w-44 min-w-[170px] bg-cyan-50 text-cyan-800',
+            title: 'Optional manual selling price per unit. Profit % is calculated automatically.',
+            renderCell: (p) => (
+              <td className="px-4 py-2 bg-cyan-50/30 align-top">
+                <div className="flex items-center gap-1">
+                  <FormattedNumberInput optional value={p.manualUnitSellPrice} onChange={(val) => updateProduct(p.id, 'manualUnitSellPrice', val)} className="w-24 bg-white border border-cyan-200 rounded px-2 py-1 text-xs text-right text-cyan-900 font-semibold" placeholder="Auto" />
+                  <select value={p.manualSellCurrency || config.outputCurrency} onChange={(e) => updateProduct(p.id, 'manualSellCurrency', e.target.value)} className="text-[10px] bg-white border border-cyan-100 rounded px-1 py-1 text-cyan-700">
+                    {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                {p.manualSellPriceOutput !== undefined ? (
+                  <div className="mt-1 text-[10px] text-cyan-700 text-right">{config.profitType === 'margin' ? 'Margin' : 'Markup'} {((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%</div>
+                ) : (
+                  <div className="mt-1 text-[10px] text-slate-400 text-right">auto formula</div>
+                )}
+              </td>
+            ),
+          },
+          profitPercent: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.profitPercent,
+            headerClassName: 'px-4 py-2 w-20 bg-slate-50 text-right',
+            renderCell: (p) => (
+              <td className="px-4 py-2 text-right">
+                {p.manualSellPriceOutput !== undefined ? (
+                  <div className="text-xs font-bold text-cyan-700">{((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%<span className="block text-[9px] text-cyan-500 font-medium">manual</span></div>
+                ) : (
+                  <FormattedNumberInput optional value={p.customProfit} onChange={(val) => updateProduct(p.id, 'customProfit', val)} disabled={config.pricingMethod === 'fixed_unit_markup'} placeholder={String(config.profitPercent)} className={`w-14 text-right bg-transparent border-b ${p.customProfit !== undefined ? 'border-purple-300 text-purple-700 font-medium' : 'border-slate-200 text-slate-400'} focus:border-purple-500 outline-none text-xs px-1 ${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-30 cursor-not-allowed' : ''}`} />
+                )}
+              </td>
+            ),
+          },
+          unitProfit: {
+            defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Profit`,
+            headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-emerald-600 bg-slate-50',
+            renderCell: (p, viewMult) => <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatMoney((p.unitProfit || 0) * viewMult, config.outputCurrency)}</td>,
+          },
+          totalProfit: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.totalProfit,
+            headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-emerald-600 bg-slate-50',
+            renderCell: (p) => <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatMoney(p.totalProfit || 0, config.outputCurrency)}</td>,
+          },
+          unitSell: {
+            defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Sell (${config.outputCurrency})`,
+            headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-blue-50 text-blue-700',
+            renderCell: (p, viewMult) => <td className="px-4 py-2 bg-blue-50/30 text-right font-medium text-blue-700">{formatMoney((p.unitSellPrice || 0) * viewMult, config.outputCurrency)}</td>,
+          },
+          totalSell: {
+            defaultLabel: `${PRODUCT_TABLE_DEFAULT_LABELS.totalSell} (${config.outputCurrency})`,
+            headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-green-50 text-green-700',
+            renderCell: (p) => <td className="px-4 py-2 bg-green-50/30 text-right font-medium text-green-700">{formatMoney(p.totalSellPrice || 0, config.outputCurrency)}</td>,
+          },
+          packaging: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.packaging,
+            subLabel: <span className="block text-[9px] font-normal text-violet-600/90">اختیاری · / واحد</span>,
+            headerClassName: 'px-4 py-2 w-40 min-w-[9rem] bg-violet-50 text-violet-800',
+            title: 'هزینه بسته‌بندی به ازای هر واحد (اختیاری)',
+            renderCell: (p) => (
+              <td className="px-4 py-2 bg-violet-50/25 align-top">
+                <label className="flex items-center gap-1.5 text-[10px] text-violet-800 font-medium cursor-pointer mb-1.5">
+                  <input type="checkbox" checked={!!p.packagingEnabled} onChange={(e) => updateProduct(p.id, 'packagingEnabled', e.target.checked)} className="rounded border-violet-300 text-violet-600 focus:ring-violet-400" />
+                  مقایسه بسته‌بندی
+                </label>
+                {p.packagingEnabled ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-violet-700 w-11 shrink-0">معمولی</span>
+                      <FormattedNumberInput optional value={p.packagingStandardPerUnit && p.packagingStandardPerUnit > 0 ? p.packagingStandardPerUnit : undefined} onChange={(val) => updateProduct(p.id, 'packagingStandardPerUnit', val && val > 0 ? val : undefined)} className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right" placeholder="-" />
+                      <span className="text-[9px] text-slate-400">{p.currency}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-violet-700 w-11 shrink-0">لاکچری</span>
+                      <FormattedNumberInput optional value={p.packagingLuxuryPerUnit && p.packagingLuxuryPerUnit > 0 ? p.packagingLuxuryPerUnit : undefined} onChange={(val) => updateProduct(p.id, 'packagingLuxuryPerUnit', val && val > 0 ? val : undefined)} className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right" placeholder="-" />
+                      <span className="text-[9px] text-slate-400">{p.currency}</span>
+                    </div>
+                  </div>
+                ) : <span className="text-[9px] text-slate-400">—</span>}
+              </td>
+            ),
+          },
+          packagingSell: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.packagingSell,
+            subLabel: <span className="block text-[9px] font-normal text-violet-600/90">معمولی / لاکچری</span>,
+            headerClassName: 'px-4 py-2 w-36 min-w-[8.5rem] bg-violet-50/80 text-violet-900',
+            title: 'قیمت فروش واحد با هزینه بسته‌بندی (EXW)',
+            renderCell: (p, viewMult) => (
+              <td className="px-4 py-2 bg-violet-50/20 align-top text-[10px]">
+                {p.packagingEnabled ? (
+                  <div className="space-y-1.5 text-right">
+                    <div><span className="text-violet-700 font-semibold">معمولی</span><span className="block text-slate-800 font-mono">{p.packagingUnitSellStandard !== undefined ? formatMoney(p.packagingUnitSellStandard * viewMult, config.outputCurrency) : '—'}</span><span className="text-[8px] text-slate-400">بهای تمام: {p.packagingUnitCostStandard !== undefined ? formatMoney(p.packagingUnitCostStandard * viewMult, config.outputCurrency) : '—'}</span></div>
+                    <div><span className="text-violet-700 font-semibold">لاکچری</span><span className="block text-slate-800 font-mono">{p.packagingUnitSellLuxury !== undefined ? formatMoney(p.packagingUnitSellLuxury * viewMult, config.outputCurrency) : '—'}</span><span className="text-[8px] text-slate-400">بهای تمام: {p.packagingUnitCostLuxury !== undefined ? formatMoney(p.packagingUnitCostLuxury * viewMult, config.outputCurrency) : '—'}</span></div>
+                  </div>
+                ) : <span className="text-slate-400">—</span>}
+              </td>
+            ),
+          },
+          targetPrice: {
+            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.targetPrice,
+            subLabel: <span className="block text-[9px] font-normal text-amber-500/80">Optional</span>,
+            headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-amber-50 text-amber-700',
+            title: 'Optional: Buyer / market target price per unit',
+            renderCell: (p, viewMult) => {
+              const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
+              const tVal = p.targetPrice;
+              const sellInOutput = (p.unitSellPrice || 0) * viewMult;
+              const targetInOutput = tVal !== undefined && tVal !== null ? toOutput(toBase(tVal, tCurr)) * viewMult : null;
+              const diff = targetInOutput !== null && sellInOutput > 0 ? ((sellInOutput - targetInOutput) / targetInOutput) * 100 : null;
+              return (
+                <td className="px-4 py-2 bg-amber-50/30">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1">
+                      <FormattedNumberInput value={tVal !== undefined ? tVal : 0} onChange={(val) => updateProduct(p.id, 'targetPrice', val === 0 && tVal === undefined ? undefined : val ?? 0)} className="w-full bg-transparent border-b border-amber-200 focus:border-amber-500 outline-none text-right text-amber-800 font-medium px-1 py-0.5" placeholder="0" />
+                      <select value={tCurr} onChange={(e) => updateProduct(p.id, 'targetPriceCurrency', e.target.value)} className="bg-transparent text-[10px] text-amber-600 border-none p-0 focus:ring-0">
+                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    {diff !== null && tVal ? <div className={`text-[10px] text-right font-medium ${Math.abs(diff) < 1 ? 'text-slate-400' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{diff > 0 ? '+' : ''}{diff.toFixed(1)}% vs sell</div> : null}
+                  </div>
+                </td>
+              );
+            },
+          },
+          actions: {
+            defaultLabel: '',
+            headerClassName: 'px-4 py-2 w-10 bg-slate-50',
+            canHide: false,
+            renderCell: (p) => (
+              <td className="px-4 py-2 text-center">
+                <button onClick={() => setProducts(products.filter(item => item.id !== p.id))} className="text-slate-300 hover:text-red-500 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </td>
+            ),
+          },
+        };
+        const visibleProductColumns = productColumnSettings.order.filter((key) => {
+          const meta = productColumnDefs[key];
+          return meta && meta.enabled !== false && !productColumnSettings.hidden.includes(key);
+        });
+
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center">
+              <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-500" />
                 Products
-            </h2>
-            <div className="flex gap-2">
-                <button 
-                    onClick={() => setShowImportProductsModal(true)} 
-                    className="text-sm bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm"
-                >
-                    <FolderOpen className="w-4 h-4" /> Import from Project
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setShowProductColumnSettings((open) => !open)} className={`text-sm border px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 shadow-sm ${showProductColumnSettings ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+                  <Settings className="w-4 h-4" /> Columns
                 </button>
-                <button 
-                    onClick={() => {
-                        const sku = formatSku(nextSkuNumber(products));
-                        setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
-                    }} 
-                    className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm"
-                >
-                    <Plus className="w-4 h-4" /> Add Product
+                <button onClick={() => setShowImportProductsModal(true)} className="text-sm bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
+                  <FolderOpen className="w-4 h-4" /> Import from Project
                 </button>
+                <button onClick={() => {
+                  const sku = formatSku(nextSkuNumber(products));
+                  setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
+                }} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm">
+                  <Plus className="w-4 h-4" /> Add Product
+                </button>
+              </div>
             </div>
-        </div>
-        <div className="overflow-auto max-h-[65vh]">
-            <table className="w-max text-sm text-left border-collapse">
+
+            {showProductColumnSettings ? (
+              <div className="border-b border-slate-200 bg-white p-3">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">تنظیم ستون‌های جدول محصولات</p>
+                    <p className="text-[11px] text-slate-500">با فلش‌ها جابه‌جا کن، با Hide مخفی کن، و عنوان ستون را مستقیم تغییر بده.</p>
+                  </div>
+                  <button type="button" onClick={resetProductColumns} className="text-xs font-bold text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
+                    Reset columns
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-72 overflow-auto pr-1">
+                  {productColumnSettings.order.map((key, index) => {
+                    const meta = productColumnDefs[key];
+                    if (!meta) return null;
+                    const isHidden = productColumnSettings.hidden.includes(key);
+                    const canHide = meta.canHide !== false;
+                    return (
+                      <div key={key} className={`flex items-center gap-2 rounded-xl border px-2 py-2 ${isHidden ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white border-slate-200'}`}>
+                        <div className="flex flex-col gap-1">
+                          <button type="button" onClick={() => moveProductColumn(key, -1)} disabled={index === 0} className="p-0.5 rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">
+                            <ChevronUp className="w-3 h-3" />
+                          </button>
+                          <button type="button" onClick={() => moveProductColumn(key, 1)} disabled={index === productColumnSettings.order.length - 1} className="p-0.5 rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <input value={productColumnSettings.labels[key] ?? meta.defaultLabel} onChange={(e) => updateProductColumnLabel(key, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400" placeholder={PRODUCT_TABLE_DEFAULT_LABELS[key]} />
+                        <button type="button" disabled={!canHide} onClick={() => toggleProductColumnHidden(key)} className={`text-[10px] font-black rounded-lg px-2 py-1 border ${isHidden ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-600'} disabled:opacity-30`}>
+                          {isHidden ? 'Show' : 'Hide'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="overflow-auto max-h-[65vh]">
+              <table className="w-max text-sm text-left border-collapse">
                 <thead className="text-slate-500 font-medium border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                    <tr>
-                        <th className="px-4 py-2 w-10 bg-slate-50"></th>
-                        <th className="px-4 py-2 bg-slate-50 w-24">Group</th>
-                        <th className="px-4 py-2 bg-slate-50 w-32">Supplier</th>
-                        <th className="px-4 py-2 bg-slate-50">Item</th>
-                        <th className="px-4 py-2 w-24 bg-slate-50" title="Auto-generated unique product code">SKU</th>
-                        <th className="px-4 py-2 w-24 bg-slate-50">HS Code</th>
-                        <th className="px-4 py-2 w-12 text-center bg-slate-50">Img</th>
-                        <th className="px-4 py-2 w-24 bg-slate-50">Qty</th>
-                        
-                        <th className="px-4 py-2 w-28 bg-slate-50">Items/Pack</th>
-                        {showPackInfo && <th className="px-4 py-2 w-20 bg-indigo-50 text-indigo-700">Total Packs</th>}
-                        {showPackInfo && <th className="px-4 py-2 w-28 bg-indigo-50 text-indigo-700 text-right">Pack Price</th>}
-
-                        <th className="px-4 py-2 w-48 min-w-[200px] bg-slate-50">Cost Input</th>
-                        
-                        <th className="px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50">
-                            {basis === 'unit' ? 'Unit' : 'Pack'} Cost ({config.outputCurrency})
+                  <tr>
+                    {visibleProductColumns.map((key) => {
+                      const meta = productColumnDefs[key];
+                      return (
+                        <th key={key} className={meta.headerClassName} title={meta.title}>
+                          {productColumnSettings.labels[key] ?? meta.defaultLabel}
+                          {meta.subLabel}
                         </th>
-                        <th className="px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50">Total Cost</th>
-                        <th className="px-4 py-2 w-44 min-w-[170px] bg-cyan-50 text-cyan-800" title="Optional manual selling price per unit. Profit % is calculated automatically.">
-                            Manual Sell
-                            <span className="block text-[9px] font-normal text-cyan-600/90">/ unit · auto profit%</span>
-                        </th>
-                        <th className="px-4 py-2 w-44 min-w-[170px] bg-teal-50 text-teal-800" title="Optional buyer unit selling price. Buyer profit % is calculated automatically.">
-                            Buyer Unit Sell
-                            <span className="block text-[9px] font-normal text-teal-600/90">/ unit · auto buyer%</span>
-                        </th>
-                        
-                        <th className="px-4 py-2 w-20 bg-slate-50 text-right">Profit %</th>
-
-                        <th className="px-4 py-2 w-28 min-w-[120px] text-right text-emerald-600 bg-slate-50">
-                             {basis === 'unit' ? 'Unit' : 'Pack'} Profit
-                        </th>
-                        <th className="px-4 py-2 w-28 min-w-[120px] text-right text-emerald-600 bg-slate-50">Total Profit</th>
-
-                        <th className="px-4 py-2 w-32 min-w-[120px] bg-blue-50 text-blue-700">
-                            {basis === 'unit' ? 'Unit' : 'Pack'} Sell ({config.outputCurrency})
-                        </th>
-                        <th className="px-4 py-2 w-32 min-w-[120px] bg-green-50 text-green-700">Total Sell ({config.outputCurrency})</th>
-                        <th className="px-4 py-2 w-40 min-w-[9rem] bg-violet-50 text-violet-800" title="هزینه بسته‌بندی به ازای هر واحد (اختیاری)">
-                            بسته‌بندی
-                            <span className="block text-[9px] font-normal text-violet-600/90">اختیاری · / واحد</span>
-                        </th>
-                        <th className="px-4 py-2 w-36 min-w-[8.5rem] bg-violet-50/80 text-violet-900" title="قیمت فروش واحد با هزینه بسته‌بندی (EXW)">
-                            فروش با بسته‌بندی
-                            <span className="block text-[9px] font-normal text-violet-600/90">معمولی / لاکچری</span>
-                        </th>
-                        <th className="px-4 py-2 w-32 min-w-[120px] bg-amber-50 text-amber-700" title="Optional: Buyer / market target price per unit">
-                            Target Price
-                            <span className="block text-[9px] font-normal text-amber-500/80">Optional</span>
-                        </th>
-                        <th className="px-4 py-2 w-10 bg-slate-50"></th>
-                    </tr>
+                      );
+                    })}
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                    {calculations.processedProducts.map((p, idx) => {
-                        const viewMult = basis === 'pack' ? (p.itemsPerPack || 0) : 1;
-
-                        return (
-                            <tr key={p.id} className={`group hover:bg-slate-50 transition-colors ${!p.active ? 'opacity-50 bg-slate-50' : ''}`}>
-                                <td className="px-4 py-2 text-center">
-                                    <button onClick={() => toggleProductActive(p.id)} className={`text-slate-400 hover:text-blue-600 transition-colors`}>
-                                        {p.active ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Circle className="w-4 h-4" />}
-                                    </button>
-                                </td>
-                                <td className="px-4 py-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Group"
-                                        value={p.group || ''}
-                                        onChange={(e) => updateProduct(p.id, 'group', e.target.value)}
-                                        className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-500 font-medium w-full outline-none"
-                                    />
-                                </td>
-                                <td className="px-4 py-2">
-                                    <select
-                                        value={p.supplierId || ''}
-                                        onChange={(e) => updateProduct(p.id, 'supplierId', e.target.value ? Number(e.target.value) : undefined)}
-                                        className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-500 font-medium w-full outline-none"
-                                    >
-                                        <option value="">Select...</option>
-                                        {suppliers.map(s => (
-                                            <option key={s.id} value={s.id}>{getSupplierDisplayName(s)}</option>
-                                        ))}
-                                    </select>
-                                </td>
-                                <td className="px-4 py-2">
-                                    <div className="flex items-center gap-1">
-                                        <input 
-                                            type="text" 
-                                            placeholder="Item Name"
-                                            value={p.name}
-                                            onChange={(e) => updateProduct(p.id, 'name', e.target.value)}
-                                            className="bg-transparent border-none p-0 focus:ring-0 font-medium text-slate-800 placeholder-slate-300 w-full"
-                                            style={{ minWidth: '80px' }}
-                                        />
-                                        <button 
-                                            onClick={() => setEditingCatalogDetailsId(p.id)}
-                                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-blue-600"
-                                            title="Edit Catalog Details (Description, etc)"
-                                        >
-                                            <FileText className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                </td>
-                                <td className="px-4 py-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Auto"
-                                        value={p.sku || ''}
-                                        onChange={(e) => updateProduct(p.id, 'sku', e.target.value)}
-                                        className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-600 font-mono w-20 outline-none"
-                                    />
-                                </td>
-                                <td className="px-4 py-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="HS"
-                                        value={p.hsCode || ''}
-                                        onChange={(e) => updateProduct(p.id, 'hsCode', e.target.value)}
-                                        className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-600 w-20 outline-none"
-                                    />
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                    <label className="cursor-pointer flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors">
-                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(p.id, e)} />
-                                        {p.image ? <ImageIcon className="w-4 h-4 text-blue-600" /> : <Upload className="w-4 h-4" />}
-                                    </label>
-                                </td>
-                                <td className="px-4 py-2">
-                                    <FormattedNumberInput 
-                                        value={p.qty}
-                                        onChange={(val) => updateProduct(p.id, 'qty', val ?? 0)}
-                                        className="bg-transparent border-none p-0 focus:ring-0 text-slate-600"
-                                        style={{ minWidth: '100%', width: `${Math.max(formatNumber(p.qty).length, 3) + 2}ch` }}
-                                    />
-                                </td>
-
-                                <td className="px-4 py-2">
-                                    <div className="flex items-center gap-1">
-                                        <FormattedNumberInput 
-                                            value={p.itemsPerPack}
-                                            onChange={(val) => updateProduct(p.id, 'itemsPerPack', val ?? 0)}
-                                            className="bg-slate-50 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 py-1 text-slate-600 w-14 text-center text-xs"
-                                            placeholder="0"
-                                        />
-                                        <input 
-                                            type="text"
-                                            value={p.measurementUnit || ''}
-                                            onChange={(e) => updateProduct(p.id, 'measurementUnit', e.target.value)}
-                                            className="w-10 bg-transparent border-b border-slate-200 text-[10px] text-center focus:border-blue-500 outline-none text-slate-500 placeholder-slate-300"
-                                            placeholder="Pcs"
-                                        />
-                                    </div>
-                                </td>
-                                
-                                {showPackInfo && (
-                                    <td className="px-4 py-2 bg-indigo-50/30">
-                                        <FormattedNumberInput
-                                            value={p.totalPacks || 0}
-                                            onChange={(val) => {
-                                                const newQty = (val ?? 0) * (p.itemsPerPack || 0);
-                                                updateProduct(p.id, 'qty', newQty);
-                                            }}
-                                            className="bg-transparent border border-transparent hover:border-indigo-300 focus:border-indigo-500 rounded px-1 py-1 text-indigo-700 font-medium text-center w-full outline-none"
-                                            placeholder="0"
-                                        />
-                                    </td>
-                                )}
-                                {showPackInfo && (
-                                    <td className="px-4 py-2 bg-indigo-50/30 text-indigo-700 font-medium text-right">
-                                        {formatMoney(p.packPrice || 0, config.outputCurrency)}
-                                    </td>
-                                )}
-
-                                <td className="px-4 py-2">
-                                    <div className="flex gap-2 items-center">
-                                        <FormattedNumberInput 
-                                            value={p.unitPrice}
-                                            onChange={(val) => updateProduct(p.id, 'unitPrice', val ?? 0)}
-                                            className="bg-transparent border-none p-0 focus:ring-0 text-slate-600"
-                                            style={{ minWidth: '60px', width: `${Math.max(formatNumber(p.unitPrice).length, 6) + 2}ch` }}
-                                        />
-                                        <div className="flex flex-col gap-1">
-                                            <select 
-                                                value={p.currency}
-                                                onChange={(e) => updateProduct(p.id, 'currency', e.target.value)}
-                                                className="bg-slate-100 rounded px-1 text-xs border-none focus:ring-0 text-slate-500"
-                                            >
-                                                {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                                            </select>
-                                            <select 
-                                                value={p.priceInputMode || 'unit'}
-                                                onChange={(e) => updateProduct(p.id, 'priceInputMode', e.target.value)}
-                                                className="bg-transparent text-[10px] text-slate-400 border-none p-0 focus:ring-0 cursor-pointer hover:text-blue-600"
-                                            >
-                                                <option value="unit">/ Unit</option>
-                                                <option value="pack">/ Pack</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </td>
-
-                                <td className="px-4 py-2 text-right text-slate-500">
-                                    {formatMoney((p.unitCostOutput || 0) * viewMult, config.outputCurrency)}
-                                </td>
-                                <td className="px-4 py-2 text-right text-slate-600">{formatMoney(p.lineCost || 0, config.outputCurrency)}</td>
-                                <td className="px-4 py-2 bg-cyan-50/30 align-top">
-                                    <div className="flex items-center gap-1">
-                                        <FormattedNumberInput
-                                            optional
-                                            value={p.manualUnitSellPrice}
-                                            onChange={(val) => updateProduct(p.id, 'manualUnitSellPrice', val)}
-                                            className="w-24 bg-white border border-cyan-200 rounded px-2 py-1 text-xs text-right text-cyan-900 font-semibold"
-                                            placeholder="Auto"
-                                        />
-                                        <select
-                                            value={p.manualSellCurrency || config.outputCurrency}
-                                            onChange={(e) => updateProduct(p.id, 'manualSellCurrency', e.target.value)}
-                                            className="text-[10px] bg-white border border-cyan-100 rounded px-1 py-1 text-cyan-700"
-                                        >
-                                            {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                    {p.manualSellPriceOutput !== undefined ? (
-                                        <div className="mt-1 text-[10px] text-cyan-700 text-right">
-                                            {config.profitType === 'margin' ? 'Margin' : 'Markup'} {((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%
-                                        </div>
-                                    ) : (
-                                        <div className="mt-1 text-[10px] text-slate-400 text-right">auto formula</div>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 bg-teal-50/30 align-top">
-                                    <div className="flex items-center gap-1">
-                                        <FormattedNumberInput
-                                            optional
-                                            value={p.buyerManualUnitSellPrice}
-                                            onChange={(val) => updateProduct(p.id, 'buyerManualUnitSellPrice', val && val > 0 ? val : undefined)}
-                                            className="w-24 bg-white border border-teal-200 rounded px-2 py-1 text-xs text-right text-teal-900 font-semibold"
-                                            placeholder="Auto"
-                                        />
-                                        <select
-                                            value={p.buyerManualSellCurrency || config.outputCurrency}
-                                            onChange={(e) => updateProduct(p.id, 'buyerManualSellCurrency', e.target.value)}
-                                            className="text-[10px] bg-white border border-teal-100 rounded px-1 py-1 text-teal-700"
-                                        >
-                                            {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                    {p.buyerManualUnitSellPrice && p.buyerManualUnitSellPrice > 0 ? (() => {
-                                        const buyerUnit = convert(p.buyerManualUnitSellPrice, p.buyerManualSellCurrency || config.outputCurrency);
-                                        const baseUnit = p.unitSellPrice || 0;
-                                        const autoPct = buyerProfitType === 'margin'
-                                            ? (buyerUnit > 0 ? ((buyerUnit - baseUnit) / buyerUnit) * 100 : 0)
-                                            : (baseUnit > 0 ? ((buyerUnit - baseUnit) / baseUnit) * 100 : 0);
-                                        return <div className="mt-1 text-[10px] text-teal-700 text-right">Buyer {buyerProfitType} {autoPct.toFixed(1)}%</div>;
-                                    })() : (
-                                        <div className="mt-1 text-[10px] text-slate-400 text-right">uses buyer %</div>
-                                    )}
-                                </td>
-                                
-                                <td className="px-4 py-2 text-right">
-                                    {/* DISABLE PER-PRODUCT PROFIT IN FIXED MODE */}
-                                    {p.manualSellPriceOutput !== undefined ? (
-                                        <div className="text-xs font-bold text-cyan-700">
-                                            {((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%
-                                            <span className="block text-[9px] text-cyan-500 font-medium">manual</span>
-                                        </div>
-                                    ) : (
-                                        <FormattedNumberInput
-                                            optional
-                                            value={p.customProfit}
-                                            onChange={(val) => updateProduct(p.id, 'customProfit', val)}
-                                            disabled={config.pricingMethod === 'fixed_unit_markup'}
-                                            placeholder={String(config.profitPercent)}
-                                            className={`w-14 text-right bg-transparent border-b ${p.customProfit !== undefined ? 'border-purple-300 text-purple-700 font-medium' : 'border-slate-200 text-slate-400'} focus:border-purple-500 outline-none text-xs px-1 ${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-30 cursor-not-allowed' : ''}`}
-                                        />
-                                    )}
-                                </td>
-
-                                <td className="px-4 py-2 text-right text-emerald-600 font-medium">
-                                    {formatMoney((p.unitProfit || 0) * viewMult, config.outputCurrency)}
-                                </td>
-                                <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatMoney(p.totalProfit || 0, config.outputCurrency)}</td>
-
-                                <td className="px-4 py-2 bg-blue-50/30 text-right font-medium text-blue-700">
-                                    {formatMoney((p.unitSellPrice || 0) * viewMult, config.outputCurrency)}
-                                </td>
-                                <td className="px-4 py-2 bg-green-50/30 text-right font-medium text-green-700">
-                                    {formatMoney(p.totalSellPrice || 0, config.outputCurrency)}
-                                </td>
-                                <td className="px-4 py-2 bg-violet-50/25 align-top">
-                                    <label className="flex items-center gap-1.5 text-[10px] text-violet-800 font-medium cursor-pointer mb-1.5">
-                                        <input
-                                            type="checkbox"
-                                            checked={!!p.packagingEnabled}
-                                            onChange={(e) => {
-                                                const on = e.target.checked;
-                                                updateProduct(p.id, 'packagingEnabled', on);
-                                            }}
-                                            className="rounded border-violet-300 text-violet-600 focus:ring-violet-400"
-                                        />
-                                        مقایسه بسته‌بندی
-                                    </label>
-                                    {p.packagingEnabled ? (
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-[9px] text-violet-700 w-11 shrink-0">معمولی</span>
-                                                <FormattedNumberInput
-                                                    optional
-                                                    value={p.packagingStandardPerUnit && p.packagingStandardPerUnit > 0 ? p.packagingStandardPerUnit : undefined}
-                                                    onChange={(val) =>
-                                                        updateProduct(p.id, 'packagingStandardPerUnit', val && val > 0 ? val : undefined)
-                                                    }
-                                                    className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right"
-                                                    placeholder="-"
-                                                />
-                                                <span className="text-[9px] text-slate-400">{p.currency}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-[9px] text-violet-700 w-11 shrink-0">لاکچری</span>
-                                                <FormattedNumberInput
-                                                    optional
-                                                    value={p.packagingLuxuryPerUnit && p.packagingLuxuryPerUnit > 0 ? p.packagingLuxuryPerUnit : undefined}
-                                                    onChange={(val) =>
-                                                        updateProduct(p.id, 'packagingLuxuryPerUnit', val && val > 0 ? val : undefined)
-                                                    }
-                                                    className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right"
-                                                    placeholder="-"
-                                                />
-                                                <span className="text-[9px] text-slate-400">{p.currency}</span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <span className="text-[9px] text-slate-400">—</span>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 bg-violet-50/20 align-top text-[10px]">
-                                    {p.packagingEnabled ? (
-                                        <div className="space-y-1.5 text-right">
-                                            <div>
-                                                <span className="text-violet-700 font-semibold">معمولی</span>
-                                                <span className="block text-slate-800 font-mono">
-                                                    {p.packagingUnitSellStandard !== undefined ? formatMoney(p.packagingUnitSellStandard * viewMult, config.outputCurrency) : '—'}
-                                                </span>
-                                                <span className="text-[8px] text-slate-400">
-                                                    بهای تمام:{' '}
-                                                    {p.packagingUnitCostStandard !== undefined ? formatMoney(p.packagingUnitCostStandard * viewMult, config.outputCurrency) : '—'}
-                                                </span>
-                                            </div>
-                                            <div>
-                                                <span className="text-violet-700 font-semibold">لاکچری</span>
-                                                <span className="block text-slate-800 font-mono">
-                                                    {p.packagingUnitSellLuxury !== undefined ? formatMoney(p.packagingUnitSellLuxury * viewMult, config.outputCurrency) : '—'}
-                                                </span>
-                                                <span className="text-[8px] text-slate-400">
-                                                    بهای تمام:{' '}
-                                                    {p.packagingUnitCostLuxury !== undefined ? formatMoney(p.packagingUnitCostLuxury * viewMult, config.outputCurrency) : '—'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <span className="text-slate-400">—</span>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 bg-amber-50/30">
-                                    {(() => {
-                                        const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
-                                        const tVal = p.targetPrice;
-                                        const sellInOutput = (p.unitSellPrice || 0) * viewMult;
-                                        const targetInOutput = tVal !== undefined && tVal !== null
-                                            ? toOutput(toBase(tVal, tCurr)) * viewMult
-                                            : null;
-                                        const diff = targetInOutput !== null && sellInOutput > 0
-                                            ? ((sellInOutput - targetInOutput) / targetInOutput) * 100
-                                            : null;
-                                        return (
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-1">
-                                                    <FormattedNumberInput
-                                                        value={tVal !== undefined ? tVal : 0}
-                                                        onChange={(val) =>
-                                                            updateProduct(
-                                                                p.id,
-                                                                'targetPrice',
-                                                                val === 0 && tVal === undefined ? undefined : val ?? 0
-                                                            )
-                                                        }
-                                                        className="w-full bg-transparent border-b border-amber-200 focus:border-amber-500 outline-none text-right text-amber-800 font-medium px-1 py-0.5"
-                                                        placeholder="0"
-                                                    />
-                                                    <select
-                                                        value={tCurr}
-                                                        onChange={(e) => updateProduct(p.id, 'targetPriceCurrency', e.target.value)}
-                                                        className="bg-transparent text-[10px] text-amber-600 border-none p-0 focus:ring-0"
-                                                    >
-                                                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                                                    </select>
-                                                </div>
-                                                {diff !== null && tVal ? (
-                                                    <div className={`text-[10px] text-right font-medium ${Math.abs(diff) < 1 ? 'text-slate-400' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                        {diff > 0 ? '+' : ''}{diff.toFixed(1)}% vs sell
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        );
-                                    })()}
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                    <button onClick={() => setProducts(products.filter(item => item.id !== p.id))} className="text-slate-300 hover:text-red-500 transition-colors">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </td>
-                            </tr>
-                        );
-                    })}
-                    {products.length === 0 && (
-                        <tr>
-                            <td colSpan={showPackInfo ? 25 : 23} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
-                        </tr>
-                    )}
+                  {calculations.processedProducts.map((p) => {
+                    const viewMult = basis === 'pack' ? (p.itemsPerPack || 0) : 1;
+                    return (
+                      <tr key={p.id} className={`group hover:bg-slate-50 transition-colors ${!p.active ? 'opacity-50 bg-slate-50' : ''}`}>
+                        {visibleProductColumns.map((key) => (
+                          <Fragment key={key}>{productColumnDefs[key].renderCell(p, viewMult)}</Fragment>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                  {products.length === 0 && (
+                    <tr>
+                      <td colSpan={Math.max(visibleProductColumns.length, 1)} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
+                    </tr>
+                  )}
                 </tbody>
-            </table>
-        </div>
-      </div>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 3. LOGISTICS — lanes aligned to Incoterms (matches cumulative pricing engine) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -13396,18 +13471,13 @@ function AppInner() {
           }
           return cost * (1 + buyerMarkup / 100);
         };
-        const buyerUnitResaleForPreview = (p: Product, unitSell: number) => {
-          if (p.buyerManualUnitSellPrice !== undefined && p.buyerManualUnitSellPrice > 0) {
-            return convert(p.buyerManualUnitSellPrice, p.buyerManualSellCurrency || config.outputCurrency);
-          }
-          return calcBuyerResale(unitSell);
-        };
+        const buyerUnitResaleForPreview = (unitSell: number) => calcBuyerResale(unitSell);
         const buyerResaleRevenue = profitLossReportTerm
           ? activeProducts.reduce((sum, p) => {
               const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
               const termRow = scenarioBlock?.rows.find((row) => row.term === profitLossReportTerm);
               const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
-              return sum + buyerUnitResaleForPreview(p, unitSell) * (p.qty || 0);
+              return sum + buyerUnitResaleForPreview(unitSell) * (p.qty || 0);
             }, 0)
           : 0;
         const buyerGrossProfit = buyerResaleRevenue - (selectedReportRow?.totalSell || 0);
@@ -13479,7 +13549,7 @@ function AppInner() {
                 <div className="rounded-xl bg-slate-950/30 border border-white/10 px-3 py-2 min-w-[12rem]">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer resale revenue</p>
                   <p className="font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : 'Term را انتخاب کن'}</p>
-                  <p className="text-[10px] text-blue-100/75 mt-1">از Buyer Unit Sell هر ردیف کالا</p>
+                  <p className="text-[10px] text-blue-100/75 mt-1">بر اساس درصد و نوع سود خریدار</p>
                 </div>
               </div>
 

@@ -71,9 +71,6 @@ export interface Product {
   /** Optional manual selling price per unit. When set, export profit % is derived from this price. */
   manualUnitSellPrice?: number;
   manualSellCurrency?: string;
-  /** Optional buyer resale price per unit. Buyer profit % is derived from this price. */
-  buyerManualUnitSellPrice?: number;
-  buyerManualSellCurrency?: string;
 
   /** Optional: compare unit sell with standard vs luxury packaging (extra cost per unit in `currency`) */
   packagingEnabled?: boolean;
