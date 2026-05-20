@@ -10468,11 +10468,11 @@ function AppInner() {
           ? (config.profitType === 'margin' ? manualProfitPercentMargin : manualProfitPercentMarkup) ?? configuredProfitPercent
           : configuredProfitPercent;
 
-        // Apply Profit per Product (including its share of logistics)
-        const productSell = applyProfit(productCostOut, config.profitFlags.exw, effectiveProfitPercent);
+        // Apply profit to the final product unit cost, including selected packaging.
+        const productSell = applyProfit(unitCostOutput, config.profitFlags.exw, effectiveProfitPercent);
         const exwExtraSell = applyProfit(uExwExtra, config.profitFlags.exw, effectiveProfitPercent);
         
-        const hasBasePrice = productCostOut > 0;
+        const hasBasePrice = unitCostOutput > 0;
 
         let unitSellPrice = 0;
         let unitProfit = 0;
