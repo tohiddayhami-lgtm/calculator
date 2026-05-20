@@ -180,7 +180,6 @@ import {
 } from './warehouseNormalize';
 import { WarehousePanel } from './warehouseUi';
 import {
-  computeUnitSellFromCost,
   packagingExtraUnitCostOutput,
 } from './productPackaging';
 import {
@@ -229,8 +228,6 @@ type ProductTableColumnKey =
   | 'totalProfit'
   | 'unitSell'
   | 'totalSell'
-  | 'packaging'
-  | 'packagingSell'
   | 'targetPrice'
   | 'actions';
 
@@ -261,8 +258,6 @@ const PRODUCT_TABLE_COLUMN_ORDER: ProductTableColumnKey[] = [
   'totalProfit',
   'unitSell',
   'totalSell',
-  'packaging',
-  'packagingSell',
   'targetPrice',
   'actions',
 ];
@@ -288,8 +283,6 @@ const PRODUCT_TABLE_DEFAULT_LABELS: Record<ProductTableColumnKey, string> = {
   totalProfit: 'Total Profit',
   unitSell: 'Unit Sell',
   totalSell: 'Total Sell',
-  packaging: 'بسته‌بندی',
-  packagingSell: 'فروش با بسته‌بندی',
   targetPrice: 'Target Price',
   actions: '',
 };
@@ -10443,7 +10436,16 @@ function AppInner() {
         }
 
         const productCostOut = toOutput(toBase(effectiveBaseUnitPrice, p.currency));
-        const unitCostOutput = productCostOut; 
+        const packagingMode = p.packagingMode === 'luxury' ? 'luxury' : 'standard';
+        const selectedPackagingRaw = p.packagingEnabled
+          ? packagingMode === 'luxury'
+            ? p.packagingLuxuryPerUnit
+            : p.packagingStandardPerUnit
+          : undefined;
+        const packagingUnitExtraOutput = selectedPackagingRaw !== undefined && selectedPackagingRaw > 0
+          ? packagingExtraUnitCostOutput(selectedPackagingRaw, p.currency, toBase, toOutput)
+          : 0;
+        const unitCostOutput = productCostOut + packagingUnitExtraOutput; 
         
         const lineCost = isActive ? unitCostOutput * p.qty : 0;
         
@@ -10536,52 +10538,6 @@ function AppInner() {
             accSell_DDP += ddpSell * p.qty;
         }
 
-        const pricingCtx = {
-          config,
-          logistics,
-          uExwExtra,
-          uInland,
-          uPort,
-          uFreight,
-          uInsurance,
-          uDest,
-          uExtras,
-        };
-        let packagingUnitCostStandard: number | undefined;
-        let packagingUnitCostLuxury: number | undefined;
-        let packagingUnitSellStandard: number | undefined;
-        let packagingUnitSellLuxury: number | undefined;
-        if (isActive && p.packagingEnabled) {
-          if (p.packagingStandardPerUnit !== undefined && p.packagingStandardPerUnit > 0) {
-            const stdExtra = packagingExtraUnitCostOutput(
-              p.packagingStandardPerUnit,
-              p.currency,
-              toBase,
-              toOutput,
-            );
-            packagingUnitCostStandard = unitCostOutput + stdExtra;
-            packagingUnitSellStandard = computeUnitSellFromCost(
-              packagingUnitCostStandard,
-              effectiveProfitPercent,
-              pricingCtx,
-            ).unitSellPrice;
-          }
-          if (p.packagingLuxuryPerUnit !== undefined && p.packagingLuxuryPerUnit > 0) {
-            const luxExtra = packagingExtraUnitCostOutput(
-              p.packagingLuxuryPerUnit,
-              p.currency,
-              toBase,
-              toOutput,
-            );
-            packagingUnitCostLuxury = unitCostOutput + luxExtra;
-            packagingUnitSellLuxury = computeUnitSellFromCost(
-              packagingUnitCostLuxury,
-              effectiveProfitPercent,
-              pricingCtx,
-            ).unitSellPrice;
-          }
-        }
-
         return { 
             ...p, 
             isActive, 
@@ -10598,10 +10554,9 @@ function AppInner() {
             manualSellPriceOutput,
             manualProfitPercentMarkup,
             manualProfitPercentMargin,
-            packagingUnitCostStandard,
-            packagingUnitCostLuxury,
-            packagingUnitSellStandard,
-            packagingUnitSellLuxury,
+            packagingMode,
+            unitCostBeforePackagingOutput: productCostOut,
+            packagingUnitExtraOutput: packagingUnitExtraOutput > 0 ? packagingUnitExtraOutput : undefined,
         };
     });
 
@@ -10878,10 +10833,10 @@ function AppInner() {
       .map((p) => `
         <tr>
           <td>${escapeHtml(p.name || 'Item')}</td>
-          <td class="num">${p.packagingUnitCostStandard !== undefined ? escapeHtml(fmt(p.packagingUnitCostStandard)) : '-'}</td>
-          <td class="num">${p.packagingUnitSellStandard !== undefined ? escapeHtml(fmt(p.packagingUnitSellStandard)) : '-'}</td>
-          <td class="num">${p.packagingUnitCostLuxury !== undefined ? escapeHtml(fmt(p.packagingUnitCostLuxury)) : '-'}</td>
-          <td class="num">${p.packagingUnitSellLuxury !== undefined ? escapeHtml(fmt(p.packagingUnitSellLuxury)) : '-'}</td>
+          <td>${p.packagingMode === 'luxury' ? 'Luxury' : 'Standard'}</td>
+          <td class="num">${p.packagingUnitExtraOutput !== undefined ? escapeHtml(fmt(p.packagingUnitExtraOutput)) : '-'}</td>
+          <td class="num">${p.unitCostBeforePackagingOutput !== undefined ? escapeHtml(fmt(p.unitCostBeforePackagingOutput)) : '-'}</td>
+          <td class="num">${escapeHtml(fmt(p.unitCostOutput || 0))}</td>
         </tr>
       `).join('');
     const marginColor = (selectedTermRow?.profitMargin || 0) >= 20 ? '#059669' : (selectedTermRow?.profitMargin || 0) >= 10 ? '#d97706' : '#dc2626';
@@ -11003,7 +10958,7 @@ function AppInner() {
     <section class="section"><h2>Destination extra cost lines</h2><table><thead><tr><th>Line</th><th>Input</th><th class="num">Output</th></tr></thead><tbody>${extraDestinationRows || '<tr><td colspan="3" style="color:#94a3b8">No destination extras.</td></tr>'}</tbody></table></section>
   </div>` : ''}
 
-  ${packagingRows ? `<section class="section"><h2>Packaging comparison</h2><table><thead><tr><th>Product</th><th class="num">Standard cost</th><th class="num">Standard sell</th><th class="num">Luxury cost</th><th class="num">Luxury sell</th></tr></thead><tbody>${packagingRows}</tbody></table></section>` : ''}
+  ${packagingRows ? `<section class="section"><h2>Packaging included in unit cost</h2><table><thead><tr><th>Product</th><th>Mode</th><th class="num">Packaging / unit</th><th class="num">Base unit cost</th><th class="num">Final unit cost</th></tr></thead><tbody>${packagingRows}</tbody></table></section>` : ''}
 
   <div class="note"><strong>Commercial note:</strong> This statement is a gross shipment P&amp;L based on the current calculator data. Banking fees, tax effects, credit risk, after-sales claims and realized exchange-rate differences should be reviewed separately if applicable.</div>
   <div class="signatures"><div class="sig">Prepared by / Commercial analyst</div><div class="sig">Reviewed by / Management</div></div>
@@ -12429,8 +12384,52 @@ function AppInner() {
           },
           unitCost: {
             defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Cost (${config.outputCurrency})`,
-            headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50',
-            renderCell: (p, viewMult) => <td className="px-4 py-2 text-right text-slate-500">{formatMoney((p.unitCostOutput || 0) * viewMult, config.outputCurrency)}</td>,
+            headerClassName: 'px-4 py-2 w-56 min-w-[220px] text-right text-slate-500 bg-slate-50',
+            renderCell: (p, viewMult) => {
+              const packagingMode = p.packagingMode === 'luxury' ? 'luxury' : 'standard';
+              const packagingField: keyof Product = packagingMode === 'luxury' ? 'packagingLuxuryPerUnit' : 'packagingStandardPerUnit';
+              const packagingRaw = packagingMode === 'luxury' ? p.packagingLuxuryPerUnit : p.packagingStandardPerUnit;
+              return (
+                <td className="px-4 py-2 text-right text-slate-500 align-top">
+                  <div className="font-medium text-slate-700">{formatMoney((p.unitCostOutput || 0) * viewMult, config.outputCurrency)}</div>
+                  <label className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-violet-700 font-semibold cursor-pointer">
+                    <span>Include packaging</span>
+                    <input
+                      type="checkbox"
+                      checked={!!p.packagingEnabled}
+                      onChange={(e) => updateProduct(p.id, 'packagingEnabled', e.target.checked)}
+                      className="rounded border-violet-300 text-violet-600 focus:ring-violet-400"
+                    />
+                  </label>
+                  {p.packagingEnabled ? (
+                    <div className="mt-1.5 rounded-lg border border-violet-100 bg-violet-50/40 p-1.5 space-y-1">
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={packagingMode}
+                          onChange={(e) => updateProduct(p.id, 'packagingMode', e.target.value as Product['packagingMode'])}
+                          className="w-20 bg-white border border-violet-100 rounded px-1 py-0.5 text-[10px] text-violet-800 outline-none"
+                        >
+                          <option value="standard">معمولی</option>
+                          <option value="luxury">لاکچری</option>
+                        </select>
+                        <FormattedNumberInput
+                          optional
+                          value={packagingRaw && packagingRaw > 0 ? packagingRaw : undefined}
+                          onChange={(val) => updateProduct(p.id, packagingField, val && val > 0 ? val : undefined)}
+                          className="min-w-0 flex-1 bg-white border border-violet-100 rounded px-1 py-0.5 text-[10px] text-right text-violet-900"
+                          placeholder="-"
+                        />
+                        <span className="text-[9px] text-slate-400">{p.currency}</span>
+                      </div>
+                      <div className="flex justify-between gap-2 text-[9px] text-slate-500">
+                        <span>Base: {formatMoney(((p.unitCostBeforePackagingOutput ?? p.unitCostOutput ?? 0) * viewMult), config.outputCurrency)}</span>
+                        <span>Pack: {p.packagingUnitExtraOutput ? formatMoney(p.packagingUnitExtraOutput * viewMult, config.outputCurrency) : '—'}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </td>
+              );
+            },
           },
           totalCost: {
             defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.totalCost,
@@ -12490,50 +12489,6 @@ function AppInner() {
             defaultLabel: `${PRODUCT_TABLE_DEFAULT_LABELS.totalSell} (${config.outputCurrency})`,
             headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-green-50 text-green-700',
             renderCell: (p) => <td className="px-4 py-2 bg-green-50/30 text-right font-medium text-green-700">{formatMoney(p.totalSellPrice || 0, config.outputCurrency)}</td>,
-          },
-          packaging: {
-            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.packaging,
-            subLabel: <span className="block text-[9px] font-normal text-violet-600/90">اختیاری · / واحد</span>,
-            headerClassName: 'px-4 py-2 w-40 min-w-[9rem] bg-violet-50 text-violet-800',
-            title: 'هزینه بسته‌بندی به ازای هر واحد (اختیاری)',
-            renderCell: (p) => (
-              <td className="px-4 py-2 bg-violet-50/25 align-top">
-                <label className="flex items-center gap-1.5 text-[10px] text-violet-800 font-medium cursor-pointer mb-1.5">
-                  <input type="checkbox" checked={!!p.packagingEnabled} onChange={(e) => updateProduct(p.id, 'packagingEnabled', e.target.checked)} className="rounded border-violet-300 text-violet-600 focus:ring-violet-400" />
-                  مقایسه بسته‌بندی
-                </label>
-                {p.packagingEnabled ? (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[9px] text-violet-700 w-11 shrink-0">معمولی</span>
-                      <FormattedNumberInput optional value={p.packagingStandardPerUnit && p.packagingStandardPerUnit > 0 ? p.packagingStandardPerUnit : undefined} onChange={(val) => updateProduct(p.id, 'packagingStandardPerUnit', val && val > 0 ? val : undefined)} className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right" placeholder="-" />
-                      <span className="text-[9px] text-slate-400">{p.currency}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[9px] text-violet-700 w-11 shrink-0">لاکچری</span>
-                      <FormattedNumberInput optional value={p.packagingLuxuryPerUnit && p.packagingLuxuryPerUnit > 0 ? p.packagingLuxuryPerUnit : undefined} onChange={(val) => updateProduct(p.id, 'packagingLuxuryPerUnit', val && val > 0 ? val : undefined)} className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right" placeholder="-" />
-                      <span className="text-[9px] text-slate-400">{p.currency}</span>
-                    </div>
-                  </div>
-                ) : <span className="text-[9px] text-slate-400">—</span>}
-              </td>
-            ),
-          },
-          packagingSell: {
-            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.packagingSell,
-            subLabel: <span className="block text-[9px] font-normal text-violet-600/90">معمولی / لاکچری</span>,
-            headerClassName: 'px-4 py-2 w-36 min-w-[8.5rem] bg-violet-50/80 text-violet-900',
-            title: 'قیمت فروش واحد با هزینه بسته‌بندی (EXW)',
-            renderCell: (p, viewMult) => (
-              <td className="px-4 py-2 bg-violet-50/20 align-top text-[10px]">
-                {p.packagingEnabled ? (
-                  <div className="space-y-1.5 text-right">
-                    <div><span className="text-violet-700 font-semibold">معمولی</span><span className="block text-slate-800 font-mono">{p.packagingUnitSellStandard !== undefined ? formatMoney(p.packagingUnitSellStandard * viewMult, config.outputCurrency) : '—'}</span><span className="text-[8px] text-slate-400">بهای تمام: {p.packagingUnitCostStandard !== undefined ? formatMoney(p.packagingUnitCostStandard * viewMult, config.outputCurrency) : '—'}</span></div>
-                    <div><span className="text-violet-700 font-semibold">لاکچری</span><span className="block text-slate-800 font-mono">{p.packagingUnitSellLuxury !== undefined ? formatMoney(p.packagingUnitSellLuxury * viewMult, config.outputCurrency) : '—'}</span><span className="text-[8px] text-slate-400">بهای تمام: {p.packagingUnitCostLuxury !== undefined ? formatMoney(p.packagingUnitCostLuxury * viewMult, config.outputCurrency) : '—'}</span></div>
-                  </div>
-                ) : <span className="text-slate-400">—</span>}
-              </td>
-            ),
           },
           targetPrice: {
             defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.targetPrice,

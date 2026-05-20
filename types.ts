@@ -72,8 +72,9 @@ export interface Product {
   manualUnitSellPrice?: number;
   manualSellCurrency?: string;
 
-  /** Optional: compare unit sell with standard vs luxury packaging (extra cost per unit in `currency`) */
+  /** Optional: add selected packaging cost per unit into the product unit cost. */
   packagingEnabled?: boolean;
+  packagingMode?: 'standard' | 'luxury';
   packagingStandardPerUnit?: number;
   packagingLuxuryPerUnit?: number;
 
@@ -106,10 +107,8 @@ export interface Product {
   manualSellPriceOutput?: number;
   manualProfitPercentMarkup?: number;
   manualProfitPercentMargin?: number;
-  packagingUnitCostStandard?: number;
-  packagingUnitCostLuxury?: number;
-  packagingUnitSellStandard?: number;
-  packagingUnitSellLuxury?: number;
+  unitCostBeforePackagingOutput?: number;
+  packagingUnitExtraOutput?: number;
 }
 
 export interface ExtraCost {
