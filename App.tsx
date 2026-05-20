@@ -1140,27 +1140,35 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 }
 .public-form-doc .pf-html-controls {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 6px;
+  top: 6px;
   display: flex;
-  gap: 6px;
+  gap: 4px;
   z-index: 2;
   pointer-events: auto;
 }
 .public-form-doc .pf-html-controls button,
 .pf-html-modal-btn {
   border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(15,23,42,0.82);
+  background: rgba(15,23,42,0.68);
   color: #fff;
   border-radius: 999px;
-  padding: 7px 10px;
-  font-size: 11px;
+  padding: 4px 7px;
+  font-size: 9px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   cursor: pointer;
   backdrop-filter: blur(8px);
+}
+.public-form-doc .pf-html-controls button:hover,
+.pf-html-modal-btn:hover {
+  background: rgba(15,23,42,0.88);
+}
+.public-form-doc .pf-html-controls svg {
+  width: 12px;
+  height: 12px;
 }
 .pf-html-modal {
   position: fixed;
@@ -1194,7 +1202,7 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 }
 .pf-html-modal-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 .pf-html-modal-frame {
@@ -1601,6 +1609,45 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   .public-form-doc .pf-html-frame-wrap,
   .public-form-doc .pf-html-empty {
     aspect-ratio: 16 / 9;
+  }
+  .public-form-doc .pf-html-controls {
+    right: 5px;
+    top: 5px;
+    gap: 3px;
+  }
+  .public-form-doc .pf-html-controls button {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+    background: rgba(15,23,42,0.58);
+  }
+  .public-form-doc .pf-html-controls svg {
+    width: 13px;
+    height: 13px;
+  }
+  .pf-html-modal-toolbar {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+  }
+  .pf-html-modal-title {
+    font-size: 11px;
+  }
+  .pf-html-modal-actions {
+    gap: 5px;
+  }
+  .pf-html-modal-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+  .pf-html-modal-btn svg {
+    width: 14px;
+    height: 14px;
   }
   .public-form-doc .pf-appendix-grid {
     grid-template-columns: 1fr;
