@@ -30,8 +30,10 @@ This app now supports:
 5. Enable Firebase Storage (Build > Storage > Get Started).
 6. Deploy Firestore + Storage rules from this repo:
    `firebase deploy --only firestore:rules,storage`
+7. Deploy Cloud Functions so the Master Dashboard can list/delete Authentication users and reset passwords:
+   `firebase deploy --only functions`
 
-For a production commercial release, add Firebase Admin SDK / Cloud Functions and set an `admin` or `master` custom claim on the master account. The browser UI can create Firebase Auth email/password users, but deleting Auth accounts or resetting existing users' passwords must be done from a trusted backend or Firebase Console.
+For a production commercial release, set an `admin` or `master` custom claim on the master account. The Cloud Functions in `functions/` use Firebase Admin SDK for listing Authentication users, deleting Auth accounts, disabling users, and resetting passwords.
 
 If the Firebase Console shows **"An unknown error occurred"** when enabling Storage, wait a few minutes after upgrading to Blaze, try another browser, and ensure the **Cloud Storage API** is enabled for the project in Google Cloud Console. The app will still save using **compressed Firestore-only** mode until Storage works.
 

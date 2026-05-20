@@ -56,6 +56,7 @@ service cloud.firestore {
                         request.auth.uid == profileUserId
                         && request.resource.data.uid == profileUserId
                         && request.resource.data.email == request.auth.token.email
+                        && request.resource.data.role == 'user'
                       )
                     );
       allow update: if signedIn()

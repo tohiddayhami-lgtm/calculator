@@ -34,6 +34,7 @@ import {
   getDownloadURL,
   deleteObject
 } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import QRCode from 'qrcode';
 
 // Icons
@@ -2449,6 +2450,7 @@ let app: any;
 let auth: any;
 let db: any;
 let storage: any;
+let cloudFunctions: any;
 let appId = 'export-pro-default';
 let firebaseConfig: any = {};
 
@@ -2469,6 +2471,8 @@ try {
         bucket && !bucket.includes('%VITE_')
           ? getStorage(app, bucket.startsWith('gs://') ? bucket : `gs://${bucket}`)
           : getStorage(app);
+      const functionsRegion = String((import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || '').trim();
+      cloudFunctions = functionsRegion ? getFunctions(app, functionsRegion) : getFunctions(app);
       if (window.__app_id) {
         appId = window.__app_id;
       }
@@ -5537,6 +5541,8 @@ function AppInner() {
   const [managedUsers, setManagedUsers] = useState<ManagedUserProfile[]>([]);
   const [managedUserDrafts, setManagedUserDrafts] = useState<Record<string, ManagedUserDraft>>({});
   const [managedUsersLoading, setManagedUsersLoading] = useState(false);
+  const [managedAuthSyncing, setManagedAuthSyncing] = useState(false);
+  const [managedAuthSyncedOnce, setManagedAuthSyncedOnce] = useState(false);
   const [adminWorkspaceUid, setAdminWorkspaceUid] = useState('');
   const [lastCreatedCredentials, setLastCreatedCredentials] = useState<{ email: string; password: string } | null>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
@@ -6356,6 +6362,12 @@ function AppInner() {
     );
     return () => unsub();
   }, [user, db, isMasterUser, dataAppId]);
+
+  useEffect(() => {
+    if (isMasterUser && cloudFunctions && !managedAuthSyncedOnce) {
+      handleSyncAuthUsers(true);
+    }
+  }, [isMasterUser, managedAuthSyncedOnce, dataAppId]);
 
   useEffect(() => {
     setManagedUserDrafts((prev) => {
@@ -8525,6 +8537,33 @@ function AppInner() {
       }
   };
 
+  const callAdminFunction = async (name: string, payload: Record<string, any>) => {
+      if (!cloudFunctions) {
+          throw new Error('Firebase Functions is not configured. Deploy functions or use Firebase Console for Auth management.');
+      }
+      const fn = httpsCallable(cloudFunctions, name);
+      const result = await withTimeout(fn({ appId: dataAppId, ...payload }) as Promise<any>, 45000, name);
+      return result.data;
+  };
+
+  const handleSyncAuthUsers = async (silent = false) => {
+      if (!isMasterUser) return;
+      if (!cloudFunctions) {
+          if (!silent) setMasterActionMessage('برای آوردن کاربران Authentication باید Cloud Functions را deploy کنی.');
+          return;
+      }
+      try {
+          setManagedAuthSyncing(true);
+          const data: any = await callAdminFunction('listManagedAuthUsers', {});
+          setManagedAuthSyncedOnce(true);
+          setMasterActionMessage(`Authentication synced: ${data?.count || 0} user(s).`);
+      } catch (err: any) {
+          if (!silent) setMasterActionMessage(err?.message || 'Failed to sync Authentication users.');
+      } finally {
+          setManagedAuthSyncing(false);
+      }
+  };
+
   const handleMasterCreateUser = async () => {
       setMasterActionMessage('');
       const emailToCreate = newUserEmail.trim();
@@ -8541,12 +8580,32 @@ function AppInner() {
       let secondaryApp: any = null;
       try {
           setIsCreatingUser(true);
+          const now = Date.now();
+          const expiresAt = newUserSubscriptionDays > 0 ? addDays(now, newUserSubscriptionDays) : null;
+
+          if (cloudFunctions) {
+            const data: any = await callAdminFunction('createManagedAuthUser', {
+              email: emailToCreate,
+              password: newUserPassword,
+              displayName: newUserDisplayName.trim(),
+              permissions: normalizeManagedPermissions(newUserPermissions, true),
+              subscriptionEndsAt: expiresAt,
+            });
+            setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
+            setNewUserEmail('');
+            setNewUserDisplayName('');
+            setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
+            setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
+            setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
+            setMasterActionMessage(`User created. Login: ${emailToCreate} / ${newUserPassword}`);
+            if (data?.uid) setAdminWorkspaceUid(data.uid);
+            return;
+          }
+
           secondaryApp = initializeApp(firebaseConfig, `secondary-${Date.now()}`);
           const secondaryAuth = getAuth(secondaryApp);
           const cred = await createUserWithEmailAndPassword(secondaryAuth, emailToCreate, newUserPassword);
           await signOut(secondaryAuth);
-          const now = Date.now();
-          const expiresAt = newUserSubscriptionDays > 0 ? addDays(now, newUserSubscriptionDays) : null;
           if (db) {
             const profile: ManagedUserProfile = {
               uid: cred.user.uid,
@@ -8603,22 +8662,36 @@ function AppInner() {
   const handleSaveManagedUser = async (profile: ManagedUserProfile) => {
     if (!db || !isMasterUser) return;
     const draft = managedUserDrafts[profile.uid] || buildManagedUserDraft(profile);
-    if (draft.tempPassword.trim()) {
-      setMasterActionMessage('Password reset for existing users needs Firebase Admin / Cloud Functions. Profile fields were not saved.');
-      return;
-    }
     try {
-      await withTimeout(
-        updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), stripUndefinedDeep({
+      if (cloudFunctions) {
+        await callAdminFunction('updateManagedAuthUser', {
+          uid: profile.uid,
           email: draft.email.trim(),
           displayName: draft.displayName.trim(),
+          password: draft.tempPassword.trim() || undefined,
           notes: draft.notes.trim(),
           subscriptionEndsAt: profile.role === 'master' ? null : dateInputToEndOfDayMs(draft.subscriptionEndsAtDate),
-          updatedAt: Date.now(),
-        })),
-        10000,
-        'Save managed user'
-      );
+        });
+      } else {
+        if (draft.tempPassword.trim()) {
+          setMasterActionMessage('Password reset for existing users needs Firebase Admin / Cloud Functions. Profile fields were not saved.');
+          return;
+        }
+        await withTimeout(
+          updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), stripUndefinedDeep({
+            email: draft.email.trim(),
+            displayName: draft.displayName.trim(),
+            notes: draft.notes.trim(),
+            subscriptionEndsAt: profile.role === 'master' ? null : dateInputToEndOfDayMs(draft.subscriptionEndsAtDate),
+            updatedAt: Date.now(),
+          })),
+          10000,
+          'Save managed user'
+        );
+      }
+      if (draft.tempPassword.trim()) {
+        updateManagedUserDraft(profile.uid, { tempPassword: '' });
+      }
       setMasterActionMessage(`Saved ${draft.email || profile.email}.`);
     } catch (err: any) {
       setMasterActionMessage(err?.message || 'Failed to save user.');
@@ -8628,10 +8701,15 @@ function AppInner() {
   const handleToggleManagedUserPermission = async (profile: ManagedUserProfile, key: AppPermissionKey, enabled: boolean) => {
     if (!db || !isMasterUser || profile.role === 'master') return;
     try {
-      await updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), {
-        permissions: { ...profile.permissions, [key]: enabled },
-        updatedAt: Date.now(),
-      });
+      const permissions = { ...profile.permissions, [key]: enabled };
+      if (cloudFunctions) {
+        await callAdminFunction('updateManagedAuthUser', { uid: profile.uid, permissions });
+      } else {
+        await updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), {
+          permissions,
+          updatedAt: Date.now(),
+        });
+      }
     } catch (err: any) {
       setMasterActionMessage(err?.message || 'Failed to update permission.');
     }
@@ -8641,11 +8719,15 @@ function AppInner() {
     if (!db || !isMasterUser || profile.role === 'master') return;
     const disabled = !profile.disabled;
     try {
-      await updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), {
-        disabled,
-        status: disabled ? 'disabled' : 'active',
-        updatedAt: Date.now(),
-      });
+      if (cloudFunctions) {
+        await callAdminFunction('updateManagedAuthUser', { uid: profile.uid, disabled });
+      } else {
+        await updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), {
+          disabled,
+          status: disabled ? 'disabled' : 'active',
+          updatedAt: Date.now(),
+        });
+      }
       setMasterActionMessage(disabled ? 'User disabled.' : 'User enabled.');
     } catch (err: any) {
       setMasterActionMessage(err?.message || 'Failed to update user status.');
@@ -8654,11 +8736,15 @@ function AppInner() {
 
   const handleDeleteManagedUserProfile = async (profile: ManagedUserProfile) => {
     if (!db || !isMasterUser || profile.role === 'master') return;
-    if (!window.confirm(`Delete ${profile.email} from the master dashboard? Firebase Auth account deletion requires Cloud Functions/Admin SDK.`)) return;
+    if (!window.confirm(`Delete ${profile.email}? ${cloudFunctions ? 'This will delete the Firebase Auth user and dashboard profile.' : 'Without Cloud Functions this only removes the dashboard profile.'}`)) return;
     try {
-      await deleteDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid));
+      if (cloudFunctions) {
+        await callAdminFunction('deleteManagedAuthUser', { uid: profile.uid });
+      } else {
+        await deleteDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid));
+      }
       if (adminWorkspaceUid === profile.uid) setAdminWorkspaceUid('');
-      setMasterActionMessage('User profile deleted from dashboard. Delete the Auth account in Firebase Console or Admin backend.');
+      setMasterActionMessage(cloudFunctions ? 'User deleted from Firebase Authentication.' : 'User profile deleted from dashboard. Delete the Auth account in Firebase Console or Admin backend.');
     } catch (err: any) {
       setMasterActionMessage(err?.message || 'Failed to delete user profile.');
     }
@@ -10604,8 +10690,10 @@ function AppInner() {
               </div>
             )}
 
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 leading-6">
-              حذف کامل کاربر و تغییر رمز کاربرهای موجود از سمت مرورگر امن نیست. برای نسخه نهایی تجاری باید Firebase Cloud Functions/Admin SDK اضافه شود تا Auth هم مدیریت شود.
+            <div className={`rounded-2xl border p-4 text-xs leading-6 ${cloudFunctions ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+              {cloudFunctions
+                ? 'Cloud Functions فعال است؛ کاربران Authentication به پنل sync می‌شوند و حذف/تغییر رمز واقعی انجام می‌شود.'
+                : 'برای آوردن همه کاربران Authentication و حذف/تغییر رمز واقعی باید Firebase Functions را deploy کنی.'}
             </div>
           </div>
 
@@ -10619,14 +10707,24 @@ function AppInner() {
                     : 'Workspace پیش فرض روی حساب مستر است.'}
                 </p>
               </div>
-              {adminWorkspaceUid && (
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => setAdminWorkspaceUid('')}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  onClick={() => handleSyncAuthUsers(false)}
+                  disabled={managedAuthSyncing || !cloudFunctions}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
-                  برگشت به Workspace مستر
+                  {managedAuthSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
+                  Sync Authentication
                 </button>
-              )}
+                {adminWorkspaceUid && (
+                  <button
+                    onClick={() => setAdminWorkspaceUid('')}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  >
+                    برگشت به Workspace مستر
+                  </button>
+                )}
+              </div>
             </div>
 
             {managedUsersLoading ? (
@@ -10683,7 +10781,7 @@ function AppInner() {
                               value={draft.tempPassword}
                               onChange={(e) => updateManagedUserDraft(profile.uid, { tempPassword: e.target.value })}
                               className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                              placeholder="New password (Admin SDK)"
+                              placeholder="New password"
                             />
                           </div>
 
@@ -20273,12 +20371,13 @@ function AppInner() {
         })()
       : null;
 
-  if (authLoading && !publicFormUrlKey) {
+  const waitingForUserProfile = !!user && !isDemoMode && user.uid !== DEMO_USER_ID && !!db && !currentUserProfile;
+  if ((authLoading || waitingForUserProfile) && !publicFormUrlKey) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
           <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-600" />
-          <p className="text-sm text-slate-700">Checking authentication...</p>
+          <p className="text-sm text-slate-700">{authLoading ? 'Checking authentication...' : 'Loading workspace...'}</p>
         </div>
       </div>
     );
