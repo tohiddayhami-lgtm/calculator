@@ -5,7 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>Tohid Dayhami Export⁺</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      (function () {
+        var isPublicForm = new URLSearchParams(window.location.search).has('form');
+        if (isPublicForm) return;
+        var script = document.createElement('script');
+        script.src = 'https://cdn.tailwindcss.com';
+        document.head.appendChild(script);
+      })();
+    </script>
     <script>
       window.__firebase_config = JSON.stringify({
         apiKey: "%VITE_FIREBASE_API_KEY%",
@@ -31,7 +39,16 @@
 }
 </script>
 <link rel="stylesheet" href="/index.css">
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      (function () {
+        var isPublicForm = new URLSearchParams(window.location.search).has('form');
+        if (isPublicForm) return;
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap';
+        document.head.appendChild(link);
+      })();
+    </script>
 </head>
   <body>
     <div id="root"></div>

@@ -1275,6 +1275,48 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   text-align: center;
   padding: 12px;
 }
+.public-form-doc .pf-html-launch {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 18px;
+}
+.public-form-doc .pf-html-launch-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+.public-form-doc .pf-html-launch-note {
+  max-width: 320px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(255,255,255,0.76);
+}
+.public-form-doc .pf-html-launch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.public-form-doc .pf-html-launch-actions button {
+  border: 1px solid rgba(255,255,255,0.28);
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .public-form-doc .pf-media-placeholder {
   min-height: 120px;
   border-radius: 8px;
@@ -5406,12 +5448,9 @@ function AppInner() {
   useEffect(() => {
     if (!publicHtmlFrameOpenId || typeof document === 'undefined') return;
     const prevOverflow = document.body.style.overflow;
-    const prevTouchAction = document.body.style.touchAction;
     document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
     return () => {
       document.body.style.overflow = prevOverflow;
-      document.body.style.touchAction = prevTouchAction;
     };
   }, [publicHtmlFrameOpenId]);
 
@@ -16113,28 +16152,6 @@ function AppInner() {
         const title = field.htmlFrameTitle || field.label || 'HTML presentation';
         const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
         const hasPresentation = !!linkedPresentation || !!field.htmlContent;
-        const isPortrait = !!publicHtmlFramePortrait[field.id];
-        const frame = linkedPresentation ? (
-          <iframe
-            title={title}
-            src={linkedPresentation.embedUrl}
-            sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
-            allow="fullscreen; autoplay; encrypted-media"
-            allowFullScreen
-            loading="lazy"
-            style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
-          />
-        ) : field.htmlContent ? (
-          <iframe
-            title={title}
-            srcDoc={field.htmlContent}
-            sandbox="allow-scripts allow-forms allow-popups allow-presentation"
-            allow="fullscreen; autoplay; encrypted-media"
-            allowFullScreen
-            loading="lazy"
-            style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
-          />
-        ) : null;
         return (
           <div key={field.id} className="pf-field pf-html-presentation">
             {bi ? (
@@ -16157,13 +16174,12 @@ function AppInner() {
             {!publicHeavyMediaReady ? (
               <div className="pf-html-empty">Presentation will load after the form text.</div>
             ) : hasPresentation ? (
-              <div
-                id={`pf-html-frame-${field.id}`}
-                className={`pf-html-frame-wrap ${isPortrait ? 'pf-html-frame-wrap--portrait' : ''}`}
-                style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
-              >
-                {frame}
-                <div className="pf-html-controls pf-print-hide">
+              <div className="pf-html-launch pf-print-hide">
+                <div className="pf-html-launch-title">{title}</div>
+                <div className="pf-html-launch-note">
+                  Tap to load the presentation. This keeps the mobile form fast and avoids loading video before the customer asks for it.
+                </div>
+                <div className="pf-html-launch-actions">
                   <button
                     type="button"
                     title="Rotate"
@@ -16184,7 +16200,7 @@ function AppInner() {
                       setPublicHtmlFrameOpenId(field.id);
                     }}
                   >
-                    <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
+                    <Maximize2 className="w-3.5 h-3.5" /> View
                   </button>
                 </div>
               </div>
@@ -16593,7 +16609,7 @@ function AppInner() {
           sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
           allow="fullscreen; autoplay; encrypted-media"
           allowFullScreen
-          style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+          loading="lazy"
         />
       ) : field.htmlContent ? (
         <iframe
@@ -16602,7 +16618,7 @@ function AppInner() {
           sandbox="allow-scripts allow-forms allow-popups allow-presentation"
           allow="fullscreen; autoplay; encrypted-media"
           allowFullScreen
-          style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+          loading="lazy"
         />
       ) : null;
       if (!frame) return null;
@@ -16630,7 +16646,6 @@ function AppInner() {
           <div
             id={`pf-html-modal-frame-${field.id}`}
             className={`pf-html-modal-frame ${isPortrait ? 'pf-html-modal-frame--portrait' : ''}`}
-            style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
           >
             {frame}
           </div>
