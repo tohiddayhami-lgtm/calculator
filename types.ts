@@ -887,6 +887,8 @@ export interface CustomFormDef {
   appendixTitle?: string;
   appendixHtml?: string;
   appendixImages?: CustomFormAppendixImage[];
+  /** Insert appendix before fields[appendixPositionIndex]; defaults to the end. */
+  appendixPositionIndex?: number;
   fields: FormField[];
   createdAt: number;
   updatedAt: number;
