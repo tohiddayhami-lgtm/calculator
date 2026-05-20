@@ -95,10 +95,12 @@ import {
   FormSubmission,
   IsoApprovalSignature,
   IsoChecklistItem,
+  IsoChangeLog,
   IsoDocumentDef,
   IsoDocumentKind,
   IsoDocumentSection,
   IsoDocumentStatus,
+  IsoExecutionRecord,
   ServiceInvoiceLine,
   SavedService,
   ContractDef,
@@ -2973,6 +2975,7 @@ function buildPublicIsoPayload(docDef: IsoDocumentDef, ownerUid: string, dataApp
   return stripUndefinedDeep({
     ownerUid,
     appId: dataAppIdValue,
+    isoDocId: docDef.id,
     title: docDef.title,
     docNo: docDef.docNo,
     revision: docDef.revision,
@@ -2989,9 +2992,11 @@ function buildPublicIsoPayload(docDef: IsoDocumentDef, ownerUid: string, dataApp
     sections: docDef.sections || [],
     workflowTitle: docDef.workflowTitle || '',
     workflowSteps: docDef.workflowSteps || [],
+    formFields: docDef.formFields || [],
     checklistItems: docDef.checklistItems || [],
     linkedFormIds: docDef.linkedFormIds || [],
     approvals: docDef.approvals || [],
+    changeHistory: docDef.changeHistory || [],
     isActive: true,
     updatedAt,
   });
@@ -5639,6 +5644,7 @@ function AppInner() {
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
   const [isoDocuments, setIsoDocuments] = useState<IsoDocumentDef[]>([]);
+  const [isoRecords, setIsoRecords] = useState<IsoExecutionRecord[]>([]);
   const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'archive'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
@@ -5653,6 +5659,11 @@ function AppInner() {
   const [formPublishing, setFormPublishing] = useState<string | null>(null);
   const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
   const [publicIsoView, setPublicIsoView] = useState<{ key: string; doc: IsoDocumentDef & any } | null>(null);
+  const [publicIsoSubmitter, setPublicIsoSubmitter] = useState({ name: '', email: '', organization: '', notes: '' });
+  const [publicIsoAnswers, setPublicIsoAnswers] = useState<Record<string, string | number | boolean | string[]>>({});
+  const [publicIsoChecklist, setPublicIsoChecklist] = useState<Record<string, { checked: boolean; comment: string }>>({});
+  const [publicIsoSubmitting, setPublicIsoSubmitting] = useState(false);
+  const [publicIsoSubmitted, setPublicIsoSubmitted] = useState(false);
   const [publicFormMediaReady, setPublicFormMediaReady] = useState(false);
   const [publicFormAssetsLoading, setPublicFormAssetsLoading] = useState(false);
   const [publicFormData, setPublicFormData] = useState<Record<string, string>>({});
@@ -6684,6 +6695,22 @@ function AppInner() {
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
+  // ISO execution records listener
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) { setIsoRecords([]); return; }
+    let q: any;
+    try { q = query(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoRecords'), orderBy('submittedAt', 'desc'), limit(300)); }
+    catch { q = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoRecords'); }
+    const unsub = onSnapshot(q, (snap: any) => {
+      const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) as IsoExecutionRecord[];
+      list.sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+      setIsoRecords(list);
+    }, (err: any) => console.error('ISO records listener failed:', err));
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
+
   // Form submissions listener
   useEffect(() => {
     if (authLoading) return;
@@ -6825,6 +6852,21 @@ function AppInner() {
       cancelled = true;
     };
   }, [db, user?.uid]);
+
+  useEffect(() => {
+    setPublicIsoSubmitted(false);
+    setPublicIsoSubmitter({ name: '', email: '', organization: '', notes: '' });
+    const answerInitial: Record<string, string | number | boolean | string[]> = {};
+    (publicIsoView?.doc?.formFields || []).forEach((field: FormField) => {
+      answerInitial[field.id] = field.type === 'checkbox' ? false : field.type === 'multiselect' ? [] : '';
+    });
+    setPublicIsoAnswers(answerInitial);
+    const initial: Record<string, { checked: boolean; comment: string }> = {};
+    (publicIsoView?.doc?.checklistItems || []).forEach((item: IsoChecklistItem) => {
+      initial[item.id] = { checked: false, comment: '' };
+    });
+    setPublicIsoChecklist(initial);
+  }, [publicIsoView?.key]);
 
   useEffect(() => {
     if (!publicFormView) {
@@ -7333,6 +7375,15 @@ function AppInner() {
     { role: 'approvedBy', label: 'تصویب کننده', name: '', title: '', date: '', signed: false },
   ]);
 
+  const makeIsoChange = (action: IsoChangeLog['action'], summary: string, revision?: string): IsoChangeLog => ({
+    id: `chg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    at: Date.now(),
+    action,
+    actorEmail: user?.email || '',
+    revision,
+    summary,
+  });
+
   const makeBlankIsoDocument = (kind: IsoDocumentKind = 'procedure'): IsoDocumentDef => {
     const now = Date.now();
     const year = new Date().getFullYear();
@@ -7361,11 +7412,16 @@ function AppInner() {
         { label: 'Review', labelRtl: 'بررسی' },
         { label: 'Approval', labelRtl: 'تصویب' },
       ],
+      formFields: kind === 'online_form' ? [
+        { id: `fld_${now}_1`, type: 'text', label: 'شرح موضوع', labelRtl: 'شرح موضوع', required: true },
+        { id: `fld_${now}_2`, type: 'textarea', label: 'توضیحات تکمیلی', labelRtl: 'توضیحات تکمیلی', required: false },
+      ] : [],
       checklistItems: [
         { id: `chk_${now}_1`, text: 'کنترل تکمیل بودن اطلاعات', owner: '', required: true },
       ],
       linkedFormIds: [],
       approvals: makeIsoApprovals(),
+      changeHistory: [makeIsoChange('created', 'سند ISO ایجاد شد.', '00')],
       createdAt: now,
       updatedAt: now,
       isPublished: false,
@@ -7446,11 +7502,18 @@ function AppInner() {
           { label: 'Approval', labelRtl: 'تصویب' },
           { label: 'Release', labelRtl: 'انتشار' },
         ],
+        formFields: kind === 'online_form' ? [
+          { id: 'fld_1', type: 'text', label: 'Nonconformity title', labelRtl: 'عنوان عدم انطباق', required: true },
+          { id: 'fld_2', type: 'textarea', label: 'Root cause / corrective action', labelRtl: 'علت ریشه‌ای / اقدام اصلاحی', required: true },
+          { id: 'fld_3', type: 'date', label: 'Due date', labelRtl: 'مهلت اقدام', required: false },
+          { id: 'fld_4', type: 'select', label: 'Priority', labelRtl: 'اولویت', options: ['Low', 'Medium', 'High'], required: true },
+        ] : [],
         checklistItems: [
           { id: 'chk_1', text: 'کد سند و Revision کنترل شده است.', owner: 'Document Controller', required: true },
           { id: 'chk_2', text: 'امضاهای تهیه، تایید و تصویب تکمیل شده است.', owner: 'QA Manager', required: true },
         ],
         approvals: makeIsoApprovals(),
+        changeHistory: [makeIsoChange('created', 'قالب ISO توسط AI/import ایجاد شد.', merged.revision)],
       },
     };
   };
@@ -7482,6 +7545,16 @@ function AppInner() {
         label: String(s?.label || ''),
         labelRtl: String(s?.labelRtl || ''),
       })) : base.workflowSteps,
+      formFields: Array.isArray(source?.formFields) ? source.formFields.map((field: any, idx: number) => ({
+        id: String(field?.id || `fld_${now}_${idx}`),
+        type: (['text', 'textarea', 'number', 'email', 'phone', 'date', 'select', 'multiselect', 'checkbox', 'rating'] as FormFieldType[]).includes(field?.type) ? field.type : 'text',
+        label: String(field?.label || field?.labelRtl || `Field ${idx + 1}`),
+        labelRtl: String(field?.labelRtl || field?.label || ''),
+        placeholder: String(field?.placeholder || ''),
+        required: !!field?.required,
+        options: Array.isArray(field?.options) ? field.options.map(String) : [],
+        maxRating: Number(field?.maxRating || 5),
+      })) : base.formFields,
       checklistItems: Array.isArray(source?.checklistItems) ? source.checklistItems.map((item: any, idx: number) => ({
         id: String(item?.id || `chk_${now}_${idx}`),
         text: String(item?.text || ''),
@@ -7492,6 +7565,7 @@ function AppInner() {
       approvals: Array.isArray(source?.approvals) && source.approvals.length
         ? makeIsoApprovals().map((sig) => ({ ...sig, ...(source.approvals.find((a: any) => a?.role === sig.role) || {}) }))
         : makeIsoApprovals(),
+      changeHistory: Array.isArray(source?.changeHistory) ? source.changeHistory : [makeIsoChange('created', 'سند ISO از فایل JSON وارد شد.', String(source?.revision || base.revision))],
       createdAt: now,
       updatedAt: now,
       publishedKey: undefined,
@@ -7530,8 +7604,16 @@ function AppInner() {
     setIsoSaving(true);
     try {
       const now = Date.now();
-      const payload = stripUndefinedDeep({ ...docDef, updatedAt: now });
-      if (docDef.id && isoDocuments.some((d) => d.id === docDef.id)) {
+      const existing = docDef.id ? isoDocuments.find((d) => d.id === docDef.id) : undefined;
+      const action: IsoChangeLog['action'] = existing && existing.revision !== docDef.revision ? 'revision' : existing ? 'updated' : 'created';
+      const summary = action === 'revision'
+        ? `Revision از ${existing?.revision || '-'} به ${docDef.revision || '-'} تغییر کرد.`
+        : action === 'updated'
+          ? 'اطلاعات سند ISO ویرایش و ذخیره شد.'
+          : 'سند ISO ایجاد شد.';
+      const changeHistory = [...(docDef.changeHistory || existing?.changeHistory || []), makeIsoChange(action, summary, docDef.revision)].slice(-80);
+      const payload = stripUndefinedDeep({ ...docDef, changeHistory, updatedAt: now });
+      if (existing) {
         await withTimeout(
           setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docDef.id), payload, { merge: true }),
           10000,
@@ -7561,18 +7643,21 @@ function AppInner() {
     try {
       const key = docDef.publishedKey || `iso_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
       const now = Date.now();
+      const publishedDoc = {
+        ...docDef,
+        publishedKey: key,
+        isPublished: true,
+        status: docDef.status === 'draft' ? 'approved' as IsoDocumentStatus : docDef.status,
+        updatedAt: now,
+        changeHistory: [...(docDef.changeHistory || []), makeIsoChange('published', 'سند در لینک عمومی ISO منتشر شد.', docDef.revision)].slice(-80),
+      };
       await withTimeout(
-        setDoc(doc(db, 'publicIsoDocuments', key), buildPublicIsoPayload(docDef, activeOwnerUid, dataAppId, now)),
+        setDoc(doc(db, 'publicIsoDocuments', key), buildPublicIsoPayload(publishedDoc, activeOwnerUid, dataAppId, now)),
         10000,
         'Publish ISO document'
       );
       await withTimeout(
-        updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docId), {
-          publishedKey: key,
-          isPublished: true,
-          status: docDef.status === 'draft' ? 'approved' : docDef.status,
-          updatedAt: now,
-        }),
+        setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docId), stripUndefinedDeep(publishedDoc), { merge: true }),
         10000,
         'Update ISO document'
       );
@@ -7588,8 +7673,10 @@ function AppInner() {
     const docDef = isoDocuments.find((d) => d.id === docId);
     if (!docDef?.publishedKey) return;
     try {
-      await withTimeout(updateDoc(doc(db, 'publicIsoDocuments', docDef.publishedKey), { isActive: false, updatedAt: Date.now() }), 10000, 'Unpublish ISO document');
-      await withTimeout(updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docId), { isPublished: false, updatedAt: Date.now() }), 10000, 'Update ISO document');
+      const now = Date.now();
+      const changeHistory = [...(docDef.changeHistory || []), makeIsoChange('unpublished', 'انتشار عمومی سند ISO غیرفعال شد.', docDef.revision)].slice(-80);
+      await withTimeout(updateDoc(doc(db, 'publicIsoDocuments', docDef.publishedKey), { isActive: false, updatedAt: now }), 10000, 'Unpublish ISO document');
+      await withTimeout(updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docId), { isPublished: false, changeHistory, updatedAt: now }), 10000, 'Update ISO document');
     } catch (err: any) {
       alert('Failed to unpublish ISO document: ' + (err?.message || err));
     }
@@ -7605,6 +7692,61 @@ function AppInner() {
       await withTimeout(deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docDef.id)), 10000, 'Delete ISO document');
     } catch (err: any) {
       alert('Failed to delete ISO document: ' + (err?.message || err));
+    }
+  };
+
+  const submitPublicIsoRecord = async () => {
+    if (!db || !publicIsoView) return;
+    const docDef = publicIsoView.doc;
+    const submitterName = publicIsoSubmitter.name.trim();
+    if (!submitterName) {
+      alert('نام تکمیل کننده را وارد کنید.');
+      return;
+    }
+    const requiredFieldMissing = (docDef.formFields || []).some((field: FormField) => {
+      if (!field.required) return false;
+      const value = publicIsoAnswers[field.id];
+      return Array.isArray(value) ? value.length === 0 : value === undefined || value === null || value === '' || value === false;
+    });
+    if (requiredFieldMissing) {
+      alert('فیلدهای الزامی فرم را تکمیل کنید.');
+      return;
+    }
+    const requiredMissing = (docDef.checklistItems || []).some((item: IsoChecklistItem) => item.required && !publicIsoChecklist[item.id]?.checked);
+    if (requiredMissing && !window.confirm('بعضی موارد الزامی چک نشده‌اند. با همین وضعیت ثبت شود؟')) return;
+    setPublicIsoSubmitting(true);
+    try {
+      const checklistAnswers = (docDef.checklistItems || []).map((item: IsoChecklistItem) => ({
+        itemId: item.id,
+        text: item.text,
+        checked: !!publicIsoChecklist[item.id]?.checked,
+        comment: publicIsoChecklist[item.id]?.comment || '',
+      }));
+      const record: Omit<IsoExecutionRecord, 'id'> = {
+        isoDocId: docDef.isoDocId || docDef.id || publicIsoView.key,
+        publicKey: publicIsoView.key,
+        docTitle: docDef.title || '',
+        docNo: docDef.docNo || '',
+        revision: docDef.revision || '',
+        submittedAt: Date.now(),
+        submittedByName: submitterName,
+        submittedByEmail: publicIsoSubmitter.email.trim(),
+        organization: publicIsoSubmitter.organization.trim(),
+        data: publicIsoAnswers,
+        checklistAnswers,
+        notes: publicIsoSubmitter.notes.trim(),
+        isRead: false,
+      };
+      await withTimeout(
+        addDoc(collection(db, 'artifacts', docDef.appId, 'users', docDef.ownerUid, 'isoRecords'), stripUndefinedDeep(record)),
+        10000,
+        'Submit ISO record'
+      );
+      setPublicIsoSubmitted(true);
+    } catch (err: any) {
+      alert('ثبت رکورد ISO انجام نشد: ' + (err?.message || err));
+    } finally {
+      setPublicIsoSubmitting(false);
     }
   };
 
@@ -20291,6 +20433,190 @@ function AppInner() {
               </div>
             ) : null}
 
+            {(['online_form', 'checklist'] as IsoDocumentKind[]).includes(docDef.kind) ? (
+              <div className="rounded-3xl border border-emerald-200 bg-emerald-50/60 p-5">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <CheckCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-emerald-950">تکمیل و ثبت رکورد اجرایی ISO</h3>
+                    <p className="text-xs text-emerald-800 mt-1 leading-5">
+                      این بخش برای ثبت سابقه واقعی اجرای فرم/چک لیست است. رکورد ثبت شده در داشبورد ISO مالک سند ذخیره می‌شود.
+                    </p>
+                  </div>
+                </div>
+
+                {publicIsoSubmitted ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center">
+                    <CheckCircle className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
+                    <h4 className="font-bold text-slate-900">رکورد با موفقیت ثبت شد.</h4>
+                    <p className="text-sm text-slate-500 mt-1">سوابق این فرم در بخش ISO قابل مشاهده است.</p>
+                    <button
+                      onClick={() => {
+                        setPublicIsoSubmitted(false);
+                        setPublicIsoSubmitter({ name: '', email: '', organization: '', notes: '' });
+                        const answers: Record<string, string | number | boolean | string[]> = {};
+                        (docDef.formFields || []).forEach((field: FormField) => { answers[field.id] = field.type === 'checkbox' ? false : field.type === 'multiselect' ? [] : ''; });
+                        setPublicIsoAnswers(answers);
+                        const reset: Record<string, { checked: boolean; comment: string }> = {};
+                        (docDef.checklistItems || []).forEach((item: IsoChecklistItem) => { reset[item.id] = { checked: false, comment: '' }; });
+                        setPublicIsoChecklist(reset);
+                      }}
+                      className="mt-4 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"
+                    >
+                      ثبت رکورد جدید
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid md:grid-cols-3 gap-3">
+                      <input
+                        value={publicIsoSubmitter.name}
+                        onChange={(e) => setPublicIsoSubmitter((s) => ({ ...s, name: e.target.value }))}
+                        placeholder="نام تکمیل کننده *"
+                        className="px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                      <input
+                        value={publicIsoSubmitter.email}
+                        onChange={(e) => setPublicIsoSubmitter((s) => ({ ...s, email: e.target.value }))}
+                        placeholder="ایمیل / تماس"
+                        className="px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                      <input
+                        value={publicIsoSubmitter.organization}
+                        onChange={(e) => setPublicIsoSubmitter((s) => ({ ...s, organization: e.target.value }))}
+                        placeholder="واحد / شرکت"
+                        className="px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+
+                    {docDef.formFields?.length ? (
+                      <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+                        <h4 className="font-bold text-emerald-950 mb-3">اطلاعات فرم</h4>
+                        <div className="grid md:grid-cols-2 gap-3">
+                          {docDef.formFields.map((field: FormField) => {
+                            const label = field.labelRtl || field.label;
+                            const value = publicIsoAnswers[field.id];
+                            const baseClass = 'w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-emerald-400';
+                            if (field.type === 'section_title') {
+                              return <h5 key={field.id} className="md:col-span-2 font-bold text-slate-900">{label}</h5>;
+                            }
+                            if (field.type === 'textarea') {
+                              return (
+                                <label key={field.id} className="text-sm text-slate-700 md:col-span-2">
+                                  <span className="block font-bold mb-1">{label}{field.required ? <span className="text-rose-500 mr-1">*</span> : null}</span>
+                                  <textarea value={String(value || '')} onChange={(e) => setPublicIsoAnswers((m) => ({ ...m, [field.id]: e.target.value }))} rows={3} className={baseClass} placeholder={field.placeholder || ''} />
+                                </label>
+                              );
+                            }
+                            if (field.type === 'select') {
+                              return (
+                                <label key={field.id} className="text-sm text-slate-700">
+                                  <span className="block font-bold mb-1">{label}{field.required ? <span className="text-rose-500 mr-1">*</span> : null}</span>
+                                  <select value={String(value || '')} onChange={(e) => setPublicIsoAnswers((m) => ({ ...m, [field.id]: e.target.value }))} className={baseClass}>
+                                    <option value="">انتخاب کنید</option>
+                                    {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                                  </select>
+                                </label>
+                              );
+                            }
+                            if (field.type === 'multiselect') {
+                              const selected = Array.isArray(value) ? value : [];
+                              return (
+                                <div key={field.id} className="text-sm text-slate-700 md:col-span-2">
+                                  <span className="block font-bold mb-1">{label}{field.required ? <span className="text-rose-500 mr-1">*</span> : null}</span>
+                                  <div className="flex flex-wrap gap-2">
+                                    {(field.options || []).map((opt) => (
+                                      <label key={opt} className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs">
+                                        <input type="checkbox" checked={selected.includes(opt)} onChange={(e) => setPublicIsoAnswers((m) => {
+                                          const curr = Array.isArray(m[field.id]) ? m[field.id] as string[] : [];
+                                          return { ...m, [field.id]: e.target.checked ? [...curr, opt] : curr.filter((x) => x !== opt) };
+                                        })} className="ml-1" />
+                                        {opt}
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            if (field.type === 'checkbox') {
+                              return (
+                                <label key={field.id} className="flex items-center gap-2 text-sm text-slate-700 rounded-xl border border-slate-200 px-3 py-2">
+                                  <input type="checkbox" checked={!!value} onChange={(e) => setPublicIsoAnswers((m) => ({ ...m, [field.id]: e.target.checked }))} />
+                                  <span className="font-bold">{label}{field.required ? <span className="text-rose-500 mr-1">*</span> : null}</span>
+                                </label>
+                              );
+                            }
+                            return (
+                              <label key={field.id} className="text-sm text-slate-700">
+                                <span className="block font-bold mb-1">{label}{field.required ? <span className="text-rose-500 mr-1">*</span> : null}</span>
+                                <input
+                                  type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'}
+                                  value={String(value || '')}
+                                  onChange={(e) => setPublicIsoAnswers((m) => ({ ...m, [field.id]: field.type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value }))}
+                                  className={baseClass}
+                                  placeholder={field.placeholder || ''}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {docDef.checklistItems?.length ? (
+                      <div className="rounded-2xl border border-emerald-200 bg-white overflow-hidden">
+                        <div className="bg-emerald-100/70 px-4 py-3 text-sm font-bold text-emerald-950">آیتم‌های قابل تکمیل</div>
+                        <div className="divide-y divide-emerald-100">
+                          {docDef.checklistItems.map((item: IsoChecklistItem, idx: number) => (
+                            <div key={item.id} className="p-4 grid md:grid-cols-[2rem_1fr_13rem] gap-3 items-start">
+                              <span className="text-slate-400 font-bold text-sm">{idx + 1}</span>
+                              <label className="flex items-start gap-3 text-sm text-slate-800">
+                                <input
+                                  type="checkbox"
+                                  checked={!!publicIsoChecklist[item.id]?.checked}
+                                  onChange={(e) => setPublicIsoChecklist((m) => ({ ...m, [item.id]: { ...(m[item.id] || { comment: '' }), checked: e.target.checked } }))}
+                                  className="mt-1"
+                                />
+                                <span>
+                                  <span className="font-medium">{item.text}</span>
+                                  {item.required ? <span className="text-rose-500 text-xs mr-1">*</span> : null}
+                                  {item.owner ? <span className="block text-xs text-slate-400 mt-1">{item.owner}</span> : null}
+                                </span>
+                              </label>
+                              <input
+                                value={publicIsoChecklist[item.id]?.comment || ''}
+                                onChange={(e) => setPublicIsoChecklist((m) => ({ ...m, [item.id]: { ...(m[item.id] || { checked: false }), comment: e.target.value } }))}
+                                placeholder="توضیح / عدم انطباق"
+                                className="px-3 py-2 rounded-xl border border-slate-200 text-xs"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <textarea
+                      value={publicIsoSubmitter.notes}
+                      onChange={(e) => setPublicIsoSubmitter((s) => ({ ...s, notes: e.target.value }))}
+                      placeholder="توضیحات، نتیجه اجرا، عدم انطباق یا اقدام اصلاحی"
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-white text-sm outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                    <button
+                      onClick={submitPublicIsoRecord}
+                      disabled={publicIsoSubmitting}
+                      className="w-full md:w-auto px-5 py-3 rounded-2xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {publicIsoSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      ثبت نهایی در سوابق ISO
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             <div className="grid md:grid-cols-3 gap-4">
               {(docDef.approvals || []).map((sig: IsoApprovalSignature) => (
                 <div key={sig.role} className="rounded-2xl border border-slate-200 p-4 min-h-[8rem]">
@@ -20320,9 +20646,18 @@ function AppInner() {
       steps[idx] = { ...steps[idx], ...patch };
       updateDraft({ workflowSteps: steps });
     };
+    const updateIsoFormField = (id: string, patch: Partial<FormField>) => updateDraft({
+      formFields: (isoDraft?.formFields || []).map((field) => field.id === id ? { ...field, ...patch } : field),
+    });
     const updateApproval = (role: IsoApprovalSignature['role'], patch: Partial<IsoApprovalSignature>) => updateDraft({
       approvals: (isoDraft?.approvals || makeIsoApprovals()).map((a) => a.role === role ? { ...a, ...patch } : a),
     });
+    const recentIsoRecords = isoRecords.slice(0, 6);
+    const unreadIsoRecords = isoRecords.filter((r) => !r.isRead).length;
+    const recentIsoChanges = isoDocuments
+      .flatMap((d) => (d.changeHistory || []).map((change) => ({ ...change, docTitle: d.title, docNo: d.docNo })))
+      .sort((a, b) => (b.at || 0) - (a.at || 0))
+      .slice(0, 6);
 
     return (
       <div className="space-y-5">
@@ -20454,6 +20789,38 @@ function AppInner() {
                 </div>
               </div>
 
+              {isoDraft.kind === 'online_form' ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="font-bold text-emerald-950">فیلدهای قابل تکمیل فرم ISO</h4>
+                      <p className="text-xs text-emerald-700 mt-1">این فیلدها در لینک آنلاین نمایش داده می‌شوند و جواب‌ها در سوابق ISO ذخیره می‌شوند.</p>
+                    </div>
+                    <button
+                      onClick={() => updateDraft({ formFields: [...(isoDraft.formFields || []), { id: `fld_${Date.now()}`, type: 'text', label: 'Field', labelRtl: 'فیلد جدید', required: false }] })}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white"
+                    >
+                      + فیلد فرم
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {(isoDraft.formFields || []).map((field) => (
+                      <div key={field.id} className="grid lg:grid-cols-[9rem_1fr_1fr_1fr_auto_auto] gap-2">
+                        <select value={field.type} onChange={(e) => updateIsoFormField(field.id, { type: e.target.value as FormFieldType })} className="px-3 py-2 border border-emerald-200 rounded-xl text-sm bg-white">
+                          {(['text', 'textarea', 'number', 'email', 'phone', 'date', 'select', 'multiselect', 'checkbox', 'rating'] as FormFieldType[]).map((type) => <option key={type} value={type}>{type}</option>)}
+                        </select>
+                        <input value={field.labelRtl || ''} onChange={(e) => updateIsoFormField(field.id, { labelRtl: e.target.value })} className="px-3 py-2 border border-emerald-200 rounded-xl text-sm" placeholder="عنوان فارسی" />
+                        <input value={field.label || ''} onChange={(e) => updateIsoFormField(field.id, { label: e.target.value })} className="px-3 py-2 border border-emerald-200 rounded-xl text-sm" placeholder="Label" />
+                        <input value={(field.options || []).join(', ')} onChange={(e) => updateIsoFormField(field.id, { options: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} className="px-3 py-2 border border-emerald-200 rounded-xl text-sm" placeholder="گزینه‌ها با کاما" />
+                        <label className="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" checked={!!field.required} onChange={(e) => updateIsoFormField(field.id, { required: e.target.checked })} /> اجباری</label>
+                        <button onClick={() => updateDraft({ formFields: (isoDraft.formFields || []).filter((x) => x.id !== field.id) })} className="px-2 text-rose-600"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                    {(isoDraft.formFields || []).length === 0 ? <p className="text-xs text-slate-400">برای فرم آنلاین حداقل یک فیلد اضافه کن.</p> : null}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-2xl border border-slate-200 p-4">
                 <h4 className="font-bold text-slate-900 mb-3">فرم‌های آنلاین مرتبط</h4>
                 <div className="grid md:grid-cols-3 gap-2">
@@ -20498,9 +20865,86 @@ function AppInner() {
           </div>
         )}
 
+        <div className="grid xl:grid-cols-2 gap-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-black text-slate-900">سوابق اجرای فرم‌ها و چک لیست‌های ISO</h3>
+                <p className="text-xs text-slate-500 mt-1">هر رکوردی که از لینک آنلاین ISO ثبت شود اینجا برای کنترل کیفیت نگهداری می‌شود.</p>
+              </div>
+              <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-bold">{isoRecords.length} رکورد</span>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {recentIsoRecords.map((record) => {
+                const passed = (record.checklistAnswers || []).filter((a) => a.checked).length;
+                const total = record.checklistAnswers?.length || 0;
+                return (
+                  <div key={record.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{record.docTitle}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{record.submittedByName} · {new Date(record.submittedAt).toLocaleString()}</p>
+                      </div>
+                      <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-slate-200 text-slate-500">
+                        {passed}/{total || 0}
+                      </span>
+                    </div>
+                    {record.data && Object.keys(record.data).length ? (
+                      <div className="mt-2 grid grid-cols-2 gap-1">
+                        {Object.entries(record.data).slice(0, 4).map(([key, value]) => (
+                          <div key={key} className="rounded-lg bg-white px-2 py-1 text-[11px] text-slate-500 truncate">
+                            <span className="font-mono text-slate-400">{key}: </span>{Array.isArray(value) ? value.join(', ') : String(value)}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {record.notes ? <p className="text-xs text-slate-600 mt-2 whitespace-pre-wrap">{record.notes}</p> : null}
+                  </div>
+                );
+              })}
+              {recentIsoRecords.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400">
+                  هنوز رکورد اجرایی ثبت نشده است.
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-black text-slate-900">تاریخچه تغییرات و Revision</h3>
+                <p className="text-xs text-slate-500 mt-1">ذخیره، انتشار، لغو انتشار و تغییر Revision سندها برای ردیابی QMS ثبت می‌شود.</p>
+              </div>
+              {unreadIsoRecords > 0 ? <span className="text-xs px-2 py-1 rounded-full bg-rose-100 text-rose-700 font-bold">{unreadIsoRecords} جدید</span> : null}
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {recentIsoChanges.map((change) => (
+                <div key={`${change.id}_${change.docNo}`} className="rounded-2xl border border-slate-100 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{change.docTitle}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{change.summary}</p>
+                    </div>
+                    <span className="text-[10px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold">{change.action}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2">Rev {change.revision || '-'} · {new Date(change.at).toLocaleString()} {change.actorEmail ? `· ${change.actorEmail}` : ''}</p>
+                </div>
+              ))}
+              {recentIsoChanges.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400">
+                  هنوز تاریخچه‌ای ثبت نشده است.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {isoDocuments.map((docDef) => {
             const url = isoPublicUrl(docDef);
+            const docRecords = isoRecords.filter((r) => r.isoDocId === docDef.id || r.docNo === docDef.docNo);
+            const lastChange = (docDef.changeHistory || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0))[0];
             return (
               <div key={docDef.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between gap-3">
@@ -20518,7 +20962,13 @@ function AppInner() {
                   <span>{docDef.sections?.length || 0} sections</span>
                   <span>{docDef.workflowSteps?.length || 0} flow steps</span>
                   <span>{docDef.checklistItems?.length || 0} checks</span>
+                  <span>{docRecords.length} records</span>
                 </div>
+                {lastChange ? (
+                  <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] text-slate-500 truncate">آخرین تغییر: {lastChange.summary}</p>
+                  </div>
+                ) : null}
                 {url ? (
                   <div className="mt-3 flex items-center gap-1.5 bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-200">
                     <Link2 className="w-3 h-3 text-slate-400" />

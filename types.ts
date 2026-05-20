@@ -979,6 +979,15 @@ export interface IsoApprovalSignature {
   signed?: boolean;
 }
 
+export interface IsoChangeLog {
+  id: string;
+  at: number;
+  action: 'created' | 'updated' | 'published' | 'unpublished' | 'revision';
+  actorEmail?: string;
+  revision?: string;
+  summary: string;
+}
+
 export interface IsoDocumentDef {
   id: string;
   title: string;
@@ -997,13 +1006,39 @@ export interface IsoDocumentDef {
   sections: IsoDocumentSection[];
   workflowTitle?: string;
   workflowSteps: FormWorkflowStep[];
+  formFields?: FormField[];
   checklistItems: IsoChecklistItem[];
   linkedFormIds?: string[];
   approvals: IsoApprovalSignature[];
+  changeHistory?: IsoChangeLog[];
   createdAt: number;
   updatedAt: number;
   publishedKey?: string;
   isPublished: boolean;
+}
+
+export interface IsoRecordChecklistAnswer {
+  itemId: string;
+  text: string;
+  checked: boolean;
+  comment?: string;
+}
+
+export interface IsoExecutionRecord {
+  id: string;
+  isoDocId: string;
+  publicKey?: string;
+  docTitle: string;
+  docNo: string;
+  revision: string;
+  submittedAt: number;
+  submittedByName: string;
+  submittedByEmail?: string;
+  organization?: string;
+  data?: Record<string, string | number | boolean | string[]>;
+  checklistAnswers: IsoRecordChecklistAnswer[];
+  notes?: string;
+  isRead?: boolean;
 }
 
 // ---- CONTRACTS ----

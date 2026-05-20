@@ -178,6 +178,17 @@ service cloud.firestore {
       allow read, write: if canAccessUserData(appId, userId);
     }
 
+    // ISO execution records — public links can submit; owner/master can review/manage
+    match /artifacts/{appId}/users/{userId}/isoRecords/{recordId} {
+      allow create: if request.resource.data.keys().hasAll(['isoDocId', 'docTitle', 'docNo', 'revision', 'submittedAt', 'submittedByName', 'checklistAnswers'])
+                    && request.resource.data.submittedByName is string
+                    && request.resource.data.submittedByName.size() > 0
+                    && request.resource.data.submittedByName.size() < 200
+                    && request.resource.data.checklistAnswers is list
+                    && request.resource.data.checklistAnswers.size() < 100;
+      allow read, update, delete: if canAccessUserData(appId, userId);
+    }
+
     // Form submissions — anyone can create (public submit); owner reads/manages
     match /artifacts/{appId}/users/{userId}/formSubmissions/{subId} {
       allow create: if request.resource.data.keys().hasAll(['formKey', 'formName', 'submittedAt', 'data', 'isRead'])
