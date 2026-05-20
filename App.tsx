@@ -2538,6 +2538,43 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+function getYouTubeEmbedUrl(rawUrl: string | undefined): string {
+  const value = String(rawUrl || '').trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+    let videoId = '';
+    if (host === 'youtu.be') {
+      videoId = url.pathname.split('/').filter(Boolean)[0] || '';
+    } else if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+      if (url.pathname.startsWith('/embed/')) videoId = url.pathname.split('/')[2] || '';
+      else if (url.pathname.startsWith('/shorts/')) videoId = url.pathname.split('/')[2] || '';
+      else videoId = url.searchParams.get('v') || '';
+    }
+    if (!/^[A-Za-z0-9_-]{6,}$/.test(videoId)) return '';
+    const start = url.searchParams.get('start') || url.searchParams.get('t') || '';
+    const startSeconds = /^\d+$/.test(start) ? `?start=${start}` : '';
+    return `https://www.youtube.com/embed/${videoId}${startSeconds}`;
+  } catch {
+    return '';
+  }
+}
+
+function getHtmlPresentationUrl(rawUrl: string | undefined): { embedUrl: string; kind: 'youtube' | 'external' } | null {
+  const value = String(rawUrl || '').trim();
+  if (!value) return null;
+  const youtube = getYouTubeEmbedUrl(value);
+  if (youtube) return { embedUrl: youtube, kind: 'youtube' };
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    return { embedUrl: url.toString(), kind: 'external' };
+  } catch {
+    return null;
+  }
+}
+
 function sanitizeCustomFormAppendixHtml(raw: string | undefined): string {
   if (!raw) return '';
   if (typeof document === 'undefined') return String(raw);
@@ -2795,7 +2832,11 @@ function printCustomFormBuilderPreview(form: CustomFormDef): void {
       if (f.type === 'html_embed') {
         const caption = f.placeholder ? `<p class="pf-section-note" style="margin-top:8px;">${escapeHtml(f.placeholder)}</p>` : '';
         const fileName = f.htmlFileName ? `<p class="pf-section-note" style="margin-bottom:8px;">${escapeHtml(f.htmlFileName)}</p>` : '';
-        return `<div class="pf-field pf-html-presentation"><span class="pf-label">${label}</span>${fileName}<div class="pf-html-empty">HTML presentation frame (16:9)</div>${caption}</div>`;
+        const linked = getHtmlPresentationUrl(f.htmlUrl);
+        const frame = linked
+          ? `<div class="pf-html-frame-wrap"><iframe title="${escapeAttr(f.htmlFrameTitle || f.label || 'Presentation')}" src="${escapeAttr(linked.embedUrl)}" sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin" allow="fullscreen; autoplay; encrypted-media" allowfullscreen></iframe></div>`
+          : '<div class="pf-html-empty">HTML / YouTube presentation frame (16:9)</div>';
+        return `<div class="pf-field pf-html-presentation"><span class="pf-label">${label}</span>${fileName}${frame}${caption}</div>`;
       }
       const typeHint = escapeHtml(String(f.type).replace(/_/g, ' '));
       return `<div class="pf-field"><span class="pf-label">${label}${req}</span><div class="pf-input" style="min-height:28px;color:#94a3b8;font-size:9pt;line-height:28px;">[${typeHint}]</div></div>`;
@@ -15805,6 +15846,7 @@ function AppInner() {
       if (field.type === 'html_embed') {
         const capSingle = String(field.placeholder ?? '').trim();
         const title = field.htmlFrameTitle || field.label || 'HTML presentation';
+        const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
         return (
           <div key={field.id} className="pf-field pf-html-presentation">
             {bi ? (
@@ -15819,8 +15861,23 @@ function AppInner() {
             ) : (
               <span className="pf-label">{field.label}</span>
             )}
-            {field.htmlFileName ? <p className="pf-section-note" style={{ marginBottom: 8 }}>{field.htmlFileName}</p> : null}
-            {field.htmlContent ? (
+            {field.htmlFileName || field.htmlUrl ? (
+              <p className="pf-section-note" style={{ marginBottom: 8 }}>
+                {field.htmlFileName || (linkedPresentation?.kind === 'youtube' ? 'YouTube presentation' : field.htmlUrl)}
+              </p>
+            ) : null}
+            {linkedPresentation ? (
+              <div className="pf-html-frame-wrap">
+                <iframe
+                  title={title}
+                  src={linkedPresentation.embedUrl}
+                  sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
+                  allow="fullscreen; autoplay; encrypted-media"
+                  allowFullScreen
+                  loading="lazy"
+                />
+              </div>
+            ) : field.htmlContent ? (
               <div className="pf-html-frame-wrap">
                 <iframe
                   title={title}
@@ -16335,9 +16392,10 @@ function AppInner() {
         id: 'html_presentation',
         type: 'html_embed',
         label: 'Presentation / product story',
+        htmlUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         htmlFileName: '',
         htmlFrameTitle: 'Product presentation',
-        placeholder: 'Upload an HTML file in the builder. It will appear in a fixed 16:9 frame for customers.',
+        placeholder: 'Paste a YouTube/HTML link or upload an HTML file in the builder. It will appear in a fixed 16:9 frame for customers.',
       },
       {
         id: 'sec_customer_photos',
@@ -21051,6 +21109,7 @@ function AppInner() {
                       image_upload: 'bg-pink-50 border-pink-200', video_upload: 'bg-orange-50 border-orange-200',
                       file_upload: 'bg-amber-50 border-amber-200', rating: 'bg-yellow-50 border-yellow-200',
                     };
+                    const htmlPresentationLink = getHtmlPresentationUrl(field.htmlUrl);
                     return (
                       <div key={field.id} className={`border rounded-xl p-3 space-y-2 ${typeColors[field.type] || 'border-slate-200 bg-slate-50/60'}`}>
                         {/* Row 1: index, type, label, required, delete */}
@@ -21339,6 +21398,36 @@ function AppInner() {
                               </div>
                             </div>
                             <div>
+                              <label className="text-[10px] text-slate-500 block mb-0.5">YouTube URL or HTML presentation URL</label>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="url"
+                                  value={field.htmlUrl || ''}
+                                  onChange={(e) => upd({ htmlUrl: e.target.value || undefined })}
+                                  className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                  placeholder="https://youtu.be/... or https://example.com/presentation.html"
+                                />
+                                {field.htmlUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => upd({ htmlUrl: undefined })}
+                                    className="px-2 py-1.5 text-xs rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                  >
+                                    Clear link
+                                  </button>
+                                ) : null}
+                              </div>
+                              {field.htmlUrl && !htmlPresentationLink ? (
+                                <p className="text-[10px] text-amber-700 mt-1">
+                                  Use a YouTube link or a valid http/https URL.
+                                </p>
+                              ) : field.htmlUrl && htmlPresentationLink?.kind === 'youtube' ? (
+                                <p className="text-[10px] text-sky-700 mt-1">YouTube link detected; it will be converted to embed mode.</p>
+                              ) : field.htmlUrl ? (
+                                <p className="text-[10px] text-sky-700 mt-1">External HTML/website link will load in the 16:9 frame.</p>
+                              ) : null}
+                            </div>
+                            <div>
                               <label className="text-[10px] text-slate-500 block mb-0.5">Caption / helper text</label>
                               <input
                                 type="text"
@@ -21350,7 +21439,15 @@ function AppInner() {
                             </div>
                             <div className="rounded-lg border border-slate-200 bg-slate-950 overflow-hidden">
                               <div className="aspect-video bg-slate-900 flex items-center justify-center">
-                                {field.htmlContent ? (
+                                {htmlPresentationLink ? (
+                                  <iframe
+                                    title={field.htmlFrameTitle || field.label || 'Presentation preview'}
+                                    src={htmlPresentationLink.embedUrl}
+                                    sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
+                                    allow="fullscreen; autoplay; encrypted-media"
+                                    className="w-full h-full border-0 bg-white"
+                                  />
+                                ) : field.htmlContent ? (
                                   <iframe
                                     title={field.htmlFrameTitle || field.label || 'HTML presentation preview'}
                                     srcDoc={field.htmlContent}
@@ -21360,7 +21457,7 @@ function AppInner() {
                                   />
                                 ) : (
                                   <div className="text-center text-xs text-slate-400 px-4">
-                                    Upload an HTML file to preview it in a YouTube-style 16:9 frame.
+                                    Paste a YouTube/HTML link or upload an HTML file to preview it in a YouTube-style 16:9 frame.
                                   </div>
                                 )}
                               </div>

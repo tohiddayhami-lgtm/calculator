@@ -834,6 +834,7 @@ export interface FormField {
   imageUrl?: string;       // for display_image type
   htmlContent?: string;    // for html_embed type (stored HTML file contents)
   htmlFileName?: string;   // original uploaded HTML filename
+  htmlUrl?: string;        // YouTube URL or external HTML/presentation URL
   htmlFrameTitle?: string; // iframe title / presentation title
   maxRating?: number;      // for rating type (default 5)
 }
