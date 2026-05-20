@@ -2788,6 +2788,34 @@ function splitPublicFormPayload(form: CustomFormDef, ownerUid: string, dataAppId
   return { publicData, assets };
 }
 
+function buildLegacyPublicFormPayload(form: CustomFormDef, ownerUid: string, dataAppIdValue: string, updatedAt = Date.now()) {
+  return stripUndefinedDeep({
+    ownerUid,
+    appId: dataAppIdValue,
+    name: form.name,
+    formNumber: form.formNumber || '',
+    accessLevel: form.accessLevel === 'internal' ? 'internal' : 'public',
+    companyName: form.companyName || '',
+    logoUrl: form.logoUrl || '',
+    headerBgColor: form.headerBgColor || '#1e3a5f',
+    headerTextColor: form.headerTextColor || '#ffffff',
+    headerSubtitle: form.headerSubtitle || '',
+    description: form.description || '',
+    showWorkflowGuide: !!form.showWorkflowGuide,
+    workflowGuideTitle: form.workflowGuideTitle || '',
+    workflowGuideTitleRtl: form.workflowGuideTitleRtl || '',
+    workflowSteps: form.workflowSteps || [],
+    appendixEnabled: !!form.appendixEnabled,
+    appendixTitle: form.appendixTitle || '',
+    appendixHtml: sanitizeCustomFormAppendixHtml(form.appendixHtml || ''),
+    appendixImages: form.appendixImages || [],
+    appendixPositionIndex: getCustomFormAppendixIndex(form),
+    fields: form.fields || [],
+    isActive: true,
+    updatedAt,
+  });
+}
+
 function mergePublicFormAssets(form: any, assets: PublicFormAssetPayload | null | undefined) {
   if (!assets) return form;
   const fieldAssets = assets.fields || {};
@@ -6534,10 +6562,19 @@ function AppInner() {
             updateDoc(doc(db, 'publicForms', formDef.publishedKey), publicData),
             10000, 'Sync public form'
           ).catch(() => {});
-          await withTimeout(
-            setDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, formDef.publishedKey), assets),
-            10000, 'Sync public form assets'
-          ).catch(() => {});
+          try {
+            await withTimeout(
+              setDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, formDef.publishedKey), assets),
+              10000, 'Sync public form assets'
+            );
+          } catch (assetErr) {
+            console.warn('Public form assets sync failed during save; falling back to legacy public form payload.', assetErr);
+            await withTimeout(
+              setDoc(doc(db, 'publicForms', formDef.publishedKey), buildLegacyPublicFormPayload(formDef, user.uid, dataAppId, now), { merge: true }),
+              10000,
+              'Sync public form legacy assets fallback'
+            ).catch((fallbackErr) => console.warn('Legacy public form asset fallback failed during save.', fallbackErr));
+          }
         }
       } else {
         const newId = `form_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -6784,11 +6821,26 @@ function AppInner() {
       const now = Date.now();
       const { publicData, assets } = splitPublicFormPayload(form, user.uid, dataAppId, now);
       await withTimeout(setDoc(doc(db, 'publicForms', key), publicData), 10000, 'Publish form');
-      await withTimeout(setDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, key), assets), 10000, 'Publish form assets');
+      let assetSynced = false;
+      try {
+        await withTimeout(setDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, key), assets), 10000, 'Publish form assets');
+        assetSynced = true;
+      } catch (assetErr) {
+        console.warn('Public form assets sync failed; falling back to legacy public form payload.', assetErr);
+        try {
+          await withTimeout(
+            setDoc(doc(db, 'publicForms', key), buildLegacyPublicFormPayload(form, user.uid, dataAppId, now), { merge: true }),
+            10000,
+            'Publish form legacy assets fallback'
+          );
+        } catch (fallbackErr) {
+          console.warn('Legacy public form asset fallback failed. Form is still published without heavy media.', fallbackErr);
+        }
+      }
       await withTimeout(
         setDoc(
           doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId),
-          stripUndefinedDeep({ ...form, publishedKey: key, isPublished: true, updatedAt: now })
+          stripUndefinedDeep({ ...form, publishedKey: key, isPublished: true, publicAssetsSynced: assetSynced, updatedAt: now })
         ),
         10000, 'Update form'
       );
