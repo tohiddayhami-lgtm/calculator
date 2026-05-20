@@ -10414,30 +10414,34 @@ function AppInner() {
         let packagingUnitSellStandard: number | undefined;
         let packagingUnitSellLuxury: number | undefined;
         if (isActive && p.packagingEnabled) {
-          const stdExtra = packagingExtraUnitCostOutput(
-            p.packagingStandardPerUnit,
-            p.currency,
-            toBase,
-            toOutput,
-          );
-          const luxExtra = packagingExtraUnitCostOutput(
-            p.packagingLuxuryPerUnit,
-            p.currency,
-            toBase,
-            toOutput,
-          );
-          packagingUnitCostStandard = unitCostOutput + stdExtra;
-          packagingUnitCostLuxury = unitCostOutput + luxExtra;
-          packagingUnitSellStandard = computeUnitSellFromCost(
-            packagingUnitCostStandard,
-            effectiveProfitPercent,
-            pricingCtx,
-          ).unitSellPrice;
-          packagingUnitSellLuxury = computeUnitSellFromCost(
-            packagingUnitCostLuxury,
-            effectiveProfitPercent,
-            pricingCtx,
-          ).unitSellPrice;
+          if (p.packagingStandardPerUnit !== undefined && p.packagingStandardPerUnit > 0) {
+            const stdExtra = packagingExtraUnitCostOutput(
+              p.packagingStandardPerUnit,
+              p.currency,
+              toBase,
+              toOutput,
+            );
+            packagingUnitCostStandard = unitCostOutput + stdExtra;
+            packagingUnitSellStandard = computeUnitSellFromCost(
+              packagingUnitCostStandard,
+              effectiveProfitPercent,
+              pricingCtx,
+            ).unitSellPrice;
+          }
+          if (p.packagingLuxuryPerUnit !== undefined && p.packagingLuxuryPerUnit > 0) {
+            const luxExtra = packagingExtraUnitCostOutput(
+              p.packagingLuxuryPerUnit,
+              p.currency,
+              toBase,
+              toOutput,
+            );
+            packagingUnitCostLuxury = unitCostOutput + luxExtra;
+            packagingUnitSellLuxury = computeUnitSellFromCost(
+              packagingUnitCostLuxury,
+              effectiveProfitPercent,
+              pricingCtx,
+            ).unitSellPrice;
+          }
         }
 
         return { 
@@ -10609,9 +10613,6 @@ function AppInner() {
     const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
     const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
     const selectedTermRow = calculations.breakdown.find((row) => row.term === selectedTerm) || calculations.breakdown[0];
-    const buyerManualResaleOutput = buyerManualResaleValue && buyerManualResaleValue > 0
-      ? convert(buyerManualResaleValue, buyerManualResaleCurrency || config.outputCurrency)
-      : 0;
     const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
     const applyBuyerProfit = (cost: number) => {
       if (buyerProfitType === 'margin') {
@@ -10620,7 +10621,18 @@ function AppInner() {
       }
       return cost * (1 + buyerMarkup / 100);
     };
-    const buyerResaleRevenue = buyerManualResaleOutput > 0 ? buyerManualResaleOutput : applyBuyerProfit(selectedTermRow?.totalSell || 0);
+    const buyerUnitResaleForProduct = (p: Product, unitSell: number) => {
+      if (p.buyerManualUnitSellPrice !== undefined && p.buyerManualUnitSellPrice > 0) {
+        return convert(p.buyerManualUnitSellPrice, p.buyerManualSellCurrency || config.outputCurrency);
+      }
+      return applyBuyerProfit(unitSell);
+    };
+    const buyerResaleRevenue = activeProducts.reduce((sum, p) => {
+      const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
+      const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+      const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+      return sum + buyerUnitResaleForProduct(p, unitSell) * (p.qty || 0);
+    }, 0);
     const buyerGrossProfit = buyerResaleRevenue - (selectedTermRow?.totalSell || 0);
     const buyerMargin = buyerResaleRevenue > 0 ? (buyerGrossProfit / buyerResaleRevenue) * 100 : 0;
     const buyerAutoPercent = selectedTermRow?.totalSell
@@ -10657,9 +10669,7 @@ function AppInner() {
       const lineSell = termRow?.lineSell ?? unitSell * (p.qty || 0);
       const lineProfit = termRow?.lineProfit ?? lineSell - lineCost;
       const lineMargin = termRow?.profitMargin ?? (lineSell > 0 ? (lineProfit / lineSell) * 100 : 0);
-      const buyerUnitResale = buyerManualResaleOutput > 0 && selectedTermRow?.totalSell
-        ? ((lineSell / selectedTermRow.totalSell) * buyerResaleRevenue) / (p.qty || 1)
-        : applyBuyerProfit(unitSell);
+      const buyerUnitResale = buyerUnitResaleForProduct(p, unitSell);
       const buyerUnitProfit = buyerUnitResale - unitSell;
       const buyerLineRevenue = buyerUnitResale * (p.qty || 0);
       const buyerLineProfit = buyerLineRevenue - lineSell;
@@ -10689,26 +10699,29 @@ function AppInner() {
       const packSize = p.itemsPerPack || 0;
       const sellerPackPrice = unitSell * (packSize || 1);
       const lineSell = termRow?.lineSell ?? unitSell * q;
-      const buyerUnitResale = buyerManualResaleOutput > 0 && selectedTermRow?.totalSell
-        ? ((lineSell / selectedTermRow.totalSell) * buyerResaleRevenue) / (q || 1)
-        : applyBuyerProfit(unitSell);
+      const buyerUnitResale = buyerUnitResaleForProduct(p, unitSell);
       const buyerUnitProfit = buyerUnitResale - unitSell;
       const buyerPackPrice = buyerUnitResale * (packSize || 1);
       const buyerLineRevenue = buyerUnitResale * q;
       const buyerLineProfit = buyerLineRevenue - lineSell;
+      const buyerPct = buyerProfitType === 'margin'
+        ? (buyerUnitResale > 0 ? (buyerUnitProfit / buyerUnitResale) * 100 : 0)
+        : (unitSell > 0 ? (buyerUnitProfit / unitSell) * 100 : 0);
       return `
-        <tr>
-          <td>${index + 1}</td>
-          <td><strong>${escapeHtml(p.name || 'Item')}</strong><span>${escapeHtml([p.sku ? `SKU ${p.sku}` : '', packSize ? `${packSize} / pack` : 'No pack size'].filter(Boolean).join(' · '))}</span></td>
-          <td class="num">${escapeHtml((q || 0).toLocaleString())}</td>
-          <td class="num">${escapeHtml(packSize ? packSize.toLocaleString() : '-')}</td>
-          <td class="num">${escapeHtml(fmt(unitSell))}</td>
-          <td class="num">${escapeHtml(fmt(sellerPackPrice))}</td>
-          <td class="num">${escapeHtml(fmt(buyerUnitResale))}</td>
-          <td class="num">${escapeHtml(fmt(buyerPackPrice))}</td>
-          <td class="num profit">${escapeHtml(fmt(buyerUnitProfit))}</td>
-          <td class="num profit">${escapeHtml(fmt(buyerLineProfit))}</td>
-        </tr>
+        <div class="buyer-card">
+          <div class="buyer-card-title">
+            <strong>${index + 1}. ${escapeHtml(p.name || 'Item')}</strong>
+            <span>${escapeHtml([p.sku ? `SKU ${p.sku}` : '', `Qty ${q.toLocaleString()}`, packSize ? `${packSize} / pack` : 'No pack size'].filter(Boolean).join(' · '))}</span>
+          </div>
+          <div class="buyer-metrics">
+            <div><span>Your unit sell</span><strong>${escapeHtml(fmt(unitSell))}</strong></div>
+            <div><span>Your pack price</span><strong>${escapeHtml(fmt(sellerPackPrice))}</strong></div>
+            <div><span>Buyer unit sell</span><strong>${escapeHtml(fmt(buyerUnitResale))}</strong></div>
+            <div><span>Buyer pack price</span><strong>${escapeHtml(fmt(buyerPackPrice))}</strong></div>
+            <div class="profit"><span>Buyer unit profit</span><strong>${escapeHtml(fmt(buyerUnitProfit))}</strong></div>
+            <div class="profit"><span>Buyer line profit</span><strong>${escapeHtml(fmt(buyerLineProfit))}</strong><em>${escapeHtml(pct(buyerPct))}</em></div>
+          </div>
+        </div>
       `;
     }).join('');
     const termRows = calculations.breakdown.map((row) => `
@@ -10732,10 +10745,10 @@ function AppInner() {
       .map((p) => `
         <tr>
           <td>${escapeHtml(p.name || 'Item')}</td>
-          <td class="num">${escapeHtml(fmt(p.packagingUnitCostStandard || 0))}</td>
-          <td class="num">${escapeHtml(fmt(p.packagingUnitSellStandard || 0))}</td>
-          <td class="num">${escapeHtml(fmt(p.packagingUnitCostLuxury || 0))}</td>
-          <td class="num">${escapeHtml(fmt(p.packagingUnitSellLuxury || 0))}</td>
+          <td class="num">${p.packagingUnitCostStandard !== undefined ? escapeHtml(fmt(p.packagingUnitCostStandard)) : '-'}</td>
+          <td class="num">${p.packagingUnitSellStandard !== undefined ? escapeHtml(fmt(p.packagingUnitSellStandard)) : '-'}</td>
+          <td class="num">${p.packagingUnitCostLuxury !== undefined ? escapeHtml(fmt(p.packagingUnitCostLuxury)) : '-'}</td>
+          <td class="num">${p.packagingUnitSellLuxury !== undefined ? escapeHtml(fmt(p.packagingUnitSellLuxury)) : '-'}</td>
         </tr>
       `).join('');
     const marginColor = (selectedTermRow?.profitMargin || 0) >= 20 ? '#059669' : (selectedTermRow?.profitMargin || 0) >= 10 ? '#d97706' : '#dc2626';
@@ -10777,13 +10790,17 @@ function AppInner() {
   .pl-table th:nth-child(4),.pl-table td:nth-child(4){width:22%}
   .pl-table th:nth-child(5),.pl-table td:nth-child(5),
   .pl-table th:nth-child(6),.pl-table td:nth-child(6){width:11%}
-  .buyer-table{table-layout:fixed;font-size:8.5px}
-  .buyer-table th,.buyer-table td{padding:5px 4px}
-  .buyer-table th:nth-child(1),.buyer-table td:nth-child(1){width:5%}
-  .buyer-table th:nth-child(2),.buyer-table td:nth-child(2){width:23%}
-  .buyer-table th:nth-child(3),.buyer-table td:nth-child(3),
-  .buyer-table th:nth-child(4),.buyer-table td:nth-child(4){width:8%}
-  .buyer-table th:nth-child(n+5),.buyer-table td:nth-child(n+5){width:9.33%}
+  .buyer-cards{display:grid;grid-template-columns:1fr;gap:8px}
+  .buyer-card{border:1px solid #dbeafe;border-radius:14px;background:#f8fafc;overflow:hidden}
+  .buyer-card-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:8px 10px;background:#eff6ff;border-bottom:1px solid #dbeafe}
+  .buyer-card-title strong{font-size:10px;color:#0f172a}
+  .buyer-card-title span{font-size:8.5px;color:#64748b;text-align:right}
+  .buyer-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#e2e8f0}
+  .buyer-metrics div{background:#fff;padding:7px 8px;min-height:42px}
+  .buyer-metrics span{display:block;font-size:7.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:900}
+  .buyer-metrics strong{display:block;margin-top:3px;font-size:10px;color:#0f172a;white-space:nowrap}
+  .buyer-metrics .profit strong{color:#047857}
+  .buyer-metrics em{display:block;margin-top:2px;font-style:normal;font-size:8px;color:#059669;font-weight:900}
   .total-row td{background:#ecfdf5;font-weight:900;color:#065f46}
   .note{font-size:9px;color:#64748b;line-height:1.5;padding:9px 11px;background:#f8fafc}
   .signatures{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:22px}.sig{border-top:1px solid #94a3b8;text-align:center;padding-top:7px;font-size:9px;color:#64748b}
@@ -10835,17 +10852,17 @@ function AppInner() {
     <h2>Buyer profit simulation</h2>
     <table><tbody>
       <tr><td><strong>Buyer purchase value</strong><span>Your selling value at selected Incoterm: ${escapeHtml(selectedTerm)}</span></td><td class="num">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</td></tr>
-      <tr><td><strong>Buyer ${escapeHtml(buyerProfitType)}</strong><span>${buyerManualResaleOutput > 0 ? 'Automatically derived from manual buyer resale price' : 'Optional resale profit entered in the dashboard'}</span></td><td class="num">${escapeHtml(pct(buyerAutoPercent))}</td></tr>
-      <tr><td><strong>Buyer resale revenue</strong><span>${escapeHtml(buyerManualResaleOutput > 0 ? 'Manual buyer resale total converted to output currency' : buyerProfitType === 'margin' ? 'Purchase value / (1 - buyer margin)' : 'Purchase value × (1 + buyer markup)')}</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
+      <tr><td><strong>Buyer ${escapeHtml(buyerProfitType)}</strong><span>Derived from each product buyer unit selling price, or fallback buyer ${escapeHtml(buyerProfitType)}</span></td><td class="num">${escapeHtml(pct(buyerAutoPercent))}</td></tr>
+      <tr><td><strong>Buyer resale revenue</strong><span>Sum of buyer unit selling price × quantity for each product</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
       <tr class="total-row"><td>Buyer gross profit<span>Buyer resale revenue - buyer purchase value</span></td><td class="num">${escapeHtml(fmt(buyerGrossProfit))} <span>${escapeHtml(pct(buyerMargin))} buyer margin</span></td></tr>
     </tbody></table>
   </section>
 
   <section class="section">
     <h2>Buyer unit &amp; pack price analysis</h2>
-    <table class="buyer-table"><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Pack size</th><th class="num">Your unit sell</th><th class="num">Your pack price</th><th class="num">Buyer unit sell</th><th class="num">Buyer pack price</th><th class="num">Buyer unit profit</th><th class="num">Buyer line profit</th></tr></thead><tbody>
-      ${buyerAnalysisRows || '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
-    </tbody></table>
+    <div class="buyer-cards">
+      ${buyerAnalysisRows || '<div style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</div>'}
+    </div>
   </section>
 
   ${(extraOriginRows || extraDestinationRows) ? `<div class="grid2">
@@ -12183,6 +12200,10 @@ function AppInner() {
                             Manual Sell
                             <span className="block text-[9px] font-normal text-cyan-600/90">/ unit · auto profit%</span>
                         </th>
+                        <th className="px-4 py-2 w-44 min-w-[170px] bg-teal-50 text-teal-800" title="Optional buyer unit selling price. Buyer profit % is calculated automatically.">
+                            Buyer Unit Sell
+                            <span className="block text-[9px] font-normal text-teal-600/90">/ unit · auto buyer%</span>
+                        </th>
                         
                         <th className="px-4 py-2 w-20 bg-slate-50 text-right">Profit %</th>
 
@@ -12388,6 +12409,34 @@ function AppInner() {
                                         <div className="mt-1 text-[10px] text-slate-400 text-right">auto formula</div>
                                     )}
                                 </td>
+                                <td className="px-4 py-2 bg-teal-50/30 align-top">
+                                    <div className="flex items-center gap-1">
+                                        <FormattedNumberInput
+                                            optional
+                                            value={p.buyerManualUnitSellPrice}
+                                            onChange={(val) => updateProduct(p.id, 'buyerManualUnitSellPrice', val && val > 0 ? val : undefined)}
+                                            className="w-24 bg-white border border-teal-200 rounded px-2 py-1 text-xs text-right text-teal-900 font-semibold"
+                                            placeholder="Auto"
+                                        />
+                                        <select
+                                            value={p.buyerManualSellCurrency || config.outputCurrency}
+                                            onChange={(e) => updateProduct(p.id, 'buyerManualSellCurrency', e.target.value)}
+                                            className="text-[10px] bg-white border border-teal-100 rounded px-1 py-1 text-teal-700"
+                                        >
+                                            {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                    {p.buyerManualUnitSellPrice && p.buyerManualUnitSellPrice > 0 ? (() => {
+                                        const buyerUnit = convert(p.buyerManualUnitSellPrice, p.buyerManualSellCurrency || config.outputCurrency);
+                                        const baseUnit = p.unitSellPrice || 0;
+                                        const autoPct = buyerProfitType === 'margin'
+                                            ? (buyerUnit > 0 ? ((buyerUnit - baseUnit) / buyerUnit) * 100 : 0)
+                                            : (baseUnit > 0 ? ((buyerUnit - baseUnit) / baseUnit) * 100 : 0);
+                                        return <div className="mt-1 text-[10px] text-teal-700 text-right">Buyer {buyerProfitType} {autoPct.toFixed(1)}%</div>;
+                                    })() : (
+                                        <div className="mt-1 text-[10px] text-slate-400 text-right">uses buyer %</div>
+                                    )}
+                                </td>
                                 
                                 <td className="px-4 py-2 text-right">
                                     {/* DISABLE PER-PRODUCT PROFIT IN FIXED MODE */}
@@ -12427,20 +12476,6 @@ function AppInner() {
                                             onChange={(e) => {
                                                 const on = e.target.checked;
                                                 updateProduct(p.id, 'packagingEnabled', on);
-                                                if (on && !p.packagingStandardPerUnit && !p.packagingLuxuryPerUnit) {
-                                                    setProducts(prev =>
-                                                        prev.map(item =>
-                                                            item.id === p.id
-                                                                ? {
-                                                                      ...item,
-                                                                      packagingEnabled: true,
-                                                                      packagingStandardPerUnit: 0,
-                                                                      packagingLuxuryPerUnit: 0,
-                                                                  }
-                                                                : item,
-                                                        ),
-                                                    );
-                                                }
                                             }}
                                             className="rounded border-violet-300 text-violet-600 focus:ring-violet-400"
                                         />
@@ -12451,24 +12486,26 @@ function AppInner() {
                                             <div className="flex items-center gap-1">
                                                 <span className="text-[9px] text-violet-700 w-11 shrink-0">معمولی</span>
                                                 <FormattedNumberInput
-                                                    value={p.packagingStandardPerUnit ?? 0}
+                                                    optional
+                                                    value={p.packagingStandardPerUnit && p.packagingStandardPerUnit > 0 ? p.packagingStandardPerUnit : undefined}
                                                     onChange={(val) =>
-                                                        updateProduct(p.id, 'packagingStandardPerUnit', val ?? 0)
+                                                        updateProduct(p.id, 'packagingStandardPerUnit', val && val > 0 ? val : undefined)
                                                     }
                                                     className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right"
-                                                    placeholder="0"
+                                                    placeholder="-"
                                                 />
                                                 <span className="text-[9px] text-slate-400">{p.currency}</span>
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <span className="text-[9px] text-violet-700 w-11 shrink-0">لاکچری</span>
                                                 <FormattedNumberInput
-                                                    value={p.packagingLuxuryPerUnit ?? 0}
+                                                    optional
+                                                    value={p.packagingLuxuryPerUnit && p.packagingLuxuryPerUnit > 0 ? p.packagingLuxuryPerUnit : undefined}
                                                     onChange={(val) =>
-                                                        updateProduct(p.id, 'packagingLuxuryPerUnit', val ?? 0)
+                                                        updateProduct(p.id, 'packagingLuxuryPerUnit', val && val > 0 ? val : undefined)
                                                     }
                                                     className="flex-1 min-w-0 bg-white border border-violet-200 rounded px-1 py-0.5 text-[10px] text-right"
-                                                    placeholder="0"
+                                                    placeholder="-"
                                                 />
                                                 <span className="text-[9px] text-slate-400">{p.currency}</span>
                                             </div>
@@ -12483,33 +12520,21 @@ function AppInner() {
                                             <div>
                                                 <span className="text-violet-700 font-semibold">معمولی</span>
                                                 <span className="block text-slate-800 font-mono">
-                                                    {formatMoney(
-                                                        (p.packagingUnitSellStandard ?? 0) * viewMult,
-                                                        config.outputCurrency,
-                                                    )}
+                                                    {p.packagingUnitSellStandard !== undefined ? formatMoney(p.packagingUnitSellStandard * viewMult, config.outputCurrency) : '—'}
                                                 </span>
                                                 <span className="text-[8px] text-slate-400">
                                                     بهای تمام:{' '}
-                                                    {formatMoney(
-                                                        (p.packagingUnitCostStandard ?? 0) * viewMult,
-                                                        config.outputCurrency,
-                                                    )}
+                                                    {p.packagingUnitCostStandard !== undefined ? formatMoney(p.packagingUnitCostStandard * viewMult, config.outputCurrency) : '—'}
                                                 </span>
                                             </div>
                                             <div>
                                                 <span className="text-violet-700 font-semibold">لاکچری</span>
                                                 <span className="block text-slate-800 font-mono">
-                                                    {formatMoney(
-                                                        (p.packagingUnitSellLuxury ?? 0) * viewMult,
-                                                        config.outputCurrency,
-                                                    )}
+                                                    {p.packagingUnitSellLuxury !== undefined ? formatMoney(p.packagingUnitSellLuxury * viewMult, config.outputCurrency) : '—'}
                                                 </span>
                                                 <span className="text-[8px] text-slate-400">
                                                     بهای تمام:{' '}
-                                                    {formatMoney(
-                                                        (p.packagingUnitCostLuxury ?? 0) * viewMult,
-                                                        config.outputCurrency,
-                                                    )}
+                                                    {p.packagingUnitCostLuxury !== undefined ? formatMoney(p.packagingUnitCostLuxury * viewMult, config.outputCurrency) : '—'}
                                                 </span>
                                             </div>
                                         </div>
@@ -12570,7 +12595,7 @@ function AppInner() {
                     })}
                     {products.length === 0 && (
                         <tr>
-                            <td colSpan={showPackInfo ? 24 : 22} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
+                            <td colSpan={showPackInfo ? 25 : 23} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
                         </tr>
                     )}
                 </tbody>
@@ -13363,9 +13388,6 @@ function AppInner() {
         const totalDdpCost = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc + calculations.costs.ddp_inc;
         const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
         const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
-        const buyerManualResaleOutput = buyerManualResaleValue && buyerManualResaleValue > 0
-          ? convert(buyerManualResaleValue, buyerManualResaleCurrency || config.outputCurrency)
-          : 0;
         const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
         const calcBuyerResale = (cost: number) => {
           if (buyerProfitType === 'margin') {
@@ -13374,7 +13396,20 @@ function AppInner() {
           }
           return cost * (1 + buyerMarkup / 100);
         };
-        const buyerResaleRevenue = buyerManualResaleOutput > 0 ? buyerManualResaleOutput : calcBuyerResale(selectedReportRow?.totalSell || 0);
+        const buyerUnitResaleForPreview = (p: Product, unitSell: number) => {
+          if (p.buyerManualUnitSellPrice !== undefined && p.buyerManualUnitSellPrice > 0) {
+            return convert(p.buyerManualUnitSellPrice, p.buyerManualSellCurrency || config.outputCurrency);
+          }
+          return calcBuyerResale(unitSell);
+        };
+        const buyerResaleRevenue = profitLossReportTerm
+          ? activeProducts.reduce((sum, p) => {
+              const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
+              const termRow = scenarioBlock?.rows.find((row) => row.term === profitLossReportTerm);
+              const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
+              return sum + buyerUnitResaleForPreview(p, unitSell) * (p.qty || 0);
+            }, 0)
+          : 0;
         const buyerGrossProfit = buyerResaleRevenue - (selectedReportRow?.totalSell || 0);
         const buyerAutoPercent = selectedReportRow?.totalSell && buyerResaleRevenue > 0
           ? buyerProfitType === 'margin'
@@ -13410,7 +13445,7 @@ function AppInner() {
                 </button>
               </div>
 
-              <div className="grid md:grid-cols-[1fr_1.15fr_1.15fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
+              <div className="grid md:grid-cols-[1fr_1.15fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
                 <label>
                   <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">مبنای گزارش سود و زیان</span>
                   <select
@@ -13441,31 +13476,10 @@ function AppInner() {
                     </select>
                   </div>
                 </label>
-                <label>
-                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">قیمت فروش دستی خریدار</span>
-                  <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
-                    <FormattedNumberInput
-                      optional
-                      value={buyerManualResaleValue}
-                      onChange={(val) => setBuyerManualResaleValue(val && val > 0 ? val : undefined)}
-                      className="w-full text-sm text-slate-900 font-bold outline-none"
-                      placeholder="Auto"
-                    />
-                    <select
-                      value={buyerManualResaleCurrency || config.outputCurrency}
-                      onChange={(e) => setBuyerManualResaleCurrency(e.target.value)}
-                      className="text-xs border-l border-slate-200 pl-2 text-slate-700 font-bold outline-none bg-white"
-                    >
-                      {Object.keys(rates).map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  {buyerManualResaleOutput > 0 ? (
-                    <span className="text-[10px] text-emerald-100 mt-1 block">Auto {buyerProfitType}: {buyerAutoPercent.toFixed(1)}%</span>
-                  ) : null}
-                </label>
                 <div className="rounded-xl bg-slate-950/30 border border-white/10 px-3 py-2 min-w-[12rem]">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer resale revenue</p>
                   <p className="font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : 'Term را انتخاب کن'}</p>
+                  <p className="text-[10px] text-blue-100/75 mt-1">از Buyer Unit Sell هر ردیف کالا</p>
                 </div>
               </div>
 
