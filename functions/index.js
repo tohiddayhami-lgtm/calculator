@@ -33,6 +33,29 @@ function profileRef(appId, uid) {
   return db.doc(`artifacts/${appId}/userProfiles/${uid}`);
 }
 
+function masterEmail() {
+  return String(process.env.MASTER_EMAIL || process.env.VITE_MASTER_EMAIL || '').trim().toLowerCase();
+}
+
+async function promoteMaster(appId, uid, email) {
+  await profileRef(appId, uid).set(cleanObject({
+    uid,
+    email: email || '',
+    role: 'master',
+    status: 'active',
+    disabled: false,
+    permissions: DEFAULT_PERMISSIONS,
+    subscriptionEndsAt: null,
+    updatedAt: Date.now(),
+  }), { merge: true });
+
+  try {
+    await auth.setCustomUserClaims(uid, { master: true, admin: true });
+  } catch (err) {
+    console.warn('Could not set master custom claims:', err);
+  }
+}
+
 async function assertMaster(request, appId) {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Sign in first.');
@@ -41,10 +64,57 @@ async function assertMaster(request, appId) {
   const token = request.auth.token || {};
   if (token.admin === true || token.master === true) return request.auth.uid;
 
+  const email = String(token.email || '').trim().toLowerCase();
+  const configuredMasterEmail = masterEmail();
+  if (configuredMasterEmail && email === configuredMasterEmail) {
+    await promoteMaster(appId, request.auth.uid, token.email);
+    return request.auth.uid;
+  }
+
   const snap = await profileRef(appId, request.auth.uid).get();
   if (snap.exists && snap.data()?.role === 'master') return request.auth.uid;
 
+  const masterSnap = await db
+    .collection(`artifacts/${appId}/userProfiles`)
+    .where('role', '==', 'master')
+    .limit(1)
+    .get();
+  if (masterSnap.empty) {
+    await promoteMaster(appId, request.auth.uid, token.email);
+    return request.auth.uid;
+  }
+
   throw new HttpsError('permission-denied', 'Only master account can manage users.');
+}
+
+function mapAdminError(err) {
+  if (err instanceof HttpsError) return err;
+  const code = String(err?.code || '');
+  const message = String(err?.message || 'Admin operation failed.');
+  if (code === 'auth/email-already-exists') {
+    return new HttpsError('already-exists', 'This email already exists in Firebase Authentication.');
+  }
+  if (code === 'auth/user-not-found') {
+    return new HttpsError('not-found', 'Firebase Auth user was not found.');
+  }
+  if (code === 'auth/invalid-password' || code === 'auth/weak-password') {
+    return new HttpsError('invalid-argument', 'Password must be at least 6 characters.');
+  }
+  if (code === 'auth/invalid-email' || code === 'auth/email-already-in-use') {
+    return new HttpsError('invalid-argument', message);
+  }
+  console.error('Managed auth function failed:', err);
+  return new HttpsError('internal', `${code || 'internal'}: ${message}`);
+}
+
+function adminCallable(handler) {
+  return onCall(async (request) => {
+    try {
+      return await handler(request);
+    } catch (err) {
+      throw mapAdminError(err);
+    }
+  });
 }
 
 function authUserToProfile(userRecord, existing, createdBy) {
@@ -75,7 +145,7 @@ function authUserToProfile(userRecord, existing, createdBy) {
   });
 }
 
-exports.listManagedAuthUsers = onCall(async (request) => {
+exports.listManagedAuthUsers = adminCallable(async (request) => {
   const appId = requireString(request.data?.appId, 'appId');
   const callerUid = await assertMaster(request, appId);
 
@@ -109,7 +179,7 @@ exports.listManagedAuthUsers = onCall(async (request) => {
   };
 });
 
-exports.createManagedAuthUser = onCall(async (request) => {
+exports.createManagedAuthUser = adminCallable(async (request) => {
   const appId = requireString(request.data?.appId, 'appId');
   const callerUid = await assertMaster(request, appId);
   const email = requireString(request.data?.email, 'email');
@@ -150,7 +220,7 @@ exports.createManagedAuthUser = onCall(async (request) => {
   return { uid: userRecord.uid, email };
 });
 
-exports.updateManagedAuthUser = onCall(async (request) => {
+exports.updateManagedAuthUser = adminCallable(async (request) => {
   const appId = requireString(request.data?.appId, 'appId');
   await assertMaster(request, appId);
   const uid = requireString(request.data?.uid, 'uid');
@@ -187,7 +257,7 @@ exports.updateManagedAuthUser = onCall(async (request) => {
   return { uid };
 });
 
-exports.deleteManagedAuthUser = onCall(async (request) => {
+exports.deleteManagedAuthUser = adminCallable(async (request) => {
   const appId = requireString(request.data?.appId, 'appId');
   await assertMaster(request, appId);
   const uid = requireString(request.data?.uid, 'uid');

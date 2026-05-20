@@ -8558,8 +8558,14 @@ function AppInner() {
           throw new Error('Firebase Functions is not configured. Deploy functions or use Firebase Console for Auth management.');
       }
       const fn = httpsCallable(cloudFunctions, name);
-      const result = await withTimeout(fn({ appId: dataAppId, ...payload }) as Promise<any>, 45000, name);
-      return result.data;
+      try {
+        const result = await withTimeout(fn({ appId: dataAppId, ...payload }) as Promise<any>, 45000, name);
+        return result.data;
+      } catch (err: any) {
+        const code = err?.code ? String(err.code).replace(/^functions\//, '') : '';
+        const message = err?.message || err?.details?.message || 'Admin operation failed.';
+        throw new Error(code ? `${code}: ${message}` : message);
+      }
   };
 
   const handleSyncAuthUsers = async (silent = false) => {
