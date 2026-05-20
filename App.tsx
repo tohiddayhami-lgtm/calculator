@@ -47,7 +47,7 @@ import {
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
-  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon
+  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon, Maximize2, RotateCw
 } from 'lucide-react';
 
 // Types
@@ -1124,9 +1124,95 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   background: #020617;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
 }
+.public-form-doc .pf-html-frame-wrap--portrait {
+  aspect-ratio: 9 / 16;
+  max-width: 430px;
+  margin-left: auto;
+  margin-right: auto;
+}
 .public-form-doc .pf-html-frame-wrap iframe {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+.public-form-doc .pf-html-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+  pointer-events: auto;
+}
+.public-form-doc .pf-html-controls button,
+.pf-html-modal-btn {
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(15,23,42,0.82);
+  color: #fff;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.pf-html-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(2, 6, 23, 0.94);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+.pf-html-modal-toolbar {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  z-index: 2;
+}
+.pf-html-modal-title {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-html-modal-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pf-html-modal-frame {
+  width: min(96vw, 1280px);
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 92px);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: #000;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+}
+.pf-html-modal-frame--portrait {
+  width: min(92vw, 560px);
+  aspect-ratio: 9 / 16;
+  max-height: calc(100vh - 92px);
+}
+.pf-html-modal-frame iframe {
   width: 100%;
   height: 100%;
   border: 0;
@@ -5170,6 +5256,8 @@ function AppInner() {
   const [publicFormFiles, setPublicFormFiles] = useState<Record<string, File[]>>({});
   const [publicFormMulti, setPublicFormMulti] = useState<Record<string, string[]>>({});
   const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
+  const [publicHtmlFrameOpenId, setPublicHtmlFrameOpenId] = useState<string | null>(null);
+  const [publicHtmlFramePortrait, setPublicHtmlFramePortrait] = useState<Record<string, boolean>>({});
   const [formHeaderPresets, setFormHeaderPresets] = useState<FormHeaderPreset[]>([]);
   const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
   const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
@@ -15864,6 +15952,27 @@ function AppInner() {
         const capSingle = String(field.placeholder ?? '').trim();
         const title = field.htmlFrameTitle || field.label || 'HTML presentation';
         const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
+        const hasPresentation = !!linkedPresentation || !!field.htmlContent;
+        const isPortrait = !!publicHtmlFramePortrait[field.id];
+        const frame = linkedPresentation ? (
+          <iframe
+            title={title}
+            src={linkedPresentation.embedUrl}
+            sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
+            allow="fullscreen; autoplay; encrypted-media"
+            allowFullScreen
+            loading="lazy"
+          />
+        ) : field.htmlContent ? (
+          <iframe
+            title={title}
+            srcDoc={field.htmlContent}
+            sandbox="allow-scripts allow-forms allow-popups allow-presentation"
+            allow="fullscreen; autoplay; encrypted-media"
+            allowFullScreen
+            loading="lazy"
+          />
+        ) : null;
         return (
           <div key={field.id} className="pf-field pf-html-presentation">
             {bi ? (
@@ -15883,27 +15992,22 @@ function AppInner() {
                 {field.htmlFileName || (linkedPresentation?.kind === 'youtube' ? 'YouTube presentation' : field.htmlUrl)}
               </p>
             ) : null}
-            {linkedPresentation ? (
-              <div className="pf-html-frame-wrap">
-                <iframe
-                  title={title}
-                  src={linkedPresentation.embedUrl}
-                  sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
-                  allow="fullscreen; autoplay; encrypted-media"
-                  allowFullScreen
-                  loading="lazy"
-                />
-              </div>
-            ) : field.htmlContent ? (
-              <div className="pf-html-frame-wrap">
-                <iframe
-                  title={title}
-                  srcDoc={field.htmlContent}
-                  sandbox="allow-scripts allow-forms allow-popups allow-presentation"
-                  allow="fullscreen; autoplay; encrypted-media"
-                  allowFullScreen
-                  loading="lazy"
-                />
+            {hasPresentation ? (
+              <div className={`pf-html-frame-wrap ${isPortrait ? 'pf-html-frame-wrap--portrait' : ''}`}>
+                {frame}
+                <div className="pf-html-controls pf-print-hide">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPublicHtmlFramePortrait((prev) => ({ ...prev, [field.id]: !prev[field.id] }))
+                    }
+                  >
+                    <RotateCw className="w-3.5 h-3.5" /> Rotate
+                  </button>
+                  <button type="button" onClick={() => setPublicHtmlFrameOpenId(field.id)}>
+                    <Maximize2 className="w-3.5 h-3.5" /> Maximize
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="pf-html-empty">No HTML presentation uploaded.</div>
@@ -16294,6 +16398,57 @@ function AppInner() {
       return nodes;
     };
 
+    const renderHtmlPresentationModal = () => {
+      if (!publicHtmlFrameOpenId) return null;
+      const field = fields.find((f) => f.id === publicHtmlFrameOpenId && f.type === 'html_embed');
+      if (!field) return null;
+      const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
+      const title = field.htmlFrameTitle || field.label || 'Presentation';
+      const isPortrait = !!publicHtmlFramePortrait[field.id];
+      const frame = linkedPresentation ? (
+        <iframe
+          title={title}
+          src={linkedPresentation.embedUrl}
+          sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
+          allow="fullscreen; autoplay; encrypted-media"
+          allowFullScreen
+        />
+      ) : field.htmlContent ? (
+        <iframe
+          title={title}
+          srcDoc={field.htmlContent}
+          sandbox="allow-scripts allow-forms allow-popups allow-presentation"
+          allow="fullscreen; autoplay; encrypted-media"
+          allowFullScreen
+        />
+      ) : null;
+      if (!frame) return null;
+      return (
+        <div className="pf-html-modal pf-print-hide" role="dialog" aria-modal="true" aria-label={title}>
+          <div className="pf-html-modal-toolbar">
+            <div className="pf-html-modal-title">{title}</div>
+            <div className="pf-html-modal-actions">
+              <button
+                type="button"
+                className="pf-html-modal-btn"
+                onClick={() =>
+                  setPublicHtmlFramePortrait((prev) => ({ ...prev, [field.id]: !prev[field.id] }))
+                }
+              >
+                <RotateCw className="w-4 h-4" /> Rotate
+              </button>
+              <button type="button" className="pf-html-modal-btn" onClick={() => setPublicHtmlFrameOpenId(null)}>
+                <X className="w-4 h-4" /> Close
+              </button>
+            </div>
+          </div>
+          <div className={`pf-html-modal-frame ${isPortrait ? 'pf-html-modal-frame--portrait' : ''}`}>
+            {frame}
+          </div>
+        </div>
+      );
+    };
+
     return (
       <>
         <style>{PUBLIC_FORM_DOCUMENT_CSS}</style>
@@ -16330,6 +16485,7 @@ function AppInner() {
             </div>
           </div>
         </div>
+        {renderHtmlPresentationModal()}
       </>
     );
   };
