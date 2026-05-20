@@ -86,6 +86,7 @@ import {
   FormField,
   FormFieldType,
   CustomFormDef,
+  CustomFormAppendixImage,
   FormWorkflowStep,
   FormAccessLevel,
   FormHeaderPreset,
@@ -254,6 +255,10 @@ function getMissingRequiredPublicFormFields(
 
 const FORM_IMAGE_UPLOAD_MAX_FILES = 5;
 const FORM_IMAGE_UPLOAD_MAX_MB = 5;
+const FORM_APPENDIX_MAX_IMAGES = 6;
+const FORM_APPENDIX_IMAGE_MAX_DIMENSION = 1400;
+const FORM_APPENDIX_IMAGE_QUALITY = 0.78;
+const FORM_APPENDIX_IMAGE_TARGET_BYTES = 140 * 1024;
 
 type FormArchiveFolder = {
   id: string;
@@ -1103,6 +1108,73 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   object-fit: contain;
   background: #fff;
 }
+.public-form-doc .pf-appendix {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 2px solid #e2e8f0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.public-form-doc .pf-appendix-head {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.public-form-doc .pf-appendix-head h2 {
+  margin: 0;
+  font-size: 15pt;
+  line-height: 1.2;
+  color: #0f172a;
+}
+.public-form-doc .pf-appendix-body {
+  color: #1e293b;
+  font-size: 9.5pt;
+  line-height: 1.7;
+}
+.public-form-doc .pf-appendix-body p,
+.public-form-doc .pf-appendix-body div {
+  margin: 0 0 8px;
+}
+.public-form-doc .pf-appendix-body ul,
+.public-form-doc .pf-appendix-body ol {
+  margin: 8px 0 10px 18px;
+  padding: 0;
+}
+.public-form-doc .pf-appendix-body blockquote {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border-left: 3px solid #94a3b8;
+  background: #f8fafc;
+  color: #334155;
+}
+.public-form-doc .pf-appendix-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.public-form-doc .pf-appendix-grid figure {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.public-form-doc .pf-appendix-grid img {
+  display: block;
+  width: 100%;
+  height: 145px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #fff;
+}
+.public-form-doc .pf-appendix-grid figcaption {
+  margin-top: 6px;
+  font-size: 8pt;
+  color: #64748b;
+  line-height: 1.35;
+  text-align: center;
+}
 .public-form-doc .pf-bilingual-row {
   display: flex;
   justify-content: space-between;
@@ -1403,6 +1475,14 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
     max-height: 220px;
     width: 100%;
   }
+  .public-form-doc .pf-appendix-grid {
+    grid-template-columns: 1fr;
+  }
+  .public-form-doc .pf-appendix-grid img {
+    height: auto;
+    max-height: 280px;
+    object-fit: contain;
+  }
 }
 @media print {
   @page { size: A4 portrait; margin: 12mm; }
@@ -1423,6 +1503,10 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   .public-form-doc .pf-submit { display: none !important; }
   .public-form-doc .pf-print-hide { display: none !important; }
   .public-form-doc .pf-drop { break-inside: avoid; page-break-inside: avoid; }
+  .public-form-doc .pf-appendix {
+    page-break-before: always;
+    break-before: page;
+  }
 }
 `;
 
@@ -2418,6 +2502,121 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+function sanitizeCustomFormAppendixHtml(raw: string | undefined): string {
+  if (!raw) return '';
+  if (typeof document === 'undefined') return String(raw);
+
+  const allowedTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'P', 'DIV', 'SPAN', 'UL', 'OL', 'LI', 'H2', 'H3', 'BLOCKQUOTE']);
+  const allowedAlign = new Set(['left', 'center', 'right', 'justify']);
+  const root = document.createElement('div');
+  root.innerHTML = raw;
+  root.querySelectorAll('script,style,iframe,object,embed,link,meta').forEach((el) => el.remove());
+
+  const cleanNode = (node: Node) => {
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as HTMLElement;
+    Array.from(el.childNodes).forEach(cleanNode);
+
+    if (!allowedTags.has(el.tagName)) {
+      const parent = el.parentNode;
+      if (!parent) return;
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
+      return;
+    }
+
+    const textAlign = el.style.textAlign?.toLowerCase();
+    const dir = el.getAttribute('dir');
+    Array.from(el.attributes).forEach((attr) => el.removeAttribute(attr.name));
+    if (allowedAlign.has(textAlign)) el.style.textAlign = textAlign;
+    if (dir === 'rtl' || dir === 'ltr') el.setAttribute('dir', dir);
+  };
+
+  Array.from(root.childNodes).forEach(cleanNode);
+  return root.innerHTML;
+}
+
+function customFormAppendixHasContent(form: Pick<CustomFormDef, 'appendixEnabled' | 'appendixHtml' | 'appendixImages'>): boolean {
+  if (!form.appendixEnabled) return false;
+  const htmlText = typeof document !== 'undefined'
+    ? (() => {
+        const div = document.createElement('div');
+        div.innerHTML = form.appendixHtml || '';
+        return (div.textContent || '').trim();
+      })()
+    : String(form.appendixHtml || '').replace(/<[^>]+>/g, '').trim();
+  return !!htmlText || !!form.appendixImages?.length;
+}
+
+function buildCustomFormAppendixHtml(form: CustomFormDef): string {
+  if (!customFormAppendixHasContent(form)) return '';
+  const title = escapeHtml(form.appendixTitle || 'Appendix');
+  const body = sanitizeCustomFormAppendixHtml(form.appendixHtml || '');
+  const images = (form.appendixImages || [])
+    .filter((img) => img?.dataUrl)
+    .map((img) => {
+      const caption = img.caption ? `<figcaption>${escapeHtml(img.caption)}</figcaption>` : '';
+      return `<figure><img src="${escapeAttr(img.dataUrl)}" alt="${escapeAttr(img.caption || img.name || 'Appendix image')}" />${caption}</figure>`;
+    })
+    .join('');
+  return `<section class="pf-appendix"><div class="pf-appendix-head"><p class="pf-kicker">Appendix</p><h2>${title}</h2></div>${body ? `<div class="pf-appendix-body">${body}</div>` : ''}${images ? `<div class="pf-appendix-grid">${images}</div>` : ''}</section>`;
+}
+
+function compressCustomFormAppendixImage(file: File): Promise<CustomFormAppendixImage> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error(`${file.name} is not an image.`));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error(`Could not load ${file.name}.`));
+      img.onload = () => {
+        let scale = Math.min(1, FORM_APPENDIX_IMAGE_MAX_DIMENSION / Math.max(img.width, img.height));
+        let width = Math.max(1, Math.round(img.width * scale));
+        let height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas is not available.'));
+          return;
+        }
+
+        let dataUrl = '';
+        let quality = FORM_APPENDIX_IMAGE_QUALITY;
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          width = Math.max(1, Math.round(img.width * scale));
+          height = Math.max(1, Math.round(img.height * scale));
+          canvas.width = width;
+          canvas.height = height;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          const approxBytes = Math.ceil((dataUrl.length * 3) / 4);
+          if (approxBytes <= FORM_APPENDIX_IMAGE_TARGET_BYTES) break;
+          if (quality > 0.55) {
+            quality -= 0.08;
+          } else {
+            scale *= 0.82;
+          }
+        }
+        resolve({
+          id: `appx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          dataUrl,
+          name: file.name,
+          width,
+          height,
+        });
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 const FORM_WORKFLOW_MAX_STEPS = 20;
 
 const DEFAULT_FORM_WORKFLOW_STEPS: FormWorkflowStep[] = [
@@ -2574,6 +2773,7 @@ ${form.headerSubtitle ? `<div class="pf-sub">${escapeHtml(form.headerSubtitle)}<
 <div class="pf-accent" style="background:linear-gradient(90deg, ${escapeAttr(accent)} 0%, #64748b 100%);"></div>
 ${buildFormWorkflowGuideHtml(form, accent)}
 <div class="pf-fields">${fieldsHtml || '<p class="pf-section-note">No fields yet.</p>'}</div>
+${buildCustomFormAppendixHtml(form)}
 <p class="pf-section-note" style="margin-top:12px;text-align:center;">Layout preview — respondents submit online; they cannot print this form.</p>
 </div></div></div>
 <script>window.onload=function(){setTimeout(function(){window.focus();window.print();},300);};</script>
@@ -5856,6 +6056,10 @@ function AppInner() {
     workflowGuideTitle: 'How it works',
     workflowGuideTitleRtl: 'مراحل کار',
     workflowSteps: [],
+    appendixEnabled: false,
+    appendixTitle: 'Appendix',
+    appendixHtml: '',
+    appendixImages: [],
     fields: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -5893,6 +6097,10 @@ function AppInner() {
                 workflowGuideTitle: formDef.workflowGuideTitle || '',
                 workflowGuideTitleRtl: formDef.workflowGuideTitleRtl || '',
                 workflowSteps: formDef.workflowSteps || [],
+                appendixEnabled: !!formDef.appendixEnabled,
+                appendixTitle: formDef.appendixTitle || '',
+                appendixHtml: sanitizeCustomFormAppendixHtml(formDef.appendixHtml || ''),
+                appendixImages: formDef.appendixImages || [],
                 fields: formDef.fields,
                 updatedAt: now,
               })
@@ -5942,6 +6150,61 @@ function AppInner() {
       const arr = [...draft.fields];
       arr.splice(idx + 1, 0, copy);
       return { ...draft, fields: arr };
+    });
+  };
+
+  const syncFormAppendixEditorToDraft = () => {
+    const el = document.getElementById('form-appendix-editor');
+    if (!el) return;
+    setFormBuilderDraft((draft) => draft ? { ...draft, appendixHtml: sanitizeCustomFormAppendixHtml(el.innerHTML) } : draft);
+  };
+
+  const formatFormAppendixText = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    setTimeout(syncFormAppendixEditorToDraft, 0);
+  };
+
+  const handleAppendixImageUpload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const currentCount = formBuilderDraft?.appendixImages?.length || 0;
+    const slots = FORM_APPENDIX_MAX_IMAGES - currentCount;
+    if (slots <= 0) {
+      alert(`Maximum ${FORM_APPENDIX_MAX_IMAGES} appendix images allowed.`);
+      return;
+    }
+    const picked = Array.from(files).filter((file) => file.type.startsWith('image/')).slice(0, slots);
+    if (!picked.length) return;
+    try {
+      const compressed = await Promise.all(picked.map(compressCustomFormAppendixImage));
+      setFormBuilderDraft((draft) => {
+        if (!draft) return draft;
+        return {
+          ...draft,
+          appendixEnabled: true,
+          appendixImages: [...(draft.appendixImages || []), ...compressed],
+        };
+      });
+    } catch (err: any) {
+      alert('Failed to process appendix image: ' + (err?.message || err));
+    }
+  };
+
+  const updateAppendixImage = (idx: number, patch: Partial<CustomFormAppendixImage>) => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const appendixImages = [...(draft.appendixImages || [])];
+      if (!appendixImages[idx]) return draft;
+      appendixImages[idx] = { ...appendixImages[idx], ...patch };
+      return { ...draft, appendixImages };
+    });
+  };
+
+  const removeAppendixImage = (idx: number) => {
+    setFormBuilderDraft((draft) => {
+      if (!draft) return draft;
+      const appendixImages = [...(draft.appendixImages || [])];
+      appendixImages.splice(idx, 1);
+      return { ...draft, appendixImages };
     });
   };
 
@@ -6023,6 +6286,10 @@ function AppInner() {
         workflowGuideTitle: form.workflowGuideTitle || '',
         workflowGuideTitleRtl: form.workflowGuideTitleRtl || '',
         workflowSteps: form.workflowSteps || [],
+        appendixEnabled: !!form.appendixEnabled,
+        appendixTitle: form.appendixTitle || '',
+        appendixHtml: sanitizeCustomFormAppendixHtml(form.appendixHtml || ''),
+        appendixImages: form.appendixImages || [],
         fields: form.fields,
         isActive: true,
         updatedAt: Date.now(),
@@ -15799,6 +16066,31 @@ function AppInner() {
       );
     };
 
+    const renderAppendix = () => {
+      if (!customFormAppendixHasContent(form)) return null;
+      const images: CustomFormAppendixImage[] = Array.isArray(form.appendixImages) ? form.appendixImages : [];
+      const safeHtml = sanitizeCustomFormAppendixHtml(form.appendixHtml || '');
+      return (
+        <section className="pf-appendix">
+          <div className="pf-appendix-head">
+            <p className="pf-kicker">Appendix</p>
+            <h2>{form.appendixTitle || 'Appendix'}</h2>
+          </div>
+          {safeHtml ? <div className="pf-appendix-body" dangerouslySetInnerHTML={{ __html: safeHtml }} /> : null}
+          {images.length ? (
+            <div className="pf-appendix-grid">
+              {images.map((img) => (
+                <figure key={img.id || img.dataUrl.slice(0, 32)}>
+                  <img src={img.dataUrl} alt={img.caption || img.name || 'Appendix image'} />
+                  {img.caption ? <figcaption>{img.caption}</figcaption> : null}
+                </figure>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      );
+    };
+
     return (
       <>
         <style>{PUBLIC_FORM_DOCUMENT_CSS}</style>
@@ -15826,6 +16118,7 @@ function AppInner() {
               {renderFormWorkflowGuide(form, accentHex)}
 
               <div className="pf-fields">{fields.map((field) => renderField(field))}</div>
+              {renderAppendix()}
 
               <button type="button" className="pf-submit" onClick={handleSubmitPublicForm} disabled={publicFormSubmitting}>
                 {publicFormSubmitting ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Send className="h-4 w-4 shrink-0" />}
@@ -15840,15 +16133,15 @@ function AppInner() {
   };
 
   const SAMPLE_FORM_JSON = {
-    _schema_version: '1.2',
+    _schema_version: '1.3',
     _about:
       'CloudExport Pro — custom form JSON. The live page is an A4-style document (like the proforma invoice): white page, company block + logo on the right, thin accent stripe from headerBgColor, optional formNumber, then fields in light bordered cards.',
     _for_ai_models:
-      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload (multiple images: maxFiles default 5, maxSizeMb default 5 per image). display_image = fixed image URL.',
+      'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload (multiple images: maxFiles default 5, maxSizeMb default 5 per image). display_image = fixed image URL. Optional appendix: appendixEnabled, appendixTitle, appendixHtml, appendixImages[].',
     _field_types:
       'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
     _root_keys:
-      'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, showWorkflowGuide, workflowGuideTitle, workflowGuideTitleRtl, workflowSteps[], fields',
+      'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, showWorkflowGuide, workflowGuideTitle, workflowGuideTitleRtl, workflowSteps[], appendixEnabled, appendixTitle, appendixHtml, appendixImages[], fields',
     _workflow_guide:
       'Optional compact flowchart below header: showWorkflowGuide true, workflowSteps: [{ label, labelRtl }], max 20 steps. Titles: workflowGuideTitle (EN), workflowGuideTitleRtl (FA).',
     _bilingual_layout:
@@ -15872,6 +16165,11 @@ function AppInner() {
       { label: 'We review', labelRtl: 'بررسی توسط ما' },
       { label: 'We contact you', labelRtl: 'تماس با شما' },
     ],
+    appendixEnabled: true,
+    appendixTitle: 'Technical appendix / پیوست فنی',
+    appendixHtml:
+      '<p style="text-align:center"><strong>Use this page for notes, specifications, packing instructions, or terms.</strong></p><p>Images uploaded in the builder are compressed automatically and displayed below this text in a clean grid.</p>',
+    appendixImages: [],
     fields: [
       {
         id: 'sec_contact',
@@ -16002,7 +16300,7 @@ function AppInner() {
     const blob = new Blob([JSON.stringify(SAMPLE_FORM_JSON, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'sample_form_schema_v1.2.json'; a.click();
+    a.href = url; a.download = 'sample_form_schema_v1.3.json'; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -16031,6 +16329,12 @@ function AppInner() {
               workflowGuideTitle: typeof parsed.workflowGuideTitle === 'string' ? parsed.workflowGuideTitle : '',
               workflowGuideTitleRtl: typeof parsed.workflowGuideTitleRtl === 'string' ? parsed.workflowGuideTitleRtl : '',
               workflowSteps: parseFormWorkflowSteps(parsed.workflowSteps),
+              appendixEnabled: !!parsed.appendixEnabled,
+              appendixTitle: typeof parsed.appendixTitle === 'string' ? parsed.appendixTitle : 'Appendix',
+              appendixHtml: typeof parsed.appendixHtml === 'string' ? sanitizeCustomFormAppendixHtml(parsed.appendixHtml) : '',
+              appendixImages: Array.isArray(parsed.appendixImages)
+                ? parsed.appendixImages.filter((img: any) => typeof img?.dataUrl === 'string')
+                : [],
               fields: Array.isArray(parsed.fields) ? parsed.fields : [],
               createdAt: Date.now(),
               updatedAt: Date.now(),
@@ -16059,6 +16363,10 @@ function AppInner() {
         workflowGuideTitle: form.workflowGuideTitle,
         workflowGuideTitleRtl: form.workflowGuideTitleRtl,
         workflowSteps: form.workflowSteps,
+        appendixEnabled: !!form.appendixEnabled,
+        appendixTitle: form.appendixTitle || '',
+        appendixHtml: sanitizeCustomFormAppendixHtml(form.appendixHtml || ''),
+        appendixImages: form.appendixImages || [],
         fields: form.fields,
       };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -16155,6 +16463,7 @@ function AppInner() {
                     </div>
                     <div className="flex items-center gap-3 text-[11px] text-slate-500 mb-3">
                       <span>{form.fields.length} field{form.fields.length !== 1 ? 's' : ''}</span>
+                      {form.appendixEnabled ? <span>Appendix</span> : null}
                       {subCount > 0 && (
                         <button onClick={() => { setShowFormSubmissions(true); }} className={`${unreadCount > 0 ? 'text-blue-600 font-semibold' : ''}`}>
                           {subCount} submission{subCount !== 1 ? 's' : ''}{unreadCount > 0 ? ` (${unreadCount} new)` : ''}
@@ -20392,6 +20701,133 @@ function AppInner() {
                     Save preset
                   </button>
                 </div>
+              </div>
+
+              {/* Appendix */}
+              <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                    checked={!!formBuilderDraft.appendixEnabled}
+                    onChange={(e) =>
+                      setFormBuilderDraft({
+                        ...formBuilderDraft,
+                        appendixEnabled: e.target.checked,
+                        appendixTitle: formBuilderDraft.appendixTitle || 'Appendix',
+                      })
+                    }
+                  />
+                  <span>
+                    <span className="text-sm font-bold text-slate-800 block">Appendix page</span>
+                    <span className="text-[10px] text-slate-500 leading-relaxed">
+                      Add formatted text and compressed images below the form. In print/preview it starts on a separate appendix page.
+                    </span>
+                  </span>
+                </label>
+
+                {formBuilderDraft.appendixEnabled ? (
+                  <div className="space-y-3 pt-2 border-t border-violet-100">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Appendix title</label>
+                      <input
+                        type="text"
+                        value={formBuilderDraft.appendixTitle || ''}
+                        onChange={(e) => setFormBuilderDraft({ ...formBuilderDraft, appendixTitle: e.target.value })}
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 outline-none"
+                        placeholder="e.g. Technical appendix / پیوست فنی"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {[
+                          ['bold', <strong key="b">B</strong>],
+                          ['italic', <em key="i">I</em>],
+                          ['underline', <span key="u" className="underline">U</span>],
+                        ].map(([cmd, label]) => (
+                          <button
+                            key={String(cmd)}
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText(String(cmd)); }}
+                            className="w-8 h-8 border border-slate-300 rounded bg-white text-xs hover:bg-slate-50"
+                          >
+                            {label as React.ReactNode}
+                          </button>
+                        ))}
+                        <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('justifyLeft'); }} className="w-8 h-8 border border-slate-300 rounded bg-white hover:bg-slate-50"><AlignLeft className="w-4 h-4 mx-auto" /></button>
+                        <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('justifyCenter'); }} className="w-8 h-8 border border-slate-300 rounded bg-white hover:bg-slate-50"><AlignCenter className="w-4 h-4 mx-auto" /></button>
+                        <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('justifyRight'); }} className="w-8 h-8 border border-slate-300 rounded bg-white hover:bg-slate-50"><AlignRight className="w-4 h-4 mx-auto" /></button>
+                        <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('insertUnorderedList'); }} className="px-2 h-8 border border-slate-300 rounded bg-white text-xs hover:bg-slate-50">• List</button>
+                        <button type="button" onMouseDown={(e) => { e.preventDefault(); formatFormAppendixText('insertOrderedList'); }} className="px-2 h-8 border border-slate-300 rounded bg-white text-xs hover:bg-slate-50">1. List</button>
+                      </div>
+                      <div
+                        id="form-appendix-editor"
+                        contentEditable
+                        suppressContentEditableWarning
+                        dir="auto"
+                        className="min-h-[140px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-7 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        onInput={(e) =>
+                          setFormBuilderDraft({
+                            ...formBuilderDraft,
+                            appendixHtml: sanitizeCustomFormAppendixHtml((e.currentTarget as HTMLDivElement).innerHTML),
+                          })
+                        }
+                        onBlur={syncFormAppendixEditorToDraft}
+                        dangerouslySetInnerHTML={{ __html: sanitizeCustomFormAppendixHtml(formBuilderDraft.appendixHtml || '') }}
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Supports bold, italic, underline, lists, and alignment. Images are shown below the text.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">Appendix images</p>
+                          <p className="text-[10px] text-slate-400">Auto-compressed to max {FORM_APPENDIX_IMAGE_MAX_DIMENSION}px and displayed in a clean grid.</p>
+                        </div>
+                        <label className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border cursor-pointer ${((formBuilderDraft.appendixImages || []).length >= FORM_APPENDIX_MAX_IMAGES) ? 'bg-slate-100 text-slate-400 border-slate-200 pointer-events-none' : 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50'}`}>
+                          <ImageIcon className="w-3.5 h-3.5" /> Add images
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              handleAppendixImageUpload(e.target.files);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {(formBuilderDraft.appendixImages || []).length ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {(formBuilderDraft.appendixImages || []).map((img, idx) => (
+                            <div key={img.id} className="rounded-lg border border-violet-100 bg-white p-2 space-y-2">
+                              <img src={img.dataUrl} alt="" className="w-full h-32 object-cover rounded-md border border-slate-200 bg-slate-50" />
+                              <input
+                                type="text"
+                                value={img.caption || ''}
+                                onChange={(e) => updateAppendixImage(idx, { caption: e.target.value })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5"
+                                placeholder="Caption (optional)"
+                              />
+                              <div className="flex justify-between items-center text-[10px] text-slate-400">
+                                <span>{img.width && img.height ? `${img.width}×${img.height}` : img.name || 'Compressed image'}</span>
+                                <button type="button" onClick={() => removeAppendixImage(idx)} className="text-red-600 hover:text-red-700 font-semibold">Remove</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic border border-dashed border-violet-200 rounded-lg p-3 text-center bg-white/70">
+                          No appendix images yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {/* Fields */}

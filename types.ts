@@ -855,6 +855,15 @@ export interface FormWorkflowStep {
   labelRtl?: string;
 }
 
+export interface CustomFormAppendixImage {
+  id: string;
+  dataUrl: string;
+  name?: string;
+  caption?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface CustomFormDef {
   id: string;
   name: string;
@@ -873,6 +882,11 @@ export interface CustomFormDef {
   workflowGuideTitle?: string;
   workflowGuideTitleRtl?: string;
   workflowSteps?: FormWorkflowStep[];
+  /** Optional formatted appendix page shown below the form fields. */
+  appendixEnabled?: boolean;
+  appendixTitle?: string;
+  appendixHtml?: string;
+  appendixImages?: CustomFormAppendixImage[];
   fields: FormField[];
   createdAt: number;
   updatedAt: number;
