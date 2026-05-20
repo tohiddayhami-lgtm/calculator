@@ -1283,6 +1283,19 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   text-align: center;
   padding: 12px;
 }
+.public-form-doc .pf-media-placeholder {
+  min-height: 120px;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 9pt;
+  text-align: center;
+  padding: 12px;
+}
 .public-form-doc .pf-appendix {
   margin-top: 18px;
   padding-top: 18px;
@@ -2677,6 +2690,7 @@ const escapeHtml = (s: any): string => {
 
 const escapeAttr = escapeHtml;
 
+const PUBLIC_FORM_ASSETS_COLLECTION = 'publicFormAssets';
 const HTML_PRESENTATION_CONTROL_MARKER = 'data-custom-form-video-controls';
 
 function withHtmlPresentationControls(html: string): string {
@@ -2704,6 +2718,81 @@ function withHtmlPresentationControls(html: string): string {
 </script>`;
   if (/<\/body>/i.test(value)) return value.replace(/<\/body>/i, script + '</body>');
   return value + script;
+}
+
+type PublicFormAssetPayload = {
+  appendixImages?: CustomFormAppendixImage[];
+  fields?: Record<string, Partial<FormField>>;
+};
+
+function splitPublicFormPayload(form: CustomFormDef, ownerUid: string, dataAppIdValue: string, updatedAt = Date.now()) {
+  const fieldAssets: Record<string, Partial<FormField>> = {};
+  const fields = (form.fields || []).map((field) => {
+    if (field.type === 'display_image') {
+      if (field.imageUrl) fieldAssets[field.id] = { ...(fieldAssets[field.id] || {}), imageUrl: field.imageUrl };
+      const { imageUrl, ...lightField } = field;
+      return lightField;
+    }
+    if (field.type === 'html_embed') {
+      const asset: Partial<FormField> = {};
+      if (field.htmlContent) asset.htmlContent = withHtmlPresentationControls(field.htmlContent);
+      if (field.htmlUrl) asset.htmlUrl = field.htmlUrl;
+      if (field.htmlStoragePath) asset.htmlStoragePath = field.htmlStoragePath;
+      if (Object.keys(asset).length) fieldAssets[field.id] = { ...(fieldAssets[field.id] || {}), ...asset };
+      const { htmlContent, htmlUrl, htmlStoragePath, ...lightField } = field;
+      return lightField;
+    }
+    return field;
+  });
+
+  const publicData = stripUndefinedDeep({
+    ownerUid,
+    appId: dataAppIdValue,
+    name: form.name,
+    formNumber: form.formNumber || '',
+    accessLevel: form.accessLevel === 'internal' ? 'internal' : 'public',
+    companyName: form.companyName || '',
+    logoUrl: form.logoUrl || '',
+    headerBgColor: form.headerBgColor || '#1e3a5f',
+    headerTextColor: form.headerTextColor || '#ffffff',
+    headerSubtitle: form.headerSubtitle || '',
+    description: form.description || '',
+    showWorkflowGuide: !!form.showWorkflowGuide,
+    workflowGuideTitle: form.workflowGuideTitle || '',
+    workflowGuideTitleRtl: form.workflowGuideTitleRtl || '',
+    workflowSteps: form.workflowSteps || [],
+    appendixEnabled: !!form.appendixEnabled,
+    appendixTitle: form.appendixTitle || '',
+    appendixHtml: sanitizeCustomFormAppendixHtml(form.appendixHtml || ''),
+    appendixImages: [],
+    appendixPositionIndex: getCustomFormAppendixIndex(form),
+    fields,
+    isActive: true,
+    updatedAt,
+  });
+
+  const assets = stripUndefinedDeep({
+    ownerUid,
+    appId: dataAppIdValue,
+    appendixImages: form.appendixImages || [],
+    fields: fieldAssets,
+    updatedAt,
+  }) as PublicFormAssetPayload & { updatedAt?: number };
+
+  return { publicData, assets };
+}
+
+function mergePublicFormAssets(form: any, assets: PublicFormAssetPayload | null | undefined) {
+  if (!assets) return form;
+  const fieldAssets = assets.fields || {};
+  return {
+    ...form,
+    appendixImages: assets.appendixImages || form.appendixImages || [],
+    fields: (form.fields || []).map((field: FormField) => ({
+      ...field,
+      ...(fieldAssets[field.id] || {}),
+    })),
+  };
 }
 
 function getYouTubeEmbedUrl(rawUrl: string | undefined): string {
@@ -5332,6 +5421,8 @@ function AppInner() {
   const [formBuilderSaving, setFormBuilderSaving] = useState(false);
   const [formPublishing, setFormPublishing] = useState<string | null>(null);
   const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
+  const [publicFormMediaReady, setPublicFormMediaReady] = useState(false);
+  const [publicFormAssetsLoading, setPublicFormAssetsLoading] = useState(false);
   const [publicFormData, setPublicFormData] = useState<Record<string, string>>({});
   const [publicFormSubmitting, setPublicFormSubmitting] = useState(false);
   const [publicFormDone, setPublicFormDone] = useState(false);
@@ -6233,14 +6324,59 @@ function AppInner() {
       setPublicFormLoading(false);
       return;
     }
+    let cancelled = false;
     setPublicFormLoading(true);
-    getDoc(doc(db, 'publicForms', fKey)).then((snap: any) => {
-      if (snap.exists() && snap.data()?.isActive !== false) {
-        setPublicFormView({ key: fKey, form: snap.data() });
+    setPublicFormMediaReady(false);
+    setPublicFormAssetsLoading(false);
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'publicForms', fKey));
+        if (cancelled) return;
+        if (snap.exists() && snap.data()?.isActive !== false) {
+          setPublicFormView({ key: fKey, form: snap.data() });
+          setPublicFormLoading(false);
+
+          // Load heavy media separately so text fields paint first.
+          setPublicFormAssetsLoading(true);
+          getDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, fKey))
+            .then((assetSnap: any) => {
+              if (cancelled || !assetSnap.exists()) return;
+              setPublicFormView((prev) => {
+                if (!prev || prev.key !== fKey) return prev;
+                return { ...prev, form: mergePublicFormAssets(prev.form, assetSnap.data()) };
+              });
+            })
+            .catch((e: any) => console.error('Public form assets fetch failed:', e))
+            .finally(() => {
+              if (!cancelled) setPublicFormAssetsLoading(false);
+            });
+        } else {
+          setPublicFormView(null);
+          setPublicFormLoading(false);
+          setPublicFormAssetsLoading(false);
+        }
+      } catch (e: any) {
+        console.error('Public form fetch failed:', e);
+        if (!cancelled) {
+          setPublicFormLoading(false);
+          setPublicFormAssetsLoading(false);
+        }
       }
-    }).catch((e: any) => console.error('Public form fetch failed:', e))
-      .finally(() => setPublicFormLoading(false));
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [db, user?.uid]);
+
+  useEffect(() => {
+    if (!publicFormView) {
+      setPublicFormMediaReady(false);
+      return;
+    }
+    setPublicFormMediaReady(false);
+    const timer = window.setTimeout(() => setPublicFormMediaReady(true), 350);
+    return () => window.clearTimeout(timer);
+  }, [publicFormView?.key]);
 
   const loadLocalProjects = async () => {
       let mergedProjects: SavedProject[] = [];
@@ -6402,33 +6538,14 @@ function AppInner() {
         );
         // Also refresh public definition if published
         if (formDef.publishedKey && formDef.isPublished) {
+          const { publicData, assets } = splitPublicFormPayload(formDef, user.uid, dataAppId, now);
           await withTimeout(
-            updateDoc(
-              doc(db, 'publicForms', formDef.publishedKey),
-              stripUndefinedDeep({
-                name: formDef.name,
-                formNumber: formDef.formNumber || '',
-                accessLevel: formDef.accessLevel === 'internal' ? 'internal' : 'public',
-                companyName: formDef.companyName || '',
-                logoUrl: formDef.logoUrl || '',
-                headerBgColor: formDef.headerBgColor || '#1e3a5f',
-                headerTextColor: formDef.headerTextColor || '#ffffff',
-                headerSubtitle: formDef.headerSubtitle || '',
-                description: formDef.description || '',
-                showWorkflowGuide: !!formDef.showWorkflowGuide,
-                workflowGuideTitle: formDef.workflowGuideTitle || '',
-                workflowGuideTitleRtl: formDef.workflowGuideTitleRtl || '',
-                workflowSteps: formDef.workflowSteps || [],
-                appendixEnabled: !!formDef.appendixEnabled,
-                appendixTitle: formDef.appendixTitle || '',
-                appendixHtml: sanitizeCustomFormAppendixHtml(formDef.appendixHtml || ''),
-                appendixImages: formDef.appendixImages || [],
-                appendixPositionIndex: getCustomFormAppendixIndex(formDef),
-                fields: formDef.fields,
-                updatedAt: now,
-              })
-            ),
+            updateDoc(doc(db, 'publicForms', formDef.publishedKey), publicData),
             10000, 'Sync public form'
+          ).catch(() => {});
+          await withTimeout(
+            setDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, formDef.publishedKey), assets),
+            10000, 'Sync public form assets'
           ).catch(() => {});
         }
       } else {
@@ -6600,6 +6717,7 @@ function AppInner() {
     const form = customForms.find((f) => f.id === formId);
     if (form?.publishedKey) {
       try { await withTimeout(deleteDoc(doc(db, 'publicForms', form.publishedKey)), 10000, 'Delete public form'); } catch {}
+      try { await withTimeout(deleteDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, form.publishedKey)), 10000, 'Delete public form assets'); } catch {}
     }
     if (storage && form?.fields?.length) {
       for (const field of form.fields) {
@@ -6622,36 +6740,14 @@ function AppInner() {
     setFormPublishing(formId);
     try {
       const key = form.publishedKey || `f_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
-      const publicData = stripUndefinedDeep({
-        ownerUid: user.uid,
-        appId: dataAppId,
-        name: form.name,
-        formNumber: form.formNumber || '',
-        accessLevel: form.accessLevel === 'internal' ? 'internal' : 'public',
-        companyName: form.companyName || '',
-        logoUrl: form.logoUrl || '',
-        headerBgColor: form.headerBgColor || '#1e3a5f',
-        headerTextColor: form.headerTextColor || '#ffffff',
-        headerSubtitle: form.headerSubtitle || '',
-        description: form.description || '',
-        showWorkflowGuide: !!form.showWorkflowGuide,
-        workflowGuideTitle: form.workflowGuideTitle || '',
-        workflowGuideTitleRtl: form.workflowGuideTitleRtl || '',
-        workflowSteps: form.workflowSteps || [],
-        appendixEnabled: !!form.appendixEnabled,
-        appendixTitle: form.appendixTitle || '',
-        appendixHtml: sanitizeCustomFormAppendixHtml(form.appendixHtml || ''),
-        appendixImages: form.appendixImages || [],
-        appendixPositionIndex: getCustomFormAppendixIndex(form),
-        fields: form.fields,
-        isActive: true,
-        updatedAt: Date.now(),
-      });
+      const now = Date.now();
+      const { publicData, assets } = splitPublicFormPayload(form, user.uid, dataAppId, now);
       await withTimeout(setDoc(doc(db, 'publicForms', key), publicData), 10000, 'Publish form');
+      await withTimeout(setDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, key), assets), 10000, 'Publish form assets');
       await withTimeout(
         setDoc(
           doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId),
-          stripUndefinedDeep({ ...form, publishedKey: key, isPublished: true, updatedAt: Date.now() })
+          stripUndefinedDeep({ ...form, publishedKey: key, isPublished: true, updatedAt: now })
         ),
         10000, 'Update form'
       );
@@ -15911,6 +16007,7 @@ function AppInner() {
     );
     const { form } = publicFormView;
     const fields: FormField[] = form.fields || [];
+    const publicHeavyMediaReady = publicFormMediaReady && !publicFormAssetsLoading;
     const accessLevel: FormAccessLevel = form.accessLevel === 'internal' ? 'internal' : 'public';
     if (accessLevel === 'internal' && !user) {
       return (
@@ -16114,8 +16211,10 @@ function AppInner() {
                 {reqMark}
               </span>
             )}
-            {field.imageUrl ? (
-              <img src={field.imageUrl} alt="" className="pf-img-display" />
+            {!publicHeavyMediaReady ? (
+              <div className="pf-media-placeholder">Loading image…</div>
+            ) : field.imageUrl ? (
+              <img src={field.imageUrl} alt="" className="pf-img-display" loading="lazy" decoding="async" />
             ) : (
               <p className="pf-section-note" style={{ marginTop: 4 }}>No image configured.</p>
             )}
@@ -16183,7 +16282,9 @@ function AppInner() {
                 {field.htmlFileName || (linkedPresentation?.kind === 'youtube' ? 'YouTube presentation' : field.htmlUrl)}
               </p>
             ) : null}
-            {hasPresentation ? (
+            {!publicHeavyMediaReady ? (
+              <div className="pf-html-empty">Presentation will load after the form text.</div>
+            ) : hasPresentation ? (
               <div
                 id={`pf-html-frame-${field.id}`}
                 className={`pf-html-frame-wrap ${isPortrait ? 'pf-html-frame-wrap--portrait' : ''}`}
@@ -16211,7 +16312,16 @@ function AppInner() {
                   >
                     <RotateCw className="w-3.5 h-3.5" /> Rotate
                   </button>
-                  <button type="button" title="Fullscreen" aria-label="Fullscreen" onClick={() => requestHtmlFrameFullscreen(field.id)}>
+                  <button
+                    type="button"
+                    title="Maximize"
+                    aria-label="Maximize"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPublicHtmlFrameOpenId(field.id);
+                    }}
+                  >
                     <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
                   </button>
                 </div>
@@ -16579,11 +16689,13 @@ function AppInner() {
             <h2>{form.appendixTitle || 'Appendix'}</h2>
           </div>
           {safeHtml ? <div className="pf-appendix-body" dangerouslySetInnerHTML={{ __html: safeHtml }} /> : null}
-          {images.length ? (
+          {!publicHeavyMediaReady && images.length ? (
+            <div className="pf-media-placeholder">Appendix images will load after the form text.</div>
+          ) : images.length ? (
             <div className="pf-appendix-grid">
               {images.map((img) => (
                 <figure key={img.id || img.dataUrl.slice(0, 32)}>
-                  <img src={img.dataUrl} alt={img.caption || img.name || 'Appendix image'} />
+                  <img src={img.dataUrl} alt={img.caption || img.name || 'Appendix image'} loading="lazy" decoding="async" />
                   {img.caption ? <figcaption>{img.caption}</figcaption> : null}
                 </figure>
               ))}
@@ -16669,7 +16781,11 @@ function AppInner() {
                 className="pf-html-modal-btn"
                 title="Fullscreen"
                 aria-label="Fullscreen"
-                onClick={() => requestHtmlFrameFullscreen(field.id, `pf-html-modal-frame-${field.id}`)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  requestHtmlFrameFullscreen(field.id, `pf-html-modal-frame-${field.id}`);
+                }}
               >
                 <Maximize2 className="w-4 h-4" /> Fullscreen
               </button>

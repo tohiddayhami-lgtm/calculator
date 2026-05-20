@@ -93,6 +93,15 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
     }
 
+    // Heavy public form assets — loaded after the text definition so forms open faster.
+    match /publicFormAssets/{key} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.keys().hasAll(['ownerUid', 'appId']);
+      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;
