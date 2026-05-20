@@ -5975,6 +5975,10 @@ function AppInner() {
   const [notes, setNotes] = useState('');
   const [containerCapacity, setContainerCapacity] = useState<number>(1000);
   const [containerType, setContainerType] = useState<'20ft' | '40ft'>('20ft');
+  const [loadUnitType, setLoadUnitType] = useState<'container' | 'pallet'>('container');
+  const [palletTypeLabel, setPalletTypeLabel] = useState('پالت استاندارد اروپا');
+  const [profitLossReportTerm, setProfitLossReportTerm] = useState<'' | 'EXW' | 'FCA' | 'FOB' | 'CIF' | 'DDP'>('');
+  const [buyerProfitPercent, setBuyerProfitPercent] = useState<number>(20);
 
   // Invoice Specific
   const [customerName, setCustomerName] = useState('');
@@ -9394,7 +9398,7 @@ function AppInner() {
         invoiceOrientation,
         invoiceLayout,
         invoiceWelteTrade,
-        containerCapacity, containerType,
+        containerCapacity, containerType, loadUnitType, palletTypeLabel, profitLossReportTerm, buyerProfitPercent,
         invoiceIssueDateMs,
         invoiceDueDateMs,
         editingArchiveInvoiceId,
@@ -9614,7 +9618,11 @@ function AppInner() {
     setInvoiceLayout((project.data as any).invoiceLayout === 'welte' ? 'welte' : 'standard');
     setInvoiceWelteTrade(mergeInvoiceWelteTrade((project.data as any).invoiceWelteTrade));
     if ((project.data as any).containerCapacity) setContainerCapacity((project.data as any).containerCapacity);
-    if ((project.data as any).containerType) setContainerType((project.data as any).containerType);
+    if ((project.data as any).containerType === '20ft' || (project.data as any).containerType === '40ft') setContainerType((project.data as any).containerType);
+    setLoadUnitType((project.data as any).loadUnitType === 'pallet' ? 'pallet' : 'container');
+    setPalletTypeLabel(String((project.data as any).palletTypeLabel || 'پالت استاندارد اروپا'));
+    setProfitLossReportTerm((['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].includes((project.data as any).profitLossReportTerm) ? (project.data as any).profitLossReportTerm : '') as any);
+    setBuyerProfitPercent(Number((project.data as any).buyerProfitPercent ?? 20));
 
     setSuppliers(project.data.suppliers || []);
     setBuyers((prev) =>
@@ -10567,6 +10575,11 @@ function AppInner() {
 
   const printShipmentProfitLossReport = () => {
     if (typeof window === 'undefined') return;
+    if (!profitLossReportTerm) {
+      alert('اول مبنای گزارش سود و زیان را انتخاب کن: EXW، FCA، FOB، CIF یا DDP.');
+      return;
+    }
+    const selectedTerm = profitLossReportTerm;
     const activeProducts = calculations.processedProducts.filter((p) => p.isActive && p.qty > 0);
     const productCost = activeProducts.reduce((sum, p) => sum + (p.lineCost || 0), 0);
     const exwExtrasTotal = (logistics.exwExtras || []).reduce((sum, item) => sum + convert(item.val, item.curr), 0);
@@ -10578,12 +10591,11 @@ function AppInner() {
     const destinationExtras = (logistics.extras || []).reduce((sum, item) => sum + convert(item.val, item.curr), 0);
     const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
     const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
-    const preferredTerm =
-      calculations.breakdown.find((row) => row.term === 'FOB')
-      || calculations.breakdown.find((row) => row.term === 'CIF')
-      || calculations.breakdown.find((row) => row.term === 'DDP')
-      || calculations.breakdown[0];
-    const bestTerm = calculations.breakdown.reduce((best, row) => row.totalProfit > best.totalProfit ? row : best, calculations.breakdown[0] || preferredTerm);
+    const selectedTermRow = calculations.breakdown.find((row) => row.term === selectedTerm) || calculations.breakdown[0];
+    const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
+    const buyerResaleRevenue = (selectedTermRow?.totalSell || 0) * (1 + buyerMarkup / 100);
+    const buyerGrossProfit = buyerResaleRevenue - (selectedTermRow?.totalSell || 0);
+    const buyerMargin = buyerResaleRevenue > 0 ? (buyerGrossProfit / buyerResaleRevenue) * 100 : 0;
     const fmt = (value: number) => formatMoney(value || 0, config.outputCurrency);
     const pct = (value: number) => `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`;
     const title = projectName.trim() || 'Export Shipment';
@@ -10605,13 +10617,15 @@ function AppInner() {
       <tr><td>${escapeHtml(x.name || 'Destination extra')}</td><td>${escapeHtml(formatMoney(x.val || 0, x.curr))}</td><td>${escapeHtml(fmt(convert(x.val, x.curr)))}</td></tr>
     `).join('');
     const productRows = activeProducts.map((p, index) => {
-      const fob = p.scenarioPrices?.FOB || p.unitSellPrice || 0;
-      const ddp = p.scenarioPrices?.DDP || 0;
-      const unitCost = p.unitCostOutput || 0;
-      const lineCost = p.lineCost || 0;
-      const lineFobSell = fob * (p.qty || 0);
-      const lineFobProfit = lineFobSell - lineCost;
-      const lineMargin = lineFobSell > 0 ? (lineFobProfit / lineFobSell) * 100 : 0;
+      const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
+      const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+      const unitCost = termRow?.unitCost ?? p.unitCostOutput ?? 0;
+      const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+      const lineCost = termRow?.lineCost ?? unitCost * (p.qty || 0);
+      const lineSell = termRow?.lineSell ?? unitSell * (p.qty || 0);
+      const lineProfit = termRow?.lineProfit ?? lineSell - lineCost;
+      const lineMargin = termRow?.profitMargin ?? (lineSell > 0 ? (lineProfit / lineSell) * 100 : 0);
+      const buyerLineRevenue = lineSell * (1 + buyerMarkup / 100);
       const supplier = p.supplierId ? suppliers.find((s) => s.id === p.supplierId) : undefined;
       return `
         <tr>
@@ -10623,9 +10637,9 @@ function AppInner() {
           <td class="num">${escapeHtml((p.qty || 0).toLocaleString())}</td>
           <td class="num">${escapeHtml(fmt(unitCost))}</td>
           <td class="num">${escapeHtml(fmt(lineCost))}</td>
-          <td class="num">${escapeHtml(fmt(fob))}</td>
-          <td class="num">${escapeHtml(fmt(ddp))}</td>
-          <td class="num profit">${escapeHtml(fmt(lineFobProfit))}<small>${escapeHtml(pct(lineMargin))}</small></td>
+          <td class="num">${escapeHtml(fmt(unitSell))}</td>
+          <td class="num profit">${escapeHtml(fmt(lineProfit))}<small>${escapeHtml(pct(lineMargin))}</small></td>
+          <td class="num">${escapeHtml(fmt(buyerLineRevenue))}</td>
         </tr>
       `;
     }).join('');
@@ -10656,7 +10670,7 @@ function AppInner() {
           <td class="num">${escapeHtml(fmt(p.packagingUnitSellLuxury || 0))}</td>
         </tr>
       `).join('');
-    const marginColor = (preferredTerm?.profitMargin || 0) >= 20 ? '#059669' : (preferredTerm?.profitMargin || 0) >= 10 ? '#d97706' : '#dc2626';
+    const marginColor = (selectedTermRow?.profitMargin || 0) >= 20 ? '#059669' : (selectedTermRow?.profitMargin || 0) >= 10 ? '#d97706' : '#dc2626';
     const html = `<!doctype html>
 <html><head><meta charset="utf-8" />
 <title>Shipment Profit & Loss — ${escapeHtml(title)}</title>
@@ -10706,10 +10720,10 @@ function AppInner() {
   </section>
 
   <div class="kpis">
-    <div class="kpi"><span class="label">Reference term</span><div class="value">${escapeHtml(preferredTerm?.term || 'FOB')}</div><div class="hint">commercial P&amp;L basis</div></div>
-    <div class="kpi"><span class="label">Revenue</span><div class="value">${escapeHtml(fmt(preferredTerm?.totalSell || 0))}</div><div class="hint">total sell value</div></div>
-    <div class="kpi"><span class="label">Gross profit</span><div class="value" style="color:${marginColor}">${escapeHtml(fmt(preferredTerm?.totalProfit || 0))}</div><div class="hint">${escapeHtml(pct(preferredTerm?.profitMargin || 0))} margin</div></div>
-    <div class="kpi"><span class="label">Best scenario</span><div class="value">${escapeHtml(bestTerm?.term || '-')}</div><div class="hint">${escapeHtml(fmt(bestTerm?.totalProfit || 0))} profit</div></div>
+    <div class="kpi"><span class="label">Selected term</span><div class="value">${escapeHtml(selectedTermRow?.term || selectedTerm)}</div><div class="hint">chosen report basis</div></div>
+    <div class="kpi"><span class="label">Your revenue</span><div class="value">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</div><div class="hint">sell value at selected term</div></div>
+    <div class="kpi"><span class="label">Your gross profit</span><div class="value" style="color:${marginColor}">${escapeHtml(fmt(selectedTermRow?.totalProfit || 0))}</div><div class="hint">${escapeHtml(pct(selectedTermRow?.profitMargin || 0))} margin</div></div>
+    <div class="kpi"><span class="label">Buyer resale</span><div class="value">${escapeHtml(fmt(buyerResaleRevenue))}</div><div class="hint">${escapeHtml(pct(buyerMarkup))} markup for buyer</div></div>
   </div>
 
   <div class="grid2">
@@ -10728,8 +10742,18 @@ function AppInner() {
 
   <section class="section">
     <h2>Product line profitability</h2>
-    <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">FOB unit sell</th><th class="num">DDP unit sell</th><th class="num">FOB profit</th></tr></thead><tbody>
+    <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">${escapeHtml(selectedTerm)} unit sell</th><th class="num">${escapeHtml(selectedTerm)} profit</th><th class="num">Buyer resale</th></tr></thead><tbody>
       ${productRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
+    </tbody></table>
+  </section>
+
+  <section class="section">
+    <h2>Buyer profit simulation</h2>
+    <table><tbody>
+      <tr><td><strong>Buyer purchase value</strong><span>Your selling value at selected Incoterm: ${escapeHtml(selectedTerm)}</span></td><td class="num">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</td></tr>
+      <tr><td><strong>Buyer markup</strong><span>Optional resale profit entered in the dashboard</span></td><td class="num">${escapeHtml(pct(buyerMarkup))}</td></tr>
+      <tr><td><strong>Buyer resale revenue</strong><span>Purchase value × (1 + buyer markup)</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
+      <tr class="total-row"><td>Buyer gross profit<span>Buyer resale revenue - buyer purchase value</span></td><td class="num">${escapeHtml(fmt(buyerGrossProfit))} <span>${escapeHtml(pct(buyerMargin))} buyer margin</span></td></tr>
     </tbody></table>
   </section>
 
@@ -10913,6 +10937,10 @@ function AppInner() {
             invoiceWelteTrade,
             containerCapacity,
             containerType,
+            loadUnitType,
+            palletTypeLabel,
+            profitLossReportTerm,
+            buyerProfitPercent,
             invoiceIssueDateMs,
             invoiceDueDateMs,
             editingArchiveInvoiceId,
@@ -10994,6 +11022,10 @@ function AppInner() {
     invoiceWelteTrade,
     containerCapacity,
     containerType,
+    loadUnitType,
+    palletTypeLabel,
+    profitLossReportTerm,
+    buyerProfitPercent,
     invoiceIssueDateMs,
     invoiceDueDateMs,
     editingArchiveInvoiceId,
@@ -11256,6 +11288,10 @@ function AppInner() {
     setBasis('unit');
     setContainerCapacity(1000);
     setContainerType('20ft');
+    setLoadUnitType('container');
+    setPalletTypeLabel('پالت استاندارد اروپا');
+    setProfitLossReportTerm('');
+    setBuyerProfitPercent(20);
     setCustomerName('');
     setCustomerFirstName('');
     setCustomerLastName('');
@@ -12983,8 +13019,11 @@ function AppInner() {
           { label: 'Dest. & Duty', value: costs.ddp_inc, color: '#ef4444' },
         ].filter(s => s.value > 0);
         const activeProducts = calculations.processedProducts.filter(p => p.isActive && p.qty > 0);
+        const loadUnitLabel = loadUnitType === 'pallet' ? (palletTypeLabel.trim() || 'پالت') : containerType;
+        const loadUnitName = loadUnitType === 'pallet' ? 'Pallet' : 'Container';
+        const loadUnitNamePlural = loadUnitType === 'pallet' ? 'Pallets' : 'Containers';
         const totalFillPct = containerCapacity > 0 ? Math.min((calculations.totalQty / containerCapacity) * 100, 100) : 0;
-        const containersNeeded = containerCapacity > 0 ? Math.ceil(calculations.totalQty / containerCapacity) : 0;
+        const loadUnitsNeeded = containerCapacity > 0 ? Math.ceil(calculations.totalQty / containerCapacity) : 0;
         const lastContainerFill = containerCapacity > 0 && calculations.totalQty > 0
           ? (calculations.totalQty % containerCapacity !== 0
               ? (calculations.totalQty % containerCapacity) / containerCapacity * 100
@@ -13076,16 +13115,33 @@ function AppInner() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                     <Ship className="w-4 h-4 text-cyan-500" />
-                    Container Load Calculator
+                    Container / Pallet Load Calculator
                   </h2>
                   <div className="flex bg-slate-100 rounded-lg p-0.5">
-                    {(['20ft', '40ft'] as const).map(ct => (
-                      <button key={ct} onClick={() => setContainerType(ct)} className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${containerType === ct ? 'bg-white text-cyan-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{ct}</button>
+                    {(['container', 'pallet'] as const).map(mode => (
+                      <button key={mode} onClick={() => setLoadUnitType(mode)} className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${loadUnitType === mode ? 'bg-white text-cyan-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {mode === 'container' ? 'Container' : 'Pallet'}
+                      </button>
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mb-4">
-                  <label className="text-xs text-slate-500 whitespace-nowrap font-medium">Units per {containerType}:</label>
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  {loadUnitType === 'container' ? (
+                    <div className="flex bg-cyan-50 rounded-lg p-0.5 border border-cyan-100">
+                      {(['20ft', '40ft'] as const).map(ct => (
+                        <button key={ct} onClick={() => setContainerType(ct)} className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${containerType === ct ? 'bg-white text-cyan-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{ct}</button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {['پالت استاندارد اروپا', 'پالت صندوقی', 'پالت چوبی صادراتی'].map((label) => (
+                        <button key={label} type="button" onClick={() => setPalletTypeLabel(label)} className="text-[10px] px-2 py-1 rounded-full bg-cyan-50 border border-cyan-100 text-cyan-700 hover:bg-cyan-100">
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <label className="text-xs text-slate-500 whitespace-nowrap font-medium">Units per {loadUnitLabel}:</label>
                   <FormattedNumberInput
                     integerOnly
                     value={containerCapacity}
@@ -13094,10 +13150,18 @@ function AppInner() {
                   />
                   <span className="text-xs text-slate-400">/ {calculations.totalQty.toLocaleString()} total</span>
                 </div>
-                {/* Container Box */}
-                <div className="relative w-full h-28 rounded-lg overflow-hidden border-[3px] border-slate-500 bg-slate-100" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.12)' }}>
+                {loadUnitType === 'pallet' ? (
+                  <input
+                    value={palletTypeLabel}
+                    onChange={(e) => setPalletTypeLabel(e.target.value)}
+                    placeholder="نوع پالت / توضیح دلخواه: پالت استاندارد اروپا، پالت صندوقی..."
+                    className="w-full mb-4 text-xs border border-cyan-100 bg-cyan-50/50 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-cyan-300"
+                  />
+                ) : null}
+                {/* Load unit box */}
+                <div className={`relative w-full h-28 rounded-lg overflow-hidden border-[3px] ${loadUnitType === 'pallet' ? 'border-amber-700 bg-amber-50' : 'border-slate-500 bg-slate-100'}`} style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.12)' }}>
                   {[...Array(9)].map((_, i) => (
-                    <div key={i} className="absolute top-0 bottom-0 border-r border-slate-300/40" style={{ left: `${(i + 1) * 10}%` }} />
+                    <div key={i} className={`absolute top-0 bottom-0 border-r ${loadUnitType === 'pallet' ? 'border-amber-300/60' : 'border-slate-300/40'}`} style={{ left: `${(i + 1) * 10}%` }} />
                   ))}
                   <div className="absolute bottom-0 left-0 top-0 flex">
                     {productFills.map((pf) => (
@@ -13107,23 +13171,29 @@ function AppInner() {
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="bg-white/85 backdrop-blur-sm rounded-lg px-3 py-1.5 text-center shadow-md">
                       <div className="text-lg font-bold text-slate-800">{lastContainerFill.toFixed(0)}%</div>
-                      <div className="text-[10px] text-slate-500">{containersNeeded > 1 ? `last of ${containersNeeded} containers` : `fill of ${containerType}`}</div>
+                      <div className="text-[10px] text-slate-500">{loadUnitsNeeded > 1 ? `last of ${loadUnitsNeeded} ${loadUnitNamePlural.toLowerCase()}` : `fill of ${loadUnitLabel}`}</div>
                     </div>
                   </div>
-                  <div className="absolute top-0 right-0 bottom-0 w-5 border-l-2 border-slate-400 bg-slate-200/60 flex flex-col justify-between items-center py-1.5">
-                    <div className="w-2 h-2 rounded-full bg-slate-400" />
-                    <div className="w-1 h-6 bg-slate-400 rounded-full" />
-                    <div className="w-2 h-2 rounded-full bg-slate-400" />
-                  </div>
+                  {loadUnitType === 'container' ? (
+                    <div className="absolute top-0 right-0 bottom-0 w-5 border-l-2 border-slate-400 bg-slate-200/60 flex flex-col justify-between items-center py-1.5">
+                      <div className="w-2 h-2 rounded-full bg-slate-400" />
+                      <div className="w-1 h-6 bg-slate-400 rounded-full" />
+                      <div className="w-2 h-2 rounded-full bg-slate-400" />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-x-0 bottom-0 h-4 bg-amber-800/70 flex justify-around items-end">
+                      {[0, 1, 2, 3].map((i) => <span key={i} className="w-6 h-3 bg-amber-950/70 rounded-t-sm" />)}
+                    </div>
+                  )}
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-2">
-                    <div className="text-lg font-bold text-cyan-700">{containersNeeded || 0}</div>
-                    <div className="text-[10px] text-cyan-500 font-medium">Containers</div>
+                    <div className="text-lg font-bold text-cyan-700">{loadUnitsNeeded || 0}</div>
+                    <div className="text-[10px] text-cyan-500 font-medium">{loadUnitNamePlural}</div>
                   </div>
                   <div className="bg-slate-50 border border-slate-100 rounded-lg p-2">
                     <div className="text-lg font-bold text-slate-700">{containerCapacity.toLocaleString()}</div>
-                    <div className="text-[10px] text-slate-400 font-medium">Cap / unit</div>
+                    <div className="text-[10px] text-slate-400 font-medium">Cap / {loadUnitName}</div>
                   </div>
                   <div className="bg-slate-50 border border-slate-100 rounded-lg p-2">
                     <div className="text-lg font-bold text-slate-700">{remainingInLast.toLocaleString()}</div>
@@ -13150,18 +13220,23 @@ function AppInner() {
       {/* 6. Printable shipment P&L statement */}
       {(() => {
         const activeProducts = calculations.processedProducts.filter((p) => p.isActive && p.qty > 0);
-        const fobRow = calculations.breakdown.find((b) => b.term === 'FOB') || calculations.breakdown[0];
+        const selectedReportRow = profitLossReportTerm
+          ? calculations.breakdown.find((b) => b.term === profitLossReportTerm)
+          : undefined;
         const ddpRow = calculations.breakdown.find((b) => b.term === 'DDP') || calculations.breakdown[calculations.breakdown.length - 1];
         const totalDdpCost = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc + calculations.costs.ddp_inc;
         const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
         const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
+        const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
+        const buyerResaleRevenue = (selectedReportRow?.totalSell || 0) * (1 + buyerMarkup / 100);
+        const buyerGrossProfit = buyerResaleRevenue - (selectedReportRow?.totalSell || 0);
         const costCards = [
           { label: 'Product + EXW', value: calculations.costs.exw, tone: 'from-slate-700 to-slate-900' },
           { label: 'Inland + Port', value: calculations.costs.fob_inc, tone: 'from-blue-600 to-indigo-700' },
           { label: 'Freight + Insurance', value: calculations.costs.cif_inc, tone: 'from-violet-600 to-purple-700' },
           { label: 'Destination + Duty', value: calculations.costs.ddp_inc, tone: 'from-emerald-600 to-teal-700' },
         ];
-        const margin = fobRow?.profitMargin || 0;
+        const margin = selectedReportRow?.profitMargin || 0;
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 text-white p-5 md:p-6">
@@ -13176,30 +13251,60 @@ function AppInner() {
                 <button
                   type="button"
                   onClick={printShipmentProfitLossReport}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white text-slate-950 text-sm font-black hover:bg-emerald-50 shadow-lg"
+                  disabled={!profitLossReportTerm}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white text-slate-950 text-sm font-black hover:bg-emerald-50 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Printer className="w-4 h-4" />
                   Print A4 / PDF
                 </button>
               </div>
 
+              <div className="grid md:grid-cols-[1fr_1fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
+                <label>
+                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">مبنای گزارش سود و زیان</span>
+                  <select
+                    value={profitLossReportTerm}
+                    onChange={(e) => setProfitLossReportTerm(e.target.value as any)}
+                    className="w-full rounded-xl border border-white/20 bg-white text-slate-900 px-3 py-2 text-sm font-bold outline-none"
+                  >
+                    <option value="">انتخاب کن: EXW / FCA / FOB / CIF / DDP</option>
+                    {(['EXW', 'FCA', 'FOB', 'CIF', 'DDP'] as const).map((term) => <option key={term} value={term}>{term}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">سود خریدار بعد از خرید از من</span>
+                  <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
+                    <FormattedNumberInput
+                      value={buyerProfitPercent}
+                      onChange={(val) => setBuyerProfitPercent(Math.max(0, val ?? 0))}
+                      className="w-full text-sm text-slate-900 font-bold outline-none"
+                    />
+                    <span className="text-slate-400 text-xs font-bold">%</span>
+                  </div>
+                </label>
+                <div className="rounded-xl bg-slate-950/30 border border-white/10 px-3 py-2 min-w-[12rem]">
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer resale revenue</p>
+                  <p className="font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : 'Term را انتخاب کن'}</p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">FOB Profit</p>
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">{profitLossReportTerm || 'Selected'} Profit</p>
                   <p className={`text-xl font-black mt-1 ${margin >= 20 ? 'text-emerald-200' : margin >= 10 ? 'text-amber-200' : 'text-rose-200'}`}>
-                    {formatMoney(fobRow?.totalProfit || 0, config.outputCurrency)}
+                    {profitLossReportTerm ? formatMoney(selectedReportRow?.totalProfit || 0, config.outputCurrency) : '-'}
                   </p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">{margin.toFixed(1)}% margin</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">{profitLossReportTerm ? `${margin.toFixed(1)}% margin` : 'choose report term'}</p>
                 </div>
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">FOB Revenue</p>
-                  <p className="text-xl font-black mt-1">{formatMoney(fobRow?.totalSell || 0, config.outputCurrency)}</p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">commercial selling value</p>
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">{profitLossReportTerm || 'Selected'} Revenue</p>
+                  <p className="text-xl font-black mt-1">{profitLossReportTerm ? formatMoney(selectedReportRow?.totalSell || 0, config.outputCurrency) : '-'}</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">your sell value</p>
                 </div>
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">DDP Cost</p>
-                  <p className="text-xl font-black mt-1">{formatMoney(totalDdpCost, config.outputCurrency)}</p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">full landed cost</p>
+                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer Profit</p>
+                  <p className="text-xl font-black mt-1">{profitLossReportTerm ? formatMoney(buyerGrossProfit, config.outputCurrency) : '-'}</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">{buyerMarkup.toFixed(1)}% buyer markup</p>
                 </div>
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Shipment</p>
@@ -13242,10 +13347,12 @@ function AppInner() {
                 </div>
                 <div className="divide-y divide-slate-100">
                   {[
-                    ['FOB Total Cost', fobRow?.totalCost || 0],
-                    ['FOB Total Sell', fobRow?.totalSell || 0],
-                    ['FOB Gross Profit', fobRow?.totalProfit || 0],
+                    [`${profitLossReportTerm || 'Selected'} Total Cost`, selectedReportRow?.totalCost || 0],
+                    [`${profitLossReportTerm || 'Selected'} Total Sell`, selectedReportRow?.totalSell || 0],
+                    [`${profitLossReportTerm || 'Selected'} Gross Profit`, selectedReportRow?.totalProfit || 0],
                     ['DDP Total Sell', ddpRow?.totalSell || 0],
+                    [`Buyer Resale (+${buyerMarkup.toFixed(1)}%)`, buyerResaleRevenue],
+                    ['Buyer Gross Profit', buyerGrossProfit],
                     [`Customs Duty (${(logistics.dutyPercent || 0).toFixed(1)}%)`, duty],
                     ['Full DDP Landed Cost', totalDdpCost],
                   ].map(([label, value]) => (
