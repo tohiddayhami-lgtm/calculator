@@ -3,6 +3,36 @@ export interface RateMap {
   [key: string]: number;
 }
 
+export type AppPermissionKey =
+  | 'dashboard'
+  | 'warehouse'
+  | 'invoice'
+  | 'forms'
+  | 'catalog'
+  | 'suppliers'
+  | 'buyers'
+  | 'community';
+
+export type ManagedUserRole = 'master' | 'user';
+export type ManagedUserStatus = 'active' | 'disabled';
+
+export interface ManagedUserProfile {
+  uid: string;
+  email: string;
+  displayName?: string;
+  role: ManagedUserRole;
+  status: ManagedUserStatus;
+  disabled?: boolean;
+  permissions: Record<AppPermissionKey, boolean>;
+  subscriptionStartsAt?: number;
+  subscriptionEndsAt?: number | null;
+  createdAt?: number;
+  updatedAt?: number;
+  lastLoginAt?: number;
+  createdBy?: string;
+  notes?: string;
+}
+
 export interface Product {
   id: number;
   name: string;

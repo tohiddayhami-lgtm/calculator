@@ -47,7 +47,8 @@ import {
   Send, Layers, LayoutGrid, CheckSquare, Users, DollarSign, Paperclip, 
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
-  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon, Maximize2, RotateCw
+  ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon, Maximize2, RotateCw,
+  ShieldCheck, UserPlus, UserX, Crown, KeyRound, CalendarClock, Ban
 } from 'lucide-react';
 
 // Types
@@ -108,6 +109,8 @@ import {
   ProposalStatus,
   ProposalRtlLang,
   EducationCourse,
+  AppPermissionKey,
+  ManagedUserProfile,
   WarehouseLocation,
   WarehouseMovement,
   WarehouseProductSettings,
@@ -2479,6 +2482,72 @@ try {
 
 // --- CONSTANTS & CONFIG ---
 const DEMO_USER_ID = 'demo-user-123';
+type AppView = 'dashboard' | 'invoice' | 'forms' | 'catalog' | 'suppliers' | 'buyers' | 'community' | 'admin';
+type ManagedUserDraft = {
+  email: string;
+  displayName: string;
+  subscriptionEndsAtDate: string;
+  notes: string;
+  tempPassword: string;
+};
+
+const APP_VIEW_ITEMS: { id: AppView; label: string; shortLabel?: string; icon: any; masterOnly?: boolean }[] = [
+  { id: 'dashboard', label: 'Dashboard', shortLabel: 'Dashboard', icon: LayoutDashboard },
+  { id: 'invoice', label: 'Proforma Invoice', shortLabel: 'Invoice', icon: FileText },
+  { id: 'forms', label: 'Forms', shortLabel: 'Forms', icon: ListTodo },
+  { id: 'catalog', label: 'Catalog Gen', shortLabel: 'Catalog', icon: LayoutTemplate },
+  { id: 'suppliers', label: 'Suppliers', shortLabel: 'Suppliers', icon: Users },
+  { id: 'buyers', label: 'Buyers', shortLabel: 'Buyers', icon: Users },
+  { id: 'community', label: 'Community', shortLabel: 'Community', icon: Globe },
+  { id: 'admin', label: 'Master Dashboard', shortLabel: 'Master', icon: ShieldCheck, masterOnly: true },
+];
+
+const APP_PERMISSION_LABELS: Record<AppPermissionKey, string> = {
+  dashboard: 'داشبورد محاسبات',
+  warehouse: 'مدیریت انبار',
+  invoice: 'پروفورما و فاکتور',
+  forms: 'فرم‌ها و قراردادها',
+  catalog: 'کاتالوگ آنلاین',
+  suppliers: 'تامین‌کنندگان',
+  buyers: 'خریداران',
+  community: 'Community',
+};
+
+const VIEW_PERMISSION_KEY: Partial<Record<AppView, AppPermissionKey>> = {
+  dashboard: 'dashboard',
+  invoice: 'invoice',
+  forms: 'forms',
+  catalog: 'catalog',
+  suppliers: 'suppliers',
+  buyers: 'buyers',
+  community: 'community',
+};
+
+const DEFAULT_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
+  dashboard: true,
+  warehouse: true,
+  invoice: true,
+  forms: true,
+  catalog: true,
+  suppliers: true,
+  buyers: true,
+  community: true,
+};
+
+const MASTER_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
+  dashboard: true,
+  warehouse: true,
+  invoice: true,
+  forms: true,
+  catalog: true,
+  suppliers: true,
+  buyers: true,
+  community: true,
+};
+
+const MANAGED_USER_PERMISSION_KEYS = Object.keys(DEFAULT_USER_PERMISSIONS) as AppPermissionKey[];
+const DEFAULT_NEW_USER_PASSWORD = 'Td@2026-User!';
+const DEFAULT_NEW_USER_SUBSCRIPTION_DAYS = 30;
 const DB_NAME = 'CloudExportProDB';
 const STORE_NAME = 'projects';
 const DB_VERSION = 1;
@@ -2590,6 +2659,77 @@ const stripUndefinedDeep = (value: any): any => {
   }
 
   return value;
+};
+
+const normalizeManagedPermissions = (permissions?: Partial<Record<AppPermissionKey, boolean>>, fallback = true): Record<AppPermissionKey, boolean> => {
+  const base = fallback ? DEFAULT_USER_PERMISSIONS : Object.fromEntries(
+    MANAGED_USER_PERMISSION_KEYS.map((key) => [key, false])
+  ) as Record<AppPermissionKey, boolean>;
+  return MANAGED_USER_PERMISSION_KEYS.reduce((acc, key) => {
+    acc[key] = permissions?.[key] ?? base[key] ?? false;
+    return acc;
+  }, {} as Record<AppPermissionKey, boolean>);
+};
+
+const toDateInputValue = (ms?: number | null): string => {
+  if (!ms) return '';
+  const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const dateInputToEndOfDayMs = (dateValue: string): number | null => {
+  if (!dateValue) return null;
+  const t = new Date(`${dateValue}T23:59:59`).getTime();
+  return Number.isFinite(t) ? t : null;
+};
+
+const addDays = (baseMs: number, days: number): number => baseMs + Math.max(0, days) * 24 * 60 * 60 * 1000;
+
+const normalizeManagedUserProfile = (raw: any, uidFallback = ''): ManagedUserProfile => {
+  const uid = String(raw?.uid || uidFallback || '');
+  const role = raw?.role === 'master' ? 'master' : 'user';
+  const disabled = raw?.disabled === true || raw?.status === 'disabled';
+  return {
+    uid,
+    email: String(raw?.email || '').trim(),
+    displayName: String(raw?.displayName || '').trim(),
+    role,
+    status: disabled ? 'disabled' : 'active',
+    disabled,
+    permissions: role === 'master'
+      ? MASTER_USER_PERMISSIONS
+      : normalizeManagedPermissions(raw?.permissions, true),
+    subscriptionStartsAt: typeof raw?.subscriptionStartsAt === 'number' ? raw.subscriptionStartsAt : undefined,
+    subscriptionEndsAt: typeof raw?.subscriptionEndsAt === 'number' ? raw.subscriptionEndsAt : null,
+    createdAt: typeof raw?.createdAt === 'number' ? raw.createdAt : undefined,
+    updatedAt: typeof raw?.updatedAt === 'number' ? raw.updatedAt : undefined,
+    lastLoginAt: typeof raw?.lastLoginAt === 'number' ? raw.lastLoginAt : undefined,
+    createdBy: typeof raw?.createdBy === 'string' ? raw.createdBy : undefined,
+    notes: typeof raw?.notes === 'string' ? raw.notes : '',
+  };
+};
+
+const buildManagedUserDraft = (profile: ManagedUserProfile): ManagedUserDraft => ({
+  email: profile.email || '',
+  displayName: profile.displayName || '',
+  subscriptionEndsAtDate: toDateInputValue(profile.subscriptionEndsAt),
+  notes: profile.notes || '',
+  tempPassword: '',
+});
+
+const isManagedUserExpired = (profile: ManagedUserProfile, now = Date.now()): boolean => (
+  profile.role !== 'master' && !!profile.subscriptionEndsAt && profile.subscriptionEndsAt < now
+);
+
+const managedUserStatusLabel = (profile: ManagedUserProfile): string => {
+  if (profile.role === 'master') return 'Master';
+  if (profile.disabled) return 'غیرفعال';
+  if (isManagedUserExpired(profile)) return 'اشتراک تمام شده';
+  if (!profile.subscriptionEndsAt) return 'بدون تاریخ پایان';
+  const daysLeft = Math.ceil((profile.subscriptionEndsAt - Date.now()) / (24 * 60 * 60 * 1000));
+  return `${Math.max(0, daysLeft)} روز مانده`;
 };
 
 const withTimeout = async <T,>(promise: Promise<T>, ms = 15000, label = 'Operation'): Promise<T> => {
@@ -5377,7 +5517,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 function AppInner() {
   
   // -- STATE: VIEW & UI --
-  const [view, setView] = useState<'dashboard' | 'invoice' | 'forms' | 'catalog' | 'suppliers' | 'buyers' | 'community'>('dashboard');
+  const [view, setView] = useState<AppView>('dashboard');
   const [showRateSettings, setShowRateSettings] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   
@@ -5389,7 +5529,16 @@ function AppInner() {
   const [authError, setAuthError] = useState('');
   const [cloudLoadError, setCloudLoadError] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState(DEFAULT_NEW_USER_PASSWORD);
+  const [newUserDisplayName, setNewUserDisplayName] = useState('');
+  const [newUserSubscriptionDays, setNewUserSubscriptionDays] = useState(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
+  const [newUserPermissions, setNewUserPermissions] = useState<Record<AppPermissionKey, boolean>>(DEFAULT_USER_PERMISSIONS);
+  const [currentUserProfile, setCurrentUserProfile] = useState<ManagedUserProfile | null>(null);
+  const [managedUsers, setManagedUsers] = useState<ManagedUserProfile[]>([]);
+  const [managedUserDrafts, setManagedUserDrafts] = useState<Record<string, ManagedUserDraft>>({});
+  const [managedUsersLoading, setManagedUsersLoading] = useState(false);
+  const [adminWorkspaceUid, setAdminWorkspaceUid] = useState('');
+  const [lastCreatedCredentials, setLastCreatedCredentials] = useState<{ email: string; password: string } | null>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [masterActionMessage, setMasterActionMessage] = useState('');
   const [dataAppId, setDataAppId] = useState(appId);
@@ -5564,7 +5713,33 @@ function AppInner() {
   const [communityPage, setCommunityPage] = useState(1);
 
   const masterEmail = ((import.meta as any).env?.VITE_MASTER_EMAIL || '').toLowerCase().trim();
-  const isMasterUser = !!user?.email && user.email.toLowerCase() === masterEmail;
+  const isMasterUser = !!user && (
+    currentUserProfile?.role === 'master'
+    || (!!masterEmail && !!user.email && user.email.toLowerCase() === masterEmail)
+  );
+  const activeOwnerUid = isMasterUser && adminWorkspaceUid ? adminWorkspaceUid : (user?.uid || '');
+  const activeOwnerProfile = activeOwnerUid
+    ? managedUsers.find((profile) => profile.uid === activeOwnerUid)
+      || (activeOwnerUid === user?.uid ? currentUserProfile : null)
+    : null;
+  const currentPermissions = isMasterUser
+    ? MASTER_USER_PERMISSIONS
+    : normalizeManagedPermissions(currentUserProfile?.permissions, true);
+  const currentUserAccessBlocked =
+    !!user
+    && !isDemoMode
+    && !isMasterUser
+    && !!currentUserProfile
+    && (currentUserProfile.disabled || isManagedUserExpired(currentUserProfile));
+  const canUseWarehouse = isMasterUser || currentPermissions.warehouse;
+  const canAccessView = (candidate: AppView) => {
+    if (candidate === 'admin') return isMasterUser;
+    const permissionKey = VIEW_PERMISSION_KEY[candidate];
+    return !permissionKey || currentPermissions[permissionKey] || isMasterUser;
+  };
+  const visibleNavItems = APP_VIEW_ITEMS.filter((item) => (
+    item.masterOnly ? isMasterUser : canAccessView(item.id)
+  ));
   
   // -- STATE: MODALS --
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -6066,6 +6241,143 @@ function AppInner() {
     }
   }, []);
 
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user || !db || isDemoMode || user.uid === DEMO_USER_ID) {
+      setCurrentUserProfile(null);
+      return;
+    }
+
+    const profileRef = doc(db, 'artifacts', dataAppId, 'userProfiles', user.uid);
+    const emailValue = (user.email || '').trim();
+    const emailLc = emailValue.toLowerCase();
+    const shouldBeMaster = !!masterEmail && emailLc === masterEmail;
+    const now = Date.now();
+
+    (async () => {
+      try {
+        const snap = await withTimeout(getDoc(profileRef), 10000, 'Load user profile');
+        if (!snap.exists()) {
+          const profile: ManagedUserProfile = {
+            uid: user.uid,
+            email: emailValue,
+            displayName: user.displayName || '',
+            role: shouldBeMaster ? 'master' : 'user',
+            status: 'active',
+            disabled: false,
+            permissions: shouldBeMaster ? MASTER_USER_PERMISSIONS : DEFAULT_USER_PERMISSIONS,
+            subscriptionStartsAt: now,
+            subscriptionEndsAt: shouldBeMaster ? null : addDays(now, DEFAULT_NEW_USER_SUBSCRIPTION_DAYS),
+            createdAt: now,
+            updatedAt: now,
+            lastLoginAt: now,
+          };
+          await withTimeout(setDoc(profileRef, stripUndefinedDeep(profile), { merge: true }), 10000, 'Create user profile');
+        } else {
+          const current = normalizeManagedUserProfile(snap.data(), user.uid);
+          const patch: Partial<ManagedUserProfile> = {
+            email: emailValue || current.email,
+            displayName: current.displayName || user.displayName || '',
+            updatedAt: now,
+            lastLoginAt: now,
+          };
+          if (shouldBeMaster && current.role !== 'master') {
+            patch.role = 'master';
+            patch.status = 'active';
+            patch.disabled = false;
+            patch.permissions = MASTER_USER_PERMISSIONS;
+            patch.subscriptionEndsAt = null;
+          }
+          await withTimeout(setDoc(profileRef, stripUndefinedDeep(patch), { merge: true }), 10000, 'Update user profile');
+        }
+      } catch (err) {
+        console.warn('User profile bootstrap failed:', err);
+      }
+    })();
+
+    const unsub = onSnapshot(
+      profileRef,
+      (snap: any) => {
+        if (snap.exists()) {
+          const normalized = normalizeManagedUserProfile(snap.data(), user.uid);
+          if (shouldBeMaster && normalized.role !== 'master') {
+            setCurrentUserProfile({ ...normalized, role: 'master', permissions: MASTER_USER_PERMISSIONS, disabled: false, status: 'active' });
+          } else {
+            setCurrentUserProfile(normalized);
+          }
+        } else {
+          setCurrentUserProfile({
+            uid: user.uid,
+            email: emailValue,
+            displayName: user.displayName || '',
+            role: shouldBeMaster ? 'master' : 'user',
+            status: 'active',
+            disabled: false,
+            permissions: shouldBeMaster ? MASTER_USER_PERMISSIONS : DEFAULT_USER_PERMISSIONS,
+            subscriptionStartsAt: now,
+            subscriptionEndsAt: shouldBeMaster ? null : addDays(now, DEFAULT_NEW_USER_SUBSCRIPTION_DAYS),
+            createdAt: now,
+            updatedAt: now,
+            lastLoginAt: now,
+          });
+        }
+      },
+      (err: any) => console.error('User profile listener failed:', err)
+    );
+
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId, masterEmail]);
+
+  useEffect(() => {
+    if (!user || !db || !isMasterUser) {
+      setManagedUsers([]);
+      setManagedUsersLoading(false);
+      setAdminWorkspaceUid('');
+      return;
+    }
+
+    setManagedUsersLoading(true);
+    const ref = collection(db, 'artifacts', dataAppId, 'userProfiles');
+    const unsub = onSnapshot(
+      ref,
+      (snap: any) => {
+        const list = snap.docs.map((d: any) => normalizeManagedUserProfile({ uid: d.id, ...d.data() }, d.id));
+        list.sort((a, b) => {
+          if (a.role !== b.role) return a.role === 'master' ? -1 : 1;
+          return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+        });
+        setManagedUsers(list);
+        setManagedUsersLoading(false);
+      },
+      (err: any) => {
+        console.error('Managed users listener failed:', err);
+        setManagedUsersLoading(false);
+      }
+    );
+    return () => unsub();
+  }, [user, db, isMasterUser, dataAppId]);
+
+  useEffect(() => {
+    setManagedUserDrafts((prev) => {
+      const next: Record<string, ManagedUserDraft> = {};
+      for (const profile of managedUsers) {
+        next[profile.uid] = prev[profile.uid] || buildManagedUserDraft(profile);
+      }
+      return next;
+    });
+  }, [managedUsers]);
+
+  useEffect(() => {
+    if (view === 'admin' && !isMasterUser) {
+      setView('dashboard');
+      return;
+    }
+    if (!isMasterUser && !canAccessView(view)) {
+      const fallback = APP_VIEW_ITEMS.find((item) => !item.masterOnly && canAccessView(item.id))?.id || 'dashboard';
+      setView(fallback);
+    }
+  }, [view, isMasterUser, currentPermissions]);
+
   // Auto-assign SKU to any product missing one (e.g., legacy data, JSON import)
   useEffect(() => {
     const missing = products.some(p => !p.sku || p.sku.trim().length === 0);
@@ -6120,16 +6432,16 @@ function AppInner() {
   useEffect(() => {
     if (authLoading) return;
 
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     setCloudLoadError('');
 
     if (isRealCloudUser) {
-        const projectsRef = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects');
+        const projectsRef = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects');
         const unsubscribe = onSnapshot(
           projectsRef,
           async (snapshot: any) => {
               if (snapshot.empty && dataAppId === appId) {
-                  const legacyAppId = await findLegacyAppIdWithProjects(user.uid);
+                  const legacyAppId = await findLegacyAppIdWithProjects(activeOwnerUid);
                   if (legacyAppId) {
                       setDataAppId(legacyAppId);
                       return;
@@ -6149,7 +6461,7 @@ function AppInner() {
     } else {
         setSavedProjects([]);
     }
-  }, [user, authLoading, isDemoMode, dataAppId]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Keep discount/VAT "base scenario" aligned with visible invoice terms
   useEffect(() => {
@@ -6161,12 +6473,12 @@ function AppInner() {
   // Seller profiles listener
   useEffect(() => {
     if (authLoading) return;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) {
       setSellerProfiles([]);
       return;
     }
-    const ref = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'sellerProfiles');
+    const ref = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'sellerProfiles');
     const unsub = onSnapshot(
       ref,
       (snap: any) => {
@@ -6177,17 +6489,17 @@ function AppInner() {
       (err: any) => console.error('Seller profiles listener failed:', err)
     );
     return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Invoice archive listener (issued invoices + payments)
   useEffect(() => {
     if (authLoading) return;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) {
       setArchivedInvoices([]);
       return;
     }
-    const ref = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive');
+    const ref = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive');
     let q: any;
     try {
       q = query(ref, orderBy('issueDate', 'desc'), limit(500));
@@ -6204,18 +6516,18 @@ function AppInner() {
       (err: any) => console.error('Invoice archive listener failed:', err)
     );
     return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Customer inquiries listener (live updates from the public HTML catalog)
   useEffect(() => {
     if (authLoading) return;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) {
         setInquiries([]);
         return;
     }
     setInquiriesLoading(true);
-    const inqRef = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'inquiries');
+    const inqRef = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'inquiries');
     let q;
     try {
         q = query(inqRef, orderBy('createdAt', 'desc'), limit(200));
@@ -6235,17 +6547,17 @@ function AppInner() {
         }
     );
     return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Saved HTML catalog share links (metadata only; file lives in Storage)
   useEffect(() => {
     if (authLoading) return;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) {
       setSavedCatalogLinks([]);
       return;
     }
-    const linksRef = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'catalogLinks');
+    const linksRef = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks');
     let q: any;
     try {
       q = query(linksRef, orderBy('createdAt', 'desc'), limit(80));
@@ -6262,35 +6574,35 @@ function AppInner() {
       }
     );
     return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Custom forms listener
   useEffect(() => {
     if (authLoading) return;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) { setCustomForms([]); return; }
     let q: any;
-    try { q = query(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'forms'), orderBy('createdAt', 'desc')); }
-    catch { q = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'forms'); }
+    try { q = query(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'forms'), orderBy('createdAt', 'desc')); }
+    catch { q = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'forms'); }
     const unsub = onSnapshot(q, (snap: any) => {
       setCustomForms(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
     }, (err: any) => console.error('Forms listener failed:', err));
     return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Form submissions listener
   useEffect(() => {
     if (authLoading) return;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) { setFormSubmissions([]); return; }
     let q: any;
-    try { q = query(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions'), orderBy('submittedAt', 'desc'), limit(200)); }
-    catch { q = collection(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions'); }
+    try { q = query(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'formSubmissions'), orderBy('submittedAt', 'desc'), limit(200)); }
+    catch { q = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'formSubmissions'); }
     const unsub = onSnapshot(q, (snap: any) => {
       setFormSubmissions(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
     }, (err: any) => console.error('Form submissions listener failed:', err));
     return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Community posts listener — all authenticated users can read
   useEffect(() => {
@@ -6506,7 +6818,7 @@ function AppInner() {
       if (!window.confirm('Delete this inquiry permanently?')) return;
       try {
           await withTimeout(
-              deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'inquiries', id)),
+              deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'inquiries', id)),
               10000,
               'Delete inquiry timed out'
           );
@@ -6552,12 +6864,12 @@ function AppInner() {
       if (isExisting) {
         const payload = stripUndefinedDeep({ ...formDef, updatedAt: now });
         await withTimeout(
-          setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formDef.id), payload),
+          setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'forms', formDef.id), payload),
           10000, 'Save form'
         );
         // Also refresh public definition if published
         if (formDef.publishedKey && formDef.isPublished) {
-          const { publicData, assets } = splitPublicFormPayload(formDef, user.uid, dataAppId, now);
+          const { publicData, assets } = splitPublicFormPayload(formDef, activeOwnerUid, dataAppId, now);
           await withTimeout(
             updateDoc(doc(db, 'publicForms', formDef.publishedKey), publicData),
             10000, 'Sync public form'
@@ -6570,7 +6882,7 @@ function AppInner() {
           } catch (assetErr) {
             console.warn('Public form assets sync failed during save; falling back to legacy public form payload.', assetErr);
             await withTimeout(
-              setDoc(doc(db, 'publicForms', formDef.publishedKey), buildLegacyPublicFormPayload(formDef, user.uid, dataAppId, now), { merge: true }),
+              setDoc(doc(db, 'publicForms', formDef.publishedKey), buildLegacyPublicFormPayload(formDef, activeOwnerUid, dataAppId, now), { merge: true }),
               10000,
               'Sync public form legacy assets fallback'
             ).catch((fallbackErr) => console.warn('Legacy public form asset fallback failed during save.', fallbackErr));
@@ -6580,7 +6892,7 @@ function AppInner() {
         const newId = `form_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const newForm = stripUndefinedDeep({ ...formDef, id: newId, createdAt: now, updatedAt: now });
         await withTimeout(
-          setDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', newId), newForm),
+          setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'forms', newId), newForm),
           10000, 'Save form'
         );
       }
@@ -6805,7 +7117,7 @@ function AppInner() {
       }
     }
     try {
-      await withTimeout(deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId)), 10000, 'Delete form');
+      await withTimeout(deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'forms', formId)), 10000, 'Delete form');
     } catch (err: any) {
       alert('Failed to delete form: ' + (err?.message || err));
     }
@@ -6819,7 +7131,7 @@ function AppInner() {
     try {
       const key = form.publishedKey || `f_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
       const now = Date.now();
-      const { publicData, assets } = splitPublicFormPayload(form, user.uid, dataAppId, now);
+      const { publicData, assets } = splitPublicFormPayload(form, activeOwnerUid, dataAppId, now);
       await withTimeout(setDoc(doc(db, 'publicForms', key), publicData), 10000, 'Publish form');
       let assetSynced = false;
       try {
@@ -6829,7 +7141,7 @@ function AppInner() {
         console.warn('Public form assets sync failed; falling back to legacy public form payload.', assetErr);
         try {
           await withTimeout(
-            setDoc(doc(db, 'publicForms', key), buildLegacyPublicFormPayload(form, user.uid, dataAppId, now), { merge: true }),
+              setDoc(doc(db, 'publicForms', key), buildLegacyPublicFormPayload(form, activeOwnerUid, dataAppId, now), { merge: true }),
             10000,
             'Publish form legacy assets fallback'
           );
@@ -6839,7 +7151,7 @@ function AppInner() {
       }
       await withTimeout(
         setDoc(
-          doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId),
+          doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'forms', formId),
           stripUndefinedDeep({ ...form, publishedKey: key, isPublished: true, publicAssetsSynced: assetSynced, updatedAt: now })
         ),
         10000, 'Update form'
@@ -6858,7 +7170,7 @@ function AppInner() {
     try {
       await withTimeout(updateDoc(doc(db, 'publicForms', form.publishedKey), { isActive: false }), 10000, 'Unpublish form');
       await withTimeout(
-        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'forms', formId), { isPublished: false, updatedAt: Date.now() }),
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'forms', formId), { isPublished: false, updatedAt: Date.now() }),
         10000, 'Update form'
       );
     } catch (err: any) {
@@ -6917,7 +7229,7 @@ function AppInner() {
     if (!user || !db) return;
     try {
       await withTimeout(
-        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions', subId), { isRead }),
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'formSubmissions', subId), { isRead }),
         10000, 'Update submission'
       );
     } catch {}
@@ -6927,7 +7239,7 @@ function AppInner() {
     if (!user || !db) return;
     try {
       await withTimeout(
-        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'formSubmissions', subId)),
+        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'formSubmissions', subId)),
         10000, 'Delete submission'
       );
       if (selectedFormSubmission?.id === subId) setSelectedFormSubmission(null);
@@ -7138,7 +7450,7 @@ function AppInner() {
       if (!user || !db) return;
       try {
           await withTimeout(
-              updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'inquiries', id), { status }),
+              updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'inquiries', id), { status }),
               10000,
               'Update inquiry timed out'
           );
@@ -7166,7 +7478,7 @@ function AppInner() {
       }
       try {
           await withTimeout(
-              deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'catalogLinks', link.id)),
+              deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks', link.id)),
               10000,
               'Remove link record'
           );
@@ -7469,7 +7781,7 @@ function AppInner() {
   };
 
   const handleSaveSellerProfile = async (existing?: SellerProfile | null) => {
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) {
       alert('Sign in to save seller profiles to the cloud.');
       return;
@@ -7482,7 +7794,7 @@ function AppInner() {
       if (existing?.id) {
         await withTimeout(
           updateDoc(
-            doc(db, 'artifacts', dataAppId, 'users', user.uid, 'sellerProfiles', existing.id),
+            doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'sellerProfiles', existing.id),
             { ...draft, createdAt: existing.createdAt || draft.createdAt, updatedAt: Date.now() }
           ),
           15000,
@@ -7491,7 +7803,7 @@ function AppInner() {
       } else {
         await withTimeout(
           addDoc(
-            collection(db, 'artifacts', dataAppId, 'users', user.uid, 'sellerProfiles'),
+            collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'sellerProfiles'),
             draft
           ),
           15000,
@@ -7508,7 +7820,7 @@ function AppInner() {
     if (!window.confirm('Delete this seller profile?')) return;
     try {
       await withTimeout(
-        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'sellerProfiles', id)),
+        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'sellerProfiles', id)),
         10000,
         'Delete seller profile'
       );
@@ -7660,7 +7972,7 @@ function AppInner() {
   const handleArchiveCurrentInvoice = async (
     status: ArchivedInvoiceStatus = 'issued'
   ) => {
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!isRealCloudUser) {
       alert('Sign in to save invoices to the cloud archive.');
       return;
@@ -7709,12 +8021,12 @@ function AppInner() {
     try {
       const { data: prepared, notice } = await prepareCloudProjectData(
         snapshot,
-        user.uid,
+        activeOwnerUid,
         setUploadProgress
       );
       const docRef = await withTimeout(
         addDoc(
-          collection(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive'),
+          collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive'),
           { ...prepared, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
         ),
         15000,
@@ -7745,7 +8057,7 @@ function AppInner() {
     try {
       await withTimeout(
         updateDoc(
-          doc(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive', id),
+          doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive', id),
           { status, updatedAt: serverTimestamp() }
         ),
         10000,
@@ -7761,7 +8073,7 @@ function AppInner() {
     if (!window.confirm('Delete this archived invoice and all its payment records? This cannot be undone.')) return;
     try {
       await withTimeout(
-        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive', id)),
+        deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive', id)),
         10000,
         'Delete archived invoice'
       );
@@ -7919,7 +8231,7 @@ function AppInner() {
 
     const handleUpdateArchivedInvoiceFromEditor = async () => {
     const id = editingArchiveInvoiceId;
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     if (!id || !isRealCloudUser) {
       alert('برای به‌روزرسانی آرشیو، ابتدا وارد حساب ابری شوید و از آرشیو «بازخوانی برای ویرایش» را بزنید.');
       return;
@@ -7971,9 +8283,9 @@ function AppInner() {
       payments: existing.payments || [],
     };
     try {
-      const { data: prepared, notice } = await prepareCloudProjectData(merged, user.uid, setUploadProgress);
+      const { data: prepared, notice } = await prepareCloudProjectData(merged, activeOwnerUid, setUploadProgress);
       await withTimeout(
-        updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive', id), {
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive', id), {
           ...prepared,
           updatedAt: serverTimestamp(),
         }),
@@ -8026,7 +8338,7 @@ function AppInner() {
     try {
       await withTimeout(
         updateDoc(
-          doc(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive', inv.id),
+          doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive', inv.id),
           { payments: updatedPayments, status: newStatus, updatedAt: serverTimestamp() }
         ),
         15000,
@@ -8062,7 +8374,7 @@ function AppInner() {
     try {
       await withTimeout(
         updateDoc(
-          doc(db, 'artifacts', dataAppId, 'users', user.uid, 'invoiceArchive', inv.id),
+          doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive', inv.id),
           { payments: updatedPayments, status: newStatus, updatedAt: serverTimestamp() }
         ),
         10000,
@@ -8231,11 +8543,38 @@ function AppInner() {
           setIsCreatingUser(true);
           secondaryApp = initializeApp(firebaseConfig, `secondary-${Date.now()}`);
           const secondaryAuth = getAuth(secondaryApp);
-          await createUserWithEmailAndPassword(secondaryAuth, emailToCreate, newUserPassword);
+          const cred = await createUserWithEmailAndPassword(secondaryAuth, emailToCreate, newUserPassword);
           await signOut(secondaryAuth);
+          const now = Date.now();
+          const expiresAt = newUserSubscriptionDays > 0 ? addDays(now, newUserSubscriptionDays) : null;
+          if (db) {
+            const profile: ManagedUserProfile = {
+              uid: cred.user.uid,
+              email: emailToCreate,
+              displayName: newUserDisplayName.trim(),
+              role: 'user',
+              status: 'active',
+              disabled: false,
+              permissions: normalizeManagedPermissions(newUserPermissions, true),
+              subscriptionStartsAt: now,
+              subscriptionEndsAt: expiresAt,
+              createdAt: now,
+              updatedAt: now,
+              createdBy: user?.uid,
+            };
+            await withTimeout(
+              setDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', cred.user.uid), stripUndefinedDeep(profile), { merge: true }),
+              10000,
+              'Create managed user profile'
+            );
+          }
+          setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
           setNewUserEmail('');
-          setNewUserPassword('');
-          setMasterActionMessage('User created successfully.');
+          setNewUserDisplayName('');
+          setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
+          setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
+          setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
+          setMasterActionMessage(`User created. Login: ${emailToCreate} / ${newUserPassword}`);
       } catch (error: any) {
           setMasterActionMessage(error?.message || 'Failed to create user.');
       } finally {
@@ -8248,6 +8587,81 @@ function AppInner() {
           }
           setIsCreatingUser(false);
       }
+  };
+
+  const updateNewUserPermission = (key: AppPermissionKey, enabled: boolean) => {
+    setNewUserPermissions((prev) => ({ ...prev, [key]: enabled }));
+  };
+
+  const updateManagedUserDraft = (uid: string, patch: Partial<ManagedUserDraft>) => {
+    setManagedUserDrafts((prev) => ({
+      ...prev,
+      [uid]: { ...(prev[uid] || { email: '', displayName: '', subscriptionEndsAtDate: '', notes: '', tempPassword: '' }), ...patch },
+    }));
+  };
+
+  const handleSaveManagedUser = async (profile: ManagedUserProfile) => {
+    if (!db || !isMasterUser) return;
+    const draft = managedUserDrafts[profile.uid] || buildManagedUserDraft(profile);
+    if (draft.tempPassword.trim()) {
+      setMasterActionMessage('Password reset for existing users needs Firebase Admin / Cloud Functions. Profile fields were not saved.');
+      return;
+    }
+    try {
+      await withTimeout(
+        updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), stripUndefinedDeep({
+          email: draft.email.trim(),
+          displayName: draft.displayName.trim(),
+          notes: draft.notes.trim(),
+          subscriptionEndsAt: profile.role === 'master' ? null : dateInputToEndOfDayMs(draft.subscriptionEndsAtDate),
+          updatedAt: Date.now(),
+        })),
+        10000,
+        'Save managed user'
+      );
+      setMasterActionMessage(`Saved ${draft.email || profile.email}.`);
+    } catch (err: any) {
+      setMasterActionMessage(err?.message || 'Failed to save user.');
+    }
+  };
+
+  const handleToggleManagedUserPermission = async (profile: ManagedUserProfile, key: AppPermissionKey, enabled: boolean) => {
+    if (!db || !isMasterUser || profile.role === 'master') return;
+    try {
+      await updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), {
+        permissions: { ...profile.permissions, [key]: enabled },
+        updatedAt: Date.now(),
+      });
+    } catch (err: any) {
+      setMasterActionMessage(err?.message || 'Failed to update permission.');
+    }
+  };
+
+  const handleToggleManagedUserStatus = async (profile: ManagedUserProfile) => {
+    if (!db || !isMasterUser || profile.role === 'master') return;
+    const disabled = !profile.disabled;
+    try {
+      await updateDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid), {
+        disabled,
+        status: disabled ? 'disabled' : 'active',
+        updatedAt: Date.now(),
+      });
+      setMasterActionMessage(disabled ? 'User disabled.' : 'User enabled.');
+    } catch (err: any) {
+      setMasterActionMessage(err?.message || 'Failed to update user status.');
+    }
+  };
+
+  const handleDeleteManagedUserProfile = async (profile: ManagedUserProfile) => {
+    if (!db || !isMasterUser || profile.role === 'master') return;
+    if (!window.confirm(`Delete ${profile.email} from the master dashboard? Firebase Auth account deletion requires Cloud Functions/Admin SDK.`)) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', dataAppId, 'userProfiles', profile.uid));
+      if (adminWorkspaceUid === profile.uid) setAdminWorkspaceUid('');
+      setMasterActionMessage('User profile deleted from dashboard. Delete the Auth account in Firebase Console or Admin backend.');
+    } catch (err: any) {
+      setMasterActionMessage(err?.message || 'Failed to delete user profile.');
+    }
   };
 
   // --- PROJECT CRUD HANDLERS ---
@@ -8290,7 +8704,7 @@ function AppInner() {
         invoiceAnnexes,
     };
 
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     const finalFolder = folderName.trim();
 
     let projectDataPayload: any;
@@ -8302,7 +8716,7 @@ function AppInner() {
 
       const { data: prepared, notice } = await prepareCloudProjectData(
           projectDataPayloadRaw,
-          user.uid,
+          activeOwnerUid,
           setUploadProgress
       );
       projectDataPayload = prepared;
@@ -8316,7 +8730,7 @@ function AppInner() {
          // Update
          try {
             await withTimeout(
-              updateDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', loadedProjectId), {
+              updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects', loadedProjectId), {
                 name: projectName,
                 folder: finalFolder,
                 data: projectDataPayload
@@ -8327,7 +8741,7 @@ function AppInner() {
          } catch (updateError: any) {
             if (updateError?.code === 'not-found') {
               const docRef = await withTimeout(
-                addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+                addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects'), {
                   name: projectName,
                   folder: finalFolder,
                   createdAt: serverTimestamp(),
@@ -8344,7 +8758,7 @@ function AppInner() {
       } else {
          // New
          const docRef = await withTimeout(
-          addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+          addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects'), {
             name: projectName,
             folder: finalFolder,
             createdAt: serverTimestamp(),
@@ -8619,7 +9033,7 @@ function AppInner() {
     if (!deleteConfirmId) return;
     setIsDeleting(true);
     
-    const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
 
     try { 
         if (!isRealCloudUser) {
@@ -8627,7 +9041,7 @@ function AppInner() {
         }
 
         await withTimeout(
-          deleteDoc(doc(db, 'artifacts', dataAppId, 'users', user.uid, 'projects', deleteConfirmId)),
+          deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects', deleteConfirmId)),
           15000,
           'Project delete'
         );
@@ -8690,14 +9104,14 @@ function AppInner() {
                   createdAt: { seconds: Math.floor(Date.now() / 1000) }
               };
 
-              const isRealCloudUser = user && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+              const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
               if (!isRealCloudUser) {
                   throw new Error('Cloud import unavailable. Please sign in again.');
               }
 
               const { data: cleanData, notice } = await prepareCloudProjectData(
                   newProject.data,
-                  user.uid,
+                  activeOwnerUid,
                   setUploadProgress
               );
               if (notice) {
@@ -8705,7 +9119,7 @@ function AppInner() {
               }
 
               await withTimeout(
-                addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'projects'), {
+                addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects'), {
                     name: newProject.name,
                     folder: newProject.folder || '',
                     createdAt: serverTimestamp(),
@@ -9702,7 +10116,7 @@ function AppInner() {
 
 
   const canCloudResearchUpload =
-    !!user && !!storage && !!db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    !!user && !!activeOwnerUid && !!storage && !!db && !isDemoMode && user.uid !== DEMO_USER_ID;
 
   const addResearchEntry = () => {
     const id = `dre_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -9772,7 +10186,7 @@ function AppInner() {
     try {
       const attId = `dra_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const safe = sanitizeResearchFileName(file.name);
-      const path = `users/${user!.uid}/dashboard_research/${entryId}/${attId}_${safe}`;
+      const path = `users/${activeOwnerUid}/dashboard_research/${entryId}/${attId}_${safe}`;
       const ref = storageRef(storage, path);
       await uploadBytes(ref, file, { contentType: mime || undefined });
       const downloadURL = await getDownloadURL(ref);
@@ -9881,7 +10295,7 @@ function AppInner() {
     try {
       const attId = `dta_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const safe = sanitizeResearchFileName(file.name);
-      const path = `users/${user!.uid}/dashboard_todos/${todoId}/${attId}_${safe}`;
+      const path = `users/${activeOwnerUid}/dashboard_todos/${todoId}/${attId}_${safe}`;
       const ref = storageRef(storage, path);
       await uploadBytes(ref, file, { contentType: mime || undefined });
       const downloadURL = await getDownloadURL(ref);
@@ -10033,6 +10447,319 @@ function AppInner() {
   // --- RENDER FUNCTIONS ---
   // (Note: Kept inside component to access state closure)
   
+  const renderAccessBlocked = () => {
+    const expired = currentUserProfile ? isManagedUserExpired(currentUserProfile) : false;
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="max-w-lg w-full bg-white border border-rose-200 rounded-2xl shadow-sm p-8 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
+            {expired ? <CalendarClock className="w-8 h-8" /> : <Ban className="w-8 h-8" />}
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">
+            {expired ? 'مدت استفاده از نرم افزار تمام شده است' : 'دسترسی این کاربر غیرفعال است'}
+          </h2>
+          <p className="text-sm text-slate-500 leading-6 mb-6">
+            برای تمدید اشتراک یا فعال سازی دوباره، با اکانت مستر وارد شوید و در Master Dashboard وضعیت این کاربر را تغییر دهید.
+          </p>
+          <button
+            onClick={handleLogout}
+            className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"
+          >
+            خروج از حساب
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAdminDashboard = () => {
+    const now = Date.now();
+    const activeUsers = managedUsers.filter((u) => u.role !== 'master' && !u.disabled && !isManagedUserExpired(u, now)).length;
+    const expiredUsers = managedUsers.filter((u) => u.role !== 'master' && isManagedUserExpired(u, now)).length;
+    const disabledUsers = managedUsers.filter((u) => u.role !== 'master' && u.disabled).length;
+    const selectedWorkspaceUser = adminWorkspaceUid
+      ? managedUsers.find((u) => u.uid === adminWorkspaceUid)
+      : null;
+
+    return (
+      <div className="space-y-6">
+        <div className="rounded-3xl overflow-hidden border border-indigo-100 bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900 text-white shadow-xl">
+          <div className="p-6 md:p-8 flex flex-col lg:flex-row gap-6 justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-indigo-200 text-sm font-semibold mb-3">
+                <Crown className="w-5 h-5" />
+                Master Commercial Control Center
+              </div>
+              <h2 className="text-2xl md:text-3xl font-black tracking-tight">داشبورد حرفه ای مدیریت فروش اشتراک</h2>
+              <p className="text-sm text-indigo-100/80 mt-3 max-w-2xl leading-6">
+                از این بخش می توانی کاربر بسازی، زمان استفاده تعیین کنی، دسترسی ویژگی ها را کم و زیاد کنی و Workspace کاربران را برای بررسی داده ها باز کنی.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 min-w-[18rem]">
+              {[
+                { label: 'فعال', value: activeUsers, tone: 'emerald' },
+                { label: 'منقضی', value: expiredUsers, tone: 'amber' },
+                { label: 'غیرفعال', value: disabledUsers, tone: 'rose' },
+              ].map((card) => (
+                <div key={card.label} className="rounded-2xl bg-white/10 border border-white/15 p-4 backdrop-blur">
+                  <p className="text-xs text-indigo-100">{card.label}</p>
+                  <p className={`text-2xl font-black ${card.tone === 'emerald' ? 'text-emerald-300' : card.tone === 'amber' ? 'text-amber-300' : 'text-rose-300'}`}>
+                    {card.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-[26rem_1fr] gap-6">
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900">ساخت یوزر جدید</h3>
+                  <p className="text-xs text-slate-500">پسورد موقت را به مشتری بده؛ ریست رمز کاربرهای موجود در نسخه Admin SDK انجام می شود.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <input
+                  type="email"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  placeholder="customer@example.com"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="text"
+                  value={newUserDisplayName}
+                  onChange={(e) => setNewUserDisplayName(e.target.value)}
+                  placeholder="نام مشتری / شرکت"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">پسورد موقت</label>
+                    <input
+                      type="text"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">مدت اشتراک</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={newUserSubscriptionDays}
+                        onChange={(e) => setNewUserSubscriptionDays(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-xs text-slate-500">روز</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  <p className="text-xs font-bold text-slate-700 mb-2">سطح دسترسی اولیه</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MANAGED_USER_PERMISSION_KEYS.map((key) => (
+                      <label key={key} className="flex items-center gap-2 text-[11px] text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={newUserPermissions[key]}
+                          onChange={(e) => updateNewUserPermission(key, e.target.checked)}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        {APP_PERMISSION_LABELS[key]}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleMasterCreateUser}
+                  disabled={isCreatingUser || !newUserEmail.trim() || !newUserPassword}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCreatingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  ساخت کاربر و ثبت اشتراک
+                </button>
+              </div>
+            </div>
+
+            {lastCreatedCredentials && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm mb-2">
+                  <KeyRound className="w-4 h-4" />
+                  آخرین یوزر ساخته شده
+                </div>
+                <p className="text-xs text-emerald-800">Username: <span className="font-mono font-bold">{lastCreatedCredentials.email}</span></p>
+                <p className="text-xs text-emerald-800 mt-1">Password: <span className="font-mono font-bold">{lastCreatedCredentials.password}</span></p>
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 leading-6">
+              حذف کامل کاربر و تغییر رمز کاربرهای موجود از سمت مرورگر امن نیست. برای نسخه نهایی تجاری باید Firebase Cloud Functions/Admin SDK اضافه شود تا Auth هم مدیریت شود.
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-slate-900">کاربران و اشتراک ها</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  {selectedWorkspaceUser
+                    ? `Workspace فعال: ${selectedWorkspaceUser.email}`
+                    : 'Workspace پیش فرض روی حساب مستر است.'}
+                </p>
+              </div>
+              {adminWorkspaceUid && (
+                <button
+                  onClick={() => setAdminWorkspaceUid('')}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                >
+                  برگشت به Workspace مستر
+                </button>
+              )}
+            </div>
+
+            {managedUsersLoading ? (
+              <div className="p-10 flex items-center justify-center text-slate-500 text-sm gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading users...
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {managedUsers.map((profile) => {
+                  const draft = managedUserDrafts[profile.uid] || buildManagedUserDraft(profile);
+                  const isActiveWorkspace = adminWorkspaceUid === profile.uid;
+                  const statusLabel = managedUserStatusLabel(profile);
+                  return (
+                    <div key={profile.uid} className={`p-5 ${isActiveWorkspace ? 'bg-indigo-50/60' : ''}`}>
+                      <div className="flex flex-col 2xl:flex-row gap-4 justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-3">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                              profile.role === 'master'
+                                ? 'bg-indigo-100 text-indigo-700'
+                                : profile.disabled || isManagedUserExpired(profile)
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {profile.role === 'master' ? <Crown className="w-3 h-3" /> : <CalendarClock className="w-3 h-3" />}
+                              {statusLabel}
+                            </span>
+                            <span className="text-xs text-slate-400 font-mono truncate">{profile.uid}</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                            <input
+                              value={draft.email}
+                              onChange={(e) => updateManagedUserDraft(profile.uid, { email: e.target.value })}
+                              className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              placeholder="Email"
+                            />
+                            <input
+                              value={draft.displayName}
+                              onChange={(e) => updateManagedUserDraft(profile.uid, { displayName: e.target.value })}
+                              className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              placeholder="Display name"
+                            />
+                            <input
+                              type="date"
+                              value={draft.subscriptionEndsAtDate}
+                              disabled={profile.role === 'master'}
+                              onChange={(e) => updateManagedUserDraft(profile.uid, { subscriptionEndsAtDate: e.target.value })}
+                              className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+                            />
+                            <input
+                              type="text"
+                              value={draft.tempPassword}
+                              onChange={(e) => updateManagedUserDraft(profile.uid, { tempPassword: e.target.value })}
+                              className="px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              placeholder="New password (Admin SDK)"
+                            />
+                          </div>
+
+                          <textarea
+                            value={draft.notes}
+                            onChange={(e) => updateManagedUserDraft(profile.uid, { notes: e.target.value })}
+                            className="mt-3 w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            rows={2}
+                            placeholder="یادداشت فروش، شماره فاکتور، پلن مشتری..."
+                          />
+
+                          <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {MANAGED_USER_PERMISSION_KEYS.map((key) => (
+                              <label key={key} className={`flex items-center gap-2 text-[11px] rounded-lg border px-2 py-1.5 ${
+                                profile.permissions[key] ? 'border-indigo-200 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-slate-50 text-slate-500'
+                              }`}>
+                                <input
+                                  type="checkbox"
+                                  checked={profile.permissions[key]}
+                                  disabled={profile.role === 'master'}
+                                  onChange={(e) => handleToggleManagedUserPermission(profile, key, e.target.checked)}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                                />
+                                {APP_PERMISSION_LABELS[key]}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex 2xl:flex-col gap-2 2xl:w-40">
+                          <button
+                            onClick={() => handleSaveManagedUser(profile)}
+                            className="flex-1 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800"
+                          >
+                            ذخیره
+                          </button>
+                          <button
+                            onClick={() => setAdminWorkspaceUid(profile.uid)}
+                            className={`flex-1 px-3 py-2 rounded-xl text-xs font-bold ${
+                              isActiveWorkspace ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                            }`}
+                          >
+                            Workspace
+                          </button>
+                          {profile.role !== 'master' && (
+                            <>
+                              <button
+                                onClick={() => handleToggleManagedUserStatus(profile)}
+                                className="flex-1 px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100"
+                              >
+                                {profile.disabled ? 'فعال کن' : 'غیرفعال'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteManagedUserProfile(profile)}
+                                className="flex-1 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100"
+                              >
+                                حذف
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {managedUsers.length === 0 && (
+                  <div className="p-10 text-center text-sm text-slate-500">هنوز پروفایل کاربری ثبت نشده است.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboard = () => (
     <div className="space-y-6" data-dashboard-layout="export-warehouse-only">
       <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1 gap-1 shadow-sm">
@@ -10048,21 +10775,23 @@ function AppInner() {
           <LayoutDashboard className="w-4 h-4" />
           محاسبه صادرات
         </button>
-        <button
-          type="button"
-          onClick={() => setDashboardSubView('warehouse')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
-            dashboardSubView === 'warehouse'
-              ? 'bg-white text-teal-800 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <WarehouseIcon className="w-4 h-4" />
-          مدیریت انبار
-        </button>
+        {canUseWarehouse && (
+          <button
+            type="button"
+            onClick={() => setDashboardSubView('warehouse')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+              dashboardSubView === 'warehouse'
+                ? 'bg-white text-teal-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <WarehouseIcon className="w-4 h-4" />
+            مدیریت انبار
+          </button>
+        )}
       </div>
 
-      {dashboardSubView === 'warehouse' ? (
+      {dashboardSubView === 'warehouse' && canUseWarehouse ? (
         <WarehousePanel
           products={products}
           suppliers={suppliers}
@@ -11856,7 +12585,7 @@ function AppInner() {
     const handleExportCatalogHtml = async () => {
         try {
             const inquiryEndpoint = (user && firebaseConfig && firebaseConfig.apiKey)
-                ? { firebaseConfig, appId, ownerId: user.uid }
+                ? { firebaseConfig, appId, ownerId: activeOwnerUid }
                 : null;
             const html = buildCatalogHtml({
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
@@ -11874,7 +12603,7 @@ function AppInner() {
             if (user && storage) {
                 setShareLinkInfo({ url: '', qr: '', uploading: true });
                 try {
-                    const path = `users/${user.uid}/catalogs/${safeTitle}-${Date.now()}.html`;
+                    const path = `users/${activeOwnerUid}/catalogs/${safeTitle}-${Date.now()}.html`;
                     const ref = storageRef(storage, path);
                     await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
                     const url = await getDownloadURL(ref);
@@ -11889,11 +12618,12 @@ function AppInner() {
                                 const shortUrlFull = new URL(`?c=${encodeURIComponent(shortCode)}`, window.location.href).href;
                                 await setDoc(pubRef, {
                                     url,
-                                    ownerUserId: user.uid,
+                                    appId: dataAppId,
+                                    ownerUserId: activeOwnerUid,
                                     storagePath: path,
                                     createdAt: serverTimestamp()
                                 });
-                                await addDoc(collection(db, 'artifacts', dataAppId, 'users', user.uid, 'catalogLinks'), {
+                                await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
                                     fullUrl: url,
                                     shortUrl: shortUrlFull,
                                     shortCode,
@@ -11956,7 +12686,7 @@ function AppInner() {
     const handleDownloadCatalogHtmlFile = async () => {
         try {
             const inquiryEndpoint = (user && firebaseConfig && firebaseConfig.apiKey)
-                ? { firebaseConfig, appId, ownerId: user.uid }
+                ? { firebaseConfig, appId, ownerId: activeOwnerUid }
                 : null;
             const html = buildCatalogHtml({
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
@@ -19911,18 +20641,10 @@ function AppInner() {
                 </div>
 
                 <nav className="hidden md:flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-                    {[
-                        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-                        { id: 'invoice', label: 'Proforma Invoice', icon: FileText },
-                        { id: 'forms', label: 'Forms', icon: ListTodo },
-                        { id: 'catalog', label: 'Catalog Gen', icon: LayoutTemplate },
-                        { id: 'suppliers', label: 'Suppliers', icon: Users },
-                        { id: 'buyers', label: 'Buyers', icon: Users },
-                        { id: 'community', label: 'Community', icon: Globe },
-                    ].map(item => (
+                    {visibleNavItems.map(item => (
                         <button
                             key={item.id}
-                            onClick={() => setView(item.id as any)}
+                            onClick={() => setView(item.id)}
                             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${view === item.id ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
                         >
                             <item.icon className="w-3.5 h-3.5" />
@@ -20000,53 +20722,39 @@ function AppInner() {
 
         {user && isMasterUser && (
             <div className="px-4 pb-3">
-                <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-indigo-700">Master User Manager</span>
-                    <input
-                        type="email"
-                        value={newUserEmail}
-                        onChange={(e) => setNewUserEmail(e.target.value)}
-                        placeholder="New user email"
-                        className="w-52 px-2.5 py-1.5 text-xs border border-indigo-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <input
-                        type="password"
-                        value={newUserPassword}
-                        onChange={(e) => setNewUserPassword(e.target.value)}
-                        placeholder="Temporary password"
-                        className="w-44 px-2.5 py-1.5 text-xs border border-indigo-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <button
-                        onClick={handleMasterCreateUser}
-                        disabled={isCreatingUser}
-                        className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors flex items-center gap-1.5"
-                    >
-                        {isCreatingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                        Create User
-                    </button>
-                    {masterActionMessage && <span className="text-xs text-indigo-700">{masterActionMessage}</span>}
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                        <span className="text-xs font-semibold text-indigo-800">
+                            Master Mode
+                            {adminWorkspaceUid && activeOwnerProfile ? `: managing ${activeOwnerProfile.email}` : ': managing master workspace'}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {masterActionMessage && <span className="text-xs text-indigo-700">{masterActionMessage}</span>}
+                        {adminWorkspaceUid && (
+                            <button
+                                onClick={() => setAdminWorkspaceUid('')}
+                                className="px-2.5 py-1 rounded-md bg-white border border-indigo-200 text-indigo-700 text-xs font-semibold hover:bg-indigo-100"
+                            >
+                                Back to master workspace
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         )}
 
         <div className="md:hidden px-3 pb-3 space-y-2">
             <nav className="flex gap-2 overflow-x-auto">
-                {[
-                    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-                    { id: 'invoice', label: 'Invoice', icon: FileText },
-                    { id: 'forms', label: 'Forms', icon: ListTodo },
-                    { id: 'catalog', label: 'Catalog', icon: LayoutTemplate },
-                    { id: 'suppliers', label: 'Suppliers', icon: Users },
-                    { id: 'buyers', label: 'Buyers', icon: Users },
-                    { id: 'community', label: 'Community', icon: Globe },
-                ].map(item => (
+                {visibleNavItems.map(item => (
                     <button
                         key={item.id}
-                        onClick={() => setView(item.id as any)}
+                        onClick={() => setView(item.id)}
                         className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${view === item.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
                         <item.icon className="w-3.5 h-3.5" />
-                        {item.label}
+                        {item.shortLabel || item.label}
                     </button>
                 ))}
             </nav>
@@ -20074,13 +20782,18 @@ function AppInner() {
                   {cloudLoadError}
               </div>
           )}
-          {view === 'dashboard' && renderDashboard()}
-          {view === 'invoice' && renderInvoice()}
-          {view === 'forms' && renderForms()}
-          {view === 'catalog' && renderCatalog()}
-          {view === 'suppliers' && renderSuppliers()}
-          {view === 'buyers' && renderBuyers()}
-          {view === 'community' && renderCommunity()}
+          {currentUserAccessBlocked ? renderAccessBlocked() : (
+            <>
+              {view === 'dashboard' && renderDashboard()}
+              {view === 'invoice' && renderInvoice()}
+              {view === 'forms' && renderForms()}
+              {view === 'catalog' && renderCatalog()}
+              {view === 'suppliers' && renderSuppliers()}
+              {view === 'buyers' && renderBuyers()}
+              {view === 'community' && renderCommunity()}
+              {view === 'admin' && isMasterUser && renderAdminDashboard()}
+            </>
+          )}
       </main>
 
       {/* --- MODALS --- */}
@@ -21889,7 +22602,7 @@ function AppInner() {
                                         if (storage && user && !isDemoMode && user.uid !== DEMO_USER_ID) {
                                           const previousPath = field.htmlStoragePath;
                                           const safeName = sanitizeFormHtmlFileName(file.name);
-                                          const path = `users/${user.uid}/formPresentations/${Date.now()}_${safeName}`;
+                                          const path = `users/${activeOwnerUid}/formPresentations/${Date.now()}_${safeName}`;
                                           const sRef = storageRef(storage, path);
                                           file.text()
                                             .then((rawHtml) =>

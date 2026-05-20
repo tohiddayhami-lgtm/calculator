@@ -1,14 +1,87 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profileExists(appId, userId) {
+      return exists(/databases/$(database)/documents/artifacts/$(appId)/userProfiles/$(userId));
+    }
+
+    function profile(appId, userId) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/userProfiles/$(userId)).data;
+    }
+
+    function isMaster(appId) {
+      return signedIn()
+             && (
+               request.auth.token.admin == true
+               || request.auth.token.master == true
+               || (
+                 profileExists(appId, request.auth.uid)
+                 && profile(appId, request.auth.uid).role == 'master'
+               )
+             );
+    }
+
+    function hasActiveSubscription(appId, userId) {
+      return !profileExists(appId, userId)
+             || (
+               profile(appId, userId).status == 'active'
+               && profile(appId, userId).disabled != true
+               && (
+                 !profile(appId, userId).keys().hasAny(['subscriptionEndsAt'])
+                 || profile(appId, userId).subscriptionEndsAt == null
+                 || profile(appId, userId).subscriptionEndsAt > request.time.toMillis()
+               )
+             );
+    }
+
+    function canAccessUserData(appId, userId) {
+      return signedIn()
+             && (
+               (request.auth.uid == userId && hasActiveSubscription(appId, userId))
+               || isMaster(appId)
+             );
+    }
+
+    // Commercial user registry: master can manage all users; users can read/bootstrap their own profile.
+    match /artifacts/{appId}/userProfiles/{profileUserId} {
+      allow read: if signedIn() && (request.auth.uid == profileUserId || isMaster(appId));
+      allow create: if signedIn()
+                    && (
+                      isMaster(appId)
+                      || (
+                        request.auth.uid == profileUserId
+                        && request.resource.data.uid == profileUserId
+                        && request.resource.data.email == request.auth.token.email
+                      )
+                    );
+      allow update: if signedIn()
+                    && (
+                      isMaster(appId)
+                      || (
+                        request.auth.uid == profileUserId
+                        && request.resource.data.uid == resource.data.uid
+                        && request.resource.data.role == resource.data.role
+                        && request.resource.data.status == resource.data.status
+                        && request.resource.data.disabled == resource.data.disabled
+                        && request.resource.data.permissions == resource.data.permissions
+                        && request.resource.data.subscriptionEndsAt == resource.data.subscriptionEndsAt
+                      )
+                    );
+      allow delete: if isMaster(appId) && request.auth.uid != profileUserId;
+    }
+
     // Each user can only read/write their own projects
     match /artifacts/{appId}/users/{userId}/projects/{projectId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if canAccessUserData(appId, userId);
     }
 
     // Saved HTML catalog share-link metadata (owner only)
     match /artifacts/{appId}/users/{userId}/catalogLinks/{linkId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if canAccessUserData(appId, userId);
     }
 
     // Public short-link lookup: anyone with the code can read the long Storage URL (then browser redirects).
@@ -17,25 +90,38 @@ service cloud.firestore {
       allow read: if true;
       allow create: if request.auth != null
                     && request.resource.data.keys().hasAll(['url', 'ownerUserId', 'storagePath', 'createdAt'])
-                    && request.resource.data.ownerUserId == request.auth.uid
+                    && (
+                      request.resource.data.ownerUserId == request.auth.uid
+                      || (
+                        request.resource.data.keys().hasAny(['appId'])
+                        && isMaster(request.resource.data.appId)
+                      )
+                    )
                     && request.resource.data.url is string
                     && request.resource.data.storagePath is string
                     && request.resource.data.url.size() < 4000
                     && request.resource.data.storagePath.size() < 500
                     && code.size() >= 8
                     && code.size() <= 16;
-      allow delete: if request.auth != null && resource.data.ownerUserId == request.auth.uid;
+      allow delete: if request.auth != null
+                    && (
+                      resource.data.ownerUserId == request.auth.uid
+                      || (
+                        resource.data.keys().hasAny(['appId'])
+                        && isMaster(resource.data.appId)
+                      )
+                    );
       allow update: if false;
     }
 
     // Saved seller / business profiles — owner only
     match /artifacts/{appId}/users/{userId}/sellerProfiles/{profileId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if canAccessUserData(appId, userId);
     }
 
     // Archived (issued) invoices + their payments — owner only
     match /artifacts/{appId}/users/{userId}/invoiceArchive/{invoiceId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if canAccessUserData(appId, userId);
     }
 
     // Customer inquiries (from the public HTML catalog)
@@ -44,7 +130,7 @@ service cloud.firestore {
                     && request.resource.data.size() < 30
                     && request.resource.data.get('items', []) is list
                     && request.resource.data.get('items', []).size() < 200;
-      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow read, update, delete: if canAccessUserData(appId, userId);
     }
 
     // Community posts — all authenticated users can read; owner creates/deletes; no edits by others
@@ -57,7 +143,7 @@ service cloud.firestore {
                     && request.resource.data.title.size() > 0
                     && request.resource.data.title.size() < 300;
       allow delete: if request.auth != null
-                    && resource.data.authorId == request.auth.uid;
+                    && (resource.data.authorId == request.auth.uid || isMaster(appId));
       allow update: if request.auth != null
                     && resource.data.authorId == request.auth.uid
                     && request.resource.data.authorId == resource.data.authorId
@@ -71,7 +157,7 @@ service cloud.firestore {
 
     // Custom forms (per user) — owner read/write
     match /artifacts/{appId}/users/{userId}/forms/{formId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if canAccessUserData(appId, userId);
     }
 
     // Form submissions — anyone can create (public submit); owner reads/manages
@@ -79,27 +165,41 @@ service cloud.firestore {
       allow create: if request.resource.data.keys().hasAll(['formKey', 'formName', 'submittedAt', 'data', 'isRead'])
                     && request.resource.data.data is map
                     && request.resource.data.data.size() < 100;
-      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow read, update, delete: if canAccessUserData(appId, userId);
     }
 
     // Public form definitions — anyone can read; owner creates/updates/deletes
     match /publicForms/{key} {
       allow read: if true;
       allow create: if request.auth != null
-                    && request.resource.data.ownerUid == request.auth.uid
+                    && (
+                      request.resource.data.ownerUid == request.auth.uid
+                      || isMaster(request.resource.data.appId)
+                    )
                     && request.resource.data.keys().hasAll(['ownerUid', 'appId', 'name', 'fields', 'isActive'])
                     && request.resource.data.fields is list
                     && request.resource.data.fields.size() < 100;
-      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if request.auth != null
+                            && (
+                              resource.data.ownerUid == request.auth.uid
+                              || isMaster(resource.data.appId)
+                            );
     }
 
     // Heavy public form assets — loaded after the text definition so forms open faster.
     match /publicFormAssets/{key} {
       allow read: if true;
       allow create: if request.auth != null
-                    && request.resource.data.ownerUid == request.auth.uid
+                    && (
+                      request.resource.data.ownerUid == request.auth.uid
+                      || isMaster(request.resource.data.appId)
+                    )
                     && request.resource.data.keys().hasAll(['ownerUid', 'appId']);
-      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if request.auth != null
+                            && (
+                              resource.data.ownerUid == request.auth.uid
+                              || isMaster(resource.data.appId)
+                            );
     }
 
     // Deny everything else
