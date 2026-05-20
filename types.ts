@@ -806,7 +806,7 @@ export type FormFieldType =
   | 'text' | 'textarea' | 'number' | 'email' | 'phone' | 'date' | 'select'
   | 'multiselect' | 'checkbox' | 'rating'
   | 'image_upload' | 'video_upload' | 'file_upload'
-  | 'display_image' | 'section_title';
+  | 'display_image' | 'html_embed' | 'section_title';
 
 export interface FormField {
   id: string;
@@ -832,6 +832,9 @@ export interface FormField {
   /** image_upload only: max number of images (default 5). */
   maxFiles?: number;
   imageUrl?: string;       // for display_image type
+  htmlContent?: string;    // for html_embed type (stored HTML file contents)
+  htmlFileName?: string;   // original uploaded HTML filename
+  htmlFrameTitle?: string; // iframe title / presentation title
   maxRating?: number;      // for rating type (default 5)
 }
 

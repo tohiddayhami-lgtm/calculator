@@ -259,6 +259,7 @@ const FORM_APPENDIX_MAX_IMAGES = 6;
 const FORM_APPENDIX_IMAGE_MAX_DIMENSION = 1400;
 const FORM_APPENDIX_IMAGE_QUALITY = 0.78;
 const FORM_APPENDIX_IMAGE_TARGET_BYTES = 140 * 1024;
+const FORM_HTML_EMBED_MAX_BYTES = 900 * 1024;
 
 type FormArchiveFolder = {
   id: string;
@@ -1108,6 +1109,41 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   object-fit: contain;
   background: #fff;
 }
+.public-form-doc .pf-html-presentation {
+  border: 1px solid #dbeafe;
+  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+}
+.public-form-doc .pf-html-frame-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #020617;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+.public-form-doc .pf-html-frame-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+.public-form-doc .pf-html-empty {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 9pt;
+  text-align: center;
+  padding: 12px;
+}
 .public-form-doc .pf-appendix {
   margin-top: 18px;
   padding-top: 18px;
@@ -1474,6 +1510,10 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   .public-form-doc .pf-img-display {
     max-height: 220px;
     width: 100%;
+  }
+  .public-form-doc .pf-html-frame-wrap,
+  .public-form-doc .pf-html-empty {
+    aspect-ratio: 16 / 9;
   }
   .public-form-doc .pf-appendix-grid {
     grid-template-columns: 1fr;
@@ -2751,6 +2791,11 @@ function printCustomFormBuilderPreview(form: CustomFormDef): void {
           ? `<img src="${escapeAttr(f.imageUrl)}" alt="" class="pf-img-display" />`
           : '<p class="pf-section-note">No image URL configured</p>';
         return `<div class="pf-field"><span class="pf-label">${label}</span>${img}</div>`;
+      }
+      if (f.type === 'html_embed') {
+        const caption = f.placeholder ? `<p class="pf-section-note" style="margin-top:8px;">${escapeHtml(f.placeholder)}</p>` : '';
+        const fileName = f.htmlFileName ? `<p class="pf-section-note" style="margin-bottom:8px;">${escapeHtml(f.htmlFileName)}</p>` : '';
+        return `<div class="pf-field pf-html-presentation"><span class="pf-label">${label}</span>${fileName}<div class="pf-html-empty">HTML presentation frame (16:9)</div>${caption}</div>`;
       }
       const typeHint = escapeHtml(String(f.type).replace(/_/g, ' '));
       return `<div class="pf-field"><span class="pf-label">${label}${req}</span><div class="pf-input" style="min-height:28px;color:#94a3b8;font-size:9pt;line-height:28px;">[${typeHint}]</div></div>`;
@@ -15757,6 +15802,43 @@ function AppInner() {
         );
       }
 
+      if (field.type === 'html_embed') {
+        const capSingle = String(field.placeholder ?? '').trim();
+        const title = field.htmlFrameTitle || field.label || 'HTML presentation';
+        return (
+          <div key={field.id} className="pf-field pf-html-presentation">
+            {bi ? (
+              <div className="pf-bilingual-row pf-label-row" style={{ marginBottom: 6 }}>
+                <span className="pf-label pf-bilingual-ltr">
+                  {ltrT}
+                </span>
+                <span className="pf-label pf-bilingual-rtl">
+                  {rtlT}
+                </span>
+              </div>
+            ) : (
+              <span className="pf-label">{field.label}</span>
+            )}
+            {field.htmlFileName ? <p className="pf-section-note" style={{ marginBottom: 8 }}>{field.htmlFileName}</p> : null}
+            {field.htmlContent ? (
+              <div className="pf-html-frame-wrap">
+                <iframe
+                  title={title}
+                  srcDoc={field.htmlContent}
+                  sandbox="allow-scripts allow-forms allow-popups allow-presentation"
+                  allow="fullscreen; autoplay; encrypted-media"
+                  allowFullScreen
+                  loading="lazy"
+                />
+              </div>
+            ) : (
+              <div className="pf-html-empty">No HTML presentation uploaded.</div>
+            )}
+            {capSingle ? <p className="pf-section-note" style={{ marginTop: 8 }}>{capSingle}</p> : null}
+          </div>
+        );
+      }
+
       const phLtr = String(field.placeholderLtr ?? '').trim();
       const phRtl = String(field.placeholderRtl ?? '').trim();
       const phSingle = field.placeholder || '';
@@ -16185,7 +16267,7 @@ function AppInner() {
     _for_ai_models:
       'Return ONLY valid JSON with this structure. Every fields[] item needs a unique string id. Bilingual UI: set labelRtl with label (English) or labelLtr for left column + labelRtl for right; use placeholderLtr/placeholderRtl for paired hints; for file_upload use uploadHintLtr/uploadHintRtl for the dashed box. For customer photos use image_upload (multiple images: maxFiles default 5, maxSizeMb default 5 per image). display_image = fixed image URL. Optional appendix: appendixEnabled, appendixTitle, appendixHtml, appendixImages[], appendixPositionIndex (0 = before first field, fields.length = after last).',
     _field_types:
-      'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | image_upload | video_upload | file_upload',
+      'text | textarea | email | phone | number | date | select | multiselect | checkbox | rating | display_image | html_embed | image_upload | video_upload | file_upload',
     _root_keys:
       'name, formNumber, accessLevel ("public" | "internal"), description, companyName, headerSubtitle, logoUrl, headerBgColor, headerTextColor, showWorkflowGuide, workflowGuideTitle, workflowGuideTitleRtl, workflowSteps[], appendixEnabled, appendixTitle, appendixHtml, appendixImages[], appendixPositionIndex, fields',
     _workflow_guide:
@@ -16248,6 +16330,14 @@ function AppInner() {
         label: 'Example packing / pallet layout',
         imageUrl: 'https://picsum.photos/seed/ceformpacking/900/450',
         placeholder: 'Second reference image — optional.',
+      },
+      {
+        id: 'html_presentation',
+        type: 'html_embed',
+        label: 'Presentation / product story',
+        htmlFileName: '',
+        htmlFrameTitle: 'Product presentation',
+        placeholder: 'Upload an HTML file in the builder. It will appear in a fixed 16:9 frame for customers.',
       },
       {
         id: 'sec_customer_photos',
@@ -20954,9 +21044,10 @@ function AppInner() {
                     };
                     const isFileType = ['image_upload', 'video_upload', 'file_upload'].includes(field.type);
                     const isChoiceType = ['select', 'multiselect'].includes(field.type);
-                    const isDisplayOnly = ['section_title', 'display_image'].includes(field.type);
+                    const isDisplayOnly = ['section_title', 'display_image', 'html_embed'].includes(field.type);
                     const typeColors: Record<string, string> = {
                       section_title: 'bg-slate-100 border-slate-300', display_image: 'bg-purple-50 border-purple-200',
+                      html_embed: 'bg-sky-50 border-sky-200',
                       image_upload: 'bg-pink-50 border-pink-200', video_upload: 'bg-orange-50 border-orange-200',
                       file_upload: 'bg-amber-50 border-amber-200', rating: 'bg-yellow-50 border-yellow-200',
                     };
@@ -20977,7 +21068,7 @@ function AppInner() {
                               {(['image_upload','video_upload','file_upload'] as FormFieldType[]).map((t) => <option key={t} value={t}>{t}</option>)}
                             </optgroup>
                             <optgroup label="── Display / Layout">
-                              {(['section_title','display_image'] as FormFieldType[]).map((t) => <option key={t} value={t}>{t}</option>)}
+                              {(['section_title','display_image','html_embed'] as FormFieldType[]).map((t) => <option key={t} value={t}>{t}</option>)}
                             </optgroup>
                           </select>
                           <input type="text" value={field.label} placeholder="Label"
@@ -21055,7 +21146,7 @@ function AppInner() {
                               />
                             </div>
                           </div>
-                          {field.type !== 'section_title' && field.type !== 'display_image' && (
+                          {field.type !== 'section_title' && field.type !== 'display_image' && field.type !== 'html_embed' && (
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="text-[9px] text-slate-500 block mb-0.5">placeholderLtr</label>
@@ -21105,7 +21196,7 @@ function AppInner() {
                         </div>
 
                         {/* Placeholder / hint text */}
-                        {!isDisplayOnly && field.type !== 'display_image' && field.type !== 'section_title' && (
+                        {!isDisplayOnly && field.type !== 'display_image' && field.type !== 'section_title' && field.type !== 'html_embed' && (
                           <input type="text" value={field.placeholder || ''} placeholder={field.type === 'checkbox' ? 'Checkbox label text' : 'Placeholder / hint text (optional)'}
                             onChange={(e) => upd({ placeholder: e.target.value })}
                             className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
@@ -21185,6 +21276,99 @@ function AppInner() {
                               </div>
                             </div>
                           </>
+                        )}
+
+                        {/* HTML presentation: uploaded HTML rendered in a fixed 16:9 frame */}
+                        {field.type === 'html_embed' && (
+                          <div className="rounded-lg border border-sky-100 bg-white p-3 space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] text-slate-500 block mb-0.5">Frame title</label>
+                                <input
+                                  type="text"
+                                  value={field.htmlFrameTitle || ''}
+                                  onChange={(e) => upd({ htmlFrameTitle: e.target.value || undefined })}
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                  placeholder="Presentation title"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block mb-0.5">Uploaded file</label>
+                                <div className="flex items-center gap-2">
+                                  <label className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 cursor-pointer">
+                                    <FileUp className="w-3.5 h-3.5" /> Upload HTML
+                                    <input
+                                      type="file"
+                                      accept=".html,.htm,text/html"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        e.target.value = '';
+                                        if (!file) return;
+                                        if (!/\.html?$/i.test(file.name) && file.type !== 'text/html') {
+                                          alert('Please upload an .html file.');
+                                          return;
+                                        }
+                                        if (file.size > FORM_HTML_EMBED_MAX_BYTES) {
+                                          alert(`HTML file is too large. Max ${(FORM_HTML_EMBED_MAX_BYTES / 1024).toFixed(0)} KB.`);
+                                          return;
+                                        }
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                          upd({
+                                            htmlContent: String(reader.result || ''),
+                                            htmlFileName: file.name,
+                                            htmlFrameTitle: field.htmlFrameTitle || file.name.replace(/\.html?$/i, ''),
+                                          });
+                                        };
+                                        reader.onerror = () => alert('Could not read this HTML file.');
+                                        reader.readAsText(file);
+                                      }}
+                                    />
+                                  </label>
+                                  {field.htmlContent ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => upd({ htmlContent: undefined, htmlFileName: undefined })}
+                                      className="px-2 py-1.5 text-xs rounded border border-red-100 bg-red-50 text-red-600 hover:bg-red-100"
+                                    >
+                                      Clear
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-500 block mb-0.5">Caption / helper text</label>
+                              <input
+                                type="text"
+                                value={field.placeholder || ''}
+                                onChange={(e) => upd({ placeholder: e.target.value || undefined })}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                placeholder="Shown under the presentation frame"
+                              />
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-950 overflow-hidden">
+                              <div className="aspect-video bg-slate-900 flex items-center justify-center">
+                                {field.htmlContent ? (
+                                  <iframe
+                                    title={field.htmlFrameTitle || field.label || 'HTML presentation preview'}
+                                    srcDoc={field.htmlContent}
+                                    sandbox="allow-scripts allow-forms allow-popups allow-presentation"
+                                    allow="fullscreen; autoplay; encrypted-media"
+                                    className="w-full h-full border-0 bg-white"
+                                  />
+                                ) : (
+                                  <div className="text-center text-xs text-slate-400 px-4">
+                                    Upload an HTML file to preview it in a YouTube-style 16:9 frame.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                              The frame is sandboxed. Large HTML files are blocked to keep public forms fast.
+                            </p>
+                          </div>
                         )}
 
                         {/* Options for select / multiselect */}
