@@ -11,6 +11,7 @@ const DEFAULT_PERMISSIONS = {
   warehouse: true,
   invoice: true,
   forms: true,
+  iso: true,
   catalog: true,
   suppliers: true,
   buyers: true,

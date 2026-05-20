@@ -8,6 +8,7 @@ export type AppPermissionKey =
   | 'warehouse'
   | 'invoice'
   | 'forms'
+  | 'iso'
   | 'catalog'
   | 'suppliers'
   | 'buyers'

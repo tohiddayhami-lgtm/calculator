@@ -2517,6 +2517,7 @@ const APP_PERMISSION_LABELS: Record<AppPermissionKey, string> = {
   warehouse: 'مدیریت انبار',
   invoice: 'پروفورما و فاکتور',
   forms: 'فرم‌ها و قراردادها',
+  iso: 'سیستم ISO',
   catalog: 'کاتالوگ آنلاین',
   suppliers: 'تامین‌کنندگان',
   buyers: 'خریداران',
@@ -2538,6 +2539,7 @@ const DEFAULT_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
   warehouse: true,
   invoice: true,
   forms: true,
+  iso: true,
   catalog: true,
   suppliers: true,
   buyers: true,
@@ -2549,6 +2551,7 @@ const MASTER_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
   warehouse: true,
   invoice: true,
   forms: true,
+  iso: true,
   catalog: true,
   suppliers: true,
   buyers: true,
@@ -5778,6 +5781,7 @@ function AppInner() {
     && !!currentUserProfile
     && (currentUserProfile.disabled || isManagedUserExpired(currentUserProfile));
   const canUseWarehouse = isMasterUser || currentPermissions.warehouse;
+  const canUseIso = isMasterUser || currentPermissions.iso;
   const canAccessView = (candidate: AppView) => {
     if (candidate === 'admin') return isMasterUser;
     const permissionKey = VIEW_PERMISSION_KEY[candidate];
@@ -6445,6 +6449,12 @@ function AppInner() {
       setView(fallback);
     }
   }, [view, isMasterUser, currentPermissions]);
+
+  useEffect(() => {
+    if (formsSubView === 'iso' && !canUseIso) {
+      setFormsSubView('list');
+    }
+  }, [formsSubView, canUseIso]);
 
   // Auto-assign SKU to any product missing one (e.g., legacy data, JSON import)
   useEffect(() => {
@@ -7360,6 +7370,154 @@ function AppInner() {
       updatedAt: now,
       isPublished: false,
     };
+  };
+
+  const isoTemplateKinds: { kind: IsoDocumentKind; label: string; file: string }[] = [
+    { kind: 'online_form', label: 'قالب JSON فرم آنلاین ISO', file: 'iso_online_form_ai_template.json' },
+    { kind: 'instruction', label: 'قالب JSON دستورالعمل', file: 'iso_instruction_ai_template.json' },
+    { kind: 'procedure', label: 'قالب JSON روش اجرایی', file: 'iso_procedure_ai_template.json' },
+    { kind: 'checklist', label: 'قالب JSON چک لیست', file: 'iso_checklist_ai_template.json' },
+    { kind: 'contract_format', label: 'قالب JSON فرمت قرارداد', file: 'iso_contract_format_ai_template.json' },
+    { kind: 'form_format', label: 'قالب JSON فرمت فرم', file: 'iso_form_format_ai_template.json' },
+  ];
+
+  const buildIsoAiTemplate = (kind: IsoDocumentKind) => {
+    const base = makeBlankIsoDocument(kind);
+    const examples: Record<IsoDocumentKind, Partial<IsoDocumentDef>> = {
+      procedure: {
+        title: 'روش اجرایی کنترل مستندات',
+        docNo: 'ISO-QMS-PR-001',
+        purpose: 'تعیین روش ایجاد، بازنگری، تصویب، انتشار و ابطال مستندات سیستم مدیریت کیفیت.',
+        scope: 'کلیه مستندات داخلی، فرم‌ها، چک لیست‌ها، قراردادها و سوابق مرتبط با فرآیندهای سازمان.',
+        responsibilities: 'مالک فرآیند مسئول تهیه پیش نویس است. نماینده مدیریت مسئول بازنگری و مدیرعامل مسئول تصویب نهایی است.',
+      },
+      instruction: {
+        title: 'دستورالعمل تکمیل فرم ارزیابی تامین کننده',
+        docNo: 'ISO-QMS-WI-001',
+        purpose: 'یکسان سازی نحوه تکمیل فرم ارزیابی تامین کنندگان.',
+        scope: 'واحد خرید، کنترل کیفیت و بازرگانی.',
+        responsibilities: 'کارشناس خرید فرم را تکمیل و مدیر خرید آن را تایید می‌کند.',
+      },
+      online_form: {
+        title: 'فرم آنلاین درخواست اقدام اصلاحی',
+        docNo: 'ISO-QMS-FR-001',
+        purpose: 'ثبت آنلاین عدم انطباق، ریشه‌یابی و اقدام اصلاحی.',
+        scope: 'همه واحدهای سازمان.',
+        responsibilities: 'ثبت کننده عدم انطباق، مالک فرآیند و تاییدکننده اقدام اصلاحی.',
+      },
+      checklist: {
+        title: 'چک لیست ممیزی داخلی ISO 9001',
+        docNo: 'ISO-QMS-CL-001',
+        purpose: 'کنترل آمادگی واحدها برای ممیزی داخلی.',
+        scope: 'فرآیندهای فروش، خرید، تولید، انبار، کنترل کیفیت و مدیریت.',
+        responsibilities: 'ممیز داخلی مسئول تکمیل چک لیست و گزارش نتایج است.',
+      },
+      contract_format: {
+        title: 'فرمت قرارداد خدمات صادراتی',
+        docNo: 'ISO-CTR-TPL-001',
+        purpose: 'استانداردسازی ساختار قراردادهای خدمات صادراتی و جلوگیری از حذف بندهای کلیدی.',
+        scope: 'تمام قراردادهای خدماتی و تجاری قابل صدور توسط واحد بازرگانی.',
+        responsibilities: 'واحد حقوقی تهیه، مدیر بازرگانی تایید و مدیرعامل تصویب می‌کند.',
+      },
+      form_format: {
+        title: 'فرمت فرم درخواست خرید',
+        docNo: 'ISO-FRM-TPL-001',
+        purpose: 'استانداردسازی فرم‌های داخلی و آنلاین.',
+        scope: 'فرم‌های عملیاتی و اداری سازمان.',
+        responsibilities: 'مالک فرآیند فرم را تهیه و نماینده مدیریت کنترل می‌کند.',
+      },
+    };
+    const merged = { ...base, ...examples[kind], id: '', publishedKey: undefined, isPublished: false };
+    return {
+      _schema: 'cloudexport_iso_document_v1',
+      _how_to_use:
+        'این فایل را به هوش مصنوعی بدهید و بگویید فقط مقدار document را با محتوای واقعی شما کامل کند. سپس JSON خروجی را در ISO System > Import ISO JSON وارد کنید.',
+      _document_kinds: ['procedure', 'instruction', 'online_form', 'checklist', 'contract_format', 'form_format'],
+      document: {
+        ...merged,
+        sections: [
+          { id: 'sec_1', title: 'تعاریف و مراجع', body: 'تعاریف، استانداردهای مرجع و اصطلاحات تخصصی را اینجا بنویسید.' },
+          { id: 'sec_2', title: 'شرح روش / الزامات', body: 'گام‌های اجرایی، کنترل‌ها، مدارک لازم و خروجی‌های قابل قبول را کامل کنید.' },
+          { id: 'sec_3', title: 'سوابق و نگهداری', body: 'سوابق تولیدشده، محل نگهداری، مسئول نگهداری و مدت نگهداری را مشخص کنید.' },
+        ],
+        workflowSteps: [
+          { label: 'Request', labelRtl: 'درخواست' },
+          { label: 'Review', labelRtl: 'بررسی' },
+          { label: 'Approval', labelRtl: 'تصویب' },
+          { label: 'Release', labelRtl: 'انتشار' },
+        ],
+        checklistItems: [
+          { id: 'chk_1', text: 'کد سند و Revision کنترل شده است.', owner: 'Document Controller', required: true },
+          { id: 'chk_2', text: 'امضاهای تهیه، تایید و تصویب تکمیل شده است.', owner: 'QA Manager', required: true },
+        ],
+        approvals: makeIsoApprovals(),
+      },
+    };
+  };
+
+  const downloadIsoTemplate = (kind: IsoDocumentKind) => {
+    const opt = isoTemplateKinds.find((x) => x.kind === kind);
+    downloadJsonFile(opt?.file || `iso_${kind}_ai_template.json`, buildIsoAiTemplate(kind));
+  };
+
+  const normalizeIsoImport = (raw: any): IsoDocumentDef => {
+    const source = raw?.document || raw?.isoDocument || raw;
+    const validKinds = isoTemplateKinds.map((x) => x.kind);
+    const kind = validKinds.includes(source?.kind) ? source.kind as IsoDocumentKind : 'procedure';
+    const validStatuses: IsoDocumentStatus[] = ['draft', 'under_review', 'approved', 'obsolete'];
+    const base = makeBlankIsoDocument(kind);
+    const now = Date.now();
+    return {
+      ...base,
+      ...source,
+      id: '',
+      kind,
+      status: validStatuses.includes(source?.status) ? source.status : 'draft',
+      sections: Array.isArray(source?.sections) ? source.sections.map((s: any, idx: number) => ({
+        id: String(s?.id || `sec_${now}_${idx}`),
+        title: String(s?.title || `Section ${idx + 1}`),
+        body: String(s?.body || ''),
+      })) : base.sections,
+      workflowSteps: Array.isArray(source?.workflowSteps) ? source.workflowSteps.map((s: any) => ({
+        label: String(s?.label || ''),
+        labelRtl: String(s?.labelRtl || ''),
+      })) : base.workflowSteps,
+      checklistItems: Array.isArray(source?.checklistItems) ? source.checklistItems.map((item: any, idx: number) => ({
+        id: String(item?.id || `chk_${now}_${idx}`),
+        text: String(item?.text || ''),
+        owner: String(item?.owner || ''),
+        required: item?.required !== false,
+      })) : base.checklistItems,
+      linkedFormIds: Array.isArray(source?.linkedFormIds) ? source.linkedFormIds.map(String) : [],
+      approvals: Array.isArray(source?.approvals) && source.approvals.length
+        ? makeIsoApprovals().map((sig) => ({ ...sig, ...(source.approvals.find((a: any) => a?.role === sig.role) || {}) }))
+        : makeIsoApprovals(),
+      createdAt: now,
+      updatedAt: now,
+      publishedKey: undefined,
+      isPublished: false,
+    };
+  };
+
+  const importIsoJson = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result || '{}'));
+          setIsoDraft(normalizeIsoImport(parsed));
+        } catch (err: any) {
+          alert('Invalid ISO JSON: ' + (err?.message || err));
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   };
 
   const isoPublicUrl = (docDef: IsoDocumentDef) =>
@@ -20178,6 +20336,25 @@ function AppInner() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  const kind = e.target.value as IsoDocumentKind;
+                  if (kind) downloadIsoTemplate(kind);
+                  e.currentTarget.value = '';
+                }}
+                className="px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-xs font-bold text-white outline-none"
+                title="دانلود قالب JSON برای دادن به هوش مصنوعی"
+              >
+                <option value="" className="text-slate-900">AI JSON Sample...</option>
+                {isoTemplateKinds.map((opt) => (
+                  <option key={opt.kind} value={opt.kind} className="text-slate-900">{opt.label}</option>
+                ))}
+              </select>
+              <button onClick={importIsoJson}
+                className="px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-xs font-bold hover:bg-white/20 flex items-center gap-1.5">
+                <Upload className="w-3.5 h-3.5" /> Import ISO JSON
+              </button>
               {(['procedure', 'instruction', 'checklist', 'online_form', 'contract_format', 'form_format'] as IsoDocumentKind[]).map((kind) => (
                 <button key={kind} onClick={() => setIsoDraft(makeBlankIsoDocument(kind))}
                   className="px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-xs font-bold hover:bg-white/20">
@@ -20383,11 +20560,15 @@ function AppInner() {
           <ListTodo className="w-4 h-4" /> Custom Forms
         </button>
         <div className="w-px bg-slate-200" />
-        <button onClick={() => setFormsSubView('iso')}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'iso' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <BadgeCheck className="w-4 h-4" /> ISO System
-        </button>
-        <div className="w-px bg-slate-200" />
+        {canUseIso && (
+          <>
+            <button onClick={() => setFormsSubView('iso')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'iso' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <BadgeCheck className="w-4 h-4" /> ISO System
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
         <button onClick={() => { setFormsSubView('contracts'); setContractsSubView('list'); }}
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'contracts' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
           <FileText className="w-4 h-4" /> Contracts
@@ -20424,7 +20605,7 @@ function AppInner() {
         </button>
       </div>
       {formsSubView === 'list' && renderCustomFormsList()}
-      {formsSubView === 'iso' && renderIsoSystem()}
+      {formsSubView === 'iso' && canUseIso && renderIsoSystem()}
       {formsSubView === 'contracts' && renderContracts()}
       {formsSubView === 'proposals' && renderProposals()}
       {formsSubView === 'education' && (
