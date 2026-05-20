@@ -5979,6 +5979,7 @@ function AppInner() {
   const [palletTypeLabel, setPalletTypeLabel] = useState('پالت استاندارد اروپا');
   const [profitLossReportTerm, setProfitLossReportTerm] = useState<'' | 'EXW' | 'FCA' | 'FOB' | 'CIF' | 'DDP'>('');
   const [buyerProfitPercent, setBuyerProfitPercent] = useState<number>(20);
+  const [buyerProfitType, setBuyerProfitType] = useState<'markup' | 'margin'>('markup');
 
   // Invoice Specific
   const [customerName, setCustomerName] = useState('');
@@ -9398,7 +9399,7 @@ function AppInner() {
         invoiceOrientation,
         invoiceLayout,
         invoiceWelteTrade,
-        containerCapacity, containerType, loadUnitType, palletTypeLabel, profitLossReportTerm, buyerProfitPercent,
+        containerCapacity, containerType, loadUnitType, palletTypeLabel, profitLossReportTerm, buyerProfitPercent, buyerProfitType,
         invoiceIssueDateMs,
         invoiceDueDateMs,
         editingArchiveInvoiceId,
@@ -9623,6 +9624,7 @@ function AppInner() {
     setPalletTypeLabel(String((project.data as any).palletTypeLabel || 'پالت استاندارد اروپا'));
     setProfitLossReportTerm((['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].includes((project.data as any).profitLossReportTerm) ? (project.data as any).profitLossReportTerm : '') as any);
     setBuyerProfitPercent(Number((project.data as any).buyerProfitPercent ?? 20));
+    setBuyerProfitType((project.data as any).buyerProfitType === 'margin' ? 'margin' : 'markup');
 
     setSuppliers(project.data.suppliers || []);
     setBuyers((prev) =>
@@ -10593,7 +10595,14 @@ function AppInner() {
     const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
     const selectedTermRow = calculations.breakdown.find((row) => row.term === selectedTerm) || calculations.breakdown[0];
     const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
-    const buyerResaleRevenue = (selectedTermRow?.totalSell || 0) * (1 + buyerMarkup / 100);
+    const applyBuyerProfit = (cost: number) => {
+      if (buyerProfitType === 'margin') {
+        const factor = 1 - buyerMarkup / 100;
+        return factor > 0 ? cost / factor : cost;
+      }
+      return cost * (1 + buyerMarkup / 100);
+    };
+    const buyerResaleRevenue = applyBuyerProfit(selectedTermRow?.totalSell || 0);
     const buyerGrossProfit = buyerResaleRevenue - (selectedTermRow?.totalSell || 0);
     const buyerMargin = buyerResaleRevenue > 0 ? (buyerGrossProfit / buyerResaleRevenue) * 100 : 0;
     const fmt = (value: number) => formatMoney(value || 0, config.outputCurrency);
@@ -10625,7 +10634,10 @@ function AppInner() {
       const lineSell = termRow?.lineSell ?? unitSell * (p.qty || 0);
       const lineProfit = termRow?.lineProfit ?? lineSell - lineCost;
       const lineMargin = termRow?.profitMargin ?? (lineSell > 0 ? (lineProfit / lineSell) * 100 : 0);
-      const buyerLineRevenue = lineSell * (1 + buyerMarkup / 100);
+      const buyerUnitResale = applyBuyerProfit(unitSell);
+      const buyerUnitProfit = buyerUnitResale - unitSell;
+      const buyerLineRevenue = buyerUnitResale * (p.qty || 0);
+      const buyerLineProfit = buyerLineRevenue - lineSell;
       const supplier = p.supplierId ? suppliers.find((s) => s.id === p.supplierId) : undefined;
       return `
         <tr>
@@ -10640,6 +10652,7 @@ function AppInner() {
           <td class="num">${escapeHtml(fmt(unitSell))}</td>
           <td class="num profit">${escapeHtml(fmt(lineProfit))}<small>${escapeHtml(pct(lineMargin))}</small></td>
           <td class="num">${escapeHtml(fmt(buyerLineRevenue))}</td>
+          <td class="num profit">${escapeHtml(fmt(buyerUnitProfit))}<small>${escapeHtml(fmt(buyerLineProfit))} line</small></td>
         </tr>
       `;
     }).join('');
@@ -10732,7 +10745,7 @@ function AppInner() {
     <div class="kpi"><span class="label">Selected term</span><div class="value">${escapeHtml(selectedTermRow?.term || selectedTerm)}</div><div class="hint">chosen report basis</div></div>
     <div class="kpi"><span class="label">Your revenue</span><div class="value">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</div><div class="hint">sell value at selected term</div></div>
     <div class="kpi"><span class="label">Your gross profit</span><div class="value" style="color:${marginColor}">${escapeHtml(fmt(selectedTermRow?.totalProfit || 0))}</div><div class="hint">${escapeHtml(pct(selectedTermRow?.profitMargin || 0))} margin</div></div>
-    <div class="kpi"><span class="label">Buyer resale</span><div class="value">${escapeHtml(fmt(buyerResaleRevenue))}</div><div class="hint">${escapeHtml(pct(buyerMarkup))} markup for buyer</div></div>
+    <div class="kpi"><span class="label">Buyer resale</span><div class="value">${escapeHtml(fmt(buyerResaleRevenue))}</div><div class="hint">${escapeHtml(pct(buyerMarkup))} ${escapeHtml(buyerProfitType)} for buyer</div></div>
   </div>
 
   <div class="financial-grid">
@@ -10751,8 +10764,8 @@ function AppInner() {
 
   <section class="section">
     <h2>Product line profitability</h2>
-    <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">${escapeHtml(selectedTerm)} unit sell</th><th class="num">${escapeHtml(selectedTerm)} profit</th><th class="num">Buyer resale</th></tr></thead><tbody>
-      ${productRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
+    <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">${escapeHtml(selectedTerm)} unit sell</th><th class="num">${escapeHtml(selectedTerm)} profit</th><th class="num">Buyer resale</th><th class="num">Buyer unit profit</th></tr></thead><tbody>
+      ${productRows || '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
     </tbody></table>
   </section>
 
@@ -10760,8 +10773,8 @@ function AppInner() {
     <h2>Buyer profit simulation</h2>
     <table><tbody>
       <tr><td><strong>Buyer purchase value</strong><span>Your selling value at selected Incoterm: ${escapeHtml(selectedTerm)}</span></td><td class="num">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</td></tr>
-      <tr><td><strong>Buyer markup</strong><span>Optional resale profit entered in the dashboard</span></td><td class="num">${escapeHtml(pct(buyerMarkup))}</td></tr>
-      <tr><td><strong>Buyer resale revenue</strong><span>Purchase value × (1 + buyer markup)</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
+      <tr><td><strong>Buyer ${escapeHtml(buyerProfitType)}</strong><span>Optional resale profit entered in the dashboard</span></td><td class="num">${escapeHtml(pct(buyerMarkup))}</td></tr>
+      <tr><td><strong>Buyer resale revenue</strong><span>${escapeHtml(buyerProfitType === 'margin' ? 'Purchase value / (1 - buyer margin)' : 'Purchase value × (1 + buyer markup)')}</span></td><td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td></tr>
       <tr class="total-row"><td>Buyer gross profit<span>Buyer resale revenue - buyer purchase value</span></td><td class="num">${escapeHtml(fmt(buyerGrossProfit))} <span>${escapeHtml(pct(buyerMargin))} buyer margin</span></td></tr>
     </tbody></table>
   </section>
@@ -10950,6 +10963,7 @@ function AppInner() {
             palletTypeLabel,
             profitLossReportTerm,
             buyerProfitPercent,
+            buyerProfitType,
             invoiceIssueDateMs,
             invoiceDueDateMs,
             editingArchiveInvoiceId,
@@ -11035,6 +11049,7 @@ function AppInner() {
     palletTypeLabel,
     profitLossReportTerm,
     buyerProfitPercent,
+    buyerProfitType,
     invoiceIssueDateMs,
     invoiceDueDateMs,
     editingArchiveInvoiceId,
@@ -11301,6 +11316,7 @@ function AppInner() {
     setPalletTypeLabel('پالت استاندارد اروپا');
     setProfitLossReportTerm('');
     setBuyerProfitPercent(20);
+    setBuyerProfitType('markup');
     setCustomerName('');
     setCustomerFirstName('');
     setCustomerLastName('');
@@ -13237,7 +13253,14 @@ function AppInner() {
         const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
         const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
         const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
-        const buyerResaleRevenue = (selectedReportRow?.totalSell || 0) * (1 + buyerMarkup / 100);
+        const calcBuyerResale = (cost: number) => {
+          if (buyerProfitType === 'margin') {
+            const factor = 1 - buyerMarkup / 100;
+            return factor > 0 ? cost / factor : cost;
+          }
+          return cost * (1 + buyerMarkup / 100);
+        };
+        const buyerResaleRevenue = calcBuyerResale(selectedReportRow?.totalSell || 0);
         const buyerGrossProfit = buyerResaleRevenue - (selectedReportRow?.totalSell || 0);
         const costCards = [
           { label: 'Product + EXW', value: calculations.costs.exw, tone: 'from-slate-700 to-slate-900' },
@@ -13268,7 +13291,7 @@ function AppInner() {
                 </button>
               </div>
 
-              <div className="grid md:grid-cols-[1fr_1fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
+              <div className="grid md:grid-cols-[1fr_1.15fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
                 <label>
                   <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">مبنای گزارش سود و زیان</span>
                   <select
@@ -13289,6 +13312,14 @@ function AppInner() {
                       className="w-full text-sm text-slate-900 font-bold outline-none"
                     />
                     <span className="text-slate-400 text-xs font-bold">%</span>
+                    <select
+                      value={buyerProfitType}
+                      onChange={(e) => setBuyerProfitType(e.target.value as 'markup' | 'margin')}
+                      className="text-xs border-l border-slate-200 pl-2 text-slate-700 font-bold outline-none bg-white"
+                    >
+                      <option value="markup">Markup</option>
+                      <option value="margin">Margin</option>
+                    </select>
                   </div>
                 </label>
                 <div className="rounded-xl bg-slate-950/30 border border-white/10 px-3 py-2 min-w-[12rem]">
@@ -13313,7 +13344,7 @@ function AppInner() {
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer Profit</p>
                   <p className="text-xl font-black mt-1">{profitLossReportTerm ? formatMoney(buyerGrossProfit, config.outputCurrency) : '-'}</p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">{buyerMarkup.toFixed(1)}% buyer markup</p>
+                  <p className="text-[11px] text-blue-100/80 mt-1">{buyerMarkup.toFixed(1)}% buyer {buyerProfitType}</p>
                 </div>
                 <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Shipment</p>
