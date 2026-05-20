@@ -10700,6 +10700,15 @@ function AppInner() {
   td span{display:block;color:#64748b;font-size:8.5px;margin-top:2px}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.profit{font-weight:900;color:#059669}.profit small{display:block;color:#64748b;font-size:8px;font-weight:600}
   .term{display:inline-block;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:3px 7px;font-weight:900}
   .grid2{display:grid;grid-template-columns:1.05fr .95fr;gap:10px;margin-top:10px}
+  .financial-grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
+  .pl-table{table-layout:fixed;font-size:9px}
+  .pl-table th,.pl-table td{padding:6px 5px}
+  .pl-table th:nth-child(1),.pl-table td:nth-child(1){width:12%}
+  .pl-table th:nth-child(2),.pl-table td:nth-child(2),
+  .pl-table th:nth-child(3),.pl-table td:nth-child(3),
+  .pl-table th:nth-child(4),.pl-table td:nth-child(4){width:22%}
+  .pl-table th:nth-child(5),.pl-table td:nth-child(5),
+  .pl-table th:nth-child(6),.pl-table td:nth-child(6){width:11%}
   .total-row td{background:#ecfdf5;font-weight:900;color:#065f46}
   .note{font-size:9px;color:#64748b;line-height:1.5;padding:9px 11px;background:#f8fafc}
   .signatures{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:22px}.sig{border-top:1px solid #94a3b8;text-align:center;padding-top:7px;font-size:9px;color:#64748b}
@@ -10726,7 +10735,7 @@ function AppInner() {
     <div class="kpi"><span class="label">Buyer resale</span><div class="value">${escapeHtml(fmt(buyerResaleRevenue))}</div><div class="hint">${escapeHtml(pct(buyerMarkup))} markup for buyer</div></div>
   </div>
 
-  <div class="grid2">
+  <div class="financial-grid">
     <section class="section">
       <h2>Cost structure</h2>
       <table><tbody>
@@ -10736,7 +10745,7 @@ function AppInner() {
     </section>
     <section class="section">
       <h2>P&amp;L by Incoterm</h2>
-      <table><thead><tr><th>Term</th><th class="num">Cost</th><th class="num">Sell</th><th class="num">Profit</th><th class="num">Markup</th><th class="num">Margin</th></tr></thead><tbody>${termRows}</tbody></table>
+      <table class="pl-table"><thead><tr><th>Term</th><th class="num">Cost</th><th class="num">Sell</th><th class="num">Profit</th><th class="num">Markup</th><th class="num">Margin</th></tr></thead><tbody>${termRows}</tbody></table>
     </section>
   </div>
 
