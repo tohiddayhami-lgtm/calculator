@@ -8568,67 +8568,26 @@ function AppInner() {
       }
   };
 
-  const handleSyncAuthUsers = async (silent = false) => {
-      if (!isMasterUser) return;
-      if (!cloudFunctions) {
-          if (!silent) setMasterActionMessage('برای آوردن کاربران Authentication باید Cloud Functions را deploy کنی.');
-          return;
-      }
-      try {
-          setManagedAuthSyncing(true);
-          const data: any = await callAdminFunction('listManagedAuthUsers', {});
-          setManagedAuthSyncedOnce(true);
-          setMasterActionMessage(`Authentication synced: ${data?.count || 0} user(s).`);
-      } catch (err: any) {
-          if (!silent) setMasterActionMessage(err?.message || 'Failed to sync Authentication users.');
-      } finally {
-          setManagedAuthSyncing(false);
-      }
+  const isCloudFunctionUnavailableError = (err: any) => {
+      const message = String(err?.message || err || '').toLowerCase();
+      return (
+        message.includes('internal')
+        || message.includes('not-found')
+        || message.includes('unavailable')
+        || message.includes('failed to fetch')
+        || message.includes('deadline-exceeded')
+      );
   };
 
-  const handleMasterCreateUser = async () => {
-      setMasterActionMessage('');
-      const emailToCreate = newUserEmail.trim();
-      if (!emailToCreate || !newUserPassword) {
-          setMasterActionMessage('Enter new user email and password.');
-          return;
-      }
-
-      if (!firebaseConfig || !firebaseConfig.apiKey || !isMasterUser) {
-          setMasterActionMessage('Only master account can create users.');
-          return;
-      }
-
+  const createUserWithClientFallback = async (emailToCreate: string, passwordToCreate: string, expiresAt: number | null) => {
       let secondaryApp: any = null;
       try {
-          setIsCreatingUser(true);
-          const now = Date.now();
-          const expiresAt = newUserSubscriptionDays > 0 ? addDays(now, newUserSubscriptionDays) : null;
-
-          if (cloudFunctions) {
-            const data: any = await callAdminFunction('createManagedAuthUser', {
-              email: emailToCreate,
-              password: newUserPassword,
-              displayName: newUserDisplayName.trim(),
-              permissions: normalizeManagedPermissions(newUserPermissions, true),
-              subscriptionEndsAt: expiresAt,
-            });
-            setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
-            setNewUserEmail('');
-            setNewUserDisplayName('');
-            setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
-            setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
-            setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
-            setMasterActionMessage(`User created. Login: ${emailToCreate} / ${newUserPassword}`);
-            if (data?.uid) setAdminWorkspaceUid(data.uid);
-            return;
-          }
-
           secondaryApp = initializeApp(firebaseConfig, `secondary-${Date.now()}`);
           const secondaryAuth = getAuth(secondaryApp);
-          const cred = await createUserWithEmailAndPassword(secondaryAuth, emailToCreate, newUserPassword);
+          const cred = await createUserWithEmailAndPassword(secondaryAuth, emailToCreate, passwordToCreate);
           await signOut(secondaryAuth);
           if (db) {
+            const now = Date.now();
             const profile: ManagedUserProfile = {
               uid: cred.user.uid,
               email: emailToCreate,
@@ -8649,15 +8608,7 @@ function AppInner() {
               'Create managed user profile'
             );
           }
-          setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
-          setNewUserEmail('');
-          setNewUserDisplayName('');
-          setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
-          setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
-          setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
-          setMasterActionMessage(`User created. Login: ${emailToCreate} / ${newUserPassword}`);
-      } catch (error: any) {
-          setMasterActionMessage(error?.message || 'Failed to create user.');
+          return cred.user.uid;
       } finally {
           if (secondaryApp) {
               try {
@@ -8666,6 +8617,97 @@ function AppInner() {
                   // Ignore cleanup errors.
               }
           }
+      }
+  };
+
+  const handleSyncAuthUsers = async (silent = false) => {
+      if (!isMasterUser) return;
+      if (!cloudFunctions) {
+          if (!silent) setMasterActionMessage('برای آوردن کاربران Authentication باید Cloud Functions را deploy کنی.');
+          return;
+      }
+      try {
+          setManagedAuthSyncing(true);
+          const data: any = await callAdminFunction('listManagedAuthUsers', {});
+          setManagedAuthSyncedOnce(true);
+          setMasterActionMessage(`Authentication synced: ${data?.count || 0} user(s).`);
+      } catch (err: any) {
+          if (!silent) {
+            const message = err?.message || 'Failed to sync Authentication users.';
+            setMasterActionMessage(
+              isCloudFunctionUnavailableError(err)
+                ? `Sync needs deployed Cloud Functions. Run: firebase deploy --only functions. Details: ${message}`
+                : message
+            );
+          }
+      } finally {
+          setManagedAuthSyncing(false);
+      }
+  };
+
+  const handleMasterCreateUser = async () => {
+      setMasterActionMessage('');
+      const emailToCreate = newUserEmail.trim();
+      if (!emailToCreate || !newUserPassword) {
+          setMasterActionMessage('Enter new user email and password.');
+          return;
+      }
+
+      if (!firebaseConfig || !firebaseConfig.apiKey || !isMasterUser) {
+          setMasterActionMessage('Only master account can create users.');
+          return;
+      }
+
+      try {
+          setIsCreatingUser(true);
+          const now = Date.now();
+          const expiresAt = newUserSubscriptionDays > 0 ? addDays(now, newUserSubscriptionDays) : null;
+
+          if (cloudFunctions) {
+            try {
+              const data: any = await callAdminFunction('createManagedAuthUser', {
+                email: emailToCreate,
+                password: newUserPassword,
+                displayName: newUserDisplayName.trim(),
+                permissions: normalizeManagedPermissions(newUserPermissions, true),
+                subscriptionEndsAt: expiresAt,
+              });
+              setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
+              setNewUserEmail('');
+              setNewUserDisplayName('');
+              setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
+              setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
+              setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
+              setMasterActionMessage(`User created. Login: ${emailToCreate} / ${newUserPassword}`);
+              if (data?.uid) setAdminWorkspaceUid(data.uid);
+              return;
+            } catch (err: any) {
+              if (!isCloudFunctionUnavailableError(err)) throw err;
+              const uid = await createUserWithClientFallback(emailToCreate, newUserPassword, expiresAt);
+              setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
+              setNewUserEmail('');
+              setNewUserDisplayName('');
+              setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
+              setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
+              setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
+              setMasterActionMessage(`User created with client fallback. Deploy Functions for Sync/delete/reset. Login: ${emailToCreate} / ${newUserPassword}`);
+              if (uid) setAdminWorkspaceUid(uid);
+              return;
+            }
+          }
+
+          const uid = await createUserWithClientFallback(emailToCreate, newUserPassword, expiresAt);
+          setLastCreatedCredentials({ email: emailToCreate, password: newUserPassword });
+          setNewUserEmail('');
+          setNewUserDisplayName('');
+          setNewUserPassword(DEFAULT_NEW_USER_PASSWORD);
+          setNewUserSubscriptionDays(DEFAULT_NEW_USER_SUBSCRIPTION_DAYS);
+          setNewUserPermissions(DEFAULT_USER_PERMISSIONS);
+          setMasterActionMessage(`User created. Login: ${emailToCreate} / ${newUserPassword}`);
+          if (uid) setAdminWorkspaceUid(uid);
+      } catch (error: any) {
+          setMasterActionMessage(error?.message || 'Failed to create user.');
+      } finally {
           setIsCreatingUser(false);
       }
   };
