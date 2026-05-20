@@ -1123,6 +1123,9 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   border: 1px solid #cbd5e1;
   background: #020617;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+  touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: auto;
 }
 .public-form-doc .pf-html-frame-wrap--portrait {
   aspect-ratio: 9 / 16;
@@ -1137,6 +1140,7 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   height: 100%;
   border: 0;
   background: #fff;
+  touch-action: none;
 }
 .public-form-doc .pf-html-controls {
   position: absolute;
@@ -1180,6 +1184,8 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   align-items: center;
   justify-content: center;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 .pf-html-modal-toolbar {
   position: absolute;
@@ -1214,6 +1220,8 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   border: 1px solid rgba(255,255,255,0.18);
   background: #000;
   box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 .pf-html-modal-frame--portrait {
   width: min(92vw, 560px);
@@ -1225,6 +1233,7 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   height: 100%;
   border: 0;
   background: #fff;
+  touch-action: none;
 }
 .public-form-doc .pf-html-empty {
   aspect-ratio: 16 / 9;
@@ -5309,6 +5318,18 @@ function AppInner() {
   const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
   const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
   const [headerPresetSaveName, setHeaderPresetSaveName] = useState('');
+
+  useEffect(() => {
+    if (!publicHtmlFrameOpenId || typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    const prevTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouchAction;
+    };
+  }, [publicHtmlFrameOpenId]);
 
   // -- STATE: CONTRACTS --
   const [contracts, setContracts] = useState<ContractDef[]>(() => {
