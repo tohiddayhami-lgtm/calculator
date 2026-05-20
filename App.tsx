@@ -1179,10 +1179,6 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
   width: 11px;
   height: 11px;
 }
-.public-form-doc .pf-html-controls .pf-html-skip-label {
-  font-size: 9px;
-  line-height: 1;
-}
 .pf-html-modal {
   position: fixed;
   inset: 0;
@@ -1225,10 +1221,6 @@ const PUBLIC_FORM_DOCUMENT_CSS = `
 .pf-html-modal-btn svg {
   width: 13px;
   height: 13px;
-}
-.pf-html-modal-btn .pf-html-skip-label {
-  font-size: 10px;
-  line-height: 1;
 }
 .pf-html-modal-frame {
   width: min(96vw, 1280px);
@@ -2691,34 +2683,6 @@ const escapeHtml = (s: any): string => {
 const escapeAttr = escapeHtml;
 
 const PUBLIC_FORM_ASSETS_COLLECTION = 'publicFormAssets';
-const HTML_PRESENTATION_CONTROL_MARKER = 'data-custom-form-video-controls';
-
-function withHtmlPresentationControls(html: string): string {
-  const value = String(html || '');
-  if (!value.trim() || value.includes(HTML_PRESENTATION_CONTROL_MARKER)) return value;
-  const script = `<script ${HTML_PRESENTATION_CONTROL_MARKER}="1">
-(function(){
-  window.addEventListener('message', function(event) {
-    var data = event.data || {};
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data); } catch (e) { return; }
-    }
-    if (!data || data.type !== 'custom-form-video-skip') return;
-    var seconds = Number(data.seconds || 0);
-    if (!isFinite(seconds) || !seconds) return;
-    var videos = document.querySelectorAll('video');
-    videos.forEach(function(video) {
-      try {
-        var duration = isFinite(video.duration) ? video.duration : Number.MAX_SAFE_INTEGER;
-        video.currentTime = Math.max(0, Math.min(duration, video.currentTime + seconds));
-      } catch (e) {}
-    });
-  });
-})();
-</script>`;
-  if (/<\/body>/i.test(value)) return value.replace(/<\/body>/i, script + '</body>');
-  return value + script;
-}
 
 type PublicFormAssetPayload = {
   appendixImages?: CustomFormAppendixImage[];
@@ -2735,7 +2699,7 @@ function splitPublicFormPayload(form: CustomFormDef, ownerUid: string, dataAppId
     }
     if (field.type === 'html_embed') {
       const asset: Partial<FormField> = {};
-      if (field.htmlContent) asset.htmlContent = withHtmlPresentationControls(field.htmlContent);
+      if (field.htmlContent) asset.htmlContent = field.htmlContent;
       if (field.htmlUrl) asset.htmlUrl = field.htmlUrl;
       if (field.htmlStoragePath) asset.htmlStoragePath = field.htmlStoragePath;
       if (Object.keys(asset).length) fieldAssets[field.id] = { ...(fieldAssets[field.id] || {}), ...asset };
@@ -2812,11 +2776,9 @@ function getYouTubeEmbedUrl(rawUrl: string | undefined): string {
     if (!/^[A-Za-z0-9_-]{6,}$/.test(videoId)) return '';
     const start = url.searchParams.get('start') || url.searchParams.get('t') || '';
     const params = new URLSearchParams({
-      enablejsapi: '1',
       playsinline: '1',
       rel: '0',
     });
-    if (typeof window !== 'undefined' && window.location.origin) params.set('origin', window.location.origin);
     if (/^\d+$/.test(start)) params.set('start', start);
     return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
   } catch {
@@ -5436,8 +5398,6 @@ function AppInner() {
   const [publicFormRatings, setPublicFormRatings] = useState<Record<string, number>>({});
   const [publicHtmlFrameOpenId, setPublicHtmlFrameOpenId] = useState<string | null>(null);
   const [publicHtmlFramePortrait, setPublicHtmlFramePortrait] = useState<Record<string, boolean>>({});
-  const [publicYouTubeTimes, setPublicYouTubeTimes] = useState<Record<string, number>>({});
-  const publicYouTubePollersRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const [formHeaderPresets, setFormHeaderPresets] = useState<FormHeaderPreset[]>([]);
   const [formHeaderPresetsReady, setFormHeaderPresetsReady] = useState(false);
   const [selectedHeaderPresetId, setSelectedHeaderPresetId] = useState('');
@@ -5454,32 +5414,6 @@ function AppInner() {
       document.body.style.touchAction = prevTouchAction;
     };
   }, [publicHtmlFrameOpenId]);
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (typeof document === 'undefined') return;
-      let payload: any = event.data;
-      if (typeof payload === 'string') {
-        try { payload = JSON.parse(payload); } catch { return; }
-      }
-      const currentTime = payload?.info?.currentTime;
-      if (typeof currentTime !== 'number') return;
-      const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>('iframe[data-yt-field]'));
-      const matched = frames.find((frame) => frame.contentWindow === event.source);
-      const fieldId = matched?.getAttribute('data-yt-field');
-      if (!fieldId) return;
-      setPublicYouTubeTimes((prev) => ({ ...prev, [fieldId]: currentTime }));
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      Object.values(publicYouTubePollersRef.current).forEach((timer) => clearInterval(timer));
-      publicYouTubePollersRef.current = {};
-    };
-  }, []);
 
   // -- STATE: CONTRACTS --
   const [contracts, setContracts] = useState<ContractDef[]>(() => {
@@ -16069,62 +16003,6 @@ function AppInner() {
     const rawAccent = (form.headerBgColor || '#0f172a').trim();
     const accentHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawAccent) ? rawAccent : '#0f172a';
 
-    const postYouTubeCommand = (fieldId: string, func: string, args: any[] = []) => {
-      if (typeof document === 'undefined') return;
-      document.querySelectorAll<HTMLIFrameElement>('iframe[data-yt-field]').forEach((frame) => {
-        if (frame.getAttribute('data-yt-field') !== fieldId) return;
-        frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
-      });
-    };
-
-    const registerYouTubeFrame = (fieldId: string) => {
-      if (publicYouTubePollersRef.current[fieldId]) return;
-      const listen = () => {
-        if (typeof document === 'undefined') return;
-        document.querySelectorAll<HTMLIFrameElement>('iframe[data-yt-field]').forEach((frame) => {
-          if (frame.getAttribute('data-yt-field') !== fieldId) return;
-          frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: fieldId }), '*');
-        });
-      };
-      const ping = () => {
-        listen();
-        postYouTubeCommand(fieldId, 'getCurrentTime');
-      };
-      window.setTimeout(ping, 500);
-      publicYouTubePollersRef.current[fieldId] = setInterval(ping, 1000);
-    };
-
-    const skipYouTubeSeconds = (fieldId: string, delta: number) => {
-      const current = publicYouTubeTimes[fieldId] || 0;
-      postYouTubeCommand(fieldId, 'seekTo', [Math.max(0, current + delta), true]);
-    };
-
-    const skipUploadedHtmlVideoSeconds = (fieldId: string, delta: number) => {
-      if (typeof document === 'undefined') return;
-      document.querySelectorAll<HTMLIFrameElement>('iframe[data-html-field]').forEach((frame) => {
-        if (frame.getAttribute('data-html-field') !== fieldId) return;
-        frame.contentWindow?.postMessage({ type: 'custom-form-video-skip', seconds: delta }, '*');
-      });
-    };
-
-    const skipPresentationSeconds = (field: FormField, delta: number, isYouTube: boolean) => {
-      if (isYouTube) skipYouTubeSeconds(field.id, delta);
-      else skipUploadedHtmlVideoSeconds(field.id, delta);
-    };
-
-    const requestHtmlFrameFullscreen = (fieldId: string, targetId?: string) => {
-      const el = document.getElementById(targetId || `pf-html-frame-${fieldId}`);
-      const request = (el as any)?.requestFullscreen || (el as any)?.webkitRequestFullscreen || (el as any)?.msRequestFullscreen;
-      if (request) {
-        try {
-          const result = request.call(el);
-          if (result && typeof result.catch === 'function') result.catch(() => setPublicHtmlFrameOpenId(fieldId));
-          return;
-        } catch {}
-      }
-      setPublicHtmlFrameOpenId(fieldId);
-    };
-
     const renderField = (field: FormField) => {
       const setVal = (v: string) => setPublicFormData((prev) => ({ ...prev, [field.id]: v }));
       const val = publicFormData[field.id] || '';
@@ -16236,15 +16114,10 @@ function AppInner() {
         const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
         const hasPresentation = !!linkedPresentation || !!field.htmlContent;
         const isPortrait = !!publicHtmlFramePortrait[field.id];
-        const isYouTube = linkedPresentation?.kind === 'youtube';
-        const canSkipPresentation = isYouTube || !!field.htmlContent || !!field.htmlStoragePath;
         const frame = linkedPresentation ? (
           <iframe
             title={title}
             src={linkedPresentation.embedUrl}
-            data-yt-field={isYouTube ? field.id : undefined}
-            data-html-field={!isYouTube && field.htmlStoragePath ? field.id : undefined}
-            onLoad={isYouTube ? () => registerYouTubeFrame(field.id) : undefined}
             sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
             allow="fullscreen; autoplay; encrypted-media"
             allowFullScreen
@@ -16254,8 +16127,7 @@ function AppInner() {
         ) : field.htmlContent ? (
           <iframe
             title={title}
-            srcDoc={withHtmlPresentationControls(field.htmlContent)}
-            data-html-field={field.id}
+            srcDoc={field.htmlContent}
             sandbox="allow-scripts allow-forms allow-popups allow-presentation"
             allow="fullscreen; autoplay; encrypted-media"
             allowFullScreen
@@ -16292,16 +16164,6 @@ function AppInner() {
               >
                 {frame}
                 <div className="pf-html-controls pf-print-hide">
-                  {canSkipPresentation ? (
-                    <>
-                      <button type="button" title="Back 3 seconds" aria-label="Back 3 seconds" onClick={() => skipPresentationSeconds(field, -3, isYouTube)}>
-                        <span className="pf-html-skip-label">-3</span>
-                      </button>
-                      <button type="button" title="Forward 3 seconds" aria-label="Forward 3 seconds" onClick={() => skipPresentationSeconds(field, 3, isYouTube)}>
-                        <span className="pf-html-skip-label">+3</span>
-                      </button>
-                    </>
-                  ) : null}
                   <button
                     type="button"
                     title="Rotate"
@@ -16724,15 +16586,10 @@ function AppInner() {
       const linkedPresentation = getHtmlPresentationUrl(field.htmlUrl);
       const title = field.htmlFrameTitle || field.label || 'Presentation';
       const isPortrait = !!publicHtmlFramePortrait[field.id];
-      const isYouTube = linkedPresentation?.kind === 'youtube';
-      const canSkipPresentation = isYouTube || !!field.htmlContent || !!field.htmlStoragePath;
       const frame = linkedPresentation ? (
         <iframe
           title={title}
           src={linkedPresentation.embedUrl}
-          data-yt-field={isYouTube ? field.id : undefined}
-          data-html-field={!isYouTube && field.htmlStoragePath ? field.id : undefined}
-          onLoad={isYouTube ? () => registerYouTubeFrame(field.id) : undefined}
           sandbox="allow-scripts allow-forms allow-popups allow-presentation allow-same-origin"
           allow="fullscreen; autoplay; encrypted-media"
           allowFullScreen
@@ -16741,8 +16598,7 @@ function AppInner() {
       ) : field.htmlContent ? (
         <iframe
           title={title}
-          srcDoc={withHtmlPresentationControls(field.htmlContent)}
-          data-html-field={field.id}
+          srcDoc={field.htmlContent}
           sandbox="allow-scripts allow-forms allow-popups allow-presentation"
           allow="fullscreen; autoplay; encrypted-media"
           allowFullScreen
@@ -16755,16 +16611,6 @@ function AppInner() {
           <div className="pf-html-modal-toolbar">
             <div className="pf-html-modal-title">{title}</div>
             <div className="pf-html-modal-actions">
-              {canSkipPresentation ? (
-                <>
-                  <button type="button" className="pf-html-modal-btn" title="Back 3 seconds" aria-label="Back 3 seconds" onClick={() => skipPresentationSeconds(field, -3, isYouTube)}>
-                    <span className="pf-html-skip-label">-3</span>
-                  </button>
-                  <button type="button" className="pf-html-modal-btn" title="Forward 3 seconds" aria-label="Forward 3 seconds" onClick={() => skipPresentationSeconds(field, 3, isYouTube)}>
-                    <span className="pf-html-skip-label">+3</span>
-                  </button>
-                </>
-              ) : null}
               <button
                 type="button"
                 className="pf-html-modal-btn"
@@ -16775,19 +16621,6 @@ function AppInner() {
                 }
               >
                 <RotateCw className="w-4 h-4" /> Rotate
-              </button>
-              <button
-                type="button"
-                className="pf-html-modal-btn"
-                title="Fullscreen"
-                aria-label="Fullscreen"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  requestHtmlFrameFullscreen(field.id, `pf-html-modal-frame-${field.id}`);
-                }}
-              >
-                <Maximize2 className="w-4 h-4" /> Fullscreen
               </button>
               <button type="button" className="pf-html-modal-btn" title="Close" aria-label="Close" onClick={() => setPublicHtmlFrameOpenId(null)}>
                 <X className="w-4 h-4" /> Close
@@ -21915,7 +21748,7 @@ function AppInner() {
                                           const sRef = storageRef(storage, path);
                                           file.text()
                                             .then((rawHtml) =>
-                                              uploadString(sRef, withHtmlPresentationControls(rawHtml), 'raw', {
+                                              uploadString(sRef, rawHtml, 'raw', {
                                                 contentType: 'text/html; charset=utf-8',
                                                 cacheControl: 'public,max-age=300',
                                               })
@@ -21942,7 +21775,7 @@ function AppInner() {
                                           const reader = new FileReader();
                                           reader.onload = () => {
                                             applyUploaded({
-                                              htmlContent: withHtmlPresentationControls(String(reader.result || '')),
+                                              htmlContent: String(reader.result || ''),
                                               htmlUrl: undefined,
                                               htmlStoragePath: undefined,
                                             });
