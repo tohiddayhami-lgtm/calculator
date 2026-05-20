@@ -93,6 +93,12 @@ import {
   FormAccessLevel,
   FormHeaderPreset,
   FormSubmission,
+  IsoApprovalSignature,
+  IsoChecklistItem,
+  IsoDocumentDef,
+  IsoDocumentKind,
+  IsoDocumentSection,
+  IsoDocumentStatus,
   ServiceInvoiceLine,
   SavedService,
   ContractDef,
@@ -2960,6 +2966,34 @@ function buildLegacyPublicFormPayload(form: CustomFormDef, ownerUid: string, dat
   });
 }
 
+function buildPublicIsoPayload(docDef: IsoDocumentDef, ownerUid: string, dataAppIdValue: string, updatedAt = Date.now()) {
+  return stripUndefinedDeep({
+    ownerUid,
+    appId: dataAppIdValue,
+    title: docDef.title,
+    docNo: docDef.docNo,
+    revision: docDef.revision,
+    kind: docDef.kind,
+    status: docDef.status,
+    accessLevel: docDef.accessLevel === 'internal' ? 'internal' : 'public',
+    department: docDef.department || '',
+    processOwner: docDef.processOwner || '',
+    effectiveDate: docDef.effectiveDate || '',
+    nextReviewDate: docDef.nextReviewDate || '',
+    purpose: docDef.purpose || '',
+    scope: docDef.scope || '',
+    responsibilities: docDef.responsibilities || '',
+    sections: docDef.sections || [],
+    workflowTitle: docDef.workflowTitle || '',
+    workflowSteps: docDef.workflowSteps || [],
+    checklistItems: docDef.checklistItems || [],
+    linkedFormIds: docDef.linkedFormIds || [],
+    approvals: docDef.approvals || [],
+    isActive: true,
+    updatedAt,
+  });
+}
+
 function mergePublicFormAssets(form: any, assets: PublicFormAssetPayload | null | undefined) {
   if (!assets) return form;
   const fieldAssets = assets.fields || {};
@@ -5601,9 +5635,13 @@ function AppInner() {
   // -- STATE: FORMS --
   const [customForms, setCustomForms] = useState<CustomFormDef[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'contracts' | 'proposals' | 'education' | 'archive'>('list');
+  const [isoDocuments, setIsoDocuments] = useState<IsoDocumentDef[]>([]);
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'archive'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
+  const [isoDraft, setIsoDraft] = useState<IsoDocumentDef | null>(null);
+  const [isoSaving, setIsoSaving] = useState(false);
+  const [isoPublishing, setIsoPublishing] = useState<string | null>(null);
   const [editingForm, setEditingForm] = useState<CustomFormDef | null>(null);
   const [showFormSubmissions, setShowFormSubmissions] = useState(false);
   const [selectedFormSubmission, setSelectedFormSubmission] = useState<FormSubmission | null>(null);
@@ -5611,6 +5649,7 @@ function AppInner() {
   const [formBuilderSaving, setFormBuilderSaving] = useState(false);
   const [formPublishing, setFormPublishing] = useState<string | null>(null);
   const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
+  const [publicIsoView, setPublicIsoView] = useState<{ key: string; doc: IsoDocumentDef & any } | null>(null);
   const [publicFormMediaReady, setPublicFormMediaReady] = useState(false);
   const [publicFormAssetsLoading, setPublicFormAssetsLoading] = useState(false);
   const [publicFormData, setPublicFormData] = useState<Record<string, string>>({});
@@ -5619,7 +5658,8 @@ function AppInner() {
   const [publicFormLoading, setPublicFormLoading] = useState(() => {
     if (typeof window === 'undefined') return false;
     const k = new URLSearchParams(window.location.search).get('form');
-    return !!(k && k.length >= 8);
+    const isoKey = new URLSearchParams(window.location.search).get('iso');
+    return !!((k && k.length >= 8) || (isoKey && isoKey.length >= 8));
   });
   const [publicFormFiles, setPublicFormFiles] = useState<Record<string, File[]>>({});
   const [publicFormMulti, setPublicFormMulti] = useState<Record<string, string[]>>({});
@@ -6618,6 +6658,22 @@ function AppInner() {
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
+  // ISO / quality management documents listener
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) { setIsoDocuments([]); return; }
+    let q: any;
+    try { q = query(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments'), orderBy('updatedAt', 'desc')); }
+    catch { q = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments'); }
+    const unsub = onSnapshot(q, (snap: any) => {
+      const list = snap.docs.map((d: any) => ({ id: d.id, ...d.data() })) as IsoDocumentDef[];
+      list.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+      setIsoDocuments(list);
+    }, (err: any) => console.error('ISO documents listener failed:', err));
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
+
   // Form submissions listener
   useEffect(() => {
     if (authLoading) return;
@@ -6720,6 +6776,39 @@ function AppInner() {
           setPublicFormLoading(false);
           setPublicFormAssetsLoading(false);
         }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [db, user?.uid]);
+
+  // Public ISO / quality document view: ?iso=KEY
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const isoKey = sp.get('iso');
+    if (!isoKey || isoKey.length < 8) return;
+    if (!db) {
+      setPublicFormLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPublicFormLoading(true);
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'publicIsoDocuments', isoKey));
+        if (cancelled) return;
+        if (snap.exists() && snap.data()?.isActive !== false) {
+          setPublicIsoView({ key: isoKey, doc: snap.data() as IsoDocumentDef & any });
+        } else {
+          setPublicIsoView(null);
+        }
+      } catch (e) {
+        console.error('Public ISO document fetch failed:', e);
+        if (!cancelled) setPublicIsoView(null);
+      } finally {
+        if (!cancelled) setPublicFormLoading(false);
       }
     })();
     return () => {
@@ -7203,6 +7292,161 @@ function AppInner() {
       );
     } catch (err: any) {
       alert('Failed to unpublish: ' + (err?.message || err));
+    }
+  };
+
+  const isoKindLabel = (kind: IsoDocumentKind) => {
+    const labels: Record<IsoDocumentKind, string> = {
+      procedure: 'روش اجرایی',
+      instruction: 'دستورالعمل',
+      online_form: 'فرم آنلاین',
+      checklist: 'چک لیست',
+      contract_format: 'فرمت قرارداد',
+      form_format: 'فرمت فرم',
+    };
+    return labels[kind] || kind;
+  };
+
+  const isoStatusLabel = (status: IsoDocumentStatus) => {
+    const labels: Record<IsoDocumentStatus, string> = {
+      draft: 'Draft',
+      under_review: 'Under review',
+      approved: 'Approved',
+      obsolete: 'Obsolete',
+    };
+    return labels[status] || status;
+  };
+
+  const makeIsoApprovals = (): IsoApprovalSignature[] => ([
+    { role: 'preparedBy', label: 'تهیه کننده', name: '', title: '', date: '', signed: false },
+    { role: 'reviewedBy', label: 'تایید کننده', name: '', title: '', date: '', signed: false },
+    { role: 'approvedBy', label: 'تصویب کننده', name: '', title: '', date: '', signed: false },
+  ]);
+
+  const makeBlankIsoDocument = (kind: IsoDocumentKind = 'procedure'): IsoDocumentDef => {
+    const now = Date.now();
+    const year = new Date().getFullYear();
+    return {
+      id: '',
+      title: kind === 'checklist' ? 'چک لیست کنترل کیفیت' : kind === 'instruction' ? 'دستورالعمل کاری' : 'روش اجرایی جدید',
+      docNo: `ISO-${year}-${String(isoDocuments.length + 1).padStart(3, '0')}`,
+      revision: '00',
+      kind,
+      status: 'draft',
+      accessLevel: 'public',
+      department: '',
+      processOwner: '',
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      nextReviewDate: '',
+      purpose: '',
+      scope: '',
+      responsibilities: '',
+      sections: [
+        { id: `sec_${now}_1`, title: 'تعاریف و مراجع', body: '' },
+        { id: `sec_${now}_2`, title: 'شرح روش اجرایی', body: '' },
+      ],
+      workflowTitle: 'فلوچارت فرآیند',
+      workflowSteps: [
+        { label: 'Start', labelRtl: 'شروع' },
+        { label: 'Review', labelRtl: 'بررسی' },
+        { label: 'Approval', labelRtl: 'تصویب' },
+      ],
+      checklistItems: [
+        { id: `chk_${now}_1`, text: 'کنترل تکمیل بودن اطلاعات', owner: '', required: true },
+      ],
+      linkedFormIds: [],
+      approvals: makeIsoApprovals(),
+      createdAt: now,
+      updatedAt: now,
+      isPublished: false,
+    };
+  };
+
+  const isoPublicUrl = (docDef: IsoDocumentDef) =>
+    typeof window !== 'undefined' && docDef.publishedKey
+      ? `${window.location.origin}${window.location.pathname}?iso=${docDef.publishedKey}`
+      : '';
+
+  const saveIsoDocument = async (docDef: IsoDocumentDef) => {
+    if (!user || !db || !activeOwnerUid) return;
+    setIsoSaving(true);
+    try {
+      const now = Date.now();
+      const payload = stripUndefinedDeep({ ...docDef, updatedAt: now });
+      if (docDef.id && isoDocuments.some((d) => d.id === docDef.id)) {
+        await withTimeout(
+          setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docDef.id), payload, { merge: true }),
+          10000,
+          'Save ISO document'
+        );
+      } else {
+        const newId = `iso_${now}_${Math.random().toString(36).slice(2, 8)}`;
+        await withTimeout(
+          setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', newId), { ...payload, id: newId, createdAt: now }),
+          10000,
+          'Create ISO document'
+        );
+      }
+      setIsoDraft(null);
+    } catch (err: any) {
+      alert('Failed to save ISO document: ' + (err?.message || err));
+    } finally {
+      setIsoSaving(false);
+    }
+  };
+
+  const publishIsoDocument = async (docId: string) => {
+    if (!user || !db || !activeOwnerUid) return;
+    const docDef = isoDocuments.find((d) => d.id === docId);
+    if (!docDef) return;
+    setIsoPublishing(docId);
+    try {
+      const key = docDef.publishedKey || `iso_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
+      const now = Date.now();
+      await withTimeout(
+        setDoc(doc(db, 'publicIsoDocuments', key), buildPublicIsoPayload(docDef, activeOwnerUid, dataAppId, now)),
+        10000,
+        'Publish ISO document'
+      );
+      await withTimeout(
+        updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docId), {
+          publishedKey: key,
+          isPublished: true,
+          status: docDef.status === 'draft' ? 'approved' : docDef.status,
+          updatedAt: now,
+        }),
+        10000,
+        'Update ISO document'
+      );
+    } catch (err: any) {
+      alert('Failed to publish ISO document: ' + (err?.message || err));
+    } finally {
+      setIsoPublishing(null);
+    }
+  };
+
+  const unpublishIsoDocument = async (docId: string) => {
+    if (!user || !db || !activeOwnerUid) return;
+    const docDef = isoDocuments.find((d) => d.id === docId);
+    if (!docDef?.publishedKey) return;
+    try {
+      await withTimeout(updateDoc(doc(db, 'publicIsoDocuments', docDef.publishedKey), { isActive: false, updatedAt: Date.now() }), 10000, 'Unpublish ISO document');
+      await withTimeout(updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docId), { isPublished: false, updatedAt: Date.now() }), 10000, 'Update ISO document');
+    } catch (err: any) {
+      alert('Failed to unpublish ISO document: ' + (err?.message || err));
+    }
+  };
+
+  const deleteIsoDocument = async (docDef: IsoDocumentDef) => {
+    if (!user || !db || !activeOwnerUid) return;
+    if (!window.confirm(`Delete ISO document "${docDef.title}"?`)) return;
+    try {
+      if (docDef.publishedKey) {
+        try { await deleteDoc(doc(db, 'publicIsoDocuments', docDef.publishedKey)); } catch {}
+      }
+      await withTimeout(deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'isoDocuments', docDef.id)), 10000, 'Delete ISO document');
+    } catch (err: any) {
+      alert('Failed to delete ISO document: ' + (err?.message || err));
     }
   };
 
@@ -19771,12 +20015,377 @@ function AppInner() {
     return renderContractsList();
   };
 
+  const renderIsoWorkflow = (steps: FormWorkflowStep[] = [], title = 'فلوچارت فرآیند') => (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Layers className="w-4 h-4 text-blue-600" />
+        <h4 className="font-bold text-slate-800 text-sm">{title || 'فلوچارت فرآیند'}</h4>
+      </div>
+      <div className="flex flex-col md:flex-row md:items-stretch gap-2 overflow-x-auto">
+        {(steps.length ? steps : [{ label: 'Start', labelRtl: 'شروع' }]).map((step, idx) => (
+          <Fragment key={`${step.label}-${idx}`}>
+            <div className="min-w-[9rem] rounded-xl border border-blue-100 bg-white px-3 py-3 text-center shadow-sm">
+              <div className="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold mx-auto mb-2 flex items-center justify-center">{idx + 1}</div>
+              <p className="text-xs font-bold text-slate-800">{step.labelRtl || step.label}</p>
+              {step.label && step.labelRtl ? <p className="text-[10px] text-slate-400 mt-0.5">{step.label}</p> : null}
+            </div>
+            {idx < steps.length - 1 ? (
+              <div className="hidden md:flex items-center text-slate-300">
+                <ChevronRight className="w-5 h-5" />
+              </div>
+            ) : null}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderPublicIsoDocument = () => {
+    if (publicFormLoading) return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-blue-600" />
+          <p className="text-sm text-slate-600">Loading ISO document...</p>
+        </div>
+      </div>
+    );
+    if (!publicIsoView) return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm max-w-md">
+          <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+          <h2 className="font-bold text-slate-900">Document not available</h2>
+          <p className="text-sm text-slate-500 mt-1">This ISO document is unpublished or the link is incorrect.</p>
+        </div>
+      </div>
+    );
+    const docDef = publicIsoView.doc;
+    const relatedForms = (docDef.linkedFormIds || [])
+      .map((id: string) => customForms.find((f) => f.id === id))
+      .filter(Boolean) as CustomFormDef[];
+    return (
+      <div className="min-h-screen bg-slate-100 p-4 md:p-8">
+        <div className="max-w-5xl mx-auto bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-900 text-white p-6 md:p-8">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-blue-200 font-bold">ISO Quality Management Document</p>
+                <h1 className="text-2xl md:text-4xl font-black mt-2">{docDef.title}</h1>
+                <p className="text-sm text-blue-100 mt-2">{isoKindLabel(docDef.kind)} · {isoStatusLabel(docDef.status)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs bg-white/10 rounded-2xl border border-white/15 p-3 min-w-[16rem]">
+                <span className="text-blue-100">Doc No</span><span className="font-bold text-right">{docDef.docNo}</span>
+                <span className="text-blue-100">Revision</span><span className="font-bold text-right">{docDef.revision}</span>
+                <span className="text-blue-100">Effective</span><span className="font-bold text-right">{docDef.effectiveDate || '-'}</span>
+                <span className="text-blue-100">Owner</span><span className="font-bold text-right">{docDef.processOwner || '-'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="p-6 md:p-8 space-y-6">
+            <div className="grid md:grid-cols-3 gap-4">
+              {[
+                ['هدف', docDef.purpose],
+                ['دامنه کاربرد', docDef.scope],
+                ['مسئولیت‌ها', docDef.responsibilities],
+              ].map(([label, body]) => (
+                <div key={label} className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
+                  <h3 className="text-sm font-bold text-slate-900 mb-2">{label}</h3>
+                  <p className="text-sm text-slate-600 whitespace-pre-wrap leading-6">{body || '-'}</p>
+                </div>
+              ))}
+            </div>
+
+            {renderIsoWorkflow(docDef.workflowSteps || [], docDef.workflowTitle)}
+
+            <div className="space-y-4">
+              {(docDef.sections || []).map((section: IsoDocumentSection) => (
+                <section key={section.id} className="rounded-2xl border border-slate-200 p-5">
+                  <h3 className="font-bold text-slate-900 mb-2">{section.title}</h3>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap leading-7">{section.body || '-'}</p>
+                </section>
+              ))}
+            </div>
+
+            {docDef.checklistItems?.length ? (
+              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 font-bold text-slate-900">چک لیست کنترل</div>
+                <div className="divide-y divide-slate-100">
+                  {docDef.checklistItems.map((item: IsoChecklistItem, idx: number) => (
+                    <div key={item.id} className="grid grid-cols-[2rem_1fr_auto] gap-3 px-4 py-3 text-sm">
+                      <span className="text-slate-400 font-bold">{idx + 1}</span>
+                      <span className="text-slate-800">{item.text}</span>
+                      <span className="text-xs text-slate-500">{item.owner || (item.required ? 'Required' : '')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {relatedForms.length ? (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <h3 className="font-bold text-blue-900 mb-3">فرم‌های آنلاین مرتبط</h3>
+                <div className="flex flex-wrap gap-2">
+                  {relatedForms.map((form) => (
+                    <a key={form.id} href={form.publishedKey ? `?form=${form.publishedKey}` : '#'} className="px-3 py-2 rounded-xl bg-white border border-blue-100 text-blue-700 text-xs font-bold hover:bg-blue-100">
+                      {form.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid md:grid-cols-3 gap-4">
+              {(docDef.approvals || []).map((sig: IsoApprovalSignature) => (
+                <div key={sig.role} className="rounded-2xl border border-slate-200 p-4 min-h-[8rem]">
+                  <p className="text-xs font-bold text-slate-500 mb-3">{sig.label}</p>
+                  <p className="font-bold text-slate-900">{sig.name || 'نام و امضا'}</p>
+                  <p className="text-xs text-slate-500 mt-1">{sig.title || '-'}</p>
+                  <p className="text-xs text-slate-400 mt-4">Date: {sig.date || '-'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderIsoSystem = () => {
+    const updateDraft = (patch: Partial<IsoDocumentDef>) => setIsoDraft((d) => d ? { ...d, ...patch, updatedAt: Date.now() } : d);
+    const updateSection = (id: string, patch: Partial<IsoDocumentSection>) => updateDraft({
+      sections: (isoDraft?.sections || []).map((s) => s.id === id ? { ...s, ...patch } : s),
+    });
+    const updateChecklist = (id: string, patch: Partial<IsoChecklistItem>) => updateDraft({
+      checklistItems: (isoDraft?.checklistItems || []).map((item) => item.id === id ? { ...item, ...patch } : item),
+    });
+    const updateWorkflow = (idx: number, patch: Partial<FormWorkflowStep>) => {
+      const steps = [...(isoDraft?.workflowSteps || [])];
+      steps[idx] = { ...steps[idx], ...patch };
+      updateDraft({ workflowSteps: steps });
+    };
+    const updateApproval = (role: IsoApprovalSignature['role'], patch: Partial<IsoApprovalSignature>) => updateDraft({
+      approvals: (isoDraft?.approvals || makeIsoApprovals()).map((a) => a.role === role ? { ...a, ...patch } : a),
+    });
+
+    return (
+      <div className="space-y-5">
+        <div className="rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 text-white p-6 md:p-8 shadow-xl">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-blue-200 font-bold">ISO Document Control</p>
+              <h2 className="text-2xl md:text-3xl font-black mt-2">سیستم استاندارد ایزو و مستندات آنلاین</h2>
+              <p className="text-sm text-blue-100/80 mt-3 max-w-3xl leading-6">
+                ایجاد و انتشار آنلاین روش اجرایی، دستورالعمل، چک لیست، فرمت قرارداد، فرمت فرم و فلوچارت فرآیندی با امضای تهیه کننده، تایید کننده و تصویب کننده.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(['procedure', 'instruction', 'checklist', 'online_form', 'contract_format', 'form_format'] as IsoDocumentKind[]).map((kind) => (
+                <button key={kind} onClick={() => setIsoDraft(makeBlankIsoDocument(kind))}
+                  className="px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-xs font-bold hover:bg-white/20">
+                  + {isoKindLabel(kind)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {isoDraft && (
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-start gap-3">
+              <div>
+                <h3 className="font-bold text-slate-900">ISO Builder</h3>
+                <p className="text-xs text-slate-500 mt-1">فرمت حرفه‌ای سند، فلوچارت، چک لیست و امضاها را تکمیل کن.</p>
+              </div>
+              <button onClick={() => setIsoDraft(null)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-400"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              <div className="grid md:grid-cols-4 gap-3">
+                <input value={isoDraft.title} onChange={(e) => updateDraft({ title: e.target.value })} placeholder="عنوان سند" className="md:col-span-2 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input value={isoDraft.docNo} onChange={(e) => updateDraft({ docNo: e.target.value })} placeholder="کد سند" className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input value={isoDraft.revision} onChange={(e) => updateDraft({ revision: e.target.value })} placeholder="Revision" className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                <select value={isoDraft.kind} onChange={(e) => updateDraft({ kind: e.target.value as IsoDocumentKind })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white">
+                  {(['procedure', 'instruction', 'online_form', 'checklist', 'contract_format', 'form_format'] as IsoDocumentKind[]).map((kind) => <option key={kind} value={kind}>{isoKindLabel(kind)}</option>)}
+                </select>
+                <select value={isoDraft.status} onChange={(e) => updateDraft({ status: e.target.value as IsoDocumentStatus })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white">
+                  {(['draft', 'under_review', 'approved', 'obsolete'] as IsoDocumentStatus[]).map((s) => <option key={s} value={s}>{isoStatusLabel(s)}</option>)}
+                </select>
+                <select value={isoDraft.accessLevel || 'public'} onChange={(e) => updateDraft({ accessLevel: e.target.value as FormAccessLevel })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white">
+                  <option value="public">Public online link</option>
+                  <option value="internal">Internal sign-in required</option>
+                </select>
+                <input type="date" value={isoDraft.effectiveDate || ''} onChange={(e) => updateDraft({ effectiveDate: e.target.value })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                <input value={isoDraft.department || ''} onChange={(e) => updateDraft({ department: e.target.value })} placeholder="واحد / دپارتمان" className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                <input value={isoDraft.processOwner || ''} onChange={(e) => updateDraft({ processOwner: e.target.value })} placeholder="مالک فرآیند" className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                <input type="date" value={isoDraft.nextReviewDate || ''} onChange={(e) => updateDraft({ nextReviewDate: e.target.value })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-3">
+                <textarea value={isoDraft.purpose} onChange={(e) => updateDraft({ purpose: e.target.value })} rows={4} placeholder="هدف سند" className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                <textarea value={isoDraft.scope} onChange={(e) => updateDraft({ scope: e.target.value })} rows={4} placeholder="دامنه کاربرد" className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                <textarea value={isoDraft.responsibilities} onChange={(e) => updateDraft({ responsibilities: e.target.value })} rows={4} placeholder="مسئولیت‌ها" className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold text-slate-900">بندهای سند / روش اجرایی</h4>
+                  <button onClick={() => updateDraft({ sections: [...(isoDraft.sections || []), { id: `sec_${Date.now()}`, title: 'بند جدید', body: '' }] })} className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white">+ بند</button>
+                </div>
+                <div className="space-y-3">
+                  {isoDraft.sections.map((section) => (
+                    <div key={section.id} className="grid md:grid-cols-[14rem_1fr_auto] gap-2">
+                      <input value={section.title} onChange={(e) => updateSection(section.id, { title: e.target.value })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                      <textarea value={section.body} onChange={(e) => updateSection(section.id, { body: e.target.value })} rows={2} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                      <button onClick={() => updateDraft({ sections: isoDraft.sections.filter((s) => s.id !== section.id) })} className="px-2 text-rose-600"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid xl:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-bold text-slate-900">فلوچارت</h4>
+                    <button onClick={() => updateDraft({ workflowSteps: [...(isoDraft.workflowSteps || []), { label: 'Step', labelRtl: 'مرحله' }] })} className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white">+ مرحله</button>
+                  </div>
+                  <input value={isoDraft.workflowTitle || ''} onChange={(e) => updateDraft({ workflowTitle: e.target.value })} className="w-full mb-3 px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="عنوان فلوچارت" />
+                  <div className="space-y-2">
+                    {isoDraft.workflowSteps.map((step, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <input value={step.labelRtl || ''} onChange={(e) => updateWorkflow(idx, { labelRtl: e.target.value })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="فارسی" />
+                        <input value={step.label || ''} onChange={(e) => updateWorkflow(idx, { label: e.target.value })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="English" />
+                        <button onClick={() => updateDraft({ workflowSteps: isoDraft.workflowSteps.filter((_, i) => i !== idx) })} className="px-2 text-rose-600"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-bold text-slate-900">چک لیست</h4>
+                    <button onClick={() => updateDraft({ checklistItems: [...(isoDraft.checklistItems || []), { id: `chk_${Date.now()}`, text: '', owner: '', required: true }] })} className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white">+ آیتم</button>
+                  </div>
+                  <div className="space-y-2">
+                    {isoDraft.checklistItems.map((item) => (
+                      <div key={item.id} className="grid grid-cols-[1fr_9rem_auto_auto] gap-2">
+                        <input value={item.text} onChange={(e) => updateChecklist(item.id, { text: e.target.value })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="آیتم کنترل" />
+                        <input value={item.owner || ''} onChange={(e) => updateChecklist(item.id, { owner: e.target.value })} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" placeholder="مسئول" />
+                        <label className="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" checked={!!item.required} onChange={(e) => updateChecklist(item.id, { required: e.target.checked })} /> اجباری</label>
+                        <button onClick={() => updateDraft({ checklistItems: isoDraft.checklistItems.filter((x) => x.id !== item.id) })} className="px-2 text-rose-600"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <h4 className="font-bold text-slate-900 mb-3">فرم‌های آنلاین مرتبط</h4>
+                <div className="grid md:grid-cols-3 gap-2">
+                  {customForms.map((form) => (
+                    <label key={form.id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={(isoDraft.linkedFormIds || []).includes(form.id)}
+                        onChange={(e) => {
+                          const set = new Set(isoDraft.linkedFormIds || []);
+                          if (e.target.checked) set.add(form.id); else set.delete(form.id);
+                          updateDraft({ linkedFormIds: Array.from(set) });
+                        }}
+                      />
+                      {form.name}
+                    </label>
+                  ))}
+                  {customForms.length === 0 ? <p className="text-xs text-slate-400">برای لینک فرم آنلاین، ابتدا در Custom Forms فرم بساز.</p> : null}
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-3">
+                {(isoDraft.approvals || makeIsoApprovals()).map((sig) => (
+                  <div key={sig.role} className="rounded-2xl border border-slate-200 p-4">
+                    <p className="text-xs font-bold text-slate-500 mb-2">{sig.label}</p>
+                    <input value={sig.name} onChange={(e) => updateApproval(sig.role, { name: e.target.value })} placeholder="نام" className="w-full mb-2 px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                    <input value={sig.title || ''} onChange={(e) => updateApproval(sig.role, { title: e.target.value })} placeholder="سمت" className="w-full mb-2 px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                    <input type="date" value={sig.date || ''} onChange={(e) => updateApproval(sig.role, { date: e.target.value })} className="w-full mb-2 px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+                    <label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={!!sig.signed} onChange={(e) => updateApproval(sig.role, { signed: e.target.checked })} /> امضا/تایید شد</label>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+                <button onClick={() => setIsoDraft(null)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm">Cancel</button>
+                <button onClick={() => saveIsoDocument(isoDraft)} disabled={isoSaving || !isoDraft.title.trim()}
+                  className="px-5 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-50">
+                  {isoSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save ISO Document
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {isoDocuments.map((docDef) => {
+            const url = isoPublicUrl(docDef);
+            return (
+              <div key={docDef.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">{isoKindLabel(docDef.kind)}</p>
+                    <h3 className="font-bold text-slate-900 mt-1">{docDef.title}</h3>
+                    <p className="text-xs text-slate-500 mt-1">{docDef.docNo} · Rev {docDef.revision} · {isoStatusLabel(docDef.status)}</p>
+                  </div>
+                  <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${docDef.isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {docDef.isPublished ? 'Online' : 'Draft'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 line-clamp-2 mt-3">{docDef.purpose || docDef.scope || 'No description yet.'}</p>
+                <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 mt-3">
+                  <span>{docDef.sections?.length || 0} sections</span>
+                  <span>{docDef.workflowSteps?.length || 0} flow steps</span>
+                  <span>{docDef.checklistItems?.length || 0} checks</span>
+                </div>
+                {url ? (
+                  <div className="mt-3 flex items-center gap-1.5 bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-200">
+                    <Link2 className="w-3 h-3 text-slate-400" />
+                    <span className="text-[10px] text-slate-500 truncate flex-1">{url}</span>
+                    <button onClick={() => navigator.clipboard?.writeText(url)} className="text-[10px] text-blue-600 font-bold">Copy</button>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-1.5 mt-4">
+                  <button onClick={() => setIsoDraft({ ...docDef, approvals: docDef.approvals?.length ? docDef.approvals : makeIsoApprovals() })} className="px-2 py-1 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center gap-1"><Edit3 className="w-3 h-3" /> Edit</button>
+                  {!docDef.isPublished ? (
+                    <button onClick={() => publishIsoDocument(docDef.id)} disabled={isoPublishing === docDef.id} className="px-2 py-1 text-xs rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 flex items-center gap-1">
+                      {isoPublishing === docDef.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Globe className="w-3 h-3" />} Publish
+                    </button>
+                  ) : (
+                    <button onClick={() => unpublishIsoDocument(docDef.id)} className="px-2 py-1 text-xs rounded-lg border border-amber-200 bg-amber-50 text-amber-700">Unpublish</button>
+                  )}
+                  <button onClick={() => deleteIsoDocument(docDef)} className="ml-auto px-2 py-1 text-xs rounded-lg border border-rose-200 bg-rose-50 text-rose-700"><Trash2 className="w-3 h-3" /></button>
+                </div>
+              </div>
+            );
+          })}
+          {isoDocuments.length === 0 && !isoDraft ? (
+            <div className="md:col-span-2 xl:col-span-3 text-center py-14 bg-white rounded-2xl border border-dashed border-slate-300">
+              <BadgeCheck className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+              <p className="font-bold text-slate-700">هنوز سند ISO ساخته نشده است</p>
+              <p className="text-sm text-slate-400 mt-1">از دکمه‌های بالا روش اجرایی، دستورالعمل یا چک لیست آنلاین بساز.</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
   const renderForms = () => (
     <div className="space-y-4">
       <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
         <button onClick={() => setFormsSubView('list')}
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'list' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
           <ListTodo className="w-4 h-4" /> Custom Forms
+        </button>
+        <div className="w-px bg-slate-200" />
+        <button onClick={() => setFormsSubView('iso')}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'iso' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <BadgeCheck className="w-4 h-4" /> ISO System
         </button>
         <div className="w-px bg-slate-200" />
         <button onClick={() => { setFormsSubView('contracts'); setContractsSubView('list'); }}
@@ -19815,6 +20424,7 @@ function AppInner() {
         </button>
       </div>
       {formsSubView === 'list' && renderCustomFormsList()}
+      {formsSubView === 'iso' && renderIsoSystem()}
       {formsSubView === 'contracts' && renderContracts()}
       {formsSubView === 'proposals' && renderProposals()}
       {formsSubView === 'education' && (
@@ -20448,8 +21058,15 @@ function AppInner() {
           return k && k.length >= 8 ? k : null;
         })()
       : null;
+  const publicIsoUrlKey =
+    typeof window !== 'undefined'
+      ? (() => {
+          const k = new URLSearchParams(window.location.search).get('iso');
+          return k && k.length >= 8 ? k : null;
+        })()
+      : null;
 
-  if (authLoading && !publicFormUrlKey) {
+  if (authLoading && !publicFormUrlKey && !publicIsoUrlKey) {
     return (
       <div className="fixed inset-0 bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
@@ -20462,6 +21079,10 @@ function AppInner() {
 
   if (publicFormUrlKey) {
     return renderPublicForm();
+  }
+
+  if (publicIsoUrlKey) {
+    return renderPublicIsoDocument();
   }
 
   if (!user) {

@@ -942,6 +942,69 @@ export interface FormSubmission {
   isRead: boolean;
 }
 
+// ---- ISO / QUALITY MANAGEMENT DOCUMENTS ----
+
+export type IsoDocumentKind =
+  | 'procedure'
+  | 'instruction'
+  | 'online_form'
+  | 'checklist'
+  | 'contract_format'
+  | 'form_format';
+
+export type IsoDocumentStatus = 'draft' | 'under_review' | 'approved' | 'obsolete';
+
+export interface IsoDocumentSection {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export interface IsoChecklistItem {
+  id: string;
+  text: string;
+  owner?: string;
+  required?: boolean;
+}
+
+export type IsoApprovalRole = 'preparedBy' | 'reviewedBy' | 'approvedBy';
+
+export interface IsoApprovalSignature {
+  role: IsoApprovalRole;
+  label: string;
+  name: string;
+  title?: string;
+  date?: string;
+  signed?: boolean;
+}
+
+export interface IsoDocumentDef {
+  id: string;
+  title: string;
+  docNo: string;
+  revision: string;
+  kind: IsoDocumentKind;
+  status: IsoDocumentStatus;
+  accessLevel?: FormAccessLevel;
+  department?: string;
+  processOwner?: string;
+  effectiveDate?: string;
+  nextReviewDate?: string;
+  purpose: string;
+  scope: string;
+  responsibilities: string;
+  sections: IsoDocumentSection[];
+  workflowTitle?: string;
+  workflowSteps: FormWorkflowStep[];
+  checklistItems: IsoChecklistItem[];
+  linkedFormIds?: string[];
+  approvals: IsoApprovalSignature[];
+  createdAt: number;
+  updatedAt: number;
+  publishedKey?: string;
+  isPublished: boolean;
+}
+
 // ---- CONTRACTS ----
 
 export interface ContractClause {

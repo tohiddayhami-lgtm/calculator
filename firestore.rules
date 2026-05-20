@@ -173,6 +173,11 @@ service cloud.firestore {
       allow read, write: if canAccessUserData(appId, userId);
     }
 
+    // ISO / quality management documents — owner or master
+    match /artifacts/{appId}/users/{userId}/isoDocuments/{docId} {
+      allow read, write: if canAccessUserData(appId, userId);
+    }
+
     // Form submissions — anyone can create (public submit); owner reads/manages
     match /artifacts/{appId}/users/{userId}/formSubmissions/{subId} {
       allow create: if request.resource.data.keys().hasAll(['formKey', 'formName', 'submittedAt', 'data', 'isRead'])
@@ -192,6 +197,22 @@ service cloud.firestore {
                     && request.resource.data.keys().hasAll(['ownerUid', 'appId', 'name', 'fields', 'isActive'])
                     && request.resource.data.fields is list
                     && request.resource.data.fields.size() < 100;
+      allow update, delete: if request.auth != null
+                            && (
+                              resource.data.ownerUid == request.auth.uid
+                              || isMaster(resource.data.appId)
+                            );
+    }
+
+    // Published ISO documents — public link read; owner/master publish and manage
+    match /publicIsoDocuments/{key} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && (
+                      request.resource.data.ownerUid == request.auth.uid
+                      || isMaster(request.resource.data.appId)
+                    )
+                    && request.resource.data.keys().hasAll(['ownerUid', 'appId', 'title', 'docNo', 'revision', 'kind', 'isActive']);
       allow update, delete: if request.auth != null
                             && (
                               resource.data.ownerUid == request.auth.uid
