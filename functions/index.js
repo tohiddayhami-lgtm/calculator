@@ -6,6 +6,11 @@ admin.initializeApp();
 const db = admin.firestore();
 const auth = admin.auth();
 
+function getStorageBucket() {
+  const bucketName = process.env.STORAGE_BUCKET;
+  return bucketName ? admin.storage().bucket(bucketName) : admin.storage().bucket();
+}
+
 const DEFAULT_PERMISSIONS = {
   dashboard: true,
   warehouse: true,
@@ -286,7 +291,7 @@ exports.getUserStorageStats = adminCallable(async (request) => {
     await assertMaster(request, appId);
   }
 
-  const bucket = admin.storage().bucket();
+  const bucket = getStorageBucket();
   const [files] = await bucket.getFiles({ prefix: `users/${targetUid}/` });
 
   let totalBytes = 0;
@@ -316,7 +321,7 @@ exports.deleteStorageFile = adminCallable(async (request) => {
     await assertMaster(request, appId);
   }
 
-  const bucket = admin.storage().bucket();
+  const bucket = getStorageBucket();
   try {
     await bucket.file(filePath).delete();
   } catch (err) {
