@@ -6100,6 +6100,7 @@ function AppInner() {
   const [invoiceSellerTaxId, setInvoiceSellerTaxId] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('T/T 50% Advance');
   const [quotationLeadTime, setQuotationLeadTime] = useState('30-45 days after order confirmation');
+  const [quotationValidityText, setQuotationValidityText] = useState('30 days from issue');
   const [quotationProductMoqs, setQuotationProductMoqs] = useState<Record<number, string>>({});
   const [invoiceRef, setInvoiceRef] = useState(String(Math.floor(Math.random() * 10000)));
   const [invoiceNumbering, setInvoiceNumbering] = useState<InvoiceNumberingSettings>(loadInvoiceNumberingSettings);
@@ -9520,6 +9521,7 @@ function AppInner() {
         invoiceAnnexesEnabled,
         invoiceAnnexes,
         quotationLeadTime,
+        quotationValidityText,
         quotationProductMoqs,
     };
 
@@ -9736,6 +9738,7 @@ function AppInner() {
     setBuyerManualResaleCurrency(String((project.data as any).buyerManualResaleCurrency || config.outputCurrency || 'OMR'));
     setVolumeTiers(Array.isArray((project.data as any).volumeTiers) ? (project.data as any).volumeTiers : []);
     setQuotationLeadTime(String((project.data as any).quotationLeadTime || '30-45 days after order confirmation'));
+    setQuotationValidityText(String((project.data as any).quotationValidityText || '30 days from issue'));
     setQuotationProductMoqs((project.data as any).quotationProductMoqs || {});
 
     setSuppliers(project.data.suppliers || []);
@@ -11662,6 +11665,7 @@ function AppInner() {
     setBuyerManualResaleCurrency(config.outputCurrency || 'OMR');
     setVolumeTiers([]);
     setQuotationLeadTime('30-45 days after order confirmation');
+    setQuotationValidityText('30 days from issue');
     setQuotationProductMoqs({});
     setCustomerName('');
     setCustomerFirstName('');
@@ -16857,7 +16861,7 @@ function AppInner() {
     const quotationProducts = calculations.processedProducts.filter((p) => p.isActive);
     const selectedTerm = invoiceTerms[0] || 'FOB';
     const quotationDate = new Date(invoiceIssueDateMs || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const validUntil = invoiceDueDateMs ? new Date(invoiceDueDateMs).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '30 days from issue';
+    const validUntil = quotationValidityText || '30 days from issue';
 
     // Volume tier helpers (same logic as P&L section)
     const totalCartons = quotationProducts.reduce((s, p) => s + (p.totalPacks || 0), 0);
@@ -17111,17 +17115,14 @@ function AppInner() {
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Valid Until</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Validity</label>
               <input
-                type="datetime-local"
-                value={invoiceDueDateMs ? formatMsForDatetimeLocal(invoiceDueDateMs) : ''}
-                onChange={(e) => { const ms = parseDatetimeLocalToMs(e.target.value); setInvoiceDueDateMs(ms); }}
+                type="text"
+                value={quotationValidityText}
+                onChange={(e) => setQuotationValidityText(e.target.value)}
                 className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
-                placeholder="Leave blank for '30 days from issue'"
+                placeholder="e.g. 30 days from issue"
               />
-              {invoiceDueDateMs ? (
-                <button type="button" className="text-[10px] text-slate-400 hover:text-slate-600 mt-0.5" onClick={() => setInvoiceDueDateMs(undefined)}>Clear</button>
-              ) : null}
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Lead Time</label>
