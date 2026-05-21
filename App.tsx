@@ -6102,6 +6102,11 @@ function AppInner() {
   const [quotationLeadTime, setQuotationLeadTime] = useState('30-45 days after order confirmation');
   const [quotationValidityText, setQuotationValidityText] = useState('30 days from issue');
   const [quotationProductMoqs, setQuotationProductMoqs] = useState<Record<number, string>>({});
+  const [quotationShowTiers, setQuotationShowTiers] = useState(true);
+  type QuotationTermsPreset = { id: string; name: string; paymentTerms: string; leadTime: string; validityText: string; notes: string; updatedAt: number };
+  const [quotationPresets, setQuotationPresets] = useState<QuotationTermsPreset[]>(() => {
+    try { return JSON.parse(localStorage.getItem('cc_quotation_terms_presets') || '[]'); } catch { return []; }
+  });
   const [invoiceRef, setInvoiceRef] = useState(String(Math.floor(Math.random() * 10000)));
   const [invoiceNumbering, setInvoiceNumbering] = useState<InvoiceNumberingSettings>(loadInvoiceNumberingSettings);
   const [invoiceAnnexesEnabled, setInvoiceAnnexesEnabled] = useState(false);
@@ -6148,6 +6153,26 @@ function AppInner() {
       /* ignore */
     }
   }, [invoiceAnnexPresets, invoiceAnnexPresetsReady]);
+
+  const saveQuotationPreset = () => {
+    const name = window.prompt('نام این قالب شرایط را وارد کنید:', '')?.trim();
+    if (!name) return;
+    const entry: QuotationTermsPreset = { id: `qp_${Date.now()}`, name, paymentTerms, leadTime: quotationLeadTime, validityText: quotationValidityText, notes, updatedAt: Date.now() };
+    const updated = [entry, ...quotationPresets].slice(0, 20);
+    setQuotationPresets(updated);
+    try { localStorage.setItem('cc_quotation_terms_presets', JSON.stringify(updated)); } catch { /* ignore */ }
+  };
+  const applyQuotationPreset = (p: QuotationTermsPreset) => {
+    setPaymentTerms(p.paymentTerms);
+    setQuotationLeadTime(p.leadTime);
+    setQuotationValidityText(p.validityText);
+    setNotes(p.notes);
+  };
+  const deleteQuotationPreset = (id: string) => {
+    const updated = quotationPresets.filter((p) => p.id !== id);
+    setQuotationPresets(updated);
+    try { localStorage.setItem('cc_quotation_terms_presets', JSON.stringify(updated)); } catch { /* ignore */ }
+  };
 
   const invoiceKindFromDoc = (k?: InvoiceDocKind): InvoiceNumberKind =>
     (k ?? invoiceDocKind) === 'services' ? 'services' : 'export';
@@ -9523,6 +9548,7 @@ function AppInner() {
         quotationLeadTime,
         quotationValidityText,
         quotationProductMoqs,
+        quotationShowTiers,
     };
 
     const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -9740,6 +9766,7 @@ function AppInner() {
     setQuotationLeadTime(String((project.data as any).quotationLeadTime || '30-45 days after order confirmation'));
     setQuotationValidityText(String((project.data as any).quotationValidityText || '30 days from issue'));
     setQuotationProductMoqs((project.data as any).quotationProductMoqs || {});
+    setQuotationShowTiers((project.data as any).quotationShowTiers !== false);
 
     setSuppliers(project.data.suppliers || []);
     setBuyers((prev) =>
@@ -11667,6 +11694,7 @@ function AppInner() {
     setQuotationLeadTime('30-45 days after order confirmation');
     setQuotationValidityText('30 days from issue');
     setQuotationProductMoqs({});
+    setQuotationShowTiers(true);
     setCustomerName('');
     setCustomerFirstName('');
     setCustomerLastName('');
@@ -16991,42 +17019,56 @@ function AppInner() {
         </div>
 
         {/* Volume Pricing Tiers */}
-        {volumeTiers.length > 0 && quotationProducts.length > 0 && (
+        {quotationShowTiers && volumeTiers.length > 0 && quotationProducts.length > 0 && (
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: 6 }}>
-              Volume Pricing — {selectedTerm}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>Volume Pricing — {selectedTerm}</div>
+              <div style={{ flex: 1, borderTop: '1px dashed #e2e8f0' }} />
+              <div style={{ fontSize: '7.5pt', color: '#94a3b8' }}>optional — based on carton quantity</div>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt', border: '1px solid #e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
               <thead>
-                <tr style={{ background: '#f1f5f9' }}>
-                  <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569', width: '25%' }}>Quantity Range</th>
+                <tr style={{ background: '#0f172a', color: '#fff' }}>
+                  <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 700, width: '26%' }}>Qty Range</th>
                   {quotationProducts.map((p) => (
-                    <th key={p.id} style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>{p.name}</th>
+                    <th key={p.id} style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{p.name}</th>
                   ))}
-                  <th style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 700, color: '#475569', width: '14%' }}>Adj.</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 700, width: '13%', color: '#94a3b8', fontSize: '7pt', fontStyle: 'italic' }}>vs. base</th>
                 </tr>
               </thead>
               <tbody>
                 {volumeTiers.map((tier, idx) => {
-                  const label = tier.maxCartons != null
-                    ? `${tier.minCartons} – ${tier.maxCartons} cartons`
-                    : `${tier.minCartons}+ cartons (full order)`;
                   const isLast = idx === volumeTiers.length - 1;
+                  const adj = tier.adjustment || 0;
+                  const label = isLast
+                    ? `${tier.minCartons}+ cartons`
+                    : `${tier.minCartons} – ${tier.maxCartons} ctn`;
+                  const sublabel = isLast ? 'Full / bulk order' : '';
                   return (
-                    <tr key={tier.id} style={{ background: isLast ? `${invoiceAccentColor || '#0ea5e9'}10` : idx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '6px 8px', fontWeight: isLast ? 700 : 400, color: '#0f172a' }}>{label}</td>
+                    <tr key={tier.id} style={{
+                      background: isLast ? `${invoiceAccentColor || '#0ea5e9'}12` : idx % 2 === 0 ? '#ffffff' : '#f8fafc',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}>
+                      <td style={{ padding: '7px 10px', color: '#0f172a' }}>
+                        <div style={{ fontWeight: isLast ? 700 : 500 }}>{label}</div>
+                        {sublabel && <div style={{ fontSize: '7pt', color: invoiceAccentColor || '#0ea5e9', fontWeight: 600, marginTop: 1 }}>{sublabel}</div>}
+                      </td>
                       {quotationProducts.map((p) => {
                         const basePrice = (p as any).scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
                         const tieredPrice = tierUnitSell(basePrice, tier);
                         return (
-                          <td key={p.id} style={{ padding: '6px 8px', textAlign: 'right', fontWeight: isLast ? 700 : 600, color: '#0f172a' }}>
+                          <td key={p.id} style={{ padding: '7px 10px', textAlign: 'right', fontWeight: isLast ? 800 : 600, color: '#0f172a', fontSize: isLast ? '9.5pt' : '9pt' }}>
                             {formatMoney(tieredPrice, config.outputCurrency)}
                           </td>
                         );
                       })}
-                      <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '8pt' }}>
-                        <span style={{ color: (tier.adjustment || 0) > 0 ? '#dc2626' : (tier.adjustment || 0) < 0 ? '#16a34a' : '#94a3b8', fontWeight: 700 }}>
-                          {(tier.adjustment || 0) > 0 ? '+' : ''}{tier.adjustment || 0}%
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                        <span style={{
+                          display: 'inline-block', padding: '2px 5px', borderRadius: 3, fontWeight: 700, fontSize: '7.5pt',
+                          background: adj > 0 ? '#fee2e2' : adj < 0 ? '#dcfce7' : '#f1f5f9',
+                          color: adj > 0 ? '#dc2626' : adj < 0 ? '#16a34a' : '#94a3b8',
+                        }}>
+                          {adj > 0 ? '+' : ''}{adj}%
                         </span>
                       </td>
                     </tr>
@@ -17132,6 +17174,49 @@ function AppInner() {
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Payment Terms</label>
               <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
             </div>
+
+            {/* ── Terms Presets ──────────────────────────────── */}
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                  <Save className="w-3 h-3" /> Terms Presets
+                </span>
+                <button
+                  type="button"
+                  onClick={saveQuotationPreset}
+                  className="text-[10px] font-bold bg-emerald-700 text-white px-2 py-1 rounded hover:bg-emerald-800"
+                >
+                  + Save current
+                </button>
+              </div>
+              {quotationPresets.length > 0 && (
+                <div className="space-y-1 max-h-36 overflow-y-auto">
+                  {quotationPresets.map((p) => (
+                    <div key={p.id} className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => applyQuotationPreset(p)}
+                        className="flex-1 text-left text-xs text-emerald-900 font-medium px-2 py-1 bg-white border border-emerald-200 rounded hover:bg-emerald-100 truncate"
+                        title={`Payment: ${p.paymentTerms} | Lead: ${p.leadTime}`}
+                      >
+                        {p.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteQuotationPreset(p.id)}
+                        className="text-red-400 hover:text-red-600 flex-shrink-0"
+                        title="Delete preset"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {quotationPresets.length === 0 && (
+                <p className="text-[9px] text-emerald-700/70">هنوز قالبی ذخیره نشده — شرایط را تنظیم کنید و ذخیره کنید.</p>
+              )}
+            </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Incoterm to Show</label>
               <div className="flex flex-wrap gap-1">
@@ -17154,6 +17239,27 @@ function AppInner() {
               </div>
               <p className="text-[9px] text-slate-400 mt-1">First selected incoterm is used for the price column.</p>
             </div>
+
+            {/* Volume tiers toggle */}
+            <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+              <div>
+                <p className="text-xs font-semibold text-slate-700">Volume Pricing Tiers</p>
+                <p className="text-[9px] text-slate-400 leading-tight mt-0.5">Show buyer how price changes by quantity</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuotationShowTiers((v) => !v)}
+                className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${quotationShowTiers ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${quotationShowTiers ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            {quotationShowTiers && volumeTiers.length === 0 && (
+              <p className="text-[9px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                هنوز تیر قیمتی تعریف نشده — از داشبورد بخش P&amp;L تیرهای حجمی اضافه کنید.
+              </p>
+            )}
+
             <InvoiceAccentColorPicker value={invoiceAccentColor} onChange={setInvoiceAccentColor} />
             <hr className="border-slate-100" />
             {/* Seller info */}
@@ -17234,6 +17340,7 @@ function AppInner() {
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Notes / Remarks</label>
               <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none" placeholder="Additional terms, quality notes, etc." />
+              <p className="text-[9px] text-slate-400 mt-1">Payment Terms + Lead Time + Validity + Notes همه با هم در یک Preset ذخیره می‌شوند.</p>
             </div>
           </div>
         </div>
