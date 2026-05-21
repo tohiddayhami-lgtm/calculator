@@ -222,13 +222,6 @@ type ProductTableColumnKey =
   | 'costInput'
   | 'unitCost'
   | 'totalCost'
-  | 'manualSell'
-  | 'profitPercent'
-  | 'unitProfit'
-  | 'totalProfit'
-  | 'unitSell'
-  | 'totalSell'
-  | 'targetPrice'
   | 'actions';
 
 type ProductTableColumnSettings = {
@@ -252,13 +245,6 @@ const PRODUCT_TABLE_COLUMN_ORDER: ProductTableColumnKey[] = [
   'costInput',
   'unitCost',
   'totalCost',
-  'manualSell',
-  'profitPercent',
-  'unitProfit',
-  'totalProfit',
-  'unitSell',
-  'totalSell',
-  'targetPrice',
   'actions',
 ];
 
@@ -277,13 +263,6 @@ const PRODUCT_TABLE_DEFAULT_LABELS: Record<ProductTableColumnKey, string> = {
   costInput: 'Cost Input',
   unitCost: 'Unit Cost',
   totalCost: 'Total Cost',
-  manualSell: 'Manual Sell',
-  profitPercent: 'Profit %',
-  unitProfit: 'Unit Profit',
-  totalProfit: 'Total Profit',
-  unitSell: 'Unit Sell',
-  totalSell: 'Total Sell',
-  targetPrice: 'Target Price',
   actions: '',
 };
 
@@ -10245,6 +10224,25 @@ function AppInner() {
       setProducts(products.map(p => p.id === id ? { ...p, [field]: val } : p)); 
   };
   
+  const updateProductScenarioMap = <K extends keyof Product>(
+      id: number,
+      field: K,
+      term: string,
+      val: any,
+  ) => {
+      setProducts(prev => prev.map(p => {
+          if (p.id !== id) return p;
+          const current = ((p[field] as Record<string, any> | undefined) || {});
+          const next = { ...current };
+          if (val === undefined || val === null || val === '') {
+              delete next[term];
+          } else {
+              next[term] = val;
+          }
+          return { ...p, [field]: next };
+      }));
+  };
+
   const updateProductColumnLabel = (key: ProductTableColumnKey, label: string) => {
       setProductColumnSettings((prev) => ({
           ...prev,
@@ -10454,15 +10452,9 @@ function AppInner() {
         const baseCost_CIF = baseCost_FOB + uFreight + uInsurance;
         const dutyVal = baseCost_CIF * (logistics.dutyPercent / 100);
         const baseCost_DDP = baseCost_CIF + uDest + dutyVal + uExtras;
-        const manualSellPriceOutput = p.manualUnitSellPrice && p.manualUnitSellPrice > 0
-          ? toOutput(toBase(p.manualUnitSellPrice, p.manualSellCurrency || config.outputCurrency))
-          : undefined;
-        const manualProfitPercentMarkup = manualSellPriceOutput !== undefined && baseCost_EXW > 0
-          ? ((manualSellPriceOutput - baseCost_EXW) / baseCost_EXW) * 100
-          : undefined;
-        const manualProfitPercentMargin = manualSellPriceOutput !== undefined && manualSellPriceOutput > 0
-          ? ((manualSellPriceOutput - baseCost_EXW) / manualSellPriceOutput) * 100
-          : undefined;
+        const manualSellPriceOutput: number | undefined = undefined;
+        const manualProfitPercentMarkup: number | undefined = undefined;
+        const manualProfitPercentMargin: number | undefined = undefined;
         const configuredProfitPercent = (p.customProfit !== undefined && p.customProfit !== null) ? p.customProfit : config.profitPercent;
         const effectiveProfitPercent = manualSellPriceOutput !== undefined
           ? (config.profitType === 'margin' ? manualProfitPercentMargin : manualProfitPercentMarkup) ?? configuredProfitPercent
@@ -10513,6 +10505,37 @@ function AppInner() {
                 ddpSell = cifSell + applyProfit(uDest + uDuty + uExtras, config.profitFlags.ddp, effectiveProfitPercent);
             }
         }
+
+        const termUnitCosts: Record<string, number> = {
+            EXW: baseCost_EXW,
+            FCA: baseCost_EXW + uInland,
+            FOB: baseCost_FOB,
+            CIF: baseCost_CIF,
+            DDP: baseCost_DDP,
+        };
+        const applyScenarioPricing = (term: string, autoSell: number) => {
+            const manual = p.scenarioManualUnitSellPrices?.[term];
+            if (manual !== undefined && manual > 0) return manual;
+            const percent = p.scenarioProfitPercents?.[term];
+            if (percent !== undefined && percent >= 0) {
+                const type = p.scenarioProfitTypes?.[term] || config.profitType;
+                const cost = termUnitCosts[term] || 0;
+                if (type === 'margin') {
+                    const factor = 1 - percent / 100;
+                    return factor > 0 ? cost / factor : cost;
+                }
+                return cost * (1 + percent / 100);
+            }
+            return autoSell;
+        };
+
+        exwSell = applyScenarioPricing('EXW', exwSell);
+        fcaSell = applyScenarioPricing('FCA', fcaSell);
+        fobSell = applyScenarioPricing('FOB', fobSell);
+        cifSell = applyScenarioPricing('CIF', cifSell);
+        ddpSell = applyScenarioPricing('DDP', ddpSell);
+        unitSellPrice = exwSell;
+        unitProfit = unitSellPrice - baseCost_EXW;
         
         const totalProfit = isActive ? unitProfit * p.qty : 0;
         const totalSellPrice = isActive ? unitSellPrice * p.qty : 0;
@@ -12436,86 +12459,6 @@ function AppInner() {
             headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50',
             renderCell: (p) => <td className="px-4 py-2 text-right text-slate-600">{formatMoney(p.lineCost || 0, config.outputCurrency)}</td>,
           },
-          manualSell: {
-            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.manualSell,
-            subLabel: <span className="block text-[9px] font-normal text-cyan-600/90">/ unit · auto profit%</span>,
-            headerClassName: 'px-4 py-2 w-44 min-w-[170px] bg-cyan-50 text-cyan-800',
-            title: 'Optional manual selling price per unit. Profit % is calculated automatically.',
-            renderCell: (p) => (
-              <td className="px-4 py-2 bg-cyan-50/30 align-top">
-                <div className="flex items-center gap-1">
-                  <FormattedNumberInput optional value={p.manualUnitSellPrice} onChange={(val) => updateProduct(p.id, 'manualUnitSellPrice', val)} className="w-24 bg-white border border-cyan-200 rounded px-2 py-1 text-xs text-right text-cyan-900 font-semibold" placeholder="Auto" />
-                  <select value={p.manualSellCurrency || config.outputCurrency} onChange={(e) => updateProduct(p.id, 'manualSellCurrency', e.target.value)} className="text-[10px] bg-white border border-cyan-100 rounded px-1 py-1 text-cyan-700">
-                    {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                {p.manualSellPriceOutput !== undefined ? (
-                  <div className="mt-1 text-[10px] text-cyan-700 text-right">{config.profitType === 'margin' ? 'Margin' : 'Markup'} {((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%</div>
-                ) : (
-                  <div className="mt-1 text-[10px] text-slate-400 text-right">auto formula</div>
-                )}
-              </td>
-            ),
-          },
-          profitPercent: {
-            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.profitPercent,
-            headerClassName: 'px-4 py-2 w-20 bg-slate-50 text-right',
-            renderCell: (p) => (
-              <td className="px-4 py-2 text-right">
-                {p.manualSellPriceOutput !== undefined ? (
-                  <div className="text-xs font-bold text-cyan-700">{((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%<span className="block text-[9px] text-cyan-500 font-medium">manual</span></div>
-                ) : (
-                  <FormattedNumberInput optional value={p.customProfit} onChange={(val) => updateProduct(p.id, 'customProfit', val)} disabled={config.pricingMethod === 'fixed_unit_markup'} placeholder={String(config.profitPercent)} className={`w-14 text-right bg-transparent border-b ${p.customProfit !== undefined ? 'border-purple-300 text-purple-700 font-medium' : 'border-slate-200 text-slate-400'} focus:border-purple-500 outline-none text-xs px-1 ${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-30 cursor-not-allowed' : ''}`} />
-                )}
-              </td>
-            ),
-          },
-          unitProfit: {
-            defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Profit`,
-            headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-emerald-600 bg-slate-50',
-            renderCell: (p, viewMult) => <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatMoney((p.unitProfit || 0) * viewMult, config.outputCurrency)}</td>,
-          },
-          totalProfit: {
-            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.totalProfit,
-            headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-emerald-600 bg-slate-50',
-            renderCell: (p) => <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatMoney(p.totalProfit || 0, config.outputCurrency)}</td>,
-          },
-          unitSell: {
-            defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Sell (${config.outputCurrency})`,
-            headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-blue-50 text-blue-700',
-            renderCell: (p, viewMult) => <td className="px-4 py-2 bg-blue-50/30 text-right font-medium text-blue-700">{formatMoney((p.unitSellPrice || 0) * viewMult, config.outputCurrency)}</td>,
-          },
-          totalSell: {
-            defaultLabel: `${PRODUCT_TABLE_DEFAULT_LABELS.totalSell} (${config.outputCurrency})`,
-            headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-green-50 text-green-700',
-            renderCell: (p) => <td className="px-4 py-2 bg-green-50/30 text-right font-medium text-green-700">{formatMoney(p.totalSellPrice || 0, config.outputCurrency)}</td>,
-          },
-          targetPrice: {
-            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.targetPrice,
-            subLabel: <span className="block text-[9px] font-normal text-amber-500/80">Optional</span>,
-            headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-amber-50 text-amber-700',
-            title: 'Optional: Buyer / market target price per unit',
-            renderCell: (p, viewMult) => {
-              const tCurr = p.targetPriceCurrency || p.currency || config.outputCurrency;
-              const tVal = p.targetPrice;
-              const sellInOutput = (p.unitSellPrice || 0) * viewMult;
-              const targetInOutput = tVal !== undefined && tVal !== null ? toOutput(toBase(tVal, tCurr)) * viewMult : null;
-              const diff = targetInOutput !== null && sellInOutput > 0 ? ((sellInOutput - targetInOutput) / targetInOutput) * 100 : null;
-              return (
-                <td className="px-4 py-2 bg-amber-50/30">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-1">
-                      <FormattedNumberInput value={tVal !== undefined ? tVal : 0} onChange={(val) => updateProduct(p.id, 'targetPrice', val === 0 && tVal === undefined ? undefined : val ?? 0)} className="w-full bg-transparent border-b border-amber-200 focus:border-amber-500 outline-none text-right text-amber-800 font-medium px-1 py-0.5" placeholder="0" />
-                      <select value={tCurr} onChange={(e) => updateProduct(p.id, 'targetPriceCurrency', e.target.value)} className="bg-transparent text-[10px] text-amber-600 border-none p-0 focus:ring-0">
-                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    {diff !== null && tVal ? <div className={`text-[10px] text-right font-medium ${Math.abs(diff) < 1 ? 'text-slate-400' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{diff > 0 ? '+' : ''}{diff.toFixed(1)}% vs sell</div> : null}
-                  </div>
-                </td>
-              );
-            },
-          },
           actions: {
             defaultLabel: '',
             headerClassName: 'px-4 py-2 w-10 bg-slate-50',
@@ -13107,13 +13050,15 @@ function AppInner() {
                               <span className="text-[11px] text-slate-500">Qty <span className="font-mono font-semibold text-slate-700">{block.qty}</span></span>
                           </div>
                           <div className="overflow-x-auto rounded-lg border border-slate-200">
-                              <table className="w-full text-sm text-left min-w-[880px]">
+                              <table className="w-full text-sm text-left min-w-[1180px]">
                                   <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 text-xs">
                                       <tr>
                                           <th className="px-3 py-2">Incoterm</th>
                                           <th className="px-3 py-2 text-right">Unit cost</th>
+                                          <th className="px-3 py-2 text-right">Pricing %</th>
+                                          <th className="px-3 py-2 text-right">Target price</th>
+                                          <th className="px-3 py-2 text-right bg-blue-50">Unit sell</th>
                                           <th className="px-3 py-2 text-right text-green-600">Unit profit</th>
-                                          <th className="px-3 py-2 text-right bg-slate-100/60">Unit price</th>
                                           <th className="px-3 py-2 text-right text-slate-500">Δ vs prev term</th>
                                           <th className="px-3 py-2 text-right">Markup %</th>
                                           <th className="px-3 py-2 text-right">Margin %</th>
@@ -13124,6 +13069,14 @@ function AppInner() {
                                       {block.rows
                                           .filter((r) => visibleScenarioTerms.includes(r.term))
                                           .map((row) => {
+                                              const scenarioProduct = calculations.processedProducts.find((p) => p.id === block.id);
+                                              const scenarioType = scenarioProduct?.scenarioProfitTypes?.[row.term] || config.profitType;
+                                              const scenarioPercent = scenarioProduct?.scenarioProfitPercents?.[row.term];
+                                              const manualUnitSell = scenarioProduct?.scenarioManualUnitSellPrices?.[row.term];
+                                              const targetPrice = scenarioProduct?.scenarioTargetPrices?.[row.term] ?? (scenarioProduct?.targetPrice && row.term === 'EXW' ? scenarioProduct.targetPrice : undefined);
+                                              const targetCurrency = scenarioProduct?.scenarioTargetCurrencies?.[row.term] || scenarioProduct?.targetPriceCurrency || config.outputCurrency;
+                                              const targetInOutput = targetPrice !== undefined && targetPrice > 0 ? toOutput(toBase(targetPrice, targetCurrency)) : undefined;
+                                              const targetDiff = targetInOutput && row.unitSell > 0 ? ((row.unitSell - targetInOutput) / targetInOutput) * 100 : undefined;
                                               const mColor = row.profitMargin >= 20 ? 'text-emerald-600' : row.profitMargin >= 10 ? 'text-amber-600' : 'text-red-500';
                                               const mBorder = row.profitMargin >= 20 ? 'border-l-emerald-400' : row.profitMargin >= 10 ? 'border-l-amber-400' : 'border-l-red-400';
                                               const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
@@ -13133,8 +13086,58 @@ function AppInner() {
                                                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${termBadge[row.term] || 'bg-slate-100 text-slate-700'}`}>{row.term}</span>
                                                       </td>
                                                       <td className="px-3 py-2 text-right text-slate-600 font-mono text-xs">{formatMoney(row.unitCost, config.outputCurrency)}</td>
+                                                      <td className="px-3 py-2 text-right">
+                                                          <div className="flex justify-end gap-1">
+                                                              <FormattedNumberInput
+                                                                  optional
+                                                                  value={scenarioPercent}
+                                                                  onChange={(val) => updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, val !== undefined && val >= 0 ? val : undefined)}
+                                                                  className="w-16 border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700"
+                                                                  placeholder={config.profitPercent.toString()}
+                                                              />
+                                                              <select
+                                                                  value={scenarioType}
+                                                                  onChange={(e) => updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, e.target.value)}
+                                                                  className="w-20 border border-slate-200 rounded px-1 py-1 text-[10px] text-slate-600 bg-white"
+                                                              >
+                                                                  <option value="markup">Markup</option>
+                                                                  <option value="margin">Margin</option>
+                                                              </select>
+                                                          </div>
+                                                      </td>
+                                                      <td className="px-3 py-2 text-right">
+                                                          <div className="flex justify-end gap-1">
+                                                              <FormattedNumberInput
+                                                                  optional
+                                                                  value={targetPrice}
+                                                                  onChange={(val) => updateProductScenarioMap(block.id, 'scenarioTargetPrices', row.term, val !== undefined && val > 0 ? val : undefined)}
+                                                                  className="w-20 border border-amber-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-amber-800 bg-amber-50/40"
+                                                                  placeholder="-"
+                                                              />
+                                                              <select
+                                                                  value={targetCurrency}
+                                                                  onChange={(e) => updateProductScenarioMap(block.id, 'scenarioTargetCurrencies', row.term, e.target.value)}
+                                                                  className="w-16 border border-amber-100 rounded px-1 py-1 text-[10px] text-amber-700 bg-white"
+                                                              >
+                                                                  {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                                                              </select>
+                                                          </div>
+                                                          {targetDiff !== undefined ? <div className={`mt-0.5 text-[10px] ${targetDiff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{targetDiff >= 0 ? '+' : ''}{targetDiff.toFixed(1)}% vs target</div> : null}
+                                                      </td>
+                                                      <td className="px-3 py-2 text-right bg-blue-50/25">
+                                                          <div className="flex justify-end gap-1">
+                                                              <FormattedNumberInput
+                                                                  optional
+                                                                  value={manualUnitSell}
+                                                                  onChange={(val) => updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, val !== undefined && val > 0 ? val : undefined)}
+                                                                  className="w-24 border border-blue-200 rounded px-1.5 py-1 text-xs text-right font-bold text-blue-700 bg-white"
+                                                                  placeholder={formatNumber(row.unitSell)}
+                                                              />
+                                                              <span className="self-center text-[10px] text-blue-500 font-bold">{config.outputCurrency}</span>
+                                                          </div>
+                                                          <div className="mt-0.5 text-[10px] text-blue-500">{manualUnitSell ? 'manual' : formatMoney(row.unitSell, config.outputCurrency)}</div>
+                                                      </td>
                                                       <td className="px-3 py-2 text-right font-semibold text-emerald-600 font-mono text-xs">{formatMoney(row.unitProfit, config.outputCurrency)}</td>
-                                                      <td className="px-3 py-2 text-right font-bold text-blue-600 bg-blue-50/25 font-mono text-xs">{formatMoney(row.unitSell, config.outputCurrency)}</td>
                                                       <td className="px-3 py-2 text-right text-slate-500 font-mono text-xs">{formatMoney(row.valueAdd, config.outputCurrency)}</td>
                                                       <td className="px-3 py-2 text-right text-slate-600 text-xs">{row.markupPercent.toFixed(1)}%</td>
                                                       <td className="px-3 py-2 text-right">

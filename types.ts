@@ -71,6 +71,12 @@ export interface Product {
   /** Optional manual selling price per unit. When set, export profit % is derived from this price. */
   manualUnitSellPrice?: number;
   manualSellCurrency?: string;
+  /** Scenario pricing controls, keyed by Incoterm (EXW/FCA/FOB/CIF/DDP). */
+  scenarioProfitPercents?: { [term: string]: number };
+  scenarioProfitTypes?: { [term: string]: 'markup' | 'margin' };
+  scenarioManualUnitSellPrices?: { [term: string]: number };
+  scenarioTargetPrices?: { [term: string]: number };
+  scenarioTargetCurrencies?: { [term: string]: string };
 
   /** Optional: add selected packaging cost per unit into the product unit cost. */
   packagingEnabled?: boolean;
