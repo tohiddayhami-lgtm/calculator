@@ -12630,10 +12630,15 @@ function AppInner() {
           },
           qty: {
             defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.qty,
-            headerClassName: 'px-4 py-2 w-24 bg-slate-50',
+            headerClassName: 'px-4 py-2 w-28 bg-slate-50',
             renderCell: (p) => (
               <td className="px-4 py-2">
-                <FormattedNumberInput value={p.qty} onChange={(val) => updateProduct(p.id, 'qty', val ?? 0)} className="bg-transparent border-none p-0 focus:ring-0 text-slate-600" style={{ minWidth: '100%', width: `${Math.max(formatNumber(p.qty).length, 3) + 2}ch` }} />
+                <div className="flex items-baseline gap-1">
+                  <FormattedNumberInput value={p.qty} onChange={(val) => updateProduct(p.id, 'qty', val ?? 0)} className="bg-transparent border-none p-0 focus:ring-0 text-slate-600" style={{ minWidth: '4ch', width: `${Math.max(formatNumber(p.qty).length, 3) + 2}ch` }} />
+                  {p.measurementUnit && (
+                    <span className="text-[10px] text-slate-400 font-medium shrink-0">{p.measurementUnit}</span>
+                  )}
+                </div>
               </td>
             ),
           },
@@ -12644,7 +12649,15 @@ function AppInner() {
               <td className="px-4 py-2">
                 <div className="flex items-center gap-1">
                   <FormattedNumberInput value={p.itemsPerPack} onChange={(val) => updateProduct(p.id, 'itemsPerPack', val ?? 0)} className="bg-slate-50 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 py-1 text-slate-600 w-14 text-center text-xs" placeholder="0" />
-                  <input type="text" value={p.measurementUnit || ''} onChange={(e) => updateProduct(p.id, 'measurementUnit', e.target.value)} className="w-10 bg-transparent border-b border-slate-200 text-[10px] text-center focus:border-blue-500 outline-none text-slate-500 placeholder-slate-300" placeholder="Pcs" />
+                  <input
+                    list="measurement-units-list"
+                    type="text"
+                    value={p.measurementUnit || ''}
+                    onChange={(e) => updateProduct(p.id, 'measurementUnit', e.target.value)}
+                    className="w-14 bg-transparent border-b border-slate-200 text-[10px] text-center focus:border-blue-500 outline-none text-slate-600 placeholder-slate-300 font-medium"
+                    placeholder="unit"
+                    title="واحد شمارش: pcs, MT, kg, bag, box, ..."
+                  />
                 </div>
               </td>
             ),
@@ -17141,12 +17154,13 @@ function AppInner() {
             <thead>
               <tr style={{ background: invoiceAccentColor || '#0ea5e9', color: '#fff' }}>
                 <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '3%' }}>#</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '30%' }}>Product</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '20%' }}>Specification</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '10%' }}>MOQ</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '10%' }}>Incoterm</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, width: '14%' }}>Unit Price</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '13%' }}>Lead Time</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '28%' }}>Product</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '18%' }}>Specification</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '9%' }}>MOQ</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '8%' }}>Unit</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '9%' }}>Incoterm</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, width: '13%' }}>Unit Price</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '12%' }}>Lead Time</th>
               </tr>
             </thead>
             <tbody>
@@ -17175,12 +17189,22 @@ function AppInner() {
                     </td>
                     <td style={{ padding: '7px 8px', textAlign: 'center', color: '#0f172a', verticalAlign: 'top' }}>{moq || '—'}</td>
                     <td style={{ padding: '7px 8px', textAlign: 'center', verticalAlign: 'top' }}>
+                      {p.measurementUnit ? (
+                        <span style={{ display: 'inline-block', padding: '2px 7px', background: '#f1f5f9', borderRadius: 3, fontWeight: 700, color: '#475569', fontSize: '8pt', letterSpacing: '0.03em' }}>{p.measurementUnit}</span>
+                      ) : (
+                        <span style={{ color: '#cbd5e1', fontSize: '8pt' }}>pcs</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'center', verticalAlign: 'top' }}>
                       <span style={{ display: 'inline-block', padding: '2px 6px', background: `${invoiceAccentColor || '#0ea5e9'}20`, borderRadius: 3, fontWeight: 700, color: invoiceAccentColor || '#0ea5e9', fontSize: '8pt' }}>
                         {selectedTerm}
                       </span>
                     </td>
                     <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a', verticalAlign: 'top' }}>
                       {formatMoney(unitPrice, config.outputCurrency)}
+                      {p.measurementUnit ? (
+                        <div style={{ fontSize: '7pt', color: '#94a3b8', fontWeight: 400, marginTop: 1, lineHeight: 1 }}>/{p.measurementUnit}</div>
+                      ) : null}
                     </td>
                     <td style={{ padding: '7px 8px', textAlign: 'center', color: '#475569', fontSize: '8pt', verticalAlign: 'top' }}>
                       {quotationLeadTime}
@@ -18885,6 +18909,9 @@ function AppInner() {
                                                }}
                                            />
                                        ) : formatNumber(displayQty)}
+                                       {p.measurementUnit ? (
+                                         <div style={{ fontSize: '7.5pt', color: '#94a3b8', marginTop: 1, lineHeight: 1 }}>{p.measurementUnit}</div>
+                                       ) : null}
                                    </td>
                                    {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
                                        <td className="center">
@@ -19002,6 +19029,9 @@ function AppInner() {
                                                                }}
                                                            />
                                                        ) : formatMoney(displayUnitPrice, config.outputCurrency)}
+                                                       {p.measurementUnit ? (
+                                                         <div style={{ fontSize: '7pt', color: '#94a3b8', marginTop: 1, lineHeight: 1 }}>/{p.measurementUnit}</div>
+                                                       ) : null}
                                                    </td>
                                                )}
                                                {(invoiceBasis === 'pack' || invoiceBasis === 'both') && (
@@ -24245,6 +24275,13 @@ function AppInner() {
             }
         }
       `}</style>
+
+      {/* Datalist for measurement unit suggestions */}
+      <datalist id="measurement-units-list">
+        {['pcs','MT','KG','G','TON','L','mL','m²','m³','m','cm','bag','box','set','pair','pack','roll','sheet','bottle','unit','bale','drum','pallet','carton'].map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
 
       {uploadProgress && (
           <div className="fixed bottom-4 right-4 z-[80] bg-white border border-blue-200 shadow-lg rounded-xl px-4 py-3 flex items-center gap-3">
