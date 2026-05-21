@@ -10506,13 +10506,15 @@ function AppInner() {
     const costDest = convert(logistics.destination.val, logistics.destination.curr);
     const costExtras = (logistics.extras || []).reduce((acc, curr) => acc + convert(curr.val, curr.curr), 0);
 
-    const uExwExtra = totalQty > 0 ? costExwExtras / totalQty : 0;
-    const uInland = totalQty > 0 ? costInland / totalQty : 0;
-    const uPort = totalQty > 0 ? costPort / totalQty : 0;
-    const uFreight = totalQty > 0 ? costFreight / totalQty : 0;
-    const uInsurance = totalQty > 0 ? costInsurance / totalQty : 0;
-    const uDest = totalQty > 0 ? costDest / totalQty : 0;
-    const uExtras = totalQty > 0 ? costExtras / totalQty : 0;
+    // When transport cost override is active, all per-shipment logistics are suppressed
+    const logisticsApply = !config.transportCostEnabled;
+    const uExwExtra  = logisticsApply && totalQty > 0 ? costExwExtras / totalQty : 0;
+    const uInland    = logisticsApply && totalQty > 0 ? costInland    / totalQty : 0;
+    const uPort      = logisticsApply && totalQty > 0 ? costPort      / totalQty : 0;
+    const uFreight   = logisticsApply && totalQty > 0 ? costFreight   / totalQty : 0;
+    const uInsurance = logisticsApply && totalQty > 0 ? costInsurance / totalQty : 0;
+    const uDest      = logisticsApply && totalQty > 0 ? costDest      / totalQty : 0;
+    const uExtras    = logisticsApply && totalQty > 0 ? costExtras    / totalQty : 0;
 
     // Transport & Logistics per-unit overhead (fixed amount, same for all products)
     const transportFixedPerUnit = (config.transportCostEnabled && config.transportCostMode === 'fixed')
