@@ -53,7 +53,7 @@ import {
   Video, File as FileIcon, Ruler, AlignLeft, AlignCenter, AlignRight, 
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
   ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon, Maximize2, RotateCw,
-  ShieldCheck, UserPlus, UserX, Crown, KeyRound, CalendarClock, Ban
+  ShieldCheck, UserPlus, UserX, Crown, KeyRound, CalendarClock, Ban, TrendingUp
 } from 'lucide-react';
 
 // Types
@@ -6077,6 +6077,10 @@ function AppInner() {
   const [buyerProfitType, setBuyerProfitType] = useState<'markup' | 'margin'>('markup');
   const [buyerManualResaleValue, setBuyerManualResaleValue] = useState<number | undefined>(undefined);
   const [buyerManualResaleCurrency, setBuyerManualResaleCurrency] = useState<string>('OMR');
+  const [volumeTiers, setVolumeTiers] = useState<Array<{
+    id: string; minCartons: number; maxCartons: number | null;
+    discountMode: 'percent' | 'fixed'; discountValue: number; discountCurrency: string;
+  }>>([]);
 
   // Invoice Specific
   const [customerName, setCustomerName] = useState('');
@@ -9725,6 +9729,7 @@ function AppInner() {
     setBuyerProfitType((project.data as any).buyerProfitType === 'margin' ? 'margin' : 'markup');
     setBuyerManualResaleValue((project.data as any).buyerManualResaleValue !== undefined ? Number((project.data as any).buyerManualResaleValue) : undefined);
     setBuyerManualResaleCurrency(String((project.data as any).buyerManualResaleCurrency || config.outputCurrency || 'OMR'));
+    setVolumeTiers(Array.isArray((project.data as any).volumeTiers) ? (project.data as any).volumeTiers : []);
 
     setSuppliers(project.data.suppliers || []);
     setBuyers((prev) =>
@@ -11282,6 +11287,7 @@ function AppInner() {
             buyerProfitType,
             buyerManualResaleValue,
             buyerManualResaleCurrency,
+            volumeTiers,
             invoiceIssueDateMs,
             invoiceDueDateMs,
             editingArchiveInvoiceId,
@@ -11647,6 +11653,7 @@ function AppInner() {
     setBuyerProfitType('markup');
     setBuyerManualResaleValue(undefined);
     setBuyerManualResaleCurrency(config.outputCurrency || 'OMR');
+    setVolumeTiers([]);
     setCustomerName('');
     setCustomerFirstName('');
     setCustomerLastName('');
@@ -13789,6 +13796,7 @@ function AppInner() {
       {/* 6. Printable shipment P&L statement */}
       {(() => {
         const activeProducts = calculations.processedProducts.filter((p) => p.isActive && p.qty > 0);
+        const totalCartons = activeProducts.reduce((s, p) => s + (p.totalPacks || 0), 0);
         const selectedReportRow = profitLossReportTerm
           ? calculations.breakdown.find((b) => b.term === profitLossReportTerm)
           : undefined;
@@ -13797,20 +13805,22 @@ function AppInner() {
         const dutyBase = calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc;
         const duty = dutyBase * ((logistics.dutyPercent || 0) / 100);
         const buyerMarkup = Math.max(0, buyerProfitPercent || 0);
-        const calcBuyerResale = (cost: number) => {
+
+        const calcBuyerResale = (unitSell: number, discountFactor = 1) => {
+          const discountedSell = unitSell * discountFactor;
           if (buyerProfitType === 'margin') {
             const factor = 1 - buyerMarkup / 100;
-            return factor > 0 ? cost / factor : cost;
+            return factor > 0 ? discountedSell / factor : discountedSell;
           }
-          return cost * (1 + buyerMarkup / 100);
+          return discountedSell * (1 + buyerMarkup / 100);
         };
-        const buyerUnitResaleForPreview = (unitSell: number) => calcBuyerResale(unitSell);
+
         const buyerResaleRevenue = profitLossReportTerm
           ? activeProducts.reduce((sum, p) => {
-              const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
-              const termRow = scenarioBlock?.rows.find((row) => row.term === profitLossReportTerm);
-              const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
-              return sum + buyerUnitResaleForPreview(unitSell) * (p.qty || 0);
+              const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
+              const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+              const unitSell = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
+              return sum + calcBuyerResale(unitSell) * (p.qty || 0);
             }, 0)
           : 0;
         const buyerGrossProfit = buyerResaleRevenue - (selectedReportRow?.totalSell || 0);
@@ -13819,154 +13829,381 @@ function AppInner() {
             ? ((buyerResaleRevenue - selectedReportRow.totalSell) / buyerResaleRevenue) * 100
             : ((buyerResaleRevenue - selectedReportRow.totalSell) / selectedReportRow.totalSell) * 100
           : buyerMarkup;
-        const costCards = [
-          { label: 'Product + EXW', value: calculations.costs.exw, tone: 'from-slate-700 to-slate-900' },
-          { label: 'Inland + Port', value: calculations.costs.fob_inc, tone: 'from-blue-600 to-indigo-700' },
-          { label: 'Freight + Insurance', value: calculations.costs.cif_inc, tone: 'from-violet-600 to-purple-700' },
-          { label: 'Destination + Duty', value: calculations.costs.ddp_inc, tone: 'from-emerald-600 to-teal-700' },
-        ];
         const margin = selectedReportRow?.profitMargin || 0;
+        const myRevenue = selectedReportRow?.totalSell || 0;
+        const myProfit = selectedReportRow?.totalProfit || 0;
+
+        // Volume tier helpers
+        const addVolumeTier = () => {
+          const last = volumeTiers[volumeTiers.length - 1];
+          const newMin = last ? (last.maxCartons ?? 0) + 1 : 1;
+          setVolumeTiers([...volumeTiers, {
+            id: `tier_${Date.now()}`,
+            minCartons: newMin,
+            maxCartons: null,
+            discountMode: 'percent',
+            discountValue: 0,
+            discountCurrency: config.outputCurrency,
+          }]);
+        };
+        const updateTier = (id: string, patch: Partial<typeof volumeTiers[0]>) =>
+          setVolumeTiers(volumeTiers.map((t) => t.id === id ? { ...t, ...patch } : t));
+        const removeTier = (id: string) => setVolumeTiers(volumeTiers.filter((t) => t.id !== id));
+
+        // Compute sell price for a given tier (discount applied to each unit sell)
+        const tierUnitSell = (baseUnitSell: number, tier: typeof volumeTiers[0]) => {
+          if (tier.discountMode === 'percent') {
+            return baseUnitSell * (1 - tier.discountValue / 100);
+          }
+          return Math.max(0, baseUnitSell - toOutput(toBase(tier.discountValue, tier.discountCurrency)));
+        };
+        const tierShipmentRevenue = (tier: typeof volumeTiers[0]) => {
+          if (!profitLossReportTerm) return 0;
+          return activeProducts.reduce((sum, p) => {
+            const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
+            const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+            const base = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
+            return sum + tierUnitSell(base, tier) * (p.qty || 0);
+          }, 0);
+        };
+        const tierBuyerResale = (tier: typeof volumeTiers[0]) => {
+          if (!profitLossReportTerm) return 0;
+          return activeProducts.reduce((sum, p) => {
+            const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
+            const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+            const base = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
+            const discounted = tierUnitSell(base, tier);
+            return sum + calcBuyerResale(discounted) * (p.qty || 0);
+          }, 0);
+        };
+
+        const incotermsBreakdown = (['EXW', 'FCA', 'FOB', 'CIF', 'DDP'] as const).map((term) => {
+          const row = calculations.breakdown.find((b) => b.term === term);
+          return { term, cost: row?.totalCost || 0, sell: row?.totalSell || 0, profit: row?.totalProfit || 0, margin: row?.profitMargin || 0 };
+        });
+
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 text-white p-5 md:p-6">
-              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+
+            {/* ── Hero Header ─────────────────────────────────────────────── */}
+            <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 text-white p-5 md:p-6">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-200 font-black">A4 Commercial Document</p>
-                  <h2 className="text-2xl md:text-3xl font-black mt-2">Complete shipment profit and loss report</h2>
-                  <p className="text-sm text-blue-100/85 mt-2 max-w-3xl leading-6">
-                    A sales-ready document for purchase cost, freight, customs, selling price, gross profit, and export margin.
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[9px] uppercase tracking-[0.3em] text-emerald-300 font-black bg-emerald-500/20 border border-emerald-400/30 px-2 py-0.5 rounded-full">Commercial Intelligence Report</span>
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-black">Complete Shipment P&amp;L</h2>
+                  <p className="text-sm text-blue-200/80 mt-1.5 max-w-lg leading-relaxed">
+                    Full profit chain — from your cost to buyer resale — with volume pricing table.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={printShipmentProfitLossReport}
                   disabled={!profitLossReportTerm}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white text-slate-950 text-sm font-black hover:bg-emerald-50 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="shrink-0 inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white text-slate-950 text-sm font-black hover:bg-emerald-50 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <Printer className="w-4 h-4" />
                   Print A4 / PDF
                 </button>
               </div>
 
-              <div className="grid md:grid-cols-[1fr_1.15fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
+              {/* Controls row */}
+              <div className="grid sm:grid-cols-3 gap-3 mt-5 p-3 rounded-2xl bg-white/10 border border-white/15">
                 <label>
-                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">Profit and loss term</span>
+                  <span className="block text-[10px] uppercase tracking-wider text-blue-200 font-bold mb-1.5">Incoterm for report</span>
                   <select
                     value={profitLossReportTerm}
                     onChange={(e) => setProfitLossReportTerm(e.target.value as any)}
                     className="w-full rounded-xl border border-white/20 bg-white text-slate-900 px-3 py-2 text-sm font-bold outline-none"
                   >
-                    <option value="">Select: EXW / FCA / FOB / CIF / DDP</option>
-                    {(['EXW', 'FCA', 'FOB', 'CIF', 'DDP'] as const).map((term) => <option key={term} value={term}>{term}</option>)}
+                    <option value="">— Select term —</option>
+                    {(['EXW','FCA','FOB','CIF','DDP'] as const).map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </label>
                 <label>
-                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">Buyer resale profit after purchase</span>
+                  <span className="block text-[10px] uppercase tracking-wider text-blue-200 font-bold mb-1.5">Buyer resale margin</span>
                   <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
-                    <FormattedNumberInput
-                      value={buyerProfitPercent}
-                      onChange={(val) => setBuyerProfitPercent(Math.max(0, val ?? 0))}
-                      className="w-full text-sm text-slate-900 font-bold outline-none"
-                    />
-                    <span className="text-slate-400 text-xs font-bold">%</span>
-                    <select
-                      value={buyerProfitType}
-                      onChange={(e) => setBuyerProfitType(e.target.value as 'markup' | 'margin')}
-                      className="text-xs border-l border-slate-200 pl-2 text-slate-700 font-bold outline-none bg-white"
-                    >
+                    <FormattedNumberInput value={buyerProfitPercent} onChange={(v) => setBuyerProfitPercent(Math.max(0, v ?? 0))} className="w-full text-sm text-slate-900 font-bold outline-none" />
+                    <span className="text-slate-400 text-xs font-bold shrink-0">%</span>
+                    <select value={buyerProfitType} onChange={(e) => setBuyerProfitType(e.target.value as any)} className="text-xs border-l border-slate-200 pl-2 text-slate-700 font-bold outline-none bg-transparent shrink-0">
                       <option value="markup">Markup</option>
                       <option value="margin">Margin</option>
                     </select>
                   </div>
                 </label>
-                <div className="rounded-xl bg-slate-950/30 border border-white/10 px-3 py-2 min-w-[12rem]">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer resale revenue</p>
-                  <p className="font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : 'Select a term'}</p>
-                  <p className="text-[10px] text-blue-100/75 mt-1">Based on the buyer profit percentage and formula.</p>
+                <div className="rounded-xl bg-white/10 border border-white/15 px-3 py-2 flex flex-col justify-center">
+                  <p className="text-[10px] uppercase tracking-wider text-blue-200 font-bold">Buyer resale revenue</p>
+                  <p className="text-xl font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : '—'}</p>
+                  <p className="text-[10px] text-blue-200/70 mt-0.5">{buyerAutoPercent.toFixed(1)}% {buyerProfitType}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
-                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">{profitLossReportTerm || 'Selected'} Profit</p>
-                  <p className={`text-xl font-black mt-1 ${margin >= 20 ? 'text-emerald-200' : margin >= 10 ? 'text-amber-200' : 'text-rose-200'}`}>
-                    {profitLossReportTerm ? formatMoney(selectedReportRow?.totalProfit || 0, config.outputCurrency) : '-'}
-                  </p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">{profitLossReportTerm ? `${margin.toFixed(1)}% margin` : 'choose report term'}</p>
-                </div>
-                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">{profitLossReportTerm || 'Selected'} Revenue</p>
-                  <p className="text-xl font-black mt-1">{profitLossReportTerm ? formatMoney(selectedReportRow?.totalSell || 0, config.outputCurrency) : '-'}</p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">your sell value</p>
-                </div>
-                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer Profit</p>
-                  <p className="text-xl font-black mt-1">{profitLossReportTerm ? formatMoney(buyerGrossProfit, config.outputCurrency) : '-'}</p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">{buyerAutoPercent.toFixed(1)}% buyer {buyerProfitType}</p>
-                </div>
-                <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Shipment</p>
-                  <p className="text-xl font-black mt-1">{calculations.totalQty.toLocaleString()}</p>
-                  <p className="text-[11px] text-blue-100/80 mt-1">{activeProducts.length} active products</p>
-                </div>
+              {/* KPI strip */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
+                {[
+                  { label: 'Your Revenue', value: myRevenue, sub: profitLossReportTerm ? `${profitLossReportTerm} sell` : 'select term', color: 'text-white' },
+                  { label: 'Your Gross Profit', value: myProfit, sub: `${margin.toFixed(1)}% margin`, color: margin >= 20 ? 'text-emerald-300' : margin >= 10 ? 'text-amber-300' : 'text-rose-300' },
+                  { label: 'Buyer Revenue', value: buyerResaleRevenue, sub: 'after resale', color: 'text-sky-300' },
+                  { label: 'Buyer Profit', value: buyerGrossProfit, sub: `${buyerAutoPercent.toFixed(1)}% ${buyerProfitType}`, color: buyerGrossProfit >= 0 ? 'text-emerald-300' : 'text-rose-300' },
+                ].map(({ label, value, sub, color }) => (
+                  <div key={label} className="rounded-2xl bg-white/8 border border-white/12 p-3.5">
+                    <p className="text-[10px] uppercase tracking-wider text-blue-200/80 font-bold">{label}</p>
+                    <p className={`text-lg font-black mt-1 ${color}`}>{profitLossReportTerm ? formatMoney(value, config.outputCurrency) : '—'}</p>
+                    <p className="text-[10px] text-blue-200/60 mt-0.5">{sub}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="p-5 md:p-6 grid xl:grid-cols-[1.05fr_0.95fr] gap-5">
-              <div className="space-y-4">
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {costCards.map((card) => (
-                    <div key={card.label} className={`rounded-2xl p-4 text-white bg-gradient-to-br ${card.tone}`}>
-                      <p className="text-[10px] uppercase tracking-wider text-white/70 font-bold">{card.label}</p>
-                      <p className="text-lg font-black mt-1">{formatMoney(card.value, config.outputCurrency)}</p>
+            {/* ── Body ────────────────────────────────────────────────────── */}
+            <div className="p-5 md:p-6 space-y-5">
+
+              {/* Incoterms cost/sell/profit strip */}
+              <div>
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Cost → Sell → Profit by Incoterm</h3>
+                <div className="grid grid-cols-5 gap-2">
+                  {incotermsBreakdown.map(({ term, cost, sell, profit, margin: m }) => (
+                    <div key={term} className={`rounded-xl border p-3 text-center ${profitLossReportTerm === term ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-300' : 'border-slate-200 bg-slate-50'}`}>
+                      <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-full mb-2 ${profitLossReportTerm === term ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{term}</span>
+                      <div className="text-xs text-slate-500 mb-0.5">Cost</div>
+                      <div className="text-sm font-black text-slate-800">{formatMoney(cost, config.outputCurrency)}</div>
+                      <div className="text-[10px] text-slate-400 mt-1.5 mb-0.5">Sell</div>
+                      <div className="text-sm font-black text-blue-700">{sell > 0 ? formatMoney(sell, config.outputCurrency) : '—'}</div>
+                      <div className={`text-[10px] font-bold mt-1.5 ${m >= 15 ? 'text-emerald-600' : m > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{sell > 0 ? `${m.toFixed(1)}% margin` : '—'}</div>
                     </div>
                   ))}
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="font-black text-slate-900 mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-blue-600" />
-                    Printable document contents
-                  </h3>
-                  <div className="grid sm:grid-cols-2 gap-2 text-sm text-slate-600">
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Executive profit and loss summary</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Detailed costs through DDP</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Profit and margin from EXW to DDP</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Per-product profit table</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Origin and destination extra costs</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Management signature and approval block</div>
-                  </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 overflow-hidden">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <h3 className="font-black text-slate-900">Profit and loss preview</h3>
-                  <span className="text-xs text-slate-500">{projectName || 'Unsaved Project'}</span>
+              {/* Cost waterfall */}
+              <div className="grid sm:grid-cols-4 gap-2">
+                {[
+                  { label: 'Product + EXW extras', value: calculations.costs.exw, icon: '📦', color: 'border-slate-300 bg-slate-50' },
+                  { label: 'Inland + Port (FOB layer)', value: calculations.costs.fob_inc, icon: '🚢', color: 'border-blue-200 bg-blue-50' },
+                  { label: 'Freight + Insurance (CIF)', value: calculations.costs.cif_inc, icon: '✈️', color: 'border-violet-200 bg-violet-50' },
+                  { label: 'Destination + Duty (DDP)', value: calculations.costs.ddp_inc, icon: '🏛️', color: 'border-emerald-200 bg-emerald-50' },
+                ].map(({ label, value, icon, color }) => (
+                  <div key={label} className={`rounded-xl border p-3 ${color}`}>
+                    <span className="text-xl">{icon}</span>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">{label}</p>
+                    <p className="text-base font-black text-slate-800 mt-1">{formatMoney(value, config.outputCurrency)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Volume Pricing Tiers ─────────────────────────────────── */}
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/50 overflow-hidden">
+                <div className="px-4 py-3 bg-amber-100/70 border-b border-amber-200 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-black text-amber-900 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      Volume Pricing Tiers
+                    </h3>
+                    <p className="text-[10px] text-amber-700 mt-0.5">قیمت‌گذاری بر اساس حجم سفارش — هر چه بیشتر بخری، ارزان‌تر</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addVolumeTier}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Tier
+                  </button>
                 </div>
-                <div className="divide-y divide-slate-100">
-                  {[
-                    [`${profitLossReportTerm || 'Selected'} Total Cost`, selectedReportRow?.totalCost || 0],
-                    [`${profitLossReportTerm || 'Selected'} Total Sell`, selectedReportRow?.totalSell || 0],
-                    [`${profitLossReportTerm || 'Selected'} Gross Profit`, selectedReportRow?.totalProfit || 0],
-                    ['DDP Total Sell', ddpRow?.totalSell || 0],
-                    [`Buyer Resale (+${buyerMarkup.toFixed(1)}%)`, buyerResaleRevenue],
-                    ['Buyer Gross Profit', buyerGrossProfit],
-                    [`Customs Duty (${(logistics.dutyPercent || 0).toFixed(1)}%)`, duty],
-                    ['Full DDP Landed Cost', totalDdpCost],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="px-4 py-3 flex items-center justify-between gap-3">
-                      <span className="text-sm text-slate-600">{String(label)}</span>
-                      <span className={`text-sm font-black font-mono ${String(label).includes('Profit') ? 'text-emerald-700' : 'text-slate-900'}`}>
-                        {formatMoney(Number(value) || 0, config.outputCurrency)}
-                      </span>
-                    </div>
-                  ))}
+
+                {volumeTiers.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-sm text-amber-700/60">
+                    <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p className="font-medium">No volume tiers yet</p>
+                    <p className="text-xs mt-1">Click "Add Tier" to set quantity-based price breaks</p>
+                  </div>
+                ) : (
+                  <div className="p-4 space-y-2">
+                    {/* Tier editor rows */}
+                    {volumeTiers.map((tier, idx) => (
+                      <div key={tier.id} className="flex flex-wrap items-center gap-2 bg-white rounded-xl border border-amber-200 px-3 py-2.5">
+                        <span className="text-[10px] font-black text-amber-600 w-14 shrink-0">Tier {idx + 1}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600 shrink-0">
+                          <FormattedNumberInput
+                            value={tier.minCartons}
+                            onChange={(v) => updateTier(tier.id, { minCartons: Math.max(1, v ?? 1) })}
+                            className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold text-slate-700 text-xs"
+                          />
+                          <span className="text-slate-400">—</span>
+                          <FormattedNumberInput
+                            optional
+                            value={tier.maxCartons ?? undefined}
+                            onChange={(v) => updateTier(tier.id, { maxCartons: v != null ? Math.max(tier.minCartons, v) : null })}
+                            className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold text-slate-700 text-xs"
+                            placeholder="∞"
+                          />
+                          <span className="text-slate-400 text-[10px]">cartons</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <select
+                            value={tier.discountMode}
+                            onChange={(e) => updateTier(tier.id, { discountMode: e.target.value as any })}
+                            className="border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 bg-white"
+                          >
+                            <option value="percent">% discount</option>
+                            <option value="fixed">Fixed reduction</option>
+                          </select>
+                          <FormattedNumberInput
+                            value={tier.discountValue}
+                            onChange={(v) => updateTier(tier.id, { discountValue: Math.max(0, v ?? 0) })}
+                            className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold text-slate-700 text-xs"
+                            placeholder="0"
+                          />
+                          {tier.discountMode === 'percent'
+                            ? <span className="text-slate-500 font-bold text-xs">%</span>
+                            : <select value={tier.discountCurrency} onChange={(e) => updateTier(tier.id, { discountCurrency: e.target.value })} className="border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 bg-white">
+                                {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                          }
+                        </div>
+                        {/* Live preview of this tier */}
+                        {profitLossReportTerm && (() => {
+                          const rev = tierShipmentRevenue(tier);
+                          const diff = rev - myRevenue;
+                          return (
+                            <div className="ml-auto flex items-center gap-3 text-[10px] shrink-0">
+                              <span className="text-slate-500">Revenue: <span className="font-black text-slate-800">{formatMoney(rev, config.outputCurrency)}</span></span>
+                              <span className={`font-black ${diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{diff >= 0 ? '+' : ''}{formatMoney(diff, config.outputCurrency)}</span>
+                            </div>
+                          );
+                        })()}
+                        <button type="button" onClick={() => removeTier(tier.id)} className="ml-1 text-slate-300 hover:text-red-500 p-1">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Volume pricing comparison table */}
+                    {profitLossReportTerm && volumeTiers.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-amber-200 overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead className="bg-amber-100 text-amber-900">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-black">Tier</th>
+                              <th className="px-3 py-2 text-center font-black">Cartons</th>
+                              <th className="px-3 py-2 text-right font-black">Your Revenue</th>
+                              <th className="px-3 py-2 text-right font-black">Your Profit</th>
+                              <th className="px-3 py-2 text-right font-black">Buyer Pays / unit</th>
+                              <th className="px-3 py-2 text-right font-black">Buyer Resale</th>
+                              <th className="px-3 py-2 text-right font-black">Buyer Profit</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-amber-100 bg-white">
+                            {/* Base (no tier) */}
+                            <tr className="bg-blue-50">
+                              <td className="px-3 py-2 font-black text-blue-700">Base</td>
+                              <td className="px-3 py-2 text-center text-slate-600">{totalCartons > 0 ? `${totalCartons} ctn` : `${calculations.totalQty} units`}</td>
+                              <td className="px-3 py-2 text-right font-black text-slate-800">{formatMoney(myRevenue, config.outputCurrency)}</td>
+                              <td className="px-3 py-2 text-right font-black text-emerald-700">{formatMoney(myProfit, config.outputCurrency)}</td>
+                              <td className="px-3 py-2 text-right text-slate-600">
+                                {activeProducts.length > 0 ? formatMoney(myRevenue / Math.max(1, calculations.totalQty), config.outputCurrency) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-sky-700">{formatMoney(buyerResaleRevenue, config.outputCurrency)}</td>
+                              <td className="px-3 py-2 text-right font-black text-emerald-700">{formatMoney(buyerGrossProfit, config.outputCurrency)}</td>
+                            </tr>
+                            {volumeTiers.map((tier, idx) => {
+                              const rev = tierShipmentRevenue(tier);
+                              const buyerRev = tierBuyerResale(tier);
+                              const myProfitTier = rev - (selectedReportRow?.totalCost || 0);
+                              const buyerProfitTier = buyerRev - rev;
+                              return (
+                                <tr key={tier.id} className="hover:bg-amber-50/50">
+                                  <td className="px-3 py-2 font-bold text-amber-700">T{idx + 1}</td>
+                                  <td className="px-3 py-2 text-center text-slate-600">
+                                    {tier.minCartons}–{tier.maxCartons ?? '∞'} ctn
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-black text-slate-800">{formatMoney(rev, config.outputCurrency)}</td>
+                                  <td className={`px-3 py-2 text-right font-black ${myProfitTier >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(myProfitTier, config.outputCurrency)}</td>
+                                  <td className="px-3 py-2 text-right text-slate-600">
+                                    {formatMoney(rev / Math.max(1, calculations.totalQty), config.outputCurrency)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-bold text-sky-700">{formatMoney(buyerRev, config.outputCurrency)}</td>
+                                  <td className={`px-3 py-2 text-right font-black ${buyerProfitTier >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(buyerProfitTier, config.outputCurrency)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Per-product buyer simulation ────────────────────────── */}
+              {profitLossReportTerm && activeProducts.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                    <h3 className="font-black text-slate-900">Per-product buyer simulation — {profitLossReportTerm}</h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Unit cost → your unit sell → buyer resale unit price → buyer unit profit</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs min-w-[600px]">
+                      <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-bold">Product</th>
+                          <th className="px-3 py-2 text-center font-bold">Qty</th>
+                          <th className="px-3 py-2 text-right font-bold">Unit Cost</th>
+                          <th className="px-3 py-2 text-right font-bold">Your Unit Sell</th>
+                          <th className="px-3 py-2 text-right font-bold bg-blue-50">Buyer Buys At</th>
+                          <th className="px-3 py-2 text-right font-bold bg-emerald-50">Buyer Resale</th>
+                          <th className="px-3 py-2 text-right font-bold bg-emerald-50">Buyer Unit Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {activeProducts.map((p) => {
+                          const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
+                          const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+                          const unitCost = termRow?.unitCost ?? (p as any).baseCostEXW ?? 0;
+                          const unitSell = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
+                          const buyerResaleUnit = calcBuyerResale(unitSell);
+                          const buyerUnitProfit = buyerResaleUnit - unitSell;
+                          const buyerUnitMargin = buyerResaleUnit > 0 ? (buyerUnitProfit / buyerResaleUnit) * 100 : 0;
+                          return (
+                            <tr key={p.id} className="hover:bg-slate-50/60">
+                              <td className="px-3 py-2.5">
+                                <div className="font-semibold text-slate-800 truncate max-w-[160px]">{p.name || '—'}</div>
+                                {p.sku ? <div className="text-[10px] text-slate-400 font-mono">{p.sku}</div> : null}
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-slate-600 font-mono">{(p.qty || 0).toLocaleString()}</td>
+                              <td className="px-3 py-2.5 text-right font-mono text-slate-500">{formatMoney(unitCost, config.outputCurrency)}</td>
+                              <td className="px-3 py-2.5 text-right font-bold text-slate-800">{unitSell > 0 ? formatMoney(unitSell, config.outputCurrency) : '—'}</td>
+                              <td className="px-3 py-2.5 text-right font-bold text-blue-700 bg-blue-50/40">{unitSell > 0 ? formatMoney(unitSell, config.outputCurrency) : '—'}</td>
+                              <td className="px-3 py-2.5 text-right font-black text-emerald-700 bg-emerald-50/40">{buyerResaleUnit > 0 ? formatMoney(buyerResaleUnit, config.outputCurrency) : '—'}</td>
+                              <td className="px-3 py-2.5 text-right bg-emerald-50/40">
+                                <div className={`font-black ${buyerUnitProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(buyerUnitProfit, config.outputCurrency)}</div>
+                                <div className="text-[10px] text-emerald-600/70">{buyerUnitMargin.toFixed(1)}% margin</div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100">
-                  <p className="text-xs text-emerald-900 leading-5">
-                    This report opens in a separate A4 print window and is ready for PDF export or direct printing.
-                  </p>
+              )}
+
+              {/* Print CTA */}
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-black text-blue-900 flex items-center gap-2"><FileText className="w-4 h-4" /> Printable A4 Report includes</p>
+                  <p className="text-xs text-blue-700 mt-1">Executive P&amp;L summary · Cost waterfall EXW→DDP · Per-product profit table · Buyer simulation · Volume pricing table · Signature block</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={printShipmentProfitLossReport}
+                  disabled={!profitLossReportTerm}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-black hover:bg-blue-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Printer className="w-4 h-4" />
+                  {profitLossReportTerm ? `Print ${profitLossReportTerm} Report` : 'Select a term first'}
+                </button>
               </div>
             </div>
           </div>
@@ -22867,6 +23104,7 @@ function AppInner() {
     buyerProfitType, setBuyerProfitType,
     buyerManualResaleValue, setBuyerManualResaleValue,
     buyerManualResaleCurrency, setBuyerManualResaleCurrency,
+    volumeTiers, setVolumeTiers,
     // Invoice
     invoiceDocKind, setInvoiceDocKind, handleInvoiceDocKindChange,
     invoiceBasis, setInvoiceBasis,
