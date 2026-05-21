@@ -178,6 +178,11 @@ service cloud.firestore {
       allow read, write: if canAccessUserData(appId, userId);
     }
 
+    // MetaPort metaverse booths — owner or master
+    match /artifacts/{appId}/users/{userId}/metaBooths/{boothId} {
+      allow read, write: if canAccessUserData(appId, userId);
+    }
+
     // ISO execution records — public links can submit; owner/master can review/manage
     match /artifacts/{appId}/users/{userId}/isoRecords/{recordId} {
       allow create: if request.resource.data.keys().hasAll(['isoDocId', 'docTitle', 'docNo', 'revision', 'submittedAt', 'submittedByName', 'checklistAnswers'])
