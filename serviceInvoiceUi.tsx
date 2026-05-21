@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Archive,
   Building2,
+  FileCheck,
   FileText,
   Plus,
   Printer,
@@ -36,7 +37,7 @@ import type { InvoiceCustomerFields } from './invoiceCustomer';
 import { InvoiceAccentColorPicker, invoiceThemeStyle } from './invoiceTheme';
 import { InvoiceBillToBlock, InvoiceCustomerEditor, InvoiceHeaderRow } from './invoiceShared';
 
-export type InvoiceDocKind = 'products' | 'services';
+export type InvoiceDocKind = 'products' | 'services' | 'quotation';
 
 export type ServiceInvoicePanelProps = {
   invoiceDocKind: InvoiceDocKind;
@@ -125,22 +126,32 @@ function DocKindTabs({
       <button
         type="button"
         onClick={() => setKind('products')}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-md text-xs font-semibold transition-all ${
+        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-md text-xs font-semibold transition-all ${
           kind === 'products' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
         }`}
       >
         <Package className="w-3.5 h-3.5" />
-        کالا / Goods
+        Goods
+      </button>
+      <button
+        type="button"
+        onClick={() => setKind('quotation')}
+        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-md text-xs font-semibold transition-all ${
+          kind === 'quotation' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+        }`}
+      >
+        <FileCheck className="w-3.5 h-3.5" />
+        Quotation
       </button>
       <button
         type="button"
         onClick={() => setKind('services')}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-md text-xs font-semibold transition-all ${
+        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-md text-xs font-semibold transition-all ${
           kind === 'services' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
         }`}
       >
         <Layers className="w-3.5 h-3.5" />
-        خدمات / Services
+        Services
       </button>
     </div>
   );

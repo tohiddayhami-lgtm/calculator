@@ -6099,6 +6099,8 @@ function AppInner() {
   const [invoiceSellerWebsite, setInvoiceSellerWebsite] = useState('');
   const [invoiceSellerTaxId, setInvoiceSellerTaxId] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('T/T 50% Advance');
+  const [quotationLeadTime, setQuotationLeadTime] = useState('30-45 days after order confirmation');
+  const [quotationProductMoqs, setQuotationProductMoqs] = useState<Record<number, string>>({});
   const [invoiceRef, setInvoiceRef] = useState(String(Math.floor(Math.random() * 10000)));
   const [invoiceNumbering, setInvoiceNumbering] = useState<InvoiceNumberingSettings>(loadInvoiceNumberingSettings);
   const [invoiceAnnexesEnabled, setInvoiceAnnexesEnabled] = useState(false);
@@ -6148,6 +6150,7 @@ function AppInner() {
 
   const invoiceKindFromDoc = (k?: InvoiceDocKind): InvoiceNumberKind =>
     (k ?? invoiceDocKind) === 'services' ? 'services' : 'export';
+
 
   const assignFreshInvoiceNumber = (kind?: InvoiceNumberKind) => {
     const k = kind ?? invoiceKindFromDoc();
@@ -9516,6 +9519,8 @@ function AppInner() {
         savedServices,
         invoiceAnnexesEnabled,
         invoiceAnnexes,
+        quotationLeadTime,
+        quotationProductMoqs,
     };
 
     const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -9730,6 +9735,8 @@ function AppInner() {
     setBuyerManualResaleValue((project.data as any).buyerManualResaleValue !== undefined ? Number((project.data as any).buyerManualResaleValue) : undefined);
     setBuyerManualResaleCurrency(String((project.data as any).buyerManualResaleCurrency || config.outputCurrency || 'OMR'));
     setVolumeTiers(Array.isArray((project.data as any).volumeTiers) ? (project.data as any).volumeTiers : []);
+    setQuotationLeadTime(String((project.data as any).quotationLeadTime || '30-45 days after order confirmation'));
+    setQuotationProductMoqs((project.data as any).quotationProductMoqs || {});
 
     setSuppliers(project.data.suppliers || []);
     setBuyers((prev) =>
@@ -9745,7 +9752,7 @@ function AppInner() {
     setDashboardSubView('workspace');
     setSelectedBuyerId('');
     const loadedKind = (project.data as any).invoiceDocKind;
-    setInvoiceDocKind(loadedKind === 'services' ? 'services' : 'products');
+    setInvoiceDocKind(loadedKind === 'services' ? 'services' : loadedKind === 'quotation' ? 'quotation' : 'products');
     if (loadedInvoiceRef) {
       setInvoiceNumbering(
         syncCounterFromRef(loadedKind === 'services' ? 'services' : 'export', loadedInvoiceRef),
@@ -11654,6 +11661,8 @@ function AppInner() {
     setBuyerManualResaleValue(undefined);
     setBuyerManualResaleCurrency(config.outputCurrency || 'OMR');
     setVolumeTiers([]);
+    setQuotationLeadTime('30-45 days after order confirmation');
+    setQuotationProductMoqs({});
     setCustomerName('');
     setCustomerFirstName('');
     setCustomerLastName('');
@@ -16844,7 +16853,404 @@ function AppInner() {
     );
   };
 
+  const renderQuotation = () => {
+    const quotationProducts = calculations.processedProducts.filter((p) => p.isActive);
+    const selectedTerm = invoiceTerms[0] || 'FOB';
+    const quotationDate = new Date(invoiceIssueDateMs || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const validUntil = invoiceDueDateMs ? new Date(invoiceDueDateMs).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '30 days from issue';
+
+    // Volume tier helpers (same logic as P&L section)
+    const totalCartons = quotationProducts.reduce((s, p) => s + (p.totalPacks || 0), 0);
+    const tierRepCartons = (tier: typeof volumeTiers[0]) =>
+      tier.maxCartons != null ? Math.min(tier.maxCartons, Math.max(1, totalCartons)) : Math.max(1, totalCartons);
+    const tierScale = (tier: typeof volumeTiers[0]) =>
+      totalCartons > 0 ? tierRepCartons(tier) / totalCartons : 1;
+    const tierUnitSell = (baseUnitSell: number, tier: typeof volumeTiers[0]) =>
+      Math.max(0, baseUnitSell * (1 + (tier.adjustment || 0) / 100));
+
+    const docContent = (
+      <div
+        className="invoice-doc bg-white"
+        style={{
+          width: '210mm',
+          minHeight: '297mm',
+          padding: '18mm 16mm',
+          fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+          fontSize: '9.5pt',
+          color: '#1e293b',
+          boxSizing: 'border-box',
+          position: 'relative',
+        }}
+      >
+        {/* Accent bar */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5, background: invoiceAccentColor || '#0ea5e9' }} />
+
+        {/* Header */}
+        <table style={{ width: '100%', marginBottom: 16, borderCollapse: 'collapse' }}>
+          <tbody>
+            <tr>
+              <td style={{ verticalAlign: 'top', width: '55%' }}>
+                {invoiceLogo ? (
+                  <img src={invoiceLogo} alt="" style={{ maxHeight: 52, maxWidth: 190, objectFit: 'contain', display: 'block', marginBottom: 6 }} />
+                ) : null}
+                <div style={{ fontWeight: 800, fontSize: '12pt', color: '#0f172a', marginBottom: 2 }}>{billedFrom || 'Your Company'}</div>
+                {billedFromDetails ? <div style={{ whiteSpace: 'pre-line', fontSize: '8.5pt', color: '#475569', lineHeight: 1.5 }}>{billedFromDetails}</div> : null}
+                {(invoiceSellerPhone || invoiceSellerEmail) && (
+                  <div style={{ marginTop: 4, fontSize: '8pt', color: '#64748b' }}>
+                    {invoiceSellerPhone ? <div>{invoiceSellerPhone}</div> : null}
+                    {invoiceSellerEmail ? <div>{invoiceSellerEmail}</div> : null}
+                    {invoiceSellerWebsite ? <div>{invoiceSellerWebsite}</div> : null}
+                  </div>
+                )}
+              </td>
+              <td style={{ verticalAlign: 'top', textAlign: 'right' }}>
+                <div style={{ fontSize: '18pt', fontWeight: 900, letterSpacing: '0.04em', color: invoiceAccentColor || '#0ea5e9', textTransform: 'uppercase', marginBottom: 8 }}>Quotation</div>
+                <table style={{ marginLeft: 'auto', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ color: '#64748b', paddingRight: 10, paddingBottom: 3 }}>Quotation No.</td>
+                      <td style={{ fontWeight: 700, color: '#0f172a', paddingBottom: 3 }}>{invoiceRef || '—'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: '#64748b', paddingRight: 10, paddingBottom: 3 }}>Date</td>
+                      <td style={{ fontWeight: 700, color: '#0f172a', paddingBottom: 3 }}>{quotationDate}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: '#64748b', paddingRight: 10 }}>Valid Until</td>
+                      <td style={{ fontWeight: 700, color: '#0f172a' }}>{validUntil}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <hr style={{ border: 'none', borderTop: `2px solid ${invoiceAccentColor || '#0ea5e9'}`, marginBottom: 14 }} />
+
+        {/* To / Buyer */}
+        {(customerName || customerAddress) && (
+          <div style={{ marginBottom: 14, padding: '8px 10px', background: '#f8fafc', borderLeft: `3px solid ${invoiceAccentColor || '#0ea5e9'}`, borderRadius: 4 }}>
+            <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: 4 }}>To</div>
+            <div style={{ fontWeight: 700, fontSize: '10pt', color: '#0f172a' }}>{customerName || customerCompany || '—'}</div>
+            {customerCompany && customerName && <div style={{ fontSize: '8.5pt', color: '#475569' }}>{customerCompany}</div>}
+            {customerAddress && <div style={{ whiteSpace: 'pre-line', fontSize: '8.5pt', color: '#475569', marginTop: 2 }}>{customerAddress}</div>}
+          </div>
+        )}
+
+        {/* Products table */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: 6 }}>Products &amp; Pricing</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+            <thead>
+              <tr style={{ background: invoiceAccentColor || '#0ea5e9', color: '#fff' }}>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '3%' }}>#</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '28%' }}>Product</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '22%' }}>Specification</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '10%' }}>MOQ</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '12%' }}>Incoterm</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, width: '13%' }}>Unit Price</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '12%' }}>Lead Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotationProducts.map((p, idx) => {
+                const unitPrice = (p as any).scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+                const moq = quotationProductMoqs[p.id] || p.catalogMOQ || '';
+                return (
+                  <tr key={p.id} style={{ background: idx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '7px 8px', color: '#94a3b8', textAlign: 'center' }}>{idx + 1}</td>
+                    <td style={{ padding: '7px 8px', fontWeight: 600, color: '#0f172a' }}>
+                      {p.name}
+                      {p.hsCode ? <div style={{ fontSize: '7.5pt', color: '#94a3b8', marginTop: 1 }}>HS: {p.hsCode}</div> : null}
+                    </td>
+                    <td style={{ padding: '7px 8px', color: '#475569' }}>
+                      {p.catalogDescription || p.name}
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'center', color: '#0f172a' }}>{moq || '—'}</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'center' }}>
+                      <span style={{ display: 'inline-block', padding: '2px 6px', background: `${invoiceAccentColor || '#0ea5e9'}20`, borderRadius: 3, fontWeight: 700, color: invoiceAccentColor || '#0ea5e9', fontSize: '8pt' }}>
+                        {selectedTerm}
+                      </span>
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                      {formatMoney(unitPrice, config.outputCurrency)}
+                    </td>
+                    <td style={{ padding: '7px 8px', textAlign: 'center', color: '#475569', fontSize: '8pt' }}>
+                      {quotationLeadTime}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Volume Pricing Tiers */}
+        {volumeTiers.length > 0 && quotationProducts.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: 6 }}>
+              Volume Pricing — {selectedTerm}
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9' }}>
+                  <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569', width: '25%' }}>Quantity Range</th>
+                  {quotationProducts.map((p) => (
+                    <th key={p.id} style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>{p.name}</th>
+                  ))}
+                  <th style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 700, color: '#475569', width: '14%' }}>Adj.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {volumeTiers.map((tier, idx) => {
+                  const label = tier.maxCartons != null
+                    ? `${tier.minCartons} – ${tier.maxCartons} cartons`
+                    : `${tier.minCartons}+ cartons (full order)`;
+                  const isLast = idx === volumeTiers.length - 1;
+                  return (
+                    <tr key={tier.id} style={{ background: isLast ? `${invoiceAccentColor || '#0ea5e9'}10` : idx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '6px 8px', fontWeight: isLast ? 700 : 400, color: '#0f172a' }}>{label}</td>
+                      {quotationProducts.map((p) => {
+                        const basePrice = (p as any).scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+                        const tieredPrice = tierUnitSell(basePrice, tier);
+                        return (
+                          <td key={p.id} style={{ padding: '6px 8px', textAlign: 'right', fontWeight: isLast ? 700 : 600, color: '#0f172a' }}>
+                            {formatMoney(tieredPrice, config.outputCurrency)}
+                          </td>
+                        );
+                      })}
+                      <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '8pt' }}>
+                        <span style={{ color: (tier.adjustment || 0) > 0 ? '#dc2626' : (tier.adjustment || 0) < 0 ? '#16a34a' : '#94a3b8', fontWeight: 700 }}>
+                          {(tier.adjustment || 0) > 0 ? '+' : ''}{tier.adjustment || 0}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Terms block */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
+          <div style={{ padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+            <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Payment Terms</div>
+            <div style={{ fontSize: '8.5pt', color: '#0f172a', fontWeight: 500 }}>{paymentTerms || '—'}</div>
+          </div>
+          <div style={{ padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+            <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Lead Time</div>
+            <div style={{ fontSize: '8.5pt', color: '#0f172a', fontWeight: 500 }}>{quotationLeadTime || '—'}</div>
+          </div>
+          <div style={{ padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+            <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Incoterm</div>
+            <div style={{ fontSize: '8.5pt', color: '#0f172a', fontWeight: 700 }}>
+              {invoiceTerms.join(' / ') || selectedTerm}
+              <div style={{ fontSize: '7.5pt', color: '#64748b', fontWeight: 400, marginTop: 2 }}>Validity: {validUntil}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Notes */}
+        {notes && (
+          <div style={{ marginBottom: 14, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+            <div style={{ fontSize: '7.5pt', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', marginBottom: 4 }}>Notes &amp; Remarks</div>
+            <div style={{ whiteSpace: 'pre-line', fontSize: '8.5pt', color: '#475569', lineHeight: 1.6 }}>{notes}</div>
+          </div>
+        )}
+
+        {/* Signature */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20 }}>
+          <div>
+            <div style={{ fontSize: '7.5pt', color: '#94a3b8', marginBottom: 24 }}>Prepared by</div>
+            <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: 4, fontSize: '8pt', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{billedFrom || 'Seller'}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '7.5pt', color: '#94a3b8', marginBottom: 24 }}>Accepted by</div>
+            <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: 4, fontSize: '8pt', color: '#475569' }}>&nbsp;</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14, fontSize: '7pt', color: '#94a3b8', textAlign: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
+          This quotation is valid until {validUntil}. Prices are subject to change after expiry.
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
+        {/* Settings panel */}
+        <div className="w-full lg:w-80 bg-white border border-slate-200 rounded-lg p-4 overflow-y-auto print:hidden space-y-4">
+          <InvoiceDocKindTabs kind={invoiceDocKind} setKind={handleInvoiceDocKindChange} />
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-emerald-600" /> Quotation Settings
+            </h3>
+            <button
+              type="button"
+              onClick={triggerPrint}
+              className="text-[11px] font-semibold inline-flex items-center gap-1 px-2 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Quotation No.</label>
+              <input type="text" value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Issue Date</label>
+              <input
+                type="datetime-local"
+                value={formatMsForDatetimeLocal(Number.isFinite(invoiceIssueDateMs) && invoiceIssueDateMs > 0 ? invoiceIssueDateMs : Date.now())}
+                onChange={(e) => { const ms = parseDatetimeLocalToMs(e.target.value); if (ms !== undefined) setInvoiceIssueDateMs(ms); }}
+                className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Valid Until</label>
+              <input
+                type="datetime-local"
+                value={invoiceDueDateMs ? formatMsForDatetimeLocal(invoiceDueDateMs) : ''}
+                onChange={(e) => { const ms = parseDatetimeLocalToMs(e.target.value); setInvoiceDueDateMs(ms); }}
+                className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
+                placeholder="Leave blank for '30 days from issue'"
+              />
+              {invoiceDueDateMs ? (
+                <button type="button" className="text-[10px] text-slate-400 hover:text-slate-600 mt-0.5" onClick={() => setInvoiceDueDateMs(undefined)}>Clear</button>
+              ) : null}
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Lead Time</label>
+              <input type="text" value={quotationLeadTime} onChange={(e) => setQuotationLeadTime(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" placeholder="e.g. 30-45 days after order confirmation" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Payment Terms</label>
+              <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Incoterm to Show</label>
+              <div className="flex flex-wrap gap-1">
+                {(['EXW', 'FCA', 'FOB', 'CIF', 'DDP'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      if (invoiceTerms.includes(t)) {
+                        if (invoiceTerms.length > 1) setInvoiceTerms(invoiceTerms.filter((x) => x !== t));
+                      } else {
+                        setInvoiceTerms([...invoiceTerms, t]);
+                      }
+                    }}
+                    className={`px-2 py-1 text-xs rounded border ${invoiceTerms.includes(t) ? 'bg-emerald-50 border-emerald-200 text-emerald-700 font-bold' : 'bg-white border-slate-200 text-slate-500'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[9px] text-slate-400 mt-1">First selected incoterm is used for the price column.</p>
+            </div>
+            <InvoiceAccentColorPicker value={invoiceAccentColor} onChange={setInvoiceAccentColor} />
+            <hr className="border-slate-100" />
+            {/* Seller info */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Company Name</label>
+              <input type="text" value={billedFrom} onChange={(e) => setBilledFrom(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" placeholder="Your company name" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Company Address</label>
+              <textarea rows={3} value={billedFromDetails} onChange={(e) => setBilledFromDetails(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none" placeholder="Street, City, Country" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Phone</label>
+                <input type="text" value={invoiceSellerPhone} onChange={(e) => setInvoiceSellerPhone(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Email</label>
+                <input type="text" value={invoiceSellerEmail} onChange={(e) => setInvoiceSellerEmail(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Website</label>
+              <input type="text" value={invoiceSellerWebsite} onChange={(e) => setInvoiceSellerWebsite(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5" />
+            </div>
+            {/* Logo */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Logo</label>
+              <label className="flex items-center gap-2 cursor-pointer px-2 py-1.5 border border-slate-200 rounded text-xs text-slate-600 hover:bg-slate-50">
+                <Upload className="w-3.5 h-3.5" />
+                {invoiceLogo ? 'Change logo' : 'Upload logo'}
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => setInvoiceLogo((ev.target?.result as string) || '');
+                  reader.readAsDataURL(f);
+                  e.target.value = '';
+                }} />
+              </label>
+              {invoiceLogo && (
+                <div className="mt-2 flex justify-center p-2 bg-white border border-slate-200 rounded">
+                  <img src={invoiceLogo} alt="" className="max-h-12 max-w-full object-contain" />
+                </div>
+              )}
+            </div>
+            <hr className="border-slate-100" />
+            {/* Buyer */}
+            <InvoiceCustomerEditor
+              {...getInvoiceCustomerFields()}
+              onChange={patchInvoiceCustomer}
+              buyersSlot={renderInvoiceBuyerPicker()}
+              onSaveBuyer={handleSaveCurrentBuyer}
+            />
+            <hr className="border-slate-100" />
+            {/* Per-product MOQ */}
+            {quotationProducts.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase block mb-2">MOQ per Product</label>
+                <div className="space-y-2">
+                  {quotationProducts.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <span className="text-xs text-slate-600 flex-1 truncate">{p.name}</span>
+                      <input
+                        type="text"
+                        value={quotationProductMoqs[p.id] || p.catalogMOQ || ''}
+                        onChange={(e) => setQuotationProductMoqs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        className="w-24 text-xs border border-slate-200 rounded px-2 py-1"
+                        placeholder={`e.g. 100 pcs`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <hr className="border-slate-100" />
+            {/* Notes */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Notes / Remarks</label>
+              <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none" placeholder="Additional terms, quality notes, etc." />
+            </div>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="flex-1 overflow-y-auto bg-slate-100 rounded-lg print:bg-white print:overflow-visible">
+          <div className="min-h-full p-4 print:p-0 flex flex-col items-center">
+            <div className="shadow-lg print:shadow-none" style={{ transform: 'scale(0.92)', transformOrigin: 'top center', marginBottom: '-6%' }}>
+              {docContent}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderInvoice = () => {
+    if (invoiceDocKind === 'quotation') return renderQuotation();
     if (invoiceDocKind === 'services') {
       return (
         <ServiceInvoicePanel
