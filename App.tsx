@@ -22741,7 +22741,7 @@ function AppInner() {
   // ─── Context Value ────────────────────────────────────────────────────────
   // تمام state و handler ها برای مصرف توسط page components از طریق context
   // NOTE: در آینده این را به چند context کوچک‌تر تقسیم کنید تا re-render کمتر شود
-  const contextValue = useMemo(() => ({
+  const contextValue = {
     // Firebase
     db, storage, auth,
     // Auth
@@ -22970,8 +22970,7 @@ function AppInner() {
     formatMoney,
     formatNumber,
     summarizePayments,
-  }), []); // eslint-disable-line react-hooks/exhaustive-deps
-  // ↑ deps عمداً خالی است: context object هر render ساخته می‌شود (بهینه‌سازی در مرحله بعدی)
+  };
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
