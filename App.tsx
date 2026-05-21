@@ -6046,6 +6046,12 @@ function AppInner() {
   // -- STATE: DOCUMENT SETTINGS (INVOICE/CATALOG/PRICELIST) --
   const [selectedTerms, setSelectedTerms] = useState<string[]>(['FOB', 'DDP']); 
   const [visibleScenarioTerms, setVisibleScenarioTerms] = useState<string[]>(['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
+  const [bulkExportProfitTerms, setBulkExportProfitTerms] = useState<ScenarioTerm[]>(['FOB']);
+  const [bulkExportProfitMode, setBulkExportProfitMode] = useState<'percent' | 'fixed'>('percent');
+  const [bulkExportProfitPercent, setBulkExportProfitPercent] = useState<number | undefined>(20);
+  const [bulkExportProfitType, setBulkExportProfitType] = useState<'markup' | 'margin'>('markup');
+  const [bulkExportFixedProfit, setBulkExportFixedProfit] = useState<number | undefined>(undefined);
+  const [bulkExportFixedCurrency, setBulkExportFixedCurrency] = useState<string>('OMR');
   const [invoiceTerms, setInvoiceTerms] = useState<string[]>(['FOB', 'DDP']);
   const [showImages, setShowImages] = useState(false);
   const [showPackInfo, setShowPackInfo] = useState(true); 
@@ -10249,6 +10255,79 @@ function AppInner() {
       }));
   };
 
+  const toggleBulkExportProfitTerm = (term: ScenarioTerm) => {
+      setBulkExportProfitTerms(prev => {
+          if (prev.includes(term)) {
+              return prev.length > 1 ? prev.filter(t => t !== term) : prev;
+          }
+          return [...prev, term].sort((a, b) => SCENARIO_TERMS.indexOf(a) - SCENARIO_TERMS.indexOf(b));
+      });
+  };
+
+  const applyBulkExportProfitPricing = () => {
+      const terms = bulkExportProfitTerms.length ? bulkExportProfitTerms : [...SCENARIO_TERMS];
+      if (bulkExportProfitMode === 'percent') {
+          const percent = bulkExportProfitPercent;
+          if (percent === undefined || percent < 0) {
+              window.alert('Enter a valid profit percentage.');
+              return;
+          }
+          setProducts(prev => prev.map(p => {
+              let nextProduct: Product = { ...p };
+              terms.forEach(term => {
+                  nextProduct = {
+                      ...nextProduct,
+                      scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, percent),
+                      scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, bulkExportProfitType),
+                      scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
+                      scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, undefined),
+                      scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, undefined),
+                  };
+              });
+              return nextProduct;
+          }));
+          return;
+      }
+
+      const amount = bulkExportFixedProfit;
+      if (amount === undefined || amount <= 0) {
+          window.alert('Enter a valid fixed unit profit.');
+          return;
+      }
+      setProducts(prev => prev.map(p => {
+          let nextProduct: Product = { ...p };
+          terms.forEach(term => {
+              nextProduct = {
+                  ...nextProduct,
+                  scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, amount),
+                  scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, bulkExportFixedCurrency || config.outputCurrency),
+                  scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
+                  scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, undefined),
+                  scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, undefined),
+              };
+          });
+          return nextProduct;
+      }));
+  };
+
+  const clearBulkExportProfitPricing = () => {
+      const terms = bulkExportProfitTerms.length ? bulkExportProfitTerms : [...SCENARIO_TERMS];
+      setProducts(prev => prev.map(p => {
+          let nextProduct: Product = { ...p };
+          terms.forEach(term => {
+              nextProduct = {
+                  ...nextProduct,
+                  scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, undefined),
+                  scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, undefined),
+                  scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
+                  scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, undefined),
+                  scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, undefined),
+              };
+          });
+          return nextProduct;
+      }));
+  };
+
   const updateProductColumnLabel = (key: ProductTableColumnKey, label: string) => {
       setProductColumnSettings((prev) => ({
           ...prev,
@@ -10724,7 +10803,7 @@ function AppInner() {
   const printShipmentProfitLossReport = () => {
     if (typeof window === 'undefined') return;
     if (!profitLossReportTerm) {
-      alert('اول مبنای گزارش سود و زیان را انتخاب کن: EXW، FCA، FOB، CIF یا DDP.');
+      alert('Select the profit and loss report term first: EXW, FCA, FOB, CIF, or DDP.');
       return;
     }
     const selectedTerm = profitLossReportTerm;
@@ -11519,6 +11598,12 @@ function AppInner() {
     setLogistics(defaultLogisticsSeed());
     setSelectedTerms(['FOB', 'DDP']);
     setVisibleScenarioTerms(['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
+    setBulkExportProfitTerms(['FOB']);
+    setBulkExportProfitMode('percent');
+    setBulkExportProfitPercent(20);
+    setBulkExportProfitType('markup');
+    setBulkExportFixedProfit(undefined);
+    setBulkExportFixedCurrency('OMR');
     setInvoiceTerms(['FOB', 'DDP']);
     setNotes('');
     setShowImages(false);
@@ -12645,8 +12730,8 @@ function AppInner() {
                   Each field below feeds a <strong>cumulative cost stack</strong> used in scenario pricing: EXW → FCA → FOB → CIF → DDP.
                   Shipment totals are converted to output currency, then spread <strong>evenly per unit</strong> across all active line quantities (same rule as the calculator table).
               </p>
-              <p className="text-[11px] text-slate-500 leading-relaxed pb-2 border-b border-slate-100" dir="rtl">
-                  هر بخش هزینه به لایهٔ اینکوترم مربوطش وصل است؛ ترتیب با موتور قیمت‌گذاری یکی است و سهم هر واحد از کل تعداد کالاها یکنواخت تقسیم می‌شود.
+              <p className="text-[11px] text-slate-500 leading-relaxed pb-2 border-b border-slate-100">
+                  Each cost bucket maps to its Incoterm layer, follows the pricing engine order, and uses the same per-unit allocation across active product quantities.
               </p>
 
               <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-500 bg-slate-50 rounded-lg px-2 py-1.5 border border-slate-100">
@@ -13018,7 +13103,285 @@ function AppInner() {
           </div>
       </div>
 
-      {/* 4. SCENARIO ANALYSIS — per product + shipment totals */}
+      {/* 4. EXPORT PROFIT CALCULATOR */}
+      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0 max-h-[min(34rem,72vh)]">
+          <div className="shrink-0 px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div className="min-w-0 xl:max-w-sm">
+                  <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Export profit calculator
+                  </h2>
+                  <p className="text-[10px] text-emerald-800/75 mt-1 leading-snug">
+                      Set per-term selling rules before reviewing the scenario analysis below.
+                  </p>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-emerald-800 block">Bulk mode</label>
+                      <div className="flex bg-white border border-emerald-100 rounded-lg p-1">
+                          <button
+                              type="button"
+                              onClick={() => setBulkExportProfitMode('percent')}
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${bulkExportProfitMode === 'percent' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-700 hover:bg-emerald-50'}`}
+                          >
+                              Percent
+                          </button>
+                          <button
+                              type="button"
+                              onClick={() => setBulkExportProfitMode('fixed')}
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${bulkExportProfitMode === 'fixed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-700 hover:bg-emerald-50'}`}
+                          >
+                              Fixed amount
+                          </button>
+                      </div>
+                  </div>
+
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-emerald-800 block">Terms</label>
+                      <div className="flex flex-wrap gap-1 max-w-[260px]">
+                          {SCENARIO_TERMS.map(term => (
+                              <button
+                                  key={`export-bulk-${term}`}
+                                  type="button"
+                                  onClick={() => toggleBulkExportProfitTerm(term)}
+                                  className={`px-2 py-1 text-[10px] font-bold rounded border ${bulkExportProfitTerms.includes(term) ? 'bg-white border-emerald-300 text-emerald-700 ring-1 ring-emerald-200' : 'bg-emerald-50/50 border-emerald-100 text-emerald-300'}`}
+                              >
+                                  {term}
+                              </button>
+                          ))}
+                      </div>
+                  </div>
+
+                  {bulkExportProfitMode === 'percent' ? (
+                      <>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-semibold text-emerald-800 block">Profit %</label>
+                              <div className="flex items-center gap-1 bg-white border border-emerald-100 rounded-lg px-2">
+                                  <FormattedNumberInput
+                                      optional
+                                      value={bulkExportProfitPercent}
+                                      onChange={(val) => setBulkExportProfitPercent(val !== undefined && val >= 0 ? val : undefined)}
+                                      className="w-20 py-1.5 text-sm outline-none font-bold text-slate-700 text-right"
+                                      placeholder="20"
+                                  />
+                                  <span className="text-xs font-bold text-emerald-500">%</span>
+                              </div>
+                          </div>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-semibold text-emerald-800 block">Formula</label>
+                              <select
+                                  value={bulkExportProfitType}
+                                  onChange={(e) => setBulkExportProfitType(e.target.value as 'markup' | 'margin')}
+                                  className="h-8 text-xs bg-white border border-emerald-100 rounded-lg px-2 text-slate-700"
+                              >
+                                  <option value="markup">Markup</option>
+                                  <option value="margin">Margin</option>
+                              </select>
+                          </div>
+                      </>
+                  ) : (
+                      <>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-semibold text-emerald-800 block">Unit profit</label>
+                              <FormattedNumberInput
+                                  optional
+                                  value={bulkExportFixedProfit}
+                                  onChange={(val) => setBulkExportFixedProfit(val !== undefined && val > 0 ? val : undefined)}
+                                  className="w-24 h-8 border border-emerald-100 rounded-lg px-2 text-sm text-right font-bold text-slate-700 bg-white"
+                                  placeholder="0.200"
+                              />
+                          </div>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-semibold text-emerald-800 block">Currency</label>
+                              <select
+                                  value={bulkExportFixedCurrency}
+                                  onChange={(e) => setBulkExportFixedCurrency(e.target.value)}
+                                  className="h-8 text-xs bg-white border border-emerald-100 rounded-lg px-2 text-slate-700"
+                              >
+                                  {Object.keys(rates).map(c => <option key={`export-bulk-curr-${c}`} value={c}>{c}</option>)}
+                              </select>
+                          </div>
+                      </>
+                  )}
+
+                  <div className="flex gap-1">
+                      <button
+                          type="button"
+                          onClick={applyBulkExportProfitPricing}
+                          className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-sm hover:bg-emerald-700"
+                      >
+                          Apply to all lines
+                      </button>
+                      <button
+                          type="button"
+                          onClick={clearBulkExportProfitPricing}
+                          className="h-8 px-3 rounded-lg bg-white border border-emerald-100 text-emerald-700 text-xs font-bold hover:bg-emerald-50"
+                      >
+                          Clear selected terms
+                      </button>
+                  </div>
+              </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain divide-y divide-slate-100 [scrollbar-gutter:stable]">
+              {calculations.productScenarioBreakdown.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-slate-400 text-sm italic">No active products — enable lines in the calculator table to set export profits.</div>
+              ) : (
+                  calculations.productScenarioBreakdown.map((block) => (
+                      <div key={`export-profit-${block.id}`} className="px-4 py-3 hover:bg-slate-50/40">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-2">
+                              <span className="font-semibold text-slate-800 text-sm">{block.name || 'Item'}</span>
+                              {block.sku ? <span className="text-[11px] font-mono text-slate-400">SKU {block.sku}</span> : null}
+                              <span className="text-[11px] text-slate-500">Qty <span className="font-mono font-semibold text-slate-700">{block.qty}</span></span>
+                          </div>
+                          <div className="overflow-x-auto rounded-lg border border-slate-200">
+                              <table className="w-full text-sm text-left min-w-[1320px]">
+                                  <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 text-xs">
+                                      <tr>
+                                          <th className="px-3 py-2">Incoterm</th>
+                                          <th className="px-3 py-2 text-right">Unit cost</th>
+                                          <th className="px-3 py-2 text-right">Profit %</th>
+                                          <th className="px-3 py-2 text-right">Formula</th>
+                                          <th className="px-3 py-2 text-right">Fixed unit profit</th>
+                                          <th className="px-3 py-2 text-right">Target price</th>
+                                          <th className="px-3 py-2 text-right">Manual unit sell</th>
+                                          <th className="px-3 py-2 text-right bg-emerald-50">Calculated unit sell</th>
+                                          <th className="px-3 py-2 text-right text-emerald-700">Unit profit</th>
+                                          <th className="px-3 py-2 text-right text-slate-500">Line profit</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 bg-white">
+                                      {block.rows.map((row) => {
+                                          const scenarioProduct = calculations.processedProducts.find((p) => p.id === block.id);
+                                          const scenarioType = scenarioProduct?.scenarioProfitTypes?.[row.term] || config.profitType;
+                                          const scenarioPercent = scenarioProduct?.scenarioProfitPercents?.[row.term];
+                                          const manualUnitSell = scenarioProduct?.scenarioManualUnitSellPrices?.[row.term];
+                                          const fixedUnitProfit = scenarioProduct?.scenarioManualUnitProfitAdds?.[row.term];
+                                          const fixedUnitProfitCurrency = scenarioProduct?.scenarioManualUnitProfitCurrencies?.[row.term] || config.outputCurrency;
+                                          const targetPrice = scenarioProduct?.scenarioTargetPrices?.[row.term] ?? (scenarioProduct?.targetPrice && row.term === 'EXW' ? scenarioProduct.targetPrice : undefined);
+                                          const targetCurrency = scenarioProduct?.scenarioTargetCurrencies?.[row.term] || scenarioProduct?.targetPriceCurrency || config.outputCurrency;
+                                          const targetInOutput = targetPrice !== undefined && targetPrice > 0 ? toOutput(toBase(targetPrice, targetCurrency)) : undefined;
+                                          const targetDiff = targetInOutput && row.unitSell > 0 ? ((row.unitSell - targetInOutput) / targetInOutput) * 100 : undefined;
+                                          const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
+                                          return (
+                                              <tr key={`export-profit-${block.id}-${row.term}`} className="hover:bg-slate-50/80">
+                                                  <td className="px-3 py-2">
+                                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${termBadge[row.term] || 'bg-slate-100 text-slate-700'}`}>{row.term}</span>
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right text-slate-600 font-mono text-xs">{formatMoney(row.unitCost, config.outputCurrency)}</td>
+                                                  <td className="px-3 py-2 text-right">
+                                                      <FormattedNumberInput
+                                                          optional
+                                                          value={scenarioPercent}
+                                                          onChange={(val) => {
+                                                              updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, val !== undefined && val >= 0 ? val : undefined);
+                                                              updateProductScenarioMap(block.id, 'scenarioManualUnitProfitAdds', row.term, undefined);
+                                                              updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, undefined);
+                                                              updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, undefined);
+                                                          }}
+                                                          className="w-16 border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700"
+                                                          placeholder={config.profitPercent.toString()}
+                                                      />
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right">
+                                                      <select
+                                                          value={scenarioType}
+                                                          onChange={(e) => updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, e.target.value)}
+                                                          className="w-20 border border-slate-200 rounded px-1 py-1 text-[10px] text-slate-600 bg-white"
+                                                      >
+                                                          <option value="markup">Markup</option>
+                                                          <option value="margin">Margin</option>
+                                                      </select>
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right">
+                                                      <div className="flex justify-end gap-1">
+                                                          <FormattedNumberInput
+                                                              optional
+                                                              value={fixedUnitProfit}
+                                                              onChange={(val) => {
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitProfitAdds', row.term, val !== undefined && val > 0 ? val : undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, fixedUnitProfitCurrency);
+                                                                  updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, undefined);
+                                                              }}
+                                                              className="w-20 border border-emerald-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-emerald-800 bg-emerald-50/40"
+                                                              placeholder="-"
+                                                          />
+                                                          <select
+                                                              value={fixedUnitProfitCurrency}
+                                                              onChange={(e) => updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, e.target.value)}
+                                                              className="w-16 border border-emerald-100 rounded px-1 py-1 text-[10px] text-emerald-700 bg-white"
+                                                          >
+                                                              {Object.keys(rates).map(c => <option key={`fixed-${block.id}-${row.term}-${c}`} value={c}>{c}</option>)}
+                                                          </select>
+                                                      </div>
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right">
+                                                      <div className="flex justify-end gap-1">
+                                                          <FormattedNumberInput
+                                                              optional
+                                                              value={targetPrice}
+                                                              onChange={(val) => updateProductScenarioMap(block.id, 'scenarioTargetPrices', row.term, val !== undefined && val > 0 ? val : undefined)}
+                                                              className="w-20 border border-amber-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-amber-800 bg-amber-50/40"
+                                                              placeholder="-"
+                                                          />
+                                                          <select
+                                                              value={targetCurrency}
+                                                              onChange={(e) => updateProductScenarioMap(block.id, 'scenarioTargetCurrencies', row.term, e.target.value)}
+                                                              className="w-16 border border-amber-100 rounded px-1 py-1 text-[10px] text-amber-700 bg-white"
+                                                          >
+                                                              {Object.keys(rates).map(c => <option key={`target-${block.id}-${row.term}-${c}`} value={c}>{c}</option>)}
+                                                          </select>
+                                                      </div>
+                                                      {targetDiff !== undefined ? <div className={`mt-0.5 text-[10px] ${targetDiff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{targetDiff >= 0 ? '+' : ''}{targetDiff.toFixed(1)}% vs target</div> : null}
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right">
+                                                      <div className="flex justify-end gap-1">
+                                                          <FormattedNumberInput
+                                                              optional
+                                                              value={manualUnitSell}
+                                                              onChange={(val) => {
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, val !== undefined && val > 0 ? val : undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitProfitAdds', row.term, undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, undefined);
+                                                              }}
+                                                              className="w-24 border border-blue-200 rounded px-1.5 py-1 text-xs text-right font-bold text-blue-700 bg-white"
+                                                              placeholder={formatNumber(row.unitSell)}
+                                                          />
+                                                          <span className="self-center text-[10px] text-blue-500 font-bold">{config.outputCurrency}</span>
+                                                      </div>
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right bg-emerald-50/25">
+                                                      <div className="font-mono text-xs font-bold text-emerald-800">{formatMoney(row.unitSell, config.outputCurrency)}</div>
+                                                      <div className="mt-0.5 text-[10px] text-emerald-600">
+                                                          {manualUnitSell
+                                                              ? 'manual sell'
+                                                              : fixedUnitProfit
+                                                                  ? `fixed profit: ${formatMoney(fixedUnitProfit, fixedUnitProfitCurrency)}`
+                                                                  : scenarioPercent !== undefined
+                                                                      ? `${scenarioPercent}% ${scenarioType}`
+                                                                      : 'default pricing'}
+                                                      </div>
+                                                  </td>
+                                                  <td className="px-3 py-2 text-right font-semibold text-emerald-600 font-mono text-xs">{formatMoney(row.unitProfit, config.outputCurrency)}</td>
+                                                  <td className="px-3 py-2 text-right text-emerald-700 font-bold font-mono text-xs">{formatMoney(row.lineProfit, config.outputCurrency)}</td>
+                                              </tr>
+                                          );
+                                      })}
+                                  </tbody>
+                              </table>
+                          </div>
+                      </div>
+                  ))
+              )}
+          </div>
+      </div>
+
+      {/* 5. SCENARIO ANALYSIS — per product + shipment totals */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0 max-h-[min(32rem,68vh)] md:max-h-[min(34rem,70vh)]">
           <div className="shrink-0 px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
               <div className="min-w-0">
@@ -13056,13 +13419,11 @@ function AppInner() {
                               <span className="text-[11px] text-slate-500">Qty <span className="font-mono font-semibold text-slate-700">{block.qty}</span></span>
                           </div>
                           <div className="overflow-x-auto rounded-lg border border-slate-200">
-                              <table className="w-full text-sm text-left min-w-[1180px]">
+                              <table className="w-full text-sm text-left min-w-[900px]">
                                   <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 text-xs">
                                       <tr>
                                           <th className="px-3 py-2">Incoterm</th>
                                           <th className="px-3 py-2 text-right">Unit cost</th>
-                                          <th className="px-3 py-2 text-right">Pricing %</th>
-                                          <th className="px-3 py-2 text-right">Target price</th>
                                           <th className="px-3 py-2 text-right bg-blue-50">Unit sell</th>
                                           <th className="px-3 py-2 text-right text-green-600">Unit profit</th>
                                           <th className="px-3 py-2 text-right text-slate-500">Δ vs prev term</th>
@@ -13075,16 +13436,6 @@ function AppInner() {
                                       {block.rows
                                           .filter((r) => visibleScenarioTerms.includes(r.term))
                                           .map((row) => {
-                                              const scenarioProduct = calculations.processedProducts.find((p) => p.id === block.id);
-                                              const scenarioType = scenarioProduct?.scenarioProfitTypes?.[row.term] || config.profitType;
-                                              const scenarioPercent = scenarioProduct?.scenarioProfitPercents?.[row.term];
-                                              const manualUnitSell = scenarioProduct?.scenarioManualUnitSellPrices?.[row.term];
-                                              const fixedUnitProfit = scenarioProduct?.scenarioManualUnitProfitAdds?.[row.term];
-                                              const fixedUnitProfitCurrency = scenarioProduct?.scenarioManualUnitProfitCurrencies?.[row.term] || config.outputCurrency;
-                                              const targetPrice = scenarioProduct?.scenarioTargetPrices?.[row.term] ?? (scenarioProduct?.targetPrice && row.term === 'EXW' ? scenarioProduct.targetPrice : undefined);
-                                              const targetCurrency = scenarioProduct?.scenarioTargetCurrencies?.[row.term] || scenarioProduct?.targetPriceCurrency || config.outputCurrency;
-                                              const targetInOutput = targetPrice !== undefined && targetPrice > 0 ? toOutput(toBase(targetPrice, targetCurrency)) : undefined;
-                                              const targetDiff = targetInOutput && row.unitSell > 0 ? ((row.unitSell - targetInOutput) / targetInOutput) * 100 : undefined;
                                               const mColor = row.profitMargin >= 20 ? 'text-emerald-600' : row.profitMargin >= 10 ? 'text-amber-600' : 'text-red-500';
                                               const mBorder = row.profitMargin >= 20 ? 'border-l-emerald-400' : row.profitMargin >= 10 ? 'border-l-amber-400' : 'border-l-red-400';
                                               const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
@@ -13094,62 +13445,8 @@ function AppInner() {
                                                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${termBadge[row.term] || 'bg-slate-100 text-slate-700'}`}>{row.term}</span>
                                                       </td>
                                                       <td className="px-3 py-2 text-right text-slate-600 font-mono text-xs">{formatMoney(row.unitCost, config.outputCurrency)}</td>
-                                                      <td className="px-3 py-2 text-right">
-                                                          <div className="flex justify-end gap-1">
-                                                              <FormattedNumberInput
-                                                                  optional
-                                                                  value={scenarioPercent}
-                                                                  onChange={(val) => updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, val !== undefined && val >= 0 ? val : undefined)}
-                                                                  className="w-16 border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700"
-                                                                  placeholder={config.profitPercent.toString()}
-                                                              />
-                                                              <select
-                                                                  value={scenarioType}
-                                                                  onChange={(e) => updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, e.target.value)}
-                                                                  className="w-20 border border-slate-200 rounded px-1 py-1 text-[10px] text-slate-600 bg-white"
-                                                              >
-                                                                  <option value="markup">Markup</option>
-                                                                  <option value="margin">Margin</option>
-                                                              </select>
-                                                          </div>
-                                                      </td>
-                                                      <td className="px-3 py-2 text-right">
-                                                          <div className="flex justify-end gap-1">
-                                                              <FormattedNumberInput
-                                                                  optional
-                                                                  value={targetPrice}
-                                                                  onChange={(val) => updateProductScenarioMap(block.id, 'scenarioTargetPrices', row.term, val !== undefined && val > 0 ? val : undefined)}
-                                                                  className="w-20 border border-amber-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-amber-800 bg-amber-50/40"
-                                                                  placeholder="-"
-                                                              />
-                                                              <select
-                                                                  value={targetCurrency}
-                                                                  onChange={(e) => updateProductScenarioMap(block.id, 'scenarioTargetCurrencies', row.term, e.target.value)}
-                                                                  className="w-16 border border-amber-100 rounded px-1 py-1 text-[10px] text-amber-700 bg-white"
-                                                              >
-                                                                  {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                                                              </select>
-                                                          </div>
-                                                          {targetDiff !== undefined ? <div className={`mt-0.5 text-[10px] ${targetDiff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{targetDiff >= 0 ? '+' : ''}{targetDiff.toFixed(1)}% vs target</div> : null}
-                                                      </td>
                                                       <td className="px-3 py-2 text-right bg-blue-50/25">
-                                                          <div className="flex justify-end gap-1">
-                                                              <FormattedNumberInput
-                                                                  optional
-                                                                  value={manualUnitSell}
-                                                                  onChange={(val) => updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, val !== undefined && val > 0 ? val : undefined)}
-                                                                  className="w-24 border border-blue-200 rounded px-1.5 py-1 text-xs text-right font-bold text-blue-700 bg-white"
-                                                                  placeholder={formatNumber(row.unitSell)}
-                                                              />
-                                                              <span className="self-center text-[10px] text-blue-500 font-bold">{config.outputCurrency}</span>
-                                                          </div>
-                                                          <div className="mt-0.5 text-[10px] text-blue-500">
-                                                              {manualUnitSell
-                                                                  ? 'manual'
-                                                                  : fixedUnitProfit
-                                                                      ? `+ ${formatMoney(fixedUnitProfit, fixedUnitProfitCurrency)} fixed profit`
-                                                                      : formatMoney(row.unitSell, config.outputCurrency)}
-                                                          </div>
+                                                          <span className="font-mono text-xs font-semibold text-blue-700">{formatMoney(row.unitSell, config.outputCurrency)}</span>
                                                       </td>
                                                       <td className="px-3 py-2 text-right font-semibold text-emerald-600 font-mono text-xs">{formatMoney(row.unitProfit, config.outputCurrency)}</td>
                                                       <td className="px-3 py-2 text-right text-slate-500 font-mono text-xs">{formatMoney(row.valueAdd, config.outputCurrency)}</td>
@@ -13471,9 +13768,9 @@ function AppInner() {
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-200 font-black">A4 Commercial Document</p>
-                  <h2 className="text-2xl md:text-3xl font-black mt-2">گزارش کامل سود و زیان محموله</h2>
+                  <h2 className="text-2xl md:text-3xl font-black mt-2">Complete shipment profit and loss report</h2>
                   <p className="text-sm text-blue-100/85 mt-2 max-w-3xl leading-6">
-                    سند حرفه‌ای قابل فروش برای نمایش قیمت خرید، هزینه‌های حمل، گمرک، قیمت فروش، سود ناخالص و Margin معامله صادراتی.
+                    A sales-ready document for purchase cost, freight, customs, selling price, gross profit, and export margin.
                   </p>
                 </div>
                 <button
@@ -13489,18 +13786,18 @@ function AppInner() {
 
               <div className="grid md:grid-cols-[1fr_1.15fr_auto] gap-3 mt-5 rounded-2xl bg-white/10 border border-white/15 p-3">
                 <label>
-                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">مبنای گزارش سود و زیان</span>
+                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">Profit and loss term</span>
                   <select
                     value={profitLossReportTerm}
                     onChange={(e) => setProfitLossReportTerm(e.target.value as any)}
                     className="w-full rounded-xl border border-white/20 bg-white text-slate-900 px-3 py-2 text-sm font-bold outline-none"
                   >
-                    <option value="">انتخاب کن: EXW / FCA / FOB / CIF / DDP</option>
+                    <option value="">Select: EXW / FCA / FOB / CIF / DDP</option>
                     {(['EXW', 'FCA', 'FOB', 'CIF', 'DDP'] as const).map((term) => <option key={term} value={term}>{term}</option>)}
                   </select>
                 </label>
                 <label>
-                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">سود خریدار بعد از خرید از من</span>
+                  <span className="block text-[10px] uppercase tracking-wider text-blue-100 font-bold mb-1">Buyer resale profit after purchase</span>
                   <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
                     <FormattedNumberInput
                       value={buyerProfitPercent}
@@ -13520,8 +13817,8 @@ function AppInner() {
                 </label>
                 <div className="rounded-xl bg-slate-950/30 border border-white/10 px-3 py-2 min-w-[12rem]">
                   <p className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Buyer resale revenue</p>
-                  <p className="font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : 'Term را انتخاب کن'}</p>
-                  <p className="text-[10px] text-blue-100/75 mt-1">بر اساس درصد و نوع سود خریدار</p>
+                  <p className="font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : 'Select a term'}</p>
+                  <p className="text-[10px] text-blue-100/75 mt-1">Based on the buyer profit percentage and formula.</p>
                 </div>
               </div>
 
@@ -13564,22 +13861,22 @@ function AppInner() {
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <h3 className="font-black text-slate-900 mb-3 flex items-center gap-2">
                     <FileText className="w-4 h-4 text-blue-600" />
-                    محتوای سند چاپی
+                    Printable document contents
                   </h3>
                   <div className="grid sm:grid-cols-2 gap-2 text-sm text-slate-600">
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">خلاصه اجرایی سود و زیان</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">ریز هزینه‌ها تا DDP</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">سود و Margin برای EXW تا DDP</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">جدول سود هر کالا</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">هزینه‌های اضافه مبدا/مقصد</div>
-                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">بخش امضا و تایید مدیریت</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Executive profit and loss summary</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Detailed costs through DDP</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Profit and margin from EXW to DDP</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Per-product profit table</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Origin and destination extra costs</div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">Management signature and approval block</div>
                   </div>
                 </div>
               </div>
 
               <div className="rounded-2xl border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <h3 className="font-black text-slate-900">پیش‌نمایش سود و زیان</h3>
+                  <h3 className="font-black text-slate-900">Profit and loss preview</h3>
                   <span className="text-xs text-slate-500">{projectName || 'Unsaved Project'}</span>
                 </div>
                 <div className="divide-y divide-slate-100">
@@ -13603,7 +13900,7 @@ function AppInner() {
                 </div>
                 <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100">
                   <p className="text-xs text-emerald-900 leading-5">
-                    این گزارش در پنجره چاپ جداگانه با سایز A4 باز می‌شود و برای ذخیره به PDF یا چاپ مستقیم آماده است.
+                    This report opens in a separate A4 print window and is ready for PDF export or direct printing.
                   </p>
                 </div>
               </div>
