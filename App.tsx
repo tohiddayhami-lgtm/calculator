@@ -5753,9 +5753,34 @@ function AppInner() {
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
   const [isoDocuments, setIsoDocuments] = useState<IsoDocumentDef[]>([]);
   const [isoRecords, setIsoRecords] = useState<IsoExecutionRecord[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'archive'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'archive' | 'metaport'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
+
+  // MetaPort state
+  type MetaBoothTier = 'standard' | 'premium' | 'platinum';
+  type MetaBooth = {
+    id: string;
+    companyName: string;
+    tagline: string;
+    industry: string;
+    products: string;
+    country: string;
+    email: string;
+    phone?: string;
+    website?: string;
+    instagram?: string;
+    boothNumber: string;
+    tier: MetaBoothTier;
+    coverGradient: string;
+    logoEmoji: string;
+    createdAt: number;
+    updatedAt: number;
+  };
+  const [metaBooths, setMetaBooths] = useState<MetaBooth[]>([]);
+  const [metaBoothDraft, setMetaBoothDraft] = useState<Partial<MetaBooth> | null>(null);
+  const [metaStoryBooth, setMetaStoryBooth] = useState<MetaBooth | null>(null);
+  const [metaSaving, setMetaSaving] = useState(false);
   const [isoDraft, setIsoDraft] = useState<IsoDocumentDef | null>(null);
   const [isoSaving, setIsoSaving] = useState(false);
   const [isoPublishing, setIsoPublishing] = useState<string | null>(null);
@@ -6853,6 +6878,20 @@ function AppInner() {
         console.error('Catalog links listener failed:', err);
       }
     );
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
+
+  // MetaPort booths listener
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) { setMetaBooths([]); return; }
+    let q: any;
+    try { q = query(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'metaBooths'), orderBy('createdAt', 'desc')); }
+    catch { q = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'metaBooths'); }
+    const unsub = onSnapshot(q, (snap: any) => {
+      setMetaBooths(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+    }, (err: any) => console.error('MetaPort listener failed:', err));
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
@@ -23025,6 +23064,401 @@ function AppInner() {
     );
   };
 
+  // ─── MetaPort helpers ───────────────────────────────────────────────────────
+  const META_GRADIENTS: Record<string, string> = {
+    'cyber-blue':    'from-[#0f0c29] via-[#302b63] to-[#24243e]',
+    'neon-purple':   'from-[#1a0533] via-[#3d0d6e] to-[#0d001a]',
+    'gold-dark':     'from-[#1a1200] via-[#3d2b00] to-[#1a0a00]',
+    'ocean-deep':    'from-[#000428] via-[#004e92] to-[#000428]',
+    'emerald-dark':  'from-[#002012] via-[#004d2a] to-[#001a0e]',
+    'ruby-dark':     'from-[#1a0000] via-[#4d0010] to-[#1a0000]',
+  };
+  const TIER_CONFIG = {
+    standard: { label: 'Standard', color: 'text-blue-400', border: 'border-blue-500/40', glow: 'shadow-blue-500/20', badge: 'bg-blue-500/20 text-blue-300' },
+    premium:  { label: 'Premium',  color: 'text-purple-400', border: 'border-purple-500/40', glow: 'shadow-purple-500/20', badge: 'bg-purple-500/20 text-purple-300' },
+    platinum: { label: 'Platinum', color: 'text-yellow-400', border: 'border-yellow-500/40', glow: 'shadow-yellow-500/20', badge: 'bg-yellow-500/20 text-yellow-300' },
+  };
+
+  const openMetaStory = (booth: MetaBooth) => {
+    const tierColors: Record<MetaBoothTier, string> = {
+      standard: '#3b82f6',
+      premium: '#a855f7',
+      platinum: '#eab308',
+    };
+    const tierColor = tierColors[booth.tier];
+    const products = booth.products.split('\n').filter(Boolean).slice(0, 6);
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${booth.companyName} — Meta Port</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:1080px; height:1920px; overflow:hidden; background:#000; font-family:'Inter',sans-serif; }
+  .story { width:1080px; height:1920px; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at 20% 20%, ${tierColor}22 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, ${tierColor}18 0%, transparent 50%),
+                linear-gradient(135deg, #050510 0%, #0a0520 40%, #050510 100%);
+  }
+  .grid-overlay { position:absolute; inset:0; background-image: linear-gradient(${tierColor}18 1px, transparent 1px), linear-gradient(90deg, ${tierColor}18 1px, transparent 1px); background-size:80px 80px; }
+  .corner-tl { position:absolute; top:60px; left:60px; width:80px; height:80px; border-top:3px solid ${tierColor}; border-left:3px solid ${tierColor}; border-radius:4px 0 0 0; }
+  .corner-tr { position:absolute; top:60px; right:60px; width:80px; height:80px; border-top:3px solid ${tierColor}; border-right:3px solid ${tierColor}; border-radius:0 4px 0 0; }
+  .corner-bl { position:absolute; bottom:60px; left:60px; width:80px; height:80px; border-bottom:3px solid ${tierColor}; border-left:3px solid ${tierColor}; border-radius:0 0 0 4px; }
+  .corner-br { position:absolute; bottom:60px; right:60px; width:80px; height:80px; border-bottom:3px solid ${tierColor}; border-right:3px solid ${tierColor}; border-radius:0 0 4px 0; }
+  .brand-top { position:absolute; top:90px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .brand-name { font-family:'Orbitron',monospace; font-size:22px; font-weight:900; letter-spacing:0.3em; color:${tierColor}; text-shadow:0 0 20px ${tierColor}88; text-transform:uppercase; white-space:nowrap; }
+  .brand-sub { font-size:13px; color:#ffffff55; letter-spacing:0.25em; text-transform:uppercase; }
+  .booth-badge { position:absolute; top:90px; right:90px; background:${tierColor}22; border:1px solid ${tierColor}66; border-radius:8px; padding:6px 14px; font-family:'Orbitron',monospace; font-size:12px; color:${tierColor}; letter-spacing:0.15em; }
+  .content { position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:40px; padding:0 80px; text-align:center; }
+  .logo-wrap { width:160px; height:160px; border-radius:50%; border:3px solid ${tierColor}88; background:${tierColor}15; display:flex; align-items:center; justify-content:center; font-size:72px; box-shadow:0 0 60px ${tierColor}44, inset 0 0 40px ${tierColor}11; }
+  .company-name { font-family:'Orbitron',monospace; font-size:64px; font-weight:900; color:#fff; line-height:1.1; text-shadow:0 0 40px ${tierColor}88; word-break:break-word; }
+  .tagline { font-size:24px; color:#ffffff88; font-weight:300; letter-spacing:0.05em; line-height:1.4; max-width:800px; }
+  .divider { width:200px; height:2px; background:linear-gradient(90deg, transparent, ${tierColor}, transparent); margin:0 auto; }
+  .industry-tag { display:inline-block; background:${tierColor}22; border:1px solid ${tierColor}55; border-radius:100px; padding:10px 30px; font-size:18px; color:${tierColor}; letter-spacing:0.1em; text-transform:uppercase; }
+  .products-section { width:100%; }
+  .products-title { font-size:14px; color:#ffffff44; letter-spacing:0.3em; text-transform:uppercase; margin-bottom:18px; }
+  .products-list { display:flex; flex-direction:column; gap:12px; }
+  .product-item { display:flex; align-items:center; gap:14px; background:#ffffff08; border:1px solid #ffffff12; border-radius:12px; padding:14px 24px; }
+  .product-dot { width:8px; height:8px; border-radius:50%; background:${tierColor}; flex-shrink:0; box-shadow:0 0 8px ${tierColor}; }
+  .product-text { font-size:20px; color:#ffffffcc; font-weight:400; text-align:left; }
+  .contact-section { width:100%; display:flex; flex-direction:column; gap:10px; }
+  .contact-row { display:flex; align-items:center; gap:12px; justify-content:center; }
+  .contact-text { font-size:18px; color:#ffffff77; }
+  .contact-icon { font-size:18px; }
+  .tier-bottom { position:absolute; bottom:90px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:12px; }
+  .tier-badge { background:${tierColor}22; border:1px solid ${tierColor}66; border-radius:100px; padding:8px 24px; font-family:'Orbitron',monospace; font-size:14px; color:${tierColor}; letter-spacing:0.15em; text-transform:uppercase; }
+  .scan-hint { font-size:13px; color:#ffffff33; letter-spacing:0.2em; text-transform:uppercase; }
+  @media print {
+    @page { size:1080px 1920px; margin:0; }
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head><body>
+<div class="story">
+  <div class="grid-overlay"></div>
+  <div class="corner-tl"></div><div class="corner-tr"></div>
+  <div class="corner-bl"></div><div class="corner-br"></div>
+  <div class="brand-top">
+    <div class="brand-name">✦ Tohid Meta Port ✦</div>
+    <div class="brand-sub">Global Export Metaverse</div>
+  </div>
+  <div class="booth-badge">BOOTH #${booth.boothNumber}</div>
+  <div class="content">
+    <div class="logo-wrap">${booth.logoEmoji}</div>
+    <div>
+      <div class="company-name">${booth.companyName}</div>
+    </div>
+    ${booth.tagline ? `<div class="tagline">${booth.tagline}</div>` : ''}
+    <div class="divider"></div>
+    ${booth.industry ? `<div class="industry-tag">◆ ${booth.industry} ◆</div>` : ''}
+    ${products.length ? `<div class="products-section">
+      <div class="products-title">— Featured Products & Services —</div>
+      <div class="products-list">${products.map(p => `<div class="product-item"><div class="product-dot"></div><div class="product-text">${p.trim()}</div></div>`).join('')}</div>
+    </div>` : ''}
+    <div class="contact-section">
+      ${booth.country ? `<div class="contact-row"><span class="contact-icon">🌍</span><span class="contact-text">${booth.country}</span></div>` : ''}
+      ${booth.email ? `<div class="contact-row"><span class="contact-icon">✉</span><span class="contact-text">${booth.email}</span></div>` : ''}
+      ${booth.website ? `<div class="contact-row"><span class="contact-icon">🌐</span><span class="contact-text">${booth.website}</span></div>` : ''}
+      ${booth.instagram ? `<div class="contact-row"><span class="contact-icon">📸</span><span class="contact-text">@${booth.instagram}</span></div>` : ''}
+    </div>
+  </div>
+  <div class="tier-bottom">
+    <div class="tier-badge">★ ${booth.tier.toUpperCase()} ★</div>
+  </div>
+</div>
+<script>window.onload=()=>{ setTimeout(()=>window.print(),400); }<\/script>
+</body></html>`;
+    const w = window.open('', '_blank', 'width=1080,height=1920');
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  const saveMetaBooth = async (draft: Partial<MetaBooth>) => {
+    if (!db || !activeOwnerUid) return;
+    setMetaSaving(true);
+    try {
+      const now = Date.now();
+      const id = draft.id || `mb_${now}`;
+      const booth: MetaBooth = {
+        id, companyName: draft.companyName || '', tagline: draft.tagline || '',
+        industry: draft.industry || '', products: draft.products || '',
+        country: draft.country || '', email: draft.email || '',
+        phone: draft.phone || '', website: draft.website || '',
+        instagram: draft.instagram || '', boothNumber: draft.boothNumber || String(metaBooths.length + 1).padStart(3, '0'),
+        tier: draft.tier || 'standard', coverGradient: draft.coverGradient || 'cyber-blue',
+        logoEmoji: draft.logoEmoji || '🏢',
+        createdAt: draft.createdAt || now, updatedAt: now,
+      };
+      await setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'metaBooths', id), booth, { merge: true });
+      setMetaBoothDraft(null);
+    } catch (err: any) { alert('خطا در ذخیره: ' + err?.message); }
+    finally { setMetaSaving(false); }
+  };
+
+  const deleteMetaBooth = async (id: string) => {
+    if (!db || !activeOwnerUid) return;
+    if (!window.confirm('این غرفه حذف شود؟')) return;
+    await deleteDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'metaBooths', id));
+  };
+
+  const renderMetaPort = () => {
+    const EMOJI_OPTIONS = ['🏢','🏭','🌾','🐟','🧀','🧴','🛢','🪵','⚙️','🏗','💎','🌿','🍃','🫙','🧱','🪨','🌊','🔩','⚗️','🎁'];
+    const GRADIENT_OPTIONS = Object.keys(META_GRADIENTS);
+    const editing = metaBoothDraft;
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#050510] via-[#0a0530] to-[#050510] border border-indigo-500/30 p-8 shadow-2xl">
+          <div className="absolute inset-0 bg-[linear-gradient(#6366f118_1px,transparent_1px),linear-gradient(90deg,#6366f118_1px,transparent_1px)] bg-[size:40px_40px]" />
+          <div className="absolute -top-10 -right-10 w-64 h-64 rounded-full bg-indigo-600/10 blur-3xl" />
+          <div className="absolute -bottom-10 -left-10 w-48 h-48 rounded-full bg-purple-600/10 blur-3xl" />
+          <div className="relative flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 text-2xl">
+                🌐
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-white tracking-wider" style={{ fontFamily: 'system-ui', letterSpacing: '0.05em' }}>
+                  ✦ TOHID META PORT ✦
+                </h2>
+                <p className="text-indigo-300/70 text-sm mt-0.5 tracking-widest uppercase">Global Export Metaverse Platform</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setMetaBoothDraft({ tier: 'standard', coverGradient: 'cyber-blue', logoEmoji: '🏢' })}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-sm shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all hover:scale-105"
+            >
+              <Plus className="w-4 h-4" /> ساخت غرفه جدید
+            </button>
+          </div>
+          <div className="relative mt-6 grid grid-cols-3 gap-4 text-center">
+            {[
+              { label: 'غرفه‌های فعال', value: metaBooths.length, icon: '🏛' },
+              { label: 'پریمیوم', value: metaBooths.filter(b => b.tier === 'premium').length, icon: '⭐' },
+              { label: 'پلاتینیوم', value: metaBooths.filter(b => b.tier === 'platinum').length, icon: '💎' },
+            ].map((s) => (
+              <div key={s.label} className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10">
+                <div className="text-2xl">{s.icon}</div>
+                <div className="text-xl font-black text-white mt-1">{s.value}</div>
+                <div className="text-xs text-indigo-300/60 mt-0.5">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Booth editor modal */}
+        {editing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-[#08081a] border border-indigo-500/40 shadow-2xl">
+              <div className="sticky top-0 bg-[#08081a] border-b border-indigo-500/20 px-6 py-4 flex items-center justify-between">
+                <h3 className="font-black text-white text-lg tracking-wide">
+                  {editing.id ? '✏️ ویرایش غرفه' : '🚀 ساخت غرفه متاورسی'}
+                </h3>
+                <button onClick={() => setMetaBoothDraft(null)} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/10">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-5">
+                {/* Logo emoji */}
+                <div>
+                  <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-2 block">آیکون غرفه</label>
+                  <div className="flex flex-wrap gap-2">
+                    {EMOJI_OPTIONS.map(e => (
+                      <button key={e} onClick={() => setMetaBoothDraft(p => ({ ...p, logoEmoji: e }))}
+                        className={`w-10 h-10 text-xl rounded-lg border transition-all ${editing.logoEmoji === e ? 'border-indigo-500 bg-indigo-500/20 scale-110' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">نام شرکت *</label>
+                    <input value={editing.companyName || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, companyName: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                      placeholder="e.g. Dayhami Export Co." />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">صنعت / حوزه</label>
+                    <input value={editing.industry || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, industry: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                      placeholder="e.g. Food Export, Machinery" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">شعار شرکت</label>
+                  <input value={editing.tagline || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, tagline: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                    placeholder="e.g. Bridging Iran to the World" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">محصولات / خدمات (هر خط یک آیتم)</label>
+                  <textarea value={editing.products || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, products: e.target.value }))}
+                    rows={5}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm resize-none"
+                    placeholder={"Premium Mozzarella Cheese\nFresh Dairy Products\nOrganic Butter\nWholesale Supply"} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">کشور</label>
+                    <input value={editing.country || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, country: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                      placeholder="Iran" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">شماره غرفه</label>
+                    <input value={editing.boothNumber || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, boothNumber: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                      placeholder="001" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">ایمیل</label>
+                    <input value={editing.email || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, email: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                      placeholder="info@company.com" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">وب‌سایت</label>
+                    <input value={editing.website || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, website: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                      placeholder="www.company.com" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1.5 block">اینستاگرام (بدون @)</label>
+                  <input value={editing.instagram || ''} onChange={e => setMetaBoothDraft(p => ({ ...p, instagram: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 text-sm"
+                    placeholder="yourhandle" />
+                </div>
+                {/* Tier */}
+                <div>
+                  <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-2 block">سطح غرفه</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(['standard', 'premium', 'platinum'] as MetaBoothTier[]).map(t => {
+                      const cfg = TIER_CONFIG[t];
+                      return (
+                        <button key={t} onClick={() => setMetaBoothDraft(p => ({ ...p, tier: t }))}
+                          className={`py-3 rounded-xl border text-sm font-bold transition-all ${editing.tier === t ? `${cfg.border} bg-white/10 ${cfg.color} scale-105` : 'border-white/10 text-white/40 hover:bg-white/5'}`}>
+                          {t === 'standard' ? '⚡ Standard' : t === 'premium' ? '⭐ Premium' : '💎 Platinum'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Color theme */}
+                <div>
+                  <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-2 block">تم رنگی</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GRADIENT_OPTIONS.map(g => (
+                      <button key={g} onClick={() => setMetaBoothDraft(p => ({ ...p, coverGradient: g }))}
+                        className={`h-12 rounded-xl bg-gradient-to-r ${META_GRADIENTS[g]} border-2 transition-all ${editing.coverGradient === g ? 'border-white scale-105' : 'border-transparent hover:border-white/30'}`}>
+                        <span className="text-[10px] text-white/60">{g.replace('-', ' ')}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setMetaBoothDraft(null)} className="flex-1 py-2.5 rounded-xl border border-white/10 text-white/60 text-sm font-medium hover:bg-white/5">
+                    انصراف
+                  </button>
+                  <button onClick={() => saveMetaBooth(editing)} disabled={metaSaving || !editing.companyName}
+                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-sm disabled:opacity-40 hover:opacity-90 transition-all flex items-center justify-center gap-2">
+                    {metaSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {metaSaving ? 'در حال ذخیره...' : 'ذخیره غرفه'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Booths grid */}
+        {metaBooths.length === 0 ? (
+          <div className="text-center py-24 rounded-2xl bg-gradient-to-b from-[#08081a] to-[#050510] border border-indigo-500/20">
+            <div className="text-6xl mb-4">🌐</div>
+            <p className="text-white/50 text-lg font-medium">هنوز هیچ غرفه‌ای ایجاد نشده</p>
+            <p className="text-white/30 text-sm mt-2">اولین غرفه متاورسی خود را بسازید</p>
+            <button onClick={() => setMetaBoothDraft({ tier: 'standard', coverGradient: 'cyber-blue', logoEmoji: '🏢' })}
+              className="mt-6 px-6 py-2.5 rounded-xl bg-indigo-600/80 text-white font-bold text-sm hover:bg-indigo-600 transition-colors">
+              + ساخت اولین غرفه
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {metaBooths.map((booth) => {
+              const cfg = TIER_CONFIG[booth.tier];
+              const products = booth.products.split('\n').filter(Boolean).slice(0, 3);
+              return (
+                <div key={booth.id}
+                  className={`relative overflow-hidden rounded-2xl border ${cfg.border} bg-gradient-to-br ${META_GRADIENTS[booth.coverGradient] || META_GRADIENTS['cyber-blue']} shadow-xl ${cfg.glow} shadow-lg transition-transform hover:scale-[1.02] cursor-default group`}>
+                  <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:24px_24px]" />
+                  <div className="relative p-5">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-12 rounded-xl border ${cfg.border} bg-white/5 flex items-center justify-center text-2xl`}>
+                          {booth.logoEmoji}
+                        </div>
+                        <div>
+                          <div className="font-black text-white text-base leading-tight">{booth.companyName}</div>
+                          {booth.industry && <div className="text-xs text-white/50 mt-0.5">{booth.industry}</div>}
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${cfg.badge} uppercase tracking-wider`}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                    {booth.tagline && (
+                      <p className="text-white/60 text-xs italic mb-3 line-clamp-2">"{booth.tagline}"</p>
+                    )}
+                    {products.length > 0 && (
+                      <div className="space-y-1.5 mb-4">
+                        {products.map((p, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-white/70">
+                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.color} bg-current flex-shrink-0`} />
+                            {p}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                      <div className="flex items-center gap-1.5 text-[10px] text-white/40">
+                        <span>BOOTH #{booth.boothNumber}</span>
+                        {booth.country && <><span>·</span><span>{booth.country}</span></>}
+                      </div>
+                      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openMetaStory(booth)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-pink-600 to-rose-600 text-white text-[10px] font-bold hover:opacity-90 transition-opacity"
+                          title="خروجی Instagram Story">
+                          <Instagram className="w-3 h-3" /> Story
+                        </button>
+                        <button onClick={() => setMetaBoothDraft({ ...booth })}
+                          className="p-1.5 rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition-colors">
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => deleteMetaBooth(booth.id)}
+                          className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Info bar */}
+        <div className="rounded-xl bg-indigo-500/10 border border-indigo-500/20 px-5 py-3 flex items-center gap-3">
+          <span className="text-lg">💡</span>
+          <p className="text-indigo-300/70 text-xs leading-relaxed">
+            برای خروجی Instagram Story، روی کارت غرفه hover کنید و دکمه <strong className="text-pink-400">Story</strong> را بزنید. پنجره پرینت با فرمت <strong className="text-white/80">1080×1920</strong> باز می‌شود — «Save as PDF» یا screenshot بگیرید.
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   const renderForms = () => (
     <div className="space-y-4">
       <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
@@ -23076,6 +23510,11 @@ function AppInner() {
             </span>
           ) : null}
         </button>
+        <div className="w-px bg-slate-200" />
+        <button onClick={() => setFormsSubView('metaport')}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'metaport' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          🌐 Meta Port
+        </button>
       </div>
       {formsSubView === 'list' && renderCustomFormsList()}
       {formsSubView === 'iso' && canUseIso && renderIsoSystem()}
@@ -23086,6 +23525,7 @@ function AppInner() {
       )}
       {formsSubView === 'packinglist' && renderPackingList()}
       {formsSubView === 'archive' && renderFormArchive()}
+      {formsSubView === 'metaport' && renderMetaPort()}
     </div>
   );
 
