@@ -6046,12 +6046,6 @@ function AppInner() {
   // -- STATE: DOCUMENT SETTINGS (INVOICE/CATALOG/PRICELIST) --
   const [selectedTerms, setSelectedTerms] = useState<string[]>(['FOB', 'DDP']); 
   const [visibleScenarioTerms, setVisibleScenarioTerms] = useState<string[]>(['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
-  const [bulkScenarioTerms, setBulkScenarioTerms] = useState<ScenarioTerm[]>(['FOB']);
-  const [bulkScenarioMode, setBulkScenarioMode] = useState<'percent' | 'fixed'>('percent');
-  const [bulkScenarioProfitPercent, setBulkScenarioProfitPercent] = useState<number | undefined>(20);
-  const [bulkScenarioProfitType, setBulkScenarioProfitType] = useState<'markup' | 'margin'>('markup');
-  const [bulkScenarioFixedProfit, setBulkScenarioFixedProfit] = useState<number | undefined>(undefined);
-  const [bulkScenarioFixedCurrency, setBulkScenarioFixedCurrency] = useState<string>('OMR');
   const [invoiceTerms, setInvoiceTerms] = useState<string[]>(['FOB', 'DDP']);
   const [showImages, setShowImages] = useState(false);
   const [showPackInfo, setShowPackInfo] = useState(true); 
@@ -10255,79 +10249,6 @@ function AppInner() {
       }));
   };
 
-  const toggleBulkScenarioTerm = (term: ScenarioTerm) => {
-      setBulkScenarioTerms(prev => {
-          if (prev.includes(term)) {
-              return prev.length > 1 ? prev.filter(t => t !== term) : prev;
-          }
-          return [...prev, term].sort((a, b) => SCENARIO_TERMS.indexOf(a) - SCENARIO_TERMS.indexOf(b));
-      });
-  };
-
-  const applyBulkScenarioPricing = () => {
-      const terms = bulkScenarioTerms.length ? bulkScenarioTerms : [...SCENARIO_TERMS];
-      if (bulkScenarioMode === 'percent') {
-          const percent = bulkScenarioProfitPercent;
-          if (percent === undefined || percent < 0) {
-              window.alert('درصد سود را وارد کنید.');
-              return;
-          }
-          setProducts(prev => prev.map(p => {
-              let nextProduct: Product = { ...p };
-              terms.forEach(term => {
-                  nextProduct = {
-                      ...nextProduct,
-                      scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, percent),
-                      scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, bulkScenarioProfitType),
-                      scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
-                      scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, undefined),
-                      scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, undefined),
-                  };
-              });
-              return nextProduct;
-          }));
-          return;
-      }
-
-      const amount = bulkScenarioFixedProfit;
-      if (amount === undefined || amount <= 0) {
-          window.alert('مبلغ سود ثابت هر واحد را وارد کنید.');
-          return;
-      }
-      setProducts(prev => prev.map(p => {
-          let nextProduct: Product = { ...p };
-          terms.forEach(term => {
-              nextProduct = {
-                  ...nextProduct,
-                  scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, amount),
-                  scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, bulkScenarioFixedCurrency || config.outputCurrency),
-                  scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
-                  scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, undefined),
-                  scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, undefined),
-              };
-          });
-          return nextProduct;
-      }));
-  };
-
-  const clearBulkScenarioPricing = () => {
-      const terms = bulkScenarioTerms.length ? bulkScenarioTerms : [...SCENARIO_TERMS];
-      setProducts(prev => prev.map(p => {
-          let nextProduct: Product = { ...p };
-          terms.forEach(term => {
-              nextProduct = {
-                  ...nextProduct,
-                  scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, undefined),
-                  scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, undefined),
-                  scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
-                  scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, undefined),
-                  scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, undefined),
-              };
-          });
-          return nextProduct;
-      }));
-  };
-
   const updateProductColumnLabel = (key: ProductTableColumnKey, label: string) => {
       setProductColumnSettings((prev) => ({
           ...prev,
@@ -11598,12 +11519,6 @@ function AppInner() {
     setLogistics(defaultLogisticsSeed());
     setSelectedTerms(['FOB', 'DDP']);
     setVisibleScenarioTerms(['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
-    setBulkScenarioTerms(['FOB']);
-    setBulkScenarioMode('percent');
-    setBulkScenarioProfitPercent(20);
-    setBulkScenarioProfitType('markup');
-    setBulkScenarioFixedProfit(undefined);
-    setBulkScenarioFixedCurrency('OMR');
     setInvoiceTerms(['FOB', 'DDP']);
     setNotes('');
     setShowImages(false);
@@ -13126,127 +13041,6 @@ function AppInner() {
                            {term}
                        </button>
                    ))}
-              </div>
-          </div>
-
-          <div className="shrink-0 px-4 py-3 border-b border-indigo-100 bg-indigo-50/35">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-                  <div className="min-w-0 xl:max-w-xs">
-                      <div className="text-xs font-bold text-indigo-800 flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5" />
-                          اعمال سود گروهی روی همه کالاها
-                      </div>
-                      <p className="text-[10px] text-indigo-700/75 mt-1 leading-snug">
-                          درصد Markup/Margin یا سود ثابت هر واحد را برای termهای انتخابی روی همه ردیف‌های کالا اعمال کن.
-                      </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-end gap-2">
-                      <div className="space-y-1">
-                          <label className="text-[10px] font-semibold text-indigo-700 block">نوع سود</label>
-                          <div className="flex bg-white border border-indigo-100 rounded-lg p-1">
-                              <button
-                                  type="button"
-                                  onClick={() => setBulkScenarioMode('percent')}
-                                  className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${bulkScenarioMode === 'percent' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-600 hover:bg-indigo-50'}`}
-                              >
-                                  درصدی
-                              </button>
-                              <button
-                                  type="button"
-                                  onClick={() => setBulkScenarioMode('fixed')}
-                                  className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${bulkScenarioMode === 'fixed' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-600 hover:bg-indigo-50'}`}
-                              >
-                                  مبلغ ثابت
-                              </button>
-                          </div>
-                      </div>
-
-                      <div className="space-y-1">
-                          <label className="text-[10px] font-semibold text-indigo-700 block">Terms</label>
-                          <div className="flex flex-wrap gap-1 max-w-[260px]">
-                              {SCENARIO_TERMS.map(term => (
-                                  <button
-                                      key={`bulk-${term}`}
-                                      type="button"
-                                      onClick={() => toggleBulkScenarioTerm(term)}
-                                      className={`px-2 py-1 text-[10px] font-bold rounded border ${bulkScenarioTerms.includes(term) ? 'bg-white border-indigo-300 text-indigo-700 ring-1 ring-indigo-200' : 'bg-indigo-50/40 border-indigo-100 text-indigo-300'}`}
-                                  >
-                                      {term}
-                                  </button>
-                              ))}
-                          </div>
-                      </div>
-
-                      {bulkScenarioMode === 'percent' ? (
-                          <>
-                              <div className="space-y-1">
-                                  <label className="text-[10px] font-semibold text-indigo-700 block">درصد</label>
-                                  <div className="flex items-center gap-1 bg-white border border-indigo-100 rounded-lg px-2">
-                                      <FormattedNumberInput
-                                          optional
-                                          value={bulkScenarioProfitPercent}
-                                          onChange={(val) => setBulkScenarioProfitPercent(val !== undefined && val >= 0 ? val : undefined)}
-                                          className="w-20 py-1.5 text-sm outline-none font-bold text-slate-700 text-right"
-                                          placeholder="20"
-                                      />
-                                      <span className="text-xs font-bold text-indigo-400">%</span>
-                                  </div>
-                              </div>
-                              <div className="space-y-1">
-                                  <label className="text-[10px] font-semibold text-indigo-700 block">فرمول</label>
-                                  <select
-                                      value={bulkScenarioProfitType}
-                                      onChange={(e) => setBulkScenarioProfitType(e.target.value as 'markup' | 'margin')}
-                                      className="h-8 text-xs bg-white border border-indigo-100 rounded-lg px-2 text-slate-700"
-                                  >
-                                      <option value="markup">Markup</option>
-                                      <option value="margin">Margin</option>
-                                  </select>
-                              </div>
-                          </>
-                      ) : (
-                          <>
-                              <div className="space-y-1">
-                                  <label className="text-[10px] font-semibold text-indigo-700 block">سود هر واحد</label>
-                                  <FormattedNumberInput
-                                      optional
-                                      value={bulkScenarioFixedProfit}
-                                      onChange={(val) => setBulkScenarioFixedProfit(val !== undefined && val > 0 ? val : undefined)}
-                                      className="w-24 h-8 border border-indigo-100 rounded-lg px-2 text-sm text-right font-bold text-slate-700 bg-white"
-                                      placeholder="0.200"
-                                  />
-                              </div>
-                              <div className="space-y-1">
-                                  <label className="text-[10px] font-semibold text-indigo-700 block">ارز</label>
-                                  <select
-                                      value={bulkScenarioFixedCurrency}
-                                      onChange={(e) => setBulkScenarioFixedCurrency(e.target.value)}
-                                      className="h-8 text-xs bg-white border border-indigo-100 rounded-lg px-2 text-slate-700"
-                                  >
-                                      {Object.keys(rates).map(c => <option key={`bulk-curr-${c}`} value={c}>{c}</option>)}
-                                  </select>
-                              </div>
-                          </>
-                      )}
-
-                      <div className="flex gap-1">
-                          <button
-                              type="button"
-                              onClick={applyBulkScenarioPricing}
-                              className="h-8 px-3 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-sm hover:bg-indigo-700"
-                          >
-                              اعمال روی همه
-                          </button>
-                          <button
-                              type="button"
-                              onClick={clearBulkScenarioPricing}
-                              className="h-8 px-3 rounded-lg bg-white border border-indigo-100 text-indigo-600 text-xs font-bold hover:bg-indigo-50"
-                          >
-                              پاک کردن
-                          </button>
-                      </div>
-                  </div>
               </div>
           </div>
 
