@@ -11995,32 +11995,6 @@ function AppInner() {
                         {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                 </div>
-                
-                {/* --- TARGET PROFIT INPUT (DISABLED IN FIXED MARKUP MODE) --- */}
-                <div className={`${config.pricingMethod === 'fixed_unit_markup' ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                        Target Profit
-                        {config.pricingMethod === 'fixed_unit_markup' && <span className="text-[9px] text-red-500">(Off)</span>}
-                    </label>
-                    <div className="flex items-center gap-2">
-                        <FormattedNumberInput
-                            value={config.profitPercent}
-                            onChange={(val) => setConfig({ ...config, profitPercent: val ?? 0 })}
-                            className="w-20 text-sm border border-slate-300 rounded px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                            disabled={config.pricingMethod === 'fixed_unit_markup'}
-                        />
-                        <span className="text-slate-400 font-medium">%</span>
-                        <select 
-                            value={config.profitType}
-                            onChange={(e) => setConfig({...config, profitType: e.target.value as any})}
-                            className="text-sm bg-slate-50 border border-slate-300 rounded px-2 py-2"
-                            disabled={config.pricingMethod === 'fixed_unit_markup'}
-                        >
-                            <option value="markup">Markup</option>
-                            <option value="margin">Margin</option>
-                        </select>
-                    </div>
-                </div>
             </div>
             <div className="flex gap-2 w-full md:w-auto items-end">
                  
