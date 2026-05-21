@@ -13122,6 +13122,22 @@ function AppInner() {
 
               <div className="flex flex-wrap items-end gap-2">
                   <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-emerald-800 block">Display terms</label>
+                      <div className="flex flex-wrap gap-1 max-w-[260px]">
+                          {SCENARIO_TERMS.map(term => (
+                              <button
+                                  key={`export-display-${term}`}
+                                  type="button"
+                                  onClick={() => toggleScenarioTerm(term)}
+                                  className={`px-2 py-1 text-[10px] font-bold rounded border ${visibleScenarioTerms.includes(term) ? 'bg-white border-emerald-300 text-emerald-700 ring-1 ring-emerald-200' : 'bg-emerald-50/50 border-emerald-100 text-emerald-300'}`}
+                              >
+                                  {term}
+                              </button>
+                          ))}
+                      </div>
+                  </div>
+
+                  <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-emerald-800 block">Bulk mode</label>
                       <div className="flex bg-white border border-emerald-100 rounded-lg p-1">
                           <button
@@ -13142,7 +13158,7 @@ function AppInner() {
                   </div>
 
                   <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-emerald-800 block">Terms</label>
+                      <label className="text-[10px] font-semibold text-emerald-800 block">Bulk terms</label>
                       <div className="flex flex-wrap gap-1 max-w-[260px]">
                           {SCENARIO_TERMS.filter(term => visibleScenarioTerms.includes(term)).map(term => (
                               <button
