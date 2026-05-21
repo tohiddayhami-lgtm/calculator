@@ -4102,10 +4102,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
             return `
             <section class="about">
-                <div class="about-header">
-                    <div class="about-header-icon">&#9670;</div>
-                    <h2>About Us</h2>
-                </div>
+                <span class="about-label">About Us</span>
                 <div class="${bodyClass}">${bodyContent}</div>
             </section>`;
         })()
@@ -4314,23 +4311,21 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .section-title { font-size: clamp(20px, 4vw, 30px); font-weight: 800; color: var(--heading); margin: 32px 0 4px; padding-bottom: 12px; border-bottom: 3px solid var(--primary); display: inline-block; }
 
         /* About */
-        /* About Us — redesigned */
-        .about { margin: 48px 0; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 32px rgba(0,0,0,0.10); }
-        .about-header { background: var(--primary); color: #fff; padding: 24px 32px 20px; display: flex; align-items: center; gap: 16px; }
-        .about-header-icon { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 20px; }
-        .about-header h2 { font-size: clamp(18px, 3vw, 26px); font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; }
-        .about-body { display: grid; background: #fff; }
-        @media (min-width: 680px) { .about-body.has-images { grid-template-columns: minmax(200px, 38%) 1fr; } }
-        .about-body.side-right { }
-        @media (min-width: 680px) { .about-body.side-right.has-images { grid-template-columns: 1fr minmax(200px, 38%); } }
-        .about-img-panel { display: flex; flex-direction: column; background: #f1f5f9; }
-        .about-img-panel img { width: 100%; flex: 1; object-fit: cover; min-height: 160px; display: block; }
-        .about-img-panel img + img { border-top: 2px solid #fff; }
-        .about-text-panel { padding: 28px 32px; display: flex; flex-direction: column; gap: 0; }
-        .about-para { font-size: 15px; line-height: 1.85; color: var(--text); text-align: justify; hyphens: auto; margin-bottom: 16px; }
+        /* ── About Us — Apple-minimal ── */
+        .about { margin: 64px 0; }
+        .about-label { display: block; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); opacity: 0.75; margin-bottom: 40px; }
+        .about-body { display: grid; gap: 40px; }
+        @media (min-width: 760px) { .about-body.has-images { grid-template-columns: 1fr 1fr; gap: 72px; align-items: center; } }
+        @media (min-width: 760px) { .about-body.side-right.has-images { grid-template-columns: 1fr 1fr; } }
+        .about-img-panel { display: grid; gap: 10px; }
+        .about-img-panel img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; }
+        .about-img-panel img:only-child { aspect-ratio: 3/2; }
+        .about-text-panel { display: flex; flex-direction: column; justify-content: center; }
+        .about-para { font-size: 16px; line-height: 1.85; color: var(--text); margin-bottom: 18px; }
+        .about-para:first-child { font-size: clamp(18px, 2.5vw, 22px); font-weight: 600; color: var(--heading); line-height: 1.55; margin-bottom: 22px; }
         .about-para:last-child { margin-bottom: 0; }
-        .about-para.rtl { direction: rtl; text-align: right; font-size: 15px; border-right: 3px solid var(--primary); padding-right: 14px; color: #1e293b; background: #f8fafc; border-radius: 0 8px 8px 0; padding-top: 8px; padding-bottom: 8px; padding-left: 8px; }
-        @media (max-width: 680px) { .about-text-panel { padding: 20px 18px; } .about-header { padding: 18px 20px 14px; } }
+        .about-para.rtl { direction: rtl; text-align: right; }
+        @media (max-width: 760px) { .about { margin: 48px 0; } .about-label { margin-bottom: 28px; } }
 
         /* Custom pages (Catalog sections) */
         .custom-page { margin: 40px 0; padding: 28px 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
