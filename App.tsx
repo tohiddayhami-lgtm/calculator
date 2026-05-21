@@ -6049,7 +6049,7 @@ function AppInner() {
   const [showPackInfo, setShowPackInfo] = useState(true); 
   const [showProductColumnSettings, setShowProductColumnSettings] = useState(false);
   const [productColumnSettings, setProductColumnSettings] = useState<ProductTableColumnSettings>(() => normalizeProductTableColumnSettings());
-  const [basis, setBasis] = useState<'unit' | 'pack'>('unit'); 
+  const [basis, setBasis] = useState<'unit' | 'pack' | 'both'>('unit'); 
   const [notes, setNotes] = useState('');
   const [containerCapacity, setContainerCapacity] = useState<number>(1000);
   const [containerType, setContainerType] = useState<'20ft' | '40ft'>('20ft');
@@ -11084,7 +11084,7 @@ function AppInner() {
       const v = allowedViews.includes(rawView as any) ? rawView : 'dashboard';
       setView(v);
       setInvoiceIncludedIds(parsed.invoiceIncludedIds === undefined ? null : parsed.invoiceIncludedIds);
-      setBasis(parsed.basis === 'pack' ? 'pack' : 'unit');
+      setBasis(parsed.basis === 'pack' || parsed.basis === 'both' ? parsed.basis : 'unit');
       setSelectedTerms(d.selectedTerms || ['FOB', 'DDP']);
     } catch (e) {
       console.warn('Session workspace draft restore failed:', e);
@@ -11999,19 +11999,17 @@ function AppInner() {
             <div className="flex gap-2 w-full md:w-auto items-end">
                  
                  <div className="flex items-center border border-slate-300 rounded-md overflow-hidden bg-white">
-                    <button 
-                        onClick={() => setBasis('unit')} 
-                        className={`px-3 py-2 text-sm font-medium transition-colors ${basis === 'unit' ? 'bg-slate-100 text-slate-900 shadow-inner' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        Unit
-                    </button>
-                    <div className="w-px h-4 bg-slate-200"></div>
-                    <button 
-                        onClick={() => setBasis('pack')} 
-                        className={`px-3 py-2 text-sm font-medium transition-colors ${basis === 'pack' ? 'bg-slate-100 text-slate-900 shadow-inner' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        Pack
-                    </button>
+                    {(['unit', 'pack', 'both'] as const).map((mode, index) => (
+                        <React.Fragment key={mode}>
+                            {index > 0 ? <div className="w-px h-4 bg-slate-200" /> : null}
+                            <button
+                                onClick={() => setBasis(mode)}
+                                className={`px-3 py-2 text-sm font-medium capitalize transition-colors ${basis === mode ? 'bg-slate-100 text-slate-900 shadow-inner' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                {mode}
+                            </button>
+                        </React.Fragment>
+                    ))}
                  </div>
 
                  <button 
@@ -12380,15 +12378,29 @@ function AppInner() {
             ),
           },
           unitCost: {
-            defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Cost (${config.outputCurrency})`,
+            defaultLabel: `${basis === 'both' ? 'Unit / Pack' : basis === 'unit' ? 'Unit' : 'Pack'} Cost (${config.outputCurrency})`,
             headerClassName: 'px-4 py-2 w-56 min-w-[220px] text-right text-slate-500 bg-slate-50',
-            renderCell: (p, viewMult) => {
+            renderCell: (p, _viewMult) => {
               const packagingMode = p.packagingMode === 'luxury' ? 'luxury' : 'standard';
               const packagingField: keyof Product = packagingMode === 'luxury' ? 'packagingLuxuryPerUnit' : 'packagingStandardPerUnit';
               const packagingRaw = packagingMode === 'luxury' ? p.packagingLuxuryPerUnit : p.packagingStandardPerUnit;
+              const packMultiplier = p.itemsPerPack || 0;
+              const unitCost = p.unitCostOutput || 0;
+              const packCost = unitCost * packMultiplier;
+              const displayCost = basis === 'pack' ? packCost : unitCost;
+              const baseCost = p.unitCostBeforePackagingOutput ?? p.unitCostOutput ?? 0;
+              const baseDisplay = baseCost * (basis === 'pack' ? packMultiplier : 1);
+              const packagingDisplay = (p.packagingUnitExtraOutput || 0) * (basis === 'pack' ? packMultiplier : 1);
               return (
                 <td className="px-4 py-2 text-right text-slate-500 align-top">
-                  <div className="font-medium text-slate-700">{formatMoney((p.unitCostOutput || 0) * viewMult, config.outputCurrency)}</div>
+                  {basis === 'both' ? (
+                    <div className="space-y-0.5">
+                      <div className="font-medium text-slate-700">Unit: {formatMoney(unitCost, config.outputCurrency)}</div>
+                      <div className="font-medium text-indigo-700">Pack: {packMultiplier > 0 ? formatMoney(packCost, config.outputCurrency) : '—'}</div>
+                    </div>
+                  ) : (
+                    <div className="font-medium text-slate-700">{formatMoney(displayCost, config.outputCurrency)}</div>
+                  )}
                   <label className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] text-violet-700 font-semibold cursor-pointer">
                     <span>Include packaging</span>
                     <input
@@ -12419,8 +12431,17 @@ function AppInner() {
                         <span className="text-[9px] text-slate-400">{p.currency}</span>
                       </div>
                       <div className="flex justify-between gap-2 text-[9px] text-slate-500">
-                        <span>Base: {formatMoney(((p.unitCostBeforePackagingOutput ?? p.unitCostOutput ?? 0) * viewMult), config.outputCurrency)}</span>
-                        <span>Pack: {p.packagingUnitExtraOutput ? formatMoney(p.packagingUnitExtraOutput * viewMult, config.outputCurrency) : '—'}</span>
+                        {basis === 'both' ? (
+                          <>
+                            <span>Base U/P: {formatMoney(baseCost, config.outputCurrency)} / {packMultiplier > 0 ? formatMoney(baseCost * packMultiplier, config.outputCurrency) : '—'}</span>
+                            <span>Packaging U/P: {p.packagingUnitExtraOutput ? `${formatMoney(p.packagingUnitExtraOutput, config.outputCurrency)} / ${packMultiplier > 0 ? formatMoney(p.packagingUnitExtraOutput * packMultiplier, config.outputCurrency) : '—'}` : '—'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Base: {formatMoney(baseDisplay, config.outputCurrency)}</span>
+                            <span>Packaging: {p.packagingUnitExtraOutput ? formatMoney(packagingDisplay, config.outputCurrency) : '—'}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : null}
