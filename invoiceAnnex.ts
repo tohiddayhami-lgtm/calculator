@@ -72,6 +72,9 @@ export function normalizeInvoiceAnnex(raw: unknown): InvoiceAnnex {
     : body.trim()
       ? bodyToAnnexParagraphs(body)
       : [createEmptyAnnexParagraph()];
+  const rawLayout = o.imageGridLayout;
+  const imageGridLayout: InvoiceAnnex['imageGridLayout'] =
+    rawLayout === '4' || rawLayout === '6' || rawLayout === '9' ? rawLayout : '9';
   return {
     id: String(o.id ?? newAnnexId()),
     title: String(o.title ?? ''),
@@ -79,6 +82,7 @@ export function normalizeInvoiceAnnex(raw: unknown): InvoiceAnnex {
     paragraphs,
     includeInPrint: o.includeInPrint !== false,
     images,
+    imageGridLayout,
   };
 }
 

@@ -1,4 +1,4 @@
-﻿import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { FileText, ImagePlus, Plus, Save, Trash2, X } from 'lucide-react';
 import type { InvoiceAnnex, InvoiceAnnexImage, InvoiceAnnexPreset } from './types';
 import {
@@ -29,6 +29,13 @@ export type InvoiceAnnexEditorPanelProps = {
 };
 
 const labelCls = 'text-xs font-semibold text-slate-500 uppercase block mb-1';
+
+type ImageGridLayout = '4' | '6' | '9';
+const GRID_CONFIG: Record<ImageGridLayout, { cols: number; perPage: number; label: string }> = {
+  '4': { cols: 2, perPage: 4,  label: '2 × 2' },
+  '6': { cols: 3, perPage: 6,  label: '3 × 2' },
+  '9': { cols: 3, perPage: 9,  label: '3 × 3' },
+};
 
 function AnnexImageEditor({
   annex,
@@ -76,14 +83,41 @@ function AnnexImageEditor({
     addImages([{ id: newAnnexImageId(), src: opt.src, name: opt.label, caption: '' }]);
   };
 
+  const activeLayout = (annex.imageGridLayout || '9') as ImageGridLayout;
+
   return (
     <div className="space-y-2 border-t border-slate-100 pt-2">
       <div className="flex items-center justify-between gap-2">
         <label className="text-[10px] font-semibold text-slate-600 uppercase flex items-center gap-1">
           <ImagePlus className="w-3 h-3" />
-          {'\u062a\u0635\u0627\u0648\u06cc\u0631'} ({images.length}/{MAX_ANNEX_IMAGES_PER_ANNEX})
+          {'تصاویر'} ({images.length}/{MAX_ANNEX_IMAGES_PER_ANNEX})
         </label>
         <span className="text-[9px] text-slate-400">{ANNEX_IMAGE_FORMATS_LABEL}</span>
+      </div>
+
+      {/* Grid layout selector */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[9px] text-slate-500 font-semibold shrink-0">{'چیدمان:'}</span>
+        {(['4', '6', '9'] as ImageGridLayout[]).map((lay) => {
+          const cfg = GRID_CONFIG[lay];
+          const active = activeLayout === lay;
+          return (
+            <button
+              key={lay}
+              type="button"
+              onClick={() => onChange({ imageGridLayout: lay })}
+              title={`${cfg.label} — ${cfg.perPage} عکس در صفحه`}
+              className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border transition-colors ${
+                active
+                  ? 'bg-violet-600 border-violet-600 text-white shadow-sm'
+                  : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-700'
+              }`}
+            >
+              {cfg.label}
+            </button>
+          );
+        })}
+        <span className="text-[9px] text-slate-400">{GRID_CONFIG[activeLayout].perPage}{'عکس/صفحه'}</span>
       </div>
 
       <input
@@ -102,7 +136,7 @@ function AnnexImageEditor({
           onClick={() => fileRef.current?.click()}
           className="text-[10px] font-semibold px-2 py-1 rounded border border-violet-200 text-violet-800 bg-white hover:bg-violet-50 disabled:opacity-50"
         >
-          {busy ? '...' : '\u0627\u0641\u0632\u0648\u062f\u0646 \u0641\u0627\u06cc\u0644'}
+          {busy ? '...' : 'افزودن فایل'}
         </button>
         {projectImages.length > 0 && (
           <button
@@ -111,7 +145,7 @@ function AnnexImageEditor({
             onClick={() => setShowProjectPicker((v) => !v)}
             className="text-[10px] font-semibold px-2 py-1 rounded border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50"
           >
-            {'\u0627\u0632 \u067e\u0631\u0648\u0698\u0647'}
+            {'از پروژه'}
           </button>
         )}
       </div>
@@ -134,37 +168,50 @@ function AnnexImageEditor({
 
       {images.length > 0 && (
         <div className="space-y-2">
-          {images.map((img) => (
-            <div key={img.id} className="flex gap-2 p-1.5 rounded border border-slate-200 bg-slate-50/80">
-              <img
-                src={img.src}
-                alt=""
-                className="w-14 h-14 object-cover rounded border border-slate-200 shrink-0"
-              />
-              <div className="flex-1 min-w-0 space-y-1">
-                <p className="text-[9px] text-slate-500 truncate">{img.name || '\u2014'}</p>
+          {/* Thumbnail preview grid matching selected layout */}
+          <div
+            className="grid gap-1 p-1.5 bg-slate-50 rounded border border-slate-100"
+            style={{ gridTemplateColumns: `repeat(${GRID_CONFIG[activeLayout].cols}, minmax(0, 1fr))` }}
+          >
+            {images.map((img) => (
+              <div
+                key={img.id}
+                className="relative group"
+                style={{ paddingBottom: '100%', position: 'relative', overflow: 'hidden', borderRadius: 3, border: '1px solid #e2e8f0' }}
+              >
+                <img
+                  src={img.src}
+                  alt=""
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setImages(images.filter((x) => x.id !== img.id))}
+                  className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={'حذف'}
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          {/* Caption editor */}
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            {images.map((img, i) => (
+              <div key={img.id} className="flex gap-1.5 items-center">
+                <span className="text-[9px] text-slate-400 shrink-0 w-4 text-right">{i + 1}</span>
                 <input
                   type="text"
                   value={img.caption ?? ''}
                   onChange={(e) =>
-                    setImages(
-                      images.map((x) => (x.id === img.id ? { ...x, caption: e.target.value } : x)),
-                    )
+                    setImages(images.map((x) => (x.id === img.id ? { ...x, caption: e.target.value } : x)))
                   }
-                  className="w-full text-[10px] border border-slate-200 rounded px-1.5 py-0.5"
-                  placeholder={'\u0639\u0646\u0648\u0627\u0646 \u062a\u0635\u0648\u06cc\u0631 (\u0627\u062e\u062a\u06cc\u0627\u0631\u06cc)'}
+                  className="flex-1 text-[10px] border border-slate-200 rounded px-1.5 py-0.5"
+                  placeholder={'عنوان تصویر (اختیاری)'}
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => setImages(images.filter((x) => x.id !== img.id))}
-                className="text-slate-400 hover:text-red-600 shrink-0 self-start"
-                aria-label={'\u062d\u0630\u0641'}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -192,7 +239,7 @@ export function InvoiceAnnexEditorPanel({
   };
 
   const addAnnex = () => {
-    onAnnexesChange([...annexes, createEmptyAnnex({ title: '\u0627\u0644\u062d\u0627\u0642\u06cc\u0647 / Annex' })]);
+    onAnnexesChange([...annexes, createEmptyAnnex({ title: 'الحاقیه / Annex' })]);
     onEnabledChange(true);
   };
 
@@ -222,15 +269,15 @@ export function InvoiceAnnexEditorPanel({
         />
         <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
           <FileText className="w-3.5 h-3.5 text-violet-600" />
-          {'\u0627\u0644\u062d\u0627\u0642\u06cc\u0647 (\u0635\u0641\u062d\u0627\u062a \u0628\u0639\u062f \u0627\u0632 \u0641\u0627\u06a9\u062a\u0648\u0631)'}
+          {'الحاقیه (صفحات بعد از فاکتور)'}
         </span>
       </label>
 
       <p className="text-[10px] text-slate-600 leading-snug">
-        {'\u0645\u062a\u0646 \u0648 \u062a\u0635\u0627\u0648\u06cc\u0631 \u067e\u0631\u0648\u0698\u0647 ('}
+        {'متن و تصاویر پروژه ('}
         {ANNEX_IMAGE_FORMATS_LABEL}
-        {') \u0631\u0648\u06cc \u0635\u0641\u062d\u0647 \u062c\u062f\u0627 \u0686\u0627\u067e \u0645\u06cc\u200c\u0634\u0648\u062f. \u0627\u0631\u062c\u0627\u0639: '}
-        <span className="font-mono font-semibold">{invoiceRef || '\u2014'}</span>
+        {') روی صفحه جدا چاپ می‌شود. ارجاع: '}
+        <span className="font-mono font-semibold">{invoiceRef || '—'}</span>
       </p>
 
       {enabled && (
@@ -238,14 +285,14 @@ export function InvoiceAnnexEditorPanel({
           <div className="space-y-3">
             {annexes.length === 0 ? (
               <p className="text-[11px] text-slate-500 italic">
-                {'\u0647\u0646\u0648\u0632 \u0627\u0644\u062d\u0627\u0642\u06cc\u0647\u200c\u0627\u06cc \u0627\u0636\u0627\u0641\u0647 \u0646\u0634\u062f\u0647.'}
+                {'هنوز الحاقیه‌ای اضافه نشده.'}
               </p>
             ) : (
               annexes.map((annex, idx) => (
                 <div key={annex.id} className="rounded-lg border border-slate-200 bg-white p-2.5 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-bold text-violet-700 uppercase">
-                      {'\u0627\u0644\u062d\u0627\u0642\u06cc\u0647'} {idx + 1}
+                      {'الحاقیه'} {idx + 1}
                     </span>
                     <div className="flex items-center gap-2">
                       <label className="flex items-center gap-1 text-[10px] text-slate-600">
@@ -255,34 +302,34 @@ export function InvoiceAnnexEditorPanel({
                           onChange={(e) => updateAnnex(annex.id, { includeInPrint: e.target.checked })}
                           className="rounded border-slate-300"
                         />
-                        {'\u0686\u0627\u067e'}
+                        {'چاپ'}
                       </label>
                       <button
                         type="button"
                         onClick={() => onSavePreset(annex)}
                         className="text-[10px] text-violet-700 hover:text-violet-900 inline-flex items-center gap-0.5"
-                        title={'\u0630\u062e\u06cc\u0631\u0647 \u0627\u0644\u06af\u0648 (\u0641\u0642\u0637 \u0645\u062a\u0646)'}
+                        title={'ذخیره الگو (فقط متن)'}
                       >
-                        <Save className="w-3 h-3" /> {'\u0627\u0644\u06af\u0648'}
+                        <Save className="w-3 h-3" /> {'الگو'}
                       </button>
                       <button
                         type="button"
                         onClick={() => removeAnnex(annex.id)}
                         className="text-slate-400 hover:text-red-600"
-                        aria-label={'\u062d\u0630\u0641'}
+                        aria-label={'حذف'}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                   <div>
-                    <label className={labelCls}>{'\u0639\u0646\u0648\u0627\u0646'}</label>
+                    <label className={labelCls}>{'عنوان'}</label>
                     <input
                       type="text"
                       value={annex.title}
                       onChange={(e) => updateAnnex(annex.id, { title: e.target.value })}
                       className="w-full text-sm border border-slate-200 rounded px-2 py-1"
-                      placeholder={'\u0645\u062b\u0627\u0644: \u062a\u0635\u0627\u0648\u06cc\u0631 \u067e\u0631\u0648\u0698\u0647'}
+                      placeholder={'مثال: تصاویر پروژه'}
                     />
                   </div>
                   <AnnexParagraphsEditor
@@ -306,12 +353,12 @@ export function InvoiceAnnexEditorPanel({
             className="w-full flex items-center justify-center gap-2 text-sm font-semibold border border-dashed border-violet-300 text-violet-800 rounded-lg py-2 hover:bg-violet-100/50"
           >
             <Plus className="w-4 h-4" />
-            {'\u0627\u0641\u0632\u0648\u062f\u0646 \u0627\u0644\u062d\u0627\u0642\u06cc\u0647'}
+            {'افزودن الحاقیه'}
           </button>
 
           {presets.length > 0 && (
             <div>
-              <label className={labelCls}>{'\u0627\u0644\u06af\u0648\u0647\u0627\u06cc \u0630\u062e\u06cc\u0631\u0647\u200c\u0634\u062f\u0647'}</label>
+              <label className={labelCls}>{'الگوهای ذخیره‌شده'}</label>
               <select
                 className="w-full text-sm border border-slate-200 rounded px-2 py-1.5"
                 defaultValue=""
@@ -321,7 +368,7 @@ export function InvoiceAnnexEditorPanel({
                   e.target.value = '';
                 }}
               >
-                <option value="">{'\u2014 \u0627\u0641\u0632\u0648\u062f\u0646 \u0627\u0632 \u0627\u0644\u06af\u0648 \u2014'}</option>
+                <option value="">{'— افزودن از الگو —'}</option>
                 {presets.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -362,45 +409,64 @@ export type InvoiceAnnexPrintPagesProps = {
   invoiceLogo: string;
 };
 
-function AnnexPrintImageGrid({ images, afterBody }: { images: InvoiceAnnexImage[]; afterBody?: boolean }) {
+function AnnexPrintImageGrid({
+  images,
+  cols,
+  afterBody,
+}: {
+  images: InvoiceAnnexImage[];
+  cols: number;
+  afterBody?: boolean;
+}) {
   if (!images.length) return null;
-  const cols = images.length === 1 ? 1 : images.length === 2 ? 2 : 3;
   return (
     <div
       className="annex-images-grid"
       style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-        gap: 10,
-        marginTop: afterBody ? 12 : 0,
+        gap: 8,
+        marginTop: afterBody ? 14 : 0,
       }}
     >
       {images.map((img) => (
         <figure
           key={img.id}
           className="annex-image-cell"
-          style={{ breakInside: 'avoid', pageBreakInside: 'avoid', margin: 0 }}
+          style={{ margin: 0, breakInside: 'avoid', pageBreakInside: 'avoid' }}
         >
-          <img
-            src={img.src}
-            alt={img.caption || img.name || ''}
+          {/* Square wrapper using padding-bottom trick */}
+          <div
             style={{
+              position: 'relative',
               width: '100%',
-              maxHeight: cols === 1 ? '200mm' : '85mm',
-              objectFit: 'contain',
-              borderRadius: 4,
+              paddingBottom: '100%',
+              overflow: 'hidden',
+              borderRadius: 5,
               border: '1px solid #e2e8f0',
-              background: '#fff',
+              background: '#f8fafc',
             }}
-          />
-          {(img.caption || img.name) && (
+          >
+            <img
+              src={img.src}
+              alt={img.caption || img.name || ''}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          </div>
+          {(img.caption?.trim() || img.name) && (
             <figcaption
               style={{
-                fontSize: '8pt',
+                fontSize: '7.5pt',
                 color: '#64748b',
-                marginTop: 4,
+                marginTop: 3,
                 textAlign: 'center',
-                lineHeight: 1.35,
+                lineHeight: 1.3,
               }}
             >
               {img.caption?.trim() || img.name}
@@ -423,21 +489,54 @@ export function InvoiceAnnexPrintPages({
   billedFromDetails,
   invoiceLogo,
 }: InvoiceAnnexPrintPagesProps) {
-  const pages = annexesForPrint(annexes, enabled);
-  if (!pages.length) return null;
+  const printAnnexes = annexesForPrint(annexes, enabled);
+  if (!printAnnexes.length) return null;
 
   const issueLabel = new Date(
     Number.isFinite(invoiceIssueDateMs) && invoiceIssueDateMs > 0 ? invoiceIssueDateMs : Date.now(),
-  ).toLocaleString();
+  ).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  type PageEntry = {
+    annex: InvoiceAnnex;
+    imgs: InvoiceAnnexImage[];
+    showBody: boolean;
+    chunkIdx: number;
+    totalChunks: number;
+    cols: number;
+  };
+
+  const allPages: PageEntry[] = [];
+  printAnnexes.forEach((annex) => {
+    const layout = (annex.imageGridLayout || '9') as ImageGridLayout;
+    const { cols, perPage } = GRID_CONFIG[layout];
+    const imgs = annex.images ?? [];
+    const hasBody = annexHasParagraphText(annex);
+
+    if (imgs.length === 0) {
+      allPages.push({ annex, imgs: [], showBody: hasBody, chunkIdx: 0, totalChunks: 1, cols });
+      return;
+    }
+    const chunkCount = Math.ceil(imgs.length / perPage);
+    for (let ci = 0; ci < chunkCount; ci++) {
+      allPages.push({
+        annex,
+        imgs: imgs.slice(ci * perPage, (ci + 1) * perPage),
+        showBody: ci === 0 && hasBody,
+        chunkIdx: ci,
+        totalChunks: chunkCount,
+        cols,
+      });
+    }
+  });
 
   return (
     <>
-      {pages.map((annex, i) => {
-        const imgs = annex.images ?? [];
-        const hasBody = annexHasParagraphText(annex);
+      {allPages.map((entry, pageIdx) => {
+        const { annex, imgs, showBody, chunkIdx, totalChunks, cols } = entry;
+        const titleSuffix = totalChunks > 1 ? ` (${chunkIdx + 1}/${totalChunks})` : '';
         return (
           <div
-            key={annex.id}
+            key={`${annex.id}-${chunkIdx}`}
             className="invoice-doc invoice-doc--portrait invoice-annex-page shadow-md mx-auto print:shadow-none mt-6 print:mt-0"
             dir="ltr"
             style={{ display: 'flex', flexDirection: 'column', ...invoiceThemeStyle(invoiceAccentColor) }}
@@ -451,31 +550,21 @@ export function InvoiceAnnexPrintPages({
                     style={{ maxHeight: 48, maxWidth: 180, objectFit: 'contain', display: 'block', marginBottom: 6 }}
                   />
                 ) : null}
-                <div className="name">{billedFrom || '\u2014'}</div>
+                <div className="name">{billedFrom || '—'}</div>
                 {billedFromDetails ? (
-                  <div className="small" style={{ whiteSpace: 'pre-line' }}>
-                    {billedFromDetails}
-                  </div>
+                  <div className="small" style={{ whiteSpace: 'pre-line' }}>{billedFromDetails}</div>
                 ) : null}
               </div>
               <div className="invoice-header__doc" style={{ textAlign: 'right', flex: 1 }}>
                 <div className="small muted" style={{ letterSpacing: '.08em', textTransform: 'uppercase' }}>
-                  Annex / {'\u0627\u0644\u062d\u0627\u0642\u06cc\u0647'}
+                  Annex / {'الحاقیه'}
                 </div>
-                <h1 style={{ fontSize: '16pt', marginTop: 4 }}>{annex.title.trim() || 'Annex'}</h1>
+                <h1 style={{ fontSize: '16pt', marginTop: 4 }}>{(annex.title.trim() || 'Annex') + titleSuffix}</h1>
                 <div className="small" style={{ marginTop: 8, lineHeight: 1.5 }}>
-                  <div>
-                    <b>Ref. Invoice #</b> {invoiceRef || '\u2014'}
-                  </div>
-                  <div>
-                    <b>Main document</b> {invoiceTitle || 'Proforma Invoice'}
-                  </div>
-                  <div>
-                    <b>Issue date</b> {issueLabel}
-                  </div>
-                  <div>
-                    <b>Annex</b> {i + 1} of {pages.length}
-                  </div>
+                  <div><b>Ref. #</b> {invoiceRef || '—'}</div>
+                  <div><b>Document</b> {invoiceTitle || 'Proforma Invoice'}</div>
+                  <div><b>Date</b> {issueLabel}</div>
+                  <div><b>Page</b> {pageIdx + 1} of {allPages.length}</div>
                 </div>
               </div>
             </div>
@@ -484,21 +573,16 @@ export function InvoiceAnnexPrintPages({
 
             <div
               className="info-card annex-body"
-              style={{
-                flex: 1,
-                minHeight: imgs.length && !hasBody ? 'auto' : hasBody ? '40mm' : '180mm',
-                whiteSpace: 'pre-wrap',
-                fontSize: '10pt',
-                lineHeight: 1.65,
-                color: '#1e293b',
-              }}
+              style={{ flex: 1, fontSize: '10pt', lineHeight: 1.65, color: '#1e293b' }}
             >
-              {hasBody ? <AnnexParagraphsPrint annex={annex} /> : imgs.length ? null : '\u2014'}
-              <AnnexPrintImageGrid images={imgs} afterBody={hasBody} />
+              {showBody ? <AnnexParagraphsPrint annex={annex} /> : null}
+              {imgs.length > 0
+                ? <AnnexPrintImageGrid images={imgs} cols={cols} afterBody={showBody} />
+                : (!showBody ? <span style={{ color: '#94a3b8' }}>{'—'}</span> : null)}
             </div>
 
             <div className="doc-footer" style={{ marginTop: 'auto', paddingTop: 12 }}>
-              Annex {i + 1}/{pages.length} — refers to Invoice #{invoiceRef || '\u2014'} · {issueLabel}
+              Page {pageIdx + 1}/{allPages.length} — Annex ref. #{invoiceRef || '—'} · {issueLabel}
             </div>
           </div>
         );

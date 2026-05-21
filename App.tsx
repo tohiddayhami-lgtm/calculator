@@ -17046,12 +17046,12 @@ function AppInner() {
             <thead>
               <tr style={{ background: invoiceAccentColor || '#0ea5e9', color: '#fff' }}>
                 <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '3%' }}>#</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '28%' }}>Product</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '22%' }}>Specification</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '30%' }}>Product</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, width: '20%' }}>Specification</th>
                 <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '10%' }}>MOQ</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '12%' }}>Incoterm</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, width: '13%' }}>Unit Price</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '12%' }}>Lead Time</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '10%' }}>Incoterm</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, width: '14%' }}>Unit Price</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, width: '13%' }}>Lead Time</th>
               </tr>
             </thead>
             <tbody>
@@ -17060,24 +17060,34 @@ function AppInner() {
                 const moq = quotationProductMoqs[p.id] || p.catalogMOQ || '';
                 return (
                   <tr key={p.id} style={{ background: idx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '7px 8px', color: '#94a3b8', textAlign: 'center' }}>{idx + 1}</td>
-                    <td style={{ padding: '7px 8px', fontWeight: 600, color: '#0f172a' }}>
-                      {p.name}
-                      {p.hsCode ? <div style={{ fontSize: '7.5pt', color: '#94a3b8', marginTop: 1 }}>HS: {p.hsCode}</div> : null}
+                    <td style={{ padding: '7px 8px', color: '#94a3b8', textAlign: 'center', verticalAlign: 'top' }}>{idx + 1}</td>
+                    <td style={{ padding: '7px 8px', verticalAlign: 'top' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
+                        {p.image && (
+                          <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 4, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                            <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{p.name}</div>
+                          {p.sku ? <div style={{ fontSize: '7pt', color: '#64748b', marginTop: 1, fontFamily: 'monospace' }}>SKU: {p.sku}</div> : null}
+                          {p.hsCode ? <div style={{ fontSize: '7pt', color: '#94a3b8', marginTop: 1 }}>HS: {p.hsCode}</div> : null}
+                        </div>
+                      </div>
                     </td>
-                    <td style={{ padding: '7px 8px', color: '#475569' }}>
+                    <td style={{ padding: '7px 8px', color: '#475569', verticalAlign: 'top' }}>
                       {p.catalogDescription || p.name}
                     </td>
-                    <td style={{ padding: '7px 8px', textAlign: 'center', color: '#0f172a' }}>{moq || '—'}</td>
-                    <td style={{ padding: '7px 8px', textAlign: 'center' }}>
+                    <td style={{ padding: '7px 8px', textAlign: 'center', color: '#0f172a', verticalAlign: 'top' }}>{moq || '—'}</td>
+                    <td style={{ padding: '7px 8px', textAlign: 'center', verticalAlign: 'top' }}>
                       <span style={{ display: 'inline-block', padding: '2px 6px', background: `${invoiceAccentColor || '#0ea5e9'}20`, borderRadius: 3, fontWeight: 700, color: invoiceAccentColor || '#0ea5e9', fontSize: '8pt' }}>
                         {selectedTerm}
                       </span>
                     </td>
-                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#0f172a', verticalAlign: 'top' }}>
                       {formatMoney(unitPrice, config.outputCurrency)}
                     </td>
-                    <td style={{ padding: '7px 8px', textAlign: 'center', color: '#475569', fontSize: '8pt' }}>
+                    <td style={{ padding: '7px 8px', textAlign: 'center', color: '#475569', fontSize: '8pt', verticalAlign: 'top' }}>
                       {quotationLeadTime}
                     </td>
                   </tr>

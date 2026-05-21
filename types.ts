@@ -201,6 +201,8 @@ export interface InvoiceAnnex {
   includeInPrint: boolean;
   /** Multiple images (project photos, diagrams, etc.). */
   images?: InvoiceAnnexImage[];
+  /** How many square images per page: 4 (2×2), 6 (3×2), 9 (3×3). Default 9. */
+  imageGridLayout?: '4' | '6' | '9';
 }
 
 /** Saved annex template (title + body) in browser storage. */
