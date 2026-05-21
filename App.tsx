@@ -6103,6 +6103,8 @@ function AppInner() {
   const [quotationValidityText, setQuotationValidityText] = useState('30 days from issue');
   const [quotationProductMoqs, setQuotationProductMoqs] = useState<Record<number, string>>({});
   const [quotationShowTiers, setQuotationShowTiers] = useState(true);
+  const [quotationAnnexesEnabled, setQuotationAnnexesEnabled] = useState(false);
+  const [quotationAnnexes, setQuotationAnnexes] = useState<InvoiceAnnex[]>([]);
   type QuotationTermsPreset = { id: string; name: string; paymentTerms: string; leadTime: string; validityText: string; notes: string; updatedAt: number };
   const [quotationPresets, setQuotationPresets] = useState<QuotationTermsPreset[]>(() => {
     try { return JSON.parse(localStorage.getItem('cc_quotation_terms_presets') || '[]'); } catch { return []; }
@@ -6254,6 +6256,35 @@ function AppInner() {
       annexes={invoiceAnnexes}
       invoiceRef={invoiceRef}
       invoiceTitle={invoiceTitle}
+      invoiceIssueDateMs={invoiceIssueDateMs}
+      invoiceAccentColor={invoiceAccentColor}
+      billedFrom={billedFrom}
+      billedFromDetails={billedFromDetails}
+      invoiceLogo={invoiceLogo}
+    />
+  );
+
+  const renderQuotationAnnexEditorPanel = () => (
+    <InvoiceAnnexEditorPanel
+      enabled={quotationAnnexesEnabled}
+      onEnabledChange={setQuotationAnnexesEnabled}
+      annexes={quotationAnnexes}
+      onAnnexesChange={setQuotationAnnexes}
+      presets={invoiceAnnexPresets}
+      onSavePreset={saveInvoiceAnnexPreset}
+      onDeletePreset={deleteInvoiceAnnexPreset}
+      invoiceRef={invoiceRef}
+      projectImages={projectAnnexImageOptions}
+      compressImageSrc={compressImage}
+    />
+  );
+
+  const renderQuotationAnnexPrint = () => (
+    <InvoiceAnnexPrintPages
+      enabled={quotationAnnexesEnabled}
+      annexes={quotationAnnexes}
+      invoiceRef={invoiceRef}
+      invoiceTitle="Quotation"
       invoiceIssueDateMs={invoiceIssueDateMs}
       invoiceAccentColor={invoiceAccentColor}
       billedFrom={billedFrom}
@@ -9549,6 +9580,8 @@ function AppInner() {
         quotationValidityText,
         quotationProductMoqs,
         quotationShowTiers,
+        quotationAnnexesEnabled,
+        quotationAnnexes: quotationAnnexes.filter(annexHasPrintableContent),
     };
 
     const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
@@ -9767,6 +9800,8 @@ function AppInner() {
     setQuotationValidityText(String((project.data as any).quotationValidityText || '30 days from issue'));
     setQuotationProductMoqs((project.data as any).quotationProductMoqs || {});
     setQuotationShowTiers((project.data as any).quotationShowTiers !== false);
+    setQuotationAnnexesEnabled((project.data as any).quotationAnnexesEnabled === true);
+    setQuotationAnnexes(parseInvoiceAnnexes((project.data as any).quotationAnnexes));
 
     setSuppliers(project.data.suppliers || []);
     setBuyers((prev) =>
@@ -17370,15 +17405,19 @@ function AppInner() {
               <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 resize-none" placeholder="Additional terms, quality notes, etc." />
               <p className="text-[9px] text-slate-400 mt-1">Payment Terms + Lead Time + Validity + Notes همه با هم در یک Preset ذخیره می‌شوند.</p>
             </div>
+            <hr className="border-slate-100" />
+            {/* Annexes */}
+            {renderQuotationAnnexEditorPanel()}
           </div>
         </div>
 
         {/* Preview */}
         <div className="flex-1 overflow-y-auto bg-slate-100 rounded-lg print:bg-white print:overflow-visible">
-          <div className="min-h-full p-4 print:p-0 flex flex-col items-center">
+          <div className="min-h-full p-4 print:p-0 flex flex-col items-center gap-4">
             <div className="shadow-lg print:shadow-none" style={{ transform: 'scale(0.92)', transformOrigin: 'top center', marginBottom: '-6%' }}>
               {docContent}
             </div>
+            {renderQuotationAnnexPrint()}
           </div>
         </div>
       </div>
