@@ -93,7 +93,7 @@ function emptyDraft(warehouseId: string, productId = 0): MovementDraft {
   };
 }
 
-export function WarehousePanel({
+export const WarehousePanel = React.memo(function WarehousePanel({
   products,
   suppliers,
   locations,
@@ -941,4 +941,4 @@ export function WarehousePanel({
       )}
     </div>
   );
-}
+});

@@ -108,7 +108,7 @@ function newBlankBuyer(kind: BuyerCustomerKind): Buyer {
   });
 }
 
-export function BuyersPanel({
+export const BuyersPanel = React.memo(function BuyersPanel({
   buyers,
   setBuyers,
   selectedBuyerId,
@@ -456,4 +456,4 @@ export function BuyersPanel({
       </div>
     </div>
   );
-}
+});

@@ -116,7 +116,7 @@ type Props = {
   onSaveCourses: (courses: EducationCourse[]) => void;
 };
 
-export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
+export const EducationFormsPanel = React.memo(function EducationFormsPanel({ courses, onSaveCourses }: Props) {
   const [subView, setSubView] = useState<'list' | 'editor'>('list');
   const [editing, setEditing] = useState<EducationCourse | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -1329,4 +1329,4 @@ export function EducationFormsPanel({ courses, onSaveCourses }: Props) {
       </div>
     </div>
   );
-}
+});
