@@ -75,9 +75,6 @@ export interface Product {
   scenarioProfitPercents?: { [term: string]: number };
   scenarioProfitTypes?: { [term: string]: 'markup' | 'margin' };
   scenarioManualUnitSellPrices?: { [term: string]: number };
-  /** Fixed per-unit profit amount by term; amount is stored in its own currency and converted at calculation time. */
-  scenarioManualUnitProfitAdds?: { [term: string]: number };
-  scenarioManualUnitProfitCurrencies?: { [term: string]: string };
   scenarioTargetPrices?: { [term: string]: number };
   scenarioTargetCurrencies?: { [term: string]: string };
 
