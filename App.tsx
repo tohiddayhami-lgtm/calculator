@@ -10265,7 +10265,9 @@ function AppInner() {
   };
 
   const applyBulkExportProfitPricing = () => {
-      const terms = bulkExportProfitTerms.length ? bulkExportProfitTerms : [...SCENARIO_TERMS];
+      const visibleTerms = SCENARIO_TERMS.filter(term => visibleScenarioTerms.includes(term));
+      const selectedVisibleTerms = bulkExportProfitTerms.filter(term => visibleTerms.includes(term));
+      const terms = selectedVisibleTerms.length ? selectedVisibleTerms : visibleTerms;
       if (bulkExportProfitMode === 'percent') {
           const percent = bulkExportProfitPercent;
           if (percent === undefined || percent < 0) {
@@ -10311,7 +10313,9 @@ function AppInner() {
   };
 
   const clearBulkExportProfitPricing = () => {
-      const terms = bulkExportProfitTerms.length ? bulkExportProfitTerms : [...SCENARIO_TERMS];
+      const visibleTerms = SCENARIO_TERMS.filter(term => visibleScenarioTerms.includes(term));
+      const selectedVisibleTerms = bulkExportProfitTerms.filter(term => visibleTerms.includes(term));
+      const terms = selectedVisibleTerms.length ? selectedVisibleTerms : visibleTerms;
       setProducts(prev => prev.map(p => {
           let nextProduct: Product = { ...p };
           terms.forEach(term => {
@@ -13112,7 +13116,7 @@ function AppInner() {
                       Export profit calculator
                   </h2>
                   <p className="text-[10px] text-emerald-800/75 mt-1 leading-snug">
-                      Set per-term selling rules before reviewing the scenario analysis below.
+                      Set per-term selling rules for the currently displayed Incoterms.
                   </p>
               </div>
 
@@ -13140,7 +13144,7 @@ function AppInner() {
                   <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-emerald-800 block">Terms</label>
                       <div className="flex flex-wrap gap-1 max-w-[260px]">
-                          {SCENARIO_TERMS.map(term => (
+                          {SCENARIO_TERMS.filter(term => visibleScenarioTerms.includes(term)).map(term => (
                               <button
                                   key={`export-bulk-${term}`}
                                   type="button"
@@ -13252,7 +13256,7 @@ function AppInner() {
                                       </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 bg-white">
-                                      {block.rows.map((row) => {
+                                      {block.rows.filter((r) => visibleScenarioTerms.includes(r.term)).map((row) => {
                                           const scenarioProduct = calculations.processedProducts.find((p) => p.id === block.id);
                                           const scenarioType = scenarioProduct?.scenarioProfitTypes?.[row.term] || config.profitType;
                                           const scenarioPercent = scenarioProduct?.scenarioProfitPercents?.[row.term];
