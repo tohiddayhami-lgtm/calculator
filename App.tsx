@@ -2281,6 +2281,11 @@ function createDefaultAppConfig(): AppConfig {
     termMultipliers: { exw: 20, fob: 20, cif: 20, ddp: 20 },
     enableTermSpecificProfit: false,
     termProfits: { exw: 20, fob: 20, cif: 20, ddp: 20 },
+    transportCostEnabled: false,
+    transportCostMode: 'fixed',
+    transportCostFixed: 0,
+    transportCostCurrency: 'USD',
+    transportCostPercent: 0,
   };
 }
 
@@ -10509,6 +10514,11 @@ function AppInner() {
     const uDest = totalQty > 0 ? costDest / totalQty : 0;
     const uExtras = totalQty > 0 ? costExtras / totalQty : 0;
 
+    // Transport & Logistics per-unit overhead (fixed amount, same for all products)
+    const transportFixedPerUnit = (config.transportCostEnabled && config.transportCostMode === 'fixed')
+      ? toOutput(toBase(config.transportCostFixed || 0, config.transportCostCurrency || config.outputCurrency))
+      : 0;
+
     let totalExwCost = 0;
     let accSell_EXW = 0;
     let accSell_FCA = 0;
@@ -10541,7 +10551,13 @@ function AppInner() {
         const lineCost = isActive ? unitCostOutput * p.qty : 0;
         
         const baseCost_EXW = unitCostOutput + uExwExtra;
-        const baseCost_FOB = baseCost_EXW + uInland + uPort;
+        // Per-unit transport/logistics overhead (percent mode depends on this product's EXW cost)
+        const uTransportCost = config.transportCostEnabled
+          ? config.transportCostMode === 'percent'
+            ? baseCost_EXW * ((config.transportCostPercent || 0) / 100)
+            : transportFixedPerUnit
+          : 0;
+        const baseCost_FOB = baseCost_EXW + uInland + uPort + uTransportCost;
         const baseCost_CIF = baseCost_FOB + uFreight + uInsurance;
         const dutyVal = baseCost_CIF * (logistics.dutyPercent / 100);
         const baseCost_DDP = baseCost_CIF + uDest + dutyVal + uExtras;
@@ -10576,7 +10592,7 @@ function AppInner() {
                 // Apply Multiplier (Cost * (1 + Markup%))
                 exwSell = manualSellPriceOutput ?? baseCost_EXW * (1 + ((multipliers.exw || 0) / 100));
                 fcaSell = manualSellPriceOutput !== undefined ? exwSell + (uInland * (1 + ((multipliers.fob || 0) / 100))) : (baseCost_EXW + uInland) * (1 + ((multipliers.fob || 0) / 100));
-                fobSell = manualSellPriceOutput !== undefined ? exwSell + ((uInland + uPort) * (1 + ((multipliers.fob || 0) / 100))) : baseCost_FOB * (1 + ((multipliers.fob || 0) / 100));
+                fobSell = manualSellPriceOutput !== undefined ? exwSell + ((uInland + uPort + uTransportCost) * (1 + ((multipliers.fob || 0) / 100))) : baseCost_FOB * (1 + ((multipliers.fob || 0) / 100));
                 cifSell = manualSellPriceOutput !== undefined ? fobSell + ((uFreight + uInsurance) * (1 + ((multipliers.cif || 0) / 100))) : baseCost_CIF * (1 + ((multipliers.cif || 0) / 100));
                 ddpSell = manualSellPriceOutput !== undefined ? cifSell + ((uDest + dutyVal + uExtras) * (1 + ((multipliers.ddp || 0) / 100))) : baseCost_DDP * (1 + ((multipliers.ddp || 0) / 100));
 
@@ -10589,10 +10605,10 @@ function AppInner() {
 
                 exwSell = unitSellPrice;
                 fcaSell = exwSell + applyProfit(uInland, config.profitFlags.fob, effectiveProfitPercent);
-                fobSell = fcaSell + applyProfit(uPort, config.profitFlags.fob, effectiveProfitPercent);
+                fobSell = fcaSell + applyProfit(uPort + uTransportCost, config.profitFlags.fob, effectiveProfitPercent);
                 cifSell = fobSell + applyProfit(uFreight + uInsurance, config.profitFlags.cif, effectiveProfitPercent); 
                 
-                const unitCifCost = unitCostOutput + uExwExtra + uInland + uPort + uFreight + uInsurance;
+                const unitCifCost = unitCostOutput + uExwExtra + uInland + uPort + uTransportCost + uFreight + uInsurance;
                 const uDuty = unitCifCost * (logistics.dutyPercent / 100);
                 
                 ddpSell = cifSell + applyProfit(uDest + uDuty + uExtras, config.profitFlags.ddp, effectiveProfitPercent);
@@ -10659,15 +10675,15 @@ function AppInner() {
             accSell_DDP += ddpSell * p.qty;
         }
 
-        return { 
-            ...p, 
-            isActive, 
-            unitCostOutput, 
-            lineCost, 
-            unitProfit, 
-            totalProfit, 
-            unitSellPrice, 
-            totalSellPrice, 
+        return {
+            ...p,
+            isActive,
+            unitCostOutput,
+            lineCost,
+            unitProfit,
+            totalProfit,
+            unitSellPrice,
+            totalSellPrice,
             totalPacks,
             packPrice,
             scenarioPrices: { EXW: exwSell, FCA: fcaSell, FOB: fobSell, CIF: cifSell, DDP: ddpSell },
@@ -10678,6 +10694,8 @@ function AppInner() {
             packagingMode,
             unitCostBeforePackagingOutput: productCostOut,
             packagingUnitExtraOutput: packagingUnitExtraOutput > 0 ? packagingUnitExtraOutput : undefined,
+            baseCostEXW: baseCost_EXW,
+            baseCostFOB: baseCost_FOB,
         };
     });
 
@@ -13013,100 +13031,120 @@ function AppInner() {
           </div>
           </div>
 
-          {/* --- REBUILT PROFIT CONFIGURATION CARD --- */}
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0 max-h-[min(22rem,48vh)] md:max-h-[min(24rem,50vh)]">
+          {/* --- TRANSPORT & LOGISTICS COST CARD --- */}
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col">
               <div className="shrink-0 px-4 pt-3 pb-2 border-b border-slate-100 bg-slate-50/60">
-                  <h2 className="font-semibold text-slate-700 flex items-center gap-2">
-                      <PieChart className="w-4 h-4 text-purple-500" />
-                      Profit Configuration
-                  </h2>
-                  <p className="text-[10px] text-slate-500 mt-1">Pricing method &amp; margins — <span className="text-slate-400">scroll if needed</span></p>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 py-3 [scrollbar-gutter:stable]">
-              {/* Method Switcher */}
-              <div className="flex bg-slate-100 p-1 rounded-lg mb-3">
-                  <button
-                      onClick={() => setConfig({...config, pricingMethod: 'cost_plus'})}
-                      className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${config.pricingMethod === 'cost_plus' ? 'bg-white text-purple-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
-                  >
-                      Accumulated (Cost Plus)
-                  </button>
-                  <button
-                      onClick={() => setConfig({...config, pricingMethod: 'fixed_unit_markup'})}
-                      className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${config.pricingMethod === 'fixed_unit_markup' ? 'bg-white text-purple-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
-                  >
-                      Fixed % on Unit Price
-                  </button>
+                  <div className="flex items-center justify-between">
+                      <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-orange-500" />
+                          Transport &amp; Logistics
+                      </h2>
+                      <button
+                          onClick={() => setConfig({ ...config, transportCostEnabled: !config.transportCostEnabled })}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${config.transportCostEnabled ? 'bg-orange-500' : 'bg-slate-200'}`}
+                      >
+                          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${config.transportCostEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">هزینه حمل و نقل روی هر واحد محصول — به کل محصولات اعمال می‌شود</p>
               </div>
 
-              <div className="space-y-3">
-                  
-                  {/* MODE A: COST PLUS */}
-                  {config.pricingMethod === 'cost_plus' && (
-                      <div className="animate-in fade-in slide-in-from-top-1">
-                          <p className="text-xs text-slate-500 mb-2">Select which stages include profit margin (Accumulates on top of cost):</p>
-                          <div className="grid grid-cols-2 gap-3">
-                              {[
-                                  { id: 'exw', label: 'Goods (EXW)', desc: 'Profit on raw product cost' },
-                                  { id: 'fob', label: 'Inland/Port (FOB)', desc: 'Profit on transport to ship' },
-                                  { id: 'cif', label: 'Freight (CIF)', desc: 'Profit on sea/air freight' },
-                                  { id: 'ddp', label: 'Dest/Duty (DDP)', desc: 'Profit on clearance & duty' }
-                              ].map(item => (
-                                  <div 
-                                    key={item.id} 
-                                    onClick={() => toggleProfitFlag(item.id)}
-                                    className={`cursor-pointer border rounded-lg p-3 transition-all ${config.profitFlags[item.id] ? 'bg-purple-50 border-purple-200 ring-1 ring-purple-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300'}`}
-                                  >
-                                      <div className="flex items-center justify-between mb-1">
-                                          <span className={`text-sm font-semibold ${config.profitFlags[item.id] ? 'text-purple-700' : 'text-slate-600'}`}>{item.label}</span>
-                                          {config.profitFlags[item.id] ? <CheckCircle className="w-4 h-4 text-purple-600" /> : <Circle className="w-4 h-4 text-slate-300" />}
-                                      </div>
-                                      <p className="text-[10px] text-slate-400 leading-tight">{item.desc}</p>
-                                  </div>
-                              ))}
+              <div className="px-4 py-3 space-y-3">
+                  {/* Mode toggle */}
+                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                      <button
+                          onClick={() => setConfig({ ...config, transportCostMode: 'fixed' })}
+                          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${config.transportCostMode !== 'percent' ? 'bg-white text-orange-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                          Fixed per unit
+                      </button>
+                      <button
+                          onClick={() => setConfig({ ...config, transportCostMode: 'percent' })}
+                          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${config.transportCostMode === 'percent' ? 'bg-white text-orange-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                          % of base cost
+                      </button>
+                  </div>
+
+                  {/* Fixed amount inputs */}
+                  {config.transportCostMode !== 'percent' ? (
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">هزینه ثابت به ازای هر واحد</label>
+                          <div className="flex gap-2">
+                              <div className={`flex-1 flex items-center gap-2 rounded-lg border px-3 py-2 bg-white transition-colors ${config.transportCostEnabled ? 'border-orange-200' : 'border-slate-200'}`}>
+                                  <Truck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <FormattedNumberInput
+                                      value={config.transportCostFixed || 0}
+                                      onChange={(val) => setConfig({ ...config, transportCostFixed: val ?? 0 })}
+                                      className="w-full text-sm font-bold text-slate-700 outline-none bg-transparent"
+                                      placeholder="0.200"
+                                  />
+                              </div>
+                              <select
+                                  value={config.transportCostCurrency || 'USD'}
+                                  onChange={(e) => setConfig({ ...config, transportCostCurrency: e.target.value })}
+                                  className="h-10 text-xs bg-white border border-slate-200 rounded-lg px-2 text-slate-700 font-semibold"
+                              >
+                                  {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
                           </div>
+                          {config.transportCostEnabled && (config.transportCostFixed || 0) > 0 && (
+                              <p className="text-[10px] text-orange-700 bg-orange-50 border border-orange-100 rounded px-2 py-1">
+                                  +{formatMoney(config.transportCostFixed || 0, config.transportCostCurrency || 'USD')} به هزینه هر واحد اضافه می‌شود → قیمت FOB
+                              </p>
+                          )}
+                      </div>
+                  ) : (
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">درصد از قیمت پایه (EXW)</label>
+                          <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 bg-white transition-colors ${config.transportCostEnabled ? 'border-orange-200' : 'border-slate-200'}`}>
+                              <Truck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <FormattedNumberInput
+                                  value={config.transportCostPercent || 0}
+                                  onChange={(val) => setConfig({ ...config, transportCostPercent: val ?? 0 })}
+                                  className="w-full text-sm font-bold text-slate-700 outline-none bg-transparent"
+                                  placeholder="20"
+                              />
+                              <span className="text-sm font-bold text-orange-400 shrink-0">%</span>
+                          </div>
+                          {config.transportCostEnabled && (config.transportCostPercent || 0) > 0 && (
+                              <p className="text-[10px] text-orange-700 bg-orange-50 border border-orange-100 rounded px-2 py-1">
+                                  {config.transportCostPercent}٪ از قیمت EXW هر محصول به‌عنوان هزینه حمل اضافه می‌شود → قیمت FOB
+                              </p>
+                          )}
                       </div>
                   )}
 
-                  {/* MODE B: FIXED MARKUP */}
-                  {config.pricingMethod === 'fixed_unit_markup' && (
-                       <div className="animate-in fade-in slide-in-from-top-1">
-                          <p className="text-xs text-slate-500 mb-2">Set fixed markup percentage for each Term (Calculated on Total Cost at that stage):</p>
-                          <div className="grid grid-cols-2 gap-3">
-                              {[
-                                  { id: 'exw', label: 'EXW Markup' },
-                                  { id: 'fob', label: 'FOB Markup' },
-                                  { id: 'cif', label: 'CIF Markup' },
-                                  { id: 'ddp', label: 'DDP Markup' }
-                              ].map(item => (
-                                  <div key={item.id} className="border border-purple-200 bg-purple-50/50 rounded-lg p-3">
-                                      <label className="text-xs font-semibold text-purple-800 block mb-1">{item.label}</label>
-                                      <div className="flex items-center gap-2 bg-white rounded border border-purple-200 px-2">
-                                          <FormattedNumberInput
-                                              value={(config.termMultipliers as any)?.[item.id] || 0}
-                                              onChange={(val) =>
-                                                  setConfig({
-                                                      ...config,
-                                                      termMultipliers: {
-                                                          ...config.termMultipliers,
-                                                          [item.id]: val ?? 0,
-                                                      } as any,
-                                                  })
-                                              }
-                                              className="w-full py-1.5 text-sm outline-none font-bold text-slate-700"
-                                          />
-                                          <span className="text-xs font-bold text-purple-400">%</span>
+                  {/* Live preview */}
+                  {config.transportCostEnabled && calculations.processedProducts.some(p => p.active !== false) && (() => {
+                      const sampleProducts = calculations.processedProducts.filter(p => p.active !== false).slice(0, 3);
+                      return (
+                          <div className="rounded-lg border border-orange-100 bg-orange-50/60 p-2.5 space-y-1.5">
+                              <p className="text-[10px] font-semibold text-orange-800 uppercase tracking-wide">پیش‌نمایش تأثیر روی محصولات</p>
+                              {sampleProducts.map(p => {
+                                  const exwCost = (p as any).baseCostEXW ?? 0;
+                                  const fobCost = (p as any).baseCostFOB ?? 0;
+                                  return (
+                                      <div key={p.id} className="flex items-center justify-between text-[10px]">
+                                          <span className="text-slate-700 font-medium truncate max-w-[120px]">{p.name || 'محصول'}</span>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                              <span className="text-slate-500">EXW {formatMoney(exwCost, config.outputCurrency)}</span>
+                                              <span className="text-orange-400">→</span>
+                                              <span className="font-semibold text-orange-700">FOB {formatMoney(fobCost, config.outputCurrency)}</span>
+                                          </div>
                                       </div>
-                                  </div>
-                              ))}
+                                  );
+                              })}
+                              {calculations.processedProducts.filter(p => p.active !== false).length > 3 && (
+                                  <p className="text-[10px] text-orange-500">+{calculations.processedProducts.filter(p => p.active !== false).length - 3} محصول دیگر</p>
+                              )}
                           </div>
-                          <div className="mt-3 text-[10px] text-slate-400 bg-slate-50 p-2 rounded border border-slate-200">
-                               <span className="font-bold">Formula:</span> Sell Price = Total Cost * (1 + Markup%)
-                          </div>
-                       </div>
-                  )}
+                      );
+                  })()}
 
-              </div>
+                  {!config.transportCostEnabled && (
+                      <p className="text-[10px] text-slate-400 text-center py-1">برای فعال‌سازی، کلید بالا را روشن کنید</p>
+                  )}
               </div>
           </div>
       </div>

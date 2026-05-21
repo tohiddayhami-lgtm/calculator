@@ -264,6 +264,12 @@ export interface AppConfig {
       cif: number;
       ddp: number;
   };
+  // Transport & Logistics per-unit cost
+  transportCostEnabled?: boolean;
+  transportCostMode?: 'fixed' | 'percent';
+  transportCostFixed?: number;
+  transportCostCurrency?: string;
+  transportCostPercent?: number;
 }
 
 // New Interface for Social Media
