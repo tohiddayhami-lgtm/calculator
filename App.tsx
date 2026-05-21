@@ -28,7 +28,8 @@ import {
   updateDoc,
   query,
   orderBy,
-  limit
+  limit,
+  where
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -6757,7 +6758,11 @@ function AppInner() {
     const ref = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'invoiceArchive');
     let q: any;
     try {
-      q = query(ref, orderBy('issueDate', 'desc'), limit(500));
+      if (loadedProjectId) {
+        q = query(ref, where('projectId', '==', loadedProjectId), orderBy('issueDate', 'desc'), limit(500));
+      } else {
+        q = query(ref, orderBy('issueDate', 'desc'), limit(500));
+      }
     } catch {
       q = ref;
     }
@@ -6771,7 +6776,7 @@ function AppInner() {
       (err: any) => console.error('Invoice archive listener failed:', err)
     );
     return () => unsub();
-  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid, loadedProjectId]);
 
   // Customer inquiries listener (live updates from the public HTML catalog)
   useEffect(() => {
@@ -9560,6 +9565,7 @@ function AppInner() {
         invoiceOrientation,
         invoiceLayout,
         invoiceWelteTrade,
+        volumeTiers,
         containerCapacity, containerType, loadUnitType, palletTypeLabel, profitLossReportTerm, buyerProfitPercent, buyerProfitType, buyerManualResaleValue, buyerManualResaleCurrency,
         invoiceIssueDateMs,
         invoiceDueDateMs,
