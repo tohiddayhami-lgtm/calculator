@@ -13857,23 +13857,34 @@ function AppInner() {
           }
           return Math.max(0, baseUnitSell - toOutput(toBase(tier.discountValue, tier.discountCurrency)));
         };
+        // For tier n: use max cartons of that tier; for last tier (no upper limit) use full order
+        const tierRepCartons = (tier: typeof volumeTiers[0]) =>
+          tier.maxCartons != null ? Math.min(tier.maxCartons, Math.max(1, totalCartons)) : Math.max(1, totalCartons);
+        // Scale factor: ratio of tier representative cartons to full shipment cartons
+        const tierScale = (tier: typeof volumeTiers[0]) =>
+          totalCartons > 0 ? tierRepCartons(tier) / totalCartons : 1;
+
         const tierShipmentRevenue = (tier: typeof volumeTiers[0]) => {
           if (!profitLossReportTerm) return 0;
+          const scale = tierScale(tier);
           return activeProducts.reduce((sum, p) => {
             const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
             const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
             const base = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
-            return sum + tierUnitSell(base, tier) * (p.qty || 0);
+            return sum + tierUnitSell(base, tier) * (p.qty || 0) * scale;
           }, 0);
         };
+        const tierShipmentCost = (tier: typeof volumeTiers[0]) =>
+          (selectedReportRow?.totalCost || 0) * tierScale(tier);
         const tierBuyerResale = (tier: typeof volumeTiers[0]) => {
           if (!profitLossReportTerm) return 0;
+          const scale = tierScale(tier);
           return activeProducts.reduce((sum, p) => {
             const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
             const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
             const base = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
             const discounted = tierUnitSell(base, tier);
-            return sum + calcBuyerResale(discounted) * (p.qty || 0);
+            return sum + calcBuyerResale(discounted) * (p.qty || 0) * scale;
           }, 0);
         };
 
@@ -14064,12 +14075,15 @@ function AppInner() {
                         </div>
                         {/* Live preview of this tier */}
                         {profitLossReportTerm && (() => {
+                          const repCtns = tierRepCartons(tier);
                           const rev = tierShipmentRevenue(tier);
-                          const diff = rev - myRevenue;
+                          const cost = tierShipmentCost(tier);
+                          const profit = rev - cost;
                           return (
                             <div className="ml-auto flex items-center gap-3 text-[10px] shrink-0">
-                              <span className="text-slate-500">Revenue: <span className="font-black text-slate-800">{formatMoney(rev, config.outputCurrency)}</span></span>
-                              <span className={`font-black ${diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{diff >= 0 ? '+' : ''}{formatMoney(diff, config.outputCurrency)}</span>
+                              <span className="text-slate-400">{repCtns} ctn:</span>
+                              <span className="text-slate-500">Rev <span className="font-black text-slate-800">{formatMoney(rev, config.outputCurrency)}</span></span>
+                              <span className={`font-black ${profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Profit {formatMoney(profit, config.outputCurrency)}</span>
                             </div>
                           );
                         })()}
@@ -14108,21 +14122,26 @@ function AppInner() {
                               <td className="px-3 py-2 text-right font-black text-emerald-700">{formatMoney(buyerGrossProfit, config.outputCurrency)}</td>
                             </tr>
                             {volumeTiers.map((tier, idx) => {
+                              const isLast = tier.maxCartons == null;
+                              const repCtns = tierRepCartons(tier);
+                              const scale = tierScale(tier);
                               const rev = tierShipmentRevenue(tier);
+                              const cost = tierShipmentCost(tier);
                               const buyerRev = tierBuyerResale(tier);
-                              const myProfitTier = rev - (selectedReportRow?.totalCost || 0);
+                              const myProfitTier = rev - cost;
                               const buyerProfitTier = buyerRev - rev;
+                              const unitSellAvg = calculations.totalQty > 0 ? rev / (calculations.totalQty * scale) : 0;
                               return (
-                                <tr key={tier.id} className="hover:bg-amber-50/50">
+                                <tr key={tier.id} className={`hover:bg-amber-50/50 ${isLast ? 'bg-amber-50/30' : ''}`}>
                                   <td className="px-3 py-2 font-bold text-amber-700">T{idx + 1}</td>
-                                  <td className="px-3 py-2 text-center text-slate-600">
-                                    {tier.minCartons}–{tier.maxCartons ?? '∞'} ctn
+                                  <td className="px-3 py-2 text-center">
+                                    <div className="font-bold text-slate-700">{repCtns} ctn</div>
+                                    <div className="text-[9px] text-slate-400">{tier.minCartons}–{tier.maxCartons ?? '∞'} range</div>
+                                    {isLast && <div className="text-[9px] text-amber-600 font-bold">full order</div>}
                                   </td>
                                   <td className="px-3 py-2 text-right font-black text-slate-800">{formatMoney(rev, config.outputCurrency)}</td>
                                   <td className={`px-3 py-2 text-right font-black ${myProfitTier >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(myProfitTier, config.outputCurrency)}</td>
-                                  <td className="px-3 py-2 text-right text-slate-600">
-                                    {formatMoney(rev / Math.max(1, calculations.totalQty), config.outputCurrency)}
-                                  </td>
+                                  <td className="px-3 py-2 text-right text-slate-600">{unitSellAvg > 0 ? formatMoney(unitSellAvg, config.outputCurrency) : '—'}</td>
                                   <td className="px-3 py-2 text-right font-bold text-sky-700">{formatMoney(buyerRev, config.outputCurrency)}</td>
                                   <td className={`px-3 py-2 text-right font-black ${buyerProfitTier >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(buyerProfitTier, config.outputCurrency)}</td>
                                 </tr>
