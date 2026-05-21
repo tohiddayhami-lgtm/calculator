@@ -14131,7 +14131,35 @@ function AppInner() {
                             </div>
                           );
                         })()}
-                        <button type="button" onClick={() => removeTier(tier.id)} className="ml-1 text-slate-300 hover:text-red-500 p-1">
+                        <div className="ml-1 flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => {
+                              const next = [...volumeTiers];
+                              [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                              setVolumeTiers(next);
+                            }}
+                            className="text-slate-300 hover:text-amber-500 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+                            title="Move up"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === volumeTiers.length - 1}
+                            onClick={() => {
+                              const next = [...volumeTiers];
+                              [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                              setVolumeTiers(next);
+                            }}
+                            className="text-slate-300 hover:text-amber-500 disabled:opacity-20 disabled:cursor-not-allowed p-0.5"
+                            title="Move down"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <button type="button" onClick={() => removeTier(tier.id)} className="text-slate-300 hover:text-red-500 p-1">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -17040,7 +17068,7 @@ function AppInner() {
                 {volumeTiers.map((tier, idx) => {
                   const isLast = idx === volumeTiers.length - 1;
                   const adj = tier.adjustment || 0;
-                  const label = isLast
+                  const label = isLast || tier.maxCartons == null
                     ? `${tier.minCartons}+ cartons`
                     : `${tier.minCartons} – ${tier.maxCartons} ctn`;
                   const sublabel = isLast ? 'Full / bulk order' : '';
