@@ -222,7 +222,6 @@ type ProductTableColumnKey =
   | 'costInput'
   | 'unitCost'
   | 'totalCost'
-  | 'manualSell'
   | 'profitPercent'
   | 'unitProfit'
   | 'totalProfit'
@@ -252,7 +251,6 @@ const PRODUCT_TABLE_COLUMN_ORDER: ProductTableColumnKey[] = [
   'costInput',
   'unitCost',
   'totalCost',
-  'manualSell',
   'profitPercent',
   'unitProfit',
   'totalProfit',
@@ -277,7 +275,6 @@ const PRODUCT_TABLE_DEFAULT_LABELS: Record<ProductTableColumnKey, string> = {
   costInput: 'Cost Input',
   unitCost: 'Unit Cost',
   totalCost: 'Total Cost',
-  manualSell: 'Manual Sell',
   profitPercent: 'Profit %',
   unitProfit: 'Unit Profit',
   totalProfit: 'Total Profit',
@@ -12436,27 +12433,6 @@ function AppInner() {
             headerClassName: 'px-4 py-2 w-28 min-w-[120px] text-right text-slate-500 bg-slate-50',
             renderCell: (p) => <td className="px-4 py-2 text-right text-slate-600">{formatMoney(p.lineCost || 0, config.outputCurrency)}</td>,
           },
-          manualSell: {
-            defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.manualSell,
-            subLabel: <span className="block text-[9px] font-normal text-cyan-600/90">/ unit · auto profit%</span>,
-            headerClassName: 'px-4 py-2 w-44 min-w-[170px] bg-cyan-50 text-cyan-800',
-            title: 'Optional manual selling price per unit. Profit % is calculated automatically.',
-            renderCell: (p) => (
-              <td className="px-4 py-2 bg-cyan-50/30 align-top">
-                <div className="flex items-center gap-1">
-                  <FormattedNumberInput optional value={p.manualUnitSellPrice} onChange={(val) => updateProduct(p.id, 'manualUnitSellPrice', val)} className="w-24 bg-white border border-cyan-200 rounded px-2 py-1 text-xs text-right text-cyan-900 font-semibold" placeholder="Auto" />
-                  <select value={p.manualSellCurrency || config.outputCurrency} onChange={(e) => updateProduct(p.id, 'manualSellCurrency', e.target.value)} className="text-[10px] bg-white border border-cyan-100 rounded px-1 py-1 text-cyan-700">
-                    {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                {p.manualSellPriceOutput !== undefined ? (
-                  <div className="mt-1 text-[10px] text-cyan-700 text-right">{config.profitType === 'margin' ? 'Margin' : 'Markup'} {((config.profitType === 'margin' ? p.manualProfitPercentMargin : p.manualProfitPercentMarkup) || 0).toFixed(1)}%</div>
-                ) : (
-                  <div className="mt-1 text-[10px] text-slate-400 text-right">auto formula</div>
-                )}
-              </td>
-            ),
-          },
           profitPercent: {
             defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.profitPercent,
             headerClassName: 'px-4 py-2 w-20 bg-slate-50 text-right',
@@ -12481,9 +12457,42 @@ function AppInner() {
             renderCell: (p) => <td className="px-4 py-2 text-right text-emerald-600 font-medium">{formatMoney(p.totalProfit || 0, config.outputCurrency)}</td>,
           },
           unitSell: {
-            defaultLabel: `${basis === 'unit' ? 'Unit' : 'Pack'} Sell (${config.outputCurrency})`,
-            headerClassName: 'px-4 py-2 w-32 min-w-[120px] bg-blue-50 text-blue-700',
-            renderCell: (p, viewMult) => <td className="px-4 py-2 bg-blue-50/30 text-right font-medium text-blue-700">{formatMoney((p.unitSellPrice || 0) * viewMult, config.outputCurrency)}</td>,
+            defaultLabel: `Unit Sell (${config.outputCurrency})`,
+            subLabel: <span className="block text-[9px] font-normal text-blue-500/80">manual / auto profit%</span>,
+            headerClassName: 'px-4 py-2 w-44 min-w-[170px] bg-blue-50 text-blue-700',
+            title: 'Enter manual unit sell price here. Profit % is calculated automatically.',
+            renderCell: (p) => (
+              <td className="px-4 py-2 bg-blue-50/30 text-right font-medium text-blue-700 align-top">
+                <div className="flex items-center gap-1">
+                  <FormattedNumberInput
+                    optional
+                    value={p.manualUnitSellPrice}
+                    onChange={(val) => updateProduct(p.id, 'manualUnitSellPrice', val && val > 0 ? val : undefined)}
+                    className="w-24 bg-white border border-blue-200 rounded px-2 py-1 text-xs text-right text-blue-900 font-semibold"
+                    placeholder={formatNumber(p.unitSellPrice || 0)}
+                  />
+                  <select
+                    value={p.manualSellCurrency || config.outputCurrency}
+                    onChange={(e) => updateProduct(p.id, 'manualSellCurrency', e.target.value)}
+                    className="text-[10px] bg-white border border-blue-100 rounded px-1 py-1 text-blue-700"
+                  >
+                    {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="mt-1 text-[10px] text-blue-600 text-right">
+                  {p.manualSellPriceOutput !== undefined ? (
+                    <span>manual sell</span>
+                  ) : (
+                    <span>Auto: {formatMoney(p.unitSellPrice || 0, config.outputCurrency)}</span>
+                  )}
+                </div>
+                {basis === 'pack' ? (
+                  <div className="mt-0.5 text-[10px] text-blue-500/80 text-right">
+                    Pack: {formatMoney((p.unitSellPrice || 0) * (p.itemsPerPack || 1), config.outputCurrency)}
+                  </div>
+                ) : null}
+              </td>
+            ),
           },
           totalSell: {
             defaultLabel: `${PRODUCT_TABLE_DEFAULT_LABELS.totalSell} (${config.outputCurrency})`,
