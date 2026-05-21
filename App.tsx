@@ -37,7 +37,9 @@ import {
   uploadString,
   uploadBytes,
   getDownloadURL,
-  deleteObject
+  deleteObject,
+  listAll,
+  getMetadata,
 } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import QRCode from 'qrcode';
@@ -9313,13 +9315,33 @@ function AppInner() {
   };
 
   const openStorageManager = async (uid: string, email: string) => {
+    if (!storage) return;
     setStorageManagerModal({ uid, email });
     setStorageStats(null);
     setStorageStatsLoading(true);
     setStorageStatsError('');
     try {
-      const result = await callAdminFunction('getUserStorageStats', { targetUid: uid }) as any;
-      setStorageStats({ files: result.files || [], totalBytes: result.totalBytes || 0 });
+      const folderRef = storageRef(storage, `users/${uid}`);
+      const listResult = await listAll(folderRef);
+      let totalBytes = 0;
+      const fileList: StorageFileInfo[] = await Promise.all(
+        listResult.items.map(async (item) => {
+          try {
+            const meta = await getMetadata(item);
+            const size = meta.size || 0;
+            totalBytes += size;
+            return {
+              name: item.fullPath,
+              size,
+              contentType: meta.contentType || '',
+              updated: meta.updated || '',
+            };
+          } catch {
+            return { name: item.fullPath, size: 0, contentType: '', updated: '' };
+          }
+        })
+      );
+      setStorageStats({ files: fileList, totalBytes });
     } catch (err: any) {
       setStorageStatsError(err?.message || 'خطا در بارگذاری اطلاعات');
     } finally {
@@ -9328,10 +9350,10 @@ function AppInner() {
   };
 
   const handleDeleteStorageFile = async (path: string) => {
-    if (!storageManagerModal) return;
+    if (!storageManagerModal || !storage) return;
     if (!window.confirm('این فایل حذف شود؟')) return;
     try {
-      await callAdminFunction('deleteStorageFile', { filePath: path });
+      await deleteObject(storageRef(storage, path));
       await openStorageManager(storageManagerModal.uid, storageManagerModal.email);
     } catch (err: any) {
       alert('خطا در حذف فایل: ' + (err?.message || err));
@@ -9339,13 +9361,18 @@ function AppInner() {
   };
 
   const handleSetStorageLimit = async (uid: string, limitMbStr: string) => {
+    if (!db || !isMasterUser) return;
     const limitMb = limitMbStr.trim() === '' ? null : Number(limitMbStr);
     if (limitMb !== null && (isNaN(limitMb) || limitMb < 0)) {
       alert('مقدار محدودیت باید عدد مثبت باشد یا خالی (بدون محدودیت).');
       return;
     }
     try {
-      await callAdminFunction('setUserStorageLimit', { targetUid: uid, limitMb });
+      await setDoc(
+        doc(db, 'artifacts', dataAppId, 'userProfiles', uid),
+        { storageLimitMb: limitMb, updatedAt: Date.now() },
+        { merge: true }
+      );
       setMasterActionMessage('محدودیت فضا ذخیره شد.');
       setTimeout(() => setMasterActionMessage(''), 3000);
     } catch (err: any) {
