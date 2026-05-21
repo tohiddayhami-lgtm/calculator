@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
+const { getStorage } = require('firebase-admin/storage');
 
 admin.initializeApp();
 
@@ -8,7 +9,7 @@ const auth = admin.auth();
 
 function getStorageBucket() {
   const bucketName = process.env.STORAGE_BUCKET;
-  return bucketName ? admin.storage().bucket(bucketName) : admin.storage().bucket();
+  return getStorage().bucket(bucketName || undefined);
 }
 
 const DEFAULT_PERMISSIONS = {
@@ -291,8 +292,19 @@ exports.getUserStorageStats = adminCallable(async (request) => {
     await assertMaster(request, appId);
   }
 
-  const bucket = getStorageBucket();
-  const [files] = await bucket.getFiles({ prefix: `users/${targetUid}/` });
+  let bucket;
+  try {
+    bucket = getStorageBucket();
+  } catch (err) {
+    throw new HttpsError('internal', `Storage init failed: ${err?.message || err}`);
+  }
+
+  let files;
+  try {
+    [files] = await bucket.getFiles({ prefix: `users/${targetUid}/` });
+  } catch (err) {
+    throw new HttpsError('internal', `Storage list failed (bucket: ${bucket.name}): ${err?.message || err}`);
+  }
 
   let totalBytes = 0;
   const fileList = [];
