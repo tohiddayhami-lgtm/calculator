@@ -6079,7 +6079,7 @@ function AppInner() {
   const [buyerManualResaleCurrency, setBuyerManualResaleCurrency] = useState<string>('OMR');
   const [volumeTiers, setVolumeTiers] = useState<Array<{
     id: string; minCartons: number; maxCartons: number | null;
-    discountMode: 'percent' | 'fixed'; discountValue: number; discountCurrency: string;
+    adjustment: number; // + = surcharge (more expensive), - = discount (cheaper)
   }>>([]);
 
   // Invoice Specific
@@ -13841,9 +13841,7 @@ function AppInner() {
             id: `tier_${Date.now()}`,
             minCartons: newMin,
             maxCartons: null,
-            discountMode: 'percent',
-            discountValue: 0,
-            discountCurrency: config.outputCurrency,
+            adjustment: 0,
           }]);
         };
         const updateTier = (id: string, patch: Partial<typeof volumeTiers[0]>) =>
@@ -13851,12 +13849,10 @@ function AppInner() {
         const removeTier = (id: string) => setVolumeTiers(volumeTiers.filter((t) => t.id !== id));
 
         // Compute sell price for a given tier (discount applied to each unit sell)
-        const tierUnitSell = (baseUnitSell: number, tier: typeof volumeTiers[0]) => {
-          if (tier.discountMode === 'percent') {
-            return baseUnitSell * (1 - tier.discountValue / 100);
-          }
-          return Math.max(0, baseUnitSell - toOutput(toBase(tier.discountValue, tier.discountCurrency)));
-        };
+        // adjustment > 0 = buyer pays more (small order surcharge)
+        // adjustment < 0 = buyer pays less (bulk discount)
+        const tierUnitSell = (baseUnitSell: number, tier: typeof volumeTiers[0]) =>
+          Math.max(0, baseUnitSell * (1 + (tier.adjustment || 0) / 100));
         // For tier n: use max cartons of that tier; for last tier (no upper limit) use full order
         const tierRepCartons = (tier: typeof volumeTiers[0]) =>
           tier.maxCartons != null ? Math.min(tier.maxCartons, Math.max(1, totalCartons)) : Math.max(1, totalCartons);
@@ -14052,26 +14048,33 @@ function AppInner() {
                           <span className="text-slate-400 text-[10px]">cartons</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <select
-                            value={tier.discountMode}
-                            onChange={(e) => updateTier(tier.id, { discountMode: e.target.value as any })}
-                            className="border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 bg-white"
+                          <span className="text-[10px] text-slate-400 shrink-0">Price adj.</span>
+                          <div className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${(tier.adjustment || 0) > 0 ? 'border-rose-200 bg-rose-50' : (tier.adjustment || 0) < 0 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+                            <span className={`text-xs font-black w-3 shrink-0 ${(tier.adjustment || 0) > 0 ? 'text-rose-500' : (tier.adjustment || 0) < 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                              {(tier.adjustment || 0) > 0 ? '+' : (tier.adjustment || 0) < 0 ? '−' : '±'}
+                            </span>
+                            <FormattedNumberInput
+                              optional
+                              value={tier.adjustment === 0 ? undefined : Math.abs(tier.adjustment || 0)}
+                              onChange={(v) => {
+                                const abs = v ?? 0;
+                                const sign = (tier.adjustment || 0) < 0 ? -1 : 1;
+                                updateTier(tier.id, { adjustment: abs === 0 ? 0 : sign * abs });
+                              }}
+                              className="w-14 text-center font-bold text-slate-700 text-xs outline-none bg-transparent"
+                              placeholder="0"
+                            />
+                            <span className={`text-xs font-bold shrink-0 ${(tier.adjustment || 0) > 0 ? 'text-rose-400' : 'text-emerald-500'}`}>%</span>
+                          </div>
+                          {/* Toggle sign */}
+                          <button
+                            type="button"
+                            onClick={() => updateTier(tier.id, { adjustment: -(tier.adjustment || 0) })}
+                            className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-colors ${(tier.adjustment || 0) >= 0 ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                            title="Toggle surcharge / discount"
                           >
-                            <option value="percent">% discount</option>
-                            <option value="fixed">Fixed reduction</option>
-                          </select>
-                          <FormattedNumberInput
-                            value={tier.discountValue}
-                            onChange={(v) => updateTier(tier.id, { discountValue: Math.max(0, v ?? 0) })}
-                            className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold text-slate-700 text-xs"
-                            placeholder="0"
-                          />
-                          {tier.discountMode === 'percent'
-                            ? <span className="text-slate-500 font-bold text-xs">%</span>
-                            : <select value={tier.discountCurrency} onChange={(e) => updateTier(tier.id, { discountCurrency: e.target.value })} className="border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 bg-white">
-                                {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                              </select>
-                          }
+                            {(tier.adjustment || 0) >= 0 ? '↑ surcharge' : '↓ discount'}
+                          </button>
                         </div>
                         {/* Live preview of this tier */}
                         {profitLossReportTerm && (() => {
