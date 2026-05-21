@@ -275,3 +275,67 @@ exports.deleteManagedAuthUser = adminCallable(async (request) => {
   await profileRef(appId, uid).delete();
   return { uid };
 });
+
+exports.getUserStorageStats = adminCallable(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const appId = requireString(request.data?.appId, 'appId');
+  const targetUid = requireString(request.data?.targetUid, 'targetUid');
+  const callerUid = request.auth.uid;
+
+  if (callerUid !== targetUid) {
+    await assertMaster(request, appId);
+  }
+
+  const bucket = admin.storage().bucket();
+  const [files] = await bucket.getFiles({ prefix: `users/${targetUid}/` });
+
+  let totalBytes = 0;
+  const fileList = [];
+  for (const file of files) {
+    const size = parseInt(String(file.metadata?.size || 0), 10);
+    totalBytes += size;
+    fileList.push({
+      name: file.name,
+      size,
+      contentType: String(file.metadata?.contentType || ''),
+      updated: String(file.metadata?.updated || ''),
+    });
+  }
+
+  return { totalBytes, files: fileList };
+});
+
+exports.deleteStorageFile = adminCallable(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const appId = requireString(request.data?.appId, 'appId');
+  const filePath = requireString(request.data?.filePath, 'filePath');
+  const callerUid = request.auth.uid;
+  const ownPrefix = `users/${callerUid}/`;
+
+  if (!filePath.startsWith(ownPrefix)) {
+    await assertMaster(request, appId);
+  }
+
+  const bucket = admin.storage().bucket();
+  try {
+    await bucket.file(filePath).delete();
+  } catch (err) {
+    if (err?.code !== 404) throw err;
+  }
+
+  return { success: true };
+});
+
+exports.setUserStorageLimit = adminCallable(async (request) => {
+  const appId = requireString(request.data?.appId, 'appId');
+  await assertMaster(request, appId);
+  const targetUid = requireString(request.data?.targetUid, 'targetUid');
+
+  const limitMb = request.data?.limitMb;
+  const storageLimitMb = limitMb === null ? null
+    : (typeof limitMb === 'number' && limitMb > 0 ? Math.round(limitMb) : null);
+
+  await profileRef(appId, targetUid).set({ storageLimitMb, updatedAt: Date.now() }, { merge: true });
+
+  return { success: true };
+});

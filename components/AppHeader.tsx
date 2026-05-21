@@ -9,7 +9,7 @@
 import React, { memo } from 'react';
 import {
   Globe2, FolderOpen, Save, Printer, Inbox, Mail,
-  ShieldCheck,
+  ShieldCheck, HardDrive,
 } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 
@@ -32,6 +32,7 @@ const AppHeader = memo(function AppHeader() {
     masterActionMessage,
     handleLogout,
     triggerPrint,
+    openStorageManager,
   } = useAppContext();
 
   const unreadSubs = formSubmissions.filter((s) => !s.isRead).length;
@@ -136,6 +137,16 @@ const AppHeader = memo(function AppHeader() {
               </span>
             )}
           </button>
+
+          {user && (
+            <button
+              onClick={() => openStorageManager(user.uid, user.email || '')}
+              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              title="فضای ذخیره‌سازی من"
+            >
+              <HardDrive className="w-5 h-5" />
+            </button>
+          )}
 
           <div className="flex items-center gap-3 ml-2 pl-3 border-l border-slate-200">
             {user?.photoURL ? (

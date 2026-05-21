@@ -32,6 +32,7 @@ export interface ManagedUserProfile {
   lastLoginAt?: number;
   createdBy?: string;
   notes?: string;
+  storageLimitMb?: number | null;
 }
 
 export interface Product {

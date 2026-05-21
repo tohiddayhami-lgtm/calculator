@@ -139,6 +139,7 @@ export type AppContextValue = {
   lastCreatedCredentials: { email: string; password: string } | null;
   isCreatingUser: boolean;
   masterActionMessage: string; setMasterActionMessage: (v: string) => void;
+  openStorageManager: (uid: string, email: string) => void;
   dataAppId: string;
   isMasterUser: boolean;
   activeOwnerUid: string;
