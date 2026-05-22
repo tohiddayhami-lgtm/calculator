@@ -2877,6 +2877,16 @@ const generateCatalogShortCode = (len = 10): string => {
   return s;
 };
 
+const PUBLIC_APP_BASE_URL = 'https://calculator.tohiddayhami.com/';
+
+const buildPublicAppUrl = (params: Record<string, string>): string => {
+  const url = new URL(PUBLIC_APP_BASE_URL);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) url.searchParams.set(key, value);
+  });
+  return url.toString();
+};
+
 const isIOSDevice = (): boolean => {
     if (typeof navigator === 'undefined') return false;
     const ua = navigator.userAgent || '';
@@ -3896,6 +3906,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const coverText = cc.coverTextColor || '#ffffff';
     const coverTitlePx = Math.min(120, Math.max(20, Number(cc.coverTitleFontSizePx) || 56));
     const coverTitleClampMin = Math.max(16, Math.round(coverTitlePx * 0.45));
+    const coverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.coverOverlayOpacity ?? 60) || 0) / 100));
+    const backCoverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.backCoverOverlayOpacity ?? 60) || 0) / 100));
     const baseUnit = cc.baseUnit || tCombined('pcs') || 'pcs';
     const showPrices = cc.showPrices !== false;
     const priceBasis = cc.priceBasis || 'unit';
@@ -4108,51 +4120,57 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         })()
         : '';
 
-    const sectionsAll: any[] = Array.isArray(cc.sections) ? cc.sections : [];
-    const headingCol = heading;
-    const primaryCol = primary;
-    const buildSectionsBlock = (position: 'before' | 'after') => {
-        const list = sectionsAll.filter((s: any) => (s.position || 'after') === position);
-        if (!list.length) return '';
-        return list.map((section: any) => {
-            const align = section.alignment || 'left';
-            const textAlign = align === 'justify' ? 'justify' : align;
-            const imgs: string[] =
-                section.images && section.images.length > 0
-                    ? section.images.filter(Boolean)
-                    : section.image
-                    ? [section.image]
-                    : [];
-            const layout = section.imageLayout || 'single';
-            let gridClass = 'img-grid img-grid-single';
-            if (layout === 'two-column') gridClass = 'img-grid img-grid-2';
-            else if (layout === 'three-column') gridClass = 'img-grid img-grid-3';
-            else if (layout === 'grid') gridClass = 'img-grid img-grid-auto';
-            const imgsHtml = imgs.length
-                ? `<div class="${gridClass}">${imgs
-                      .map(
-                          (img: string) =>
-                              `<div class="img-cell"><img src="${escapeAttr(img)}" alt="" loading="lazy" /></div>`
-                      )
-                      .join('')}</div>`
-                : '';
-            const title = escapeHtml(section.title || 'Page');
-            const content = escapeHtml(section.content || '');
-            return `
-            <section class="custom-page">
-                <h2 class="custom-page-title" style="color:${escapeAttr(headingCol)};border-bottom-color:${escapeAttr(primaryCol)}">${title}</h2>
-                <div class="custom-page-content" style="text-align:${escapeAttr(textAlign)};white-space:pre-wrap">${content}</div>
-                ${imgsHtml}
-            </section>`;
-        }).join('');
+    const makeTabId = (raw: string, fallback: string): string => {
+        const slug = String(raw || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 36);
+        return slug || fallback;
     };
-    const customSectionsBeforeHtml = buildSectionsBlock('before');
-    const customSectionsAfterHtml = buildSectionsBlock('after');
+
+    const sectionsAll: any[] = Array.isArray(cc.sections) ? cc.sections : [];
+    const renderCustomSectionHtml = (section: any) => {
+        const align = section.alignment || 'left';
+        const textAlign = align === 'justify' ? 'justify' : align;
+        const imgs: string[] =
+            section.images && section.images.length > 0
+                ? section.images.filter(Boolean)
+                : section.image
+                ? [section.image]
+                : [];
+        const layout = section.imageLayout || 'single';
+        let gridClass = 'img-grid img-grid-single';
+        if (layout === 'two-column') gridClass = 'img-grid img-grid-2';
+        else if (layout === 'three-column') gridClass = 'img-grid img-grid-3';
+        else if (layout === 'grid') gridClass = 'img-grid img-grid-auto';
+        const imgsHtml = imgs.length
+            ? `<div class="${gridClass}">${imgs
+                  .map(
+                      (img: string) =>
+                          `<div class="img-cell"><img src="${escapeAttr(img)}" alt="" loading="lazy" /></div>`
+                  )
+                  .join('')}</div>`
+            : '';
+        const title = escapeHtml(section.title || 'Page');
+        const content = escapeHtml(section.content || '');
+        return `
+        <section class="custom-page">
+            <h2 class="custom-page-title">${title}</h2>
+            <div class="custom-page-content" style="text-align:${escapeAttr(textAlign)};white-space:pre-wrap">${content}</div>
+            ${imgsHtml}
+        </section>`;
+    };
+    const customSectionTabs = sectionsAll.map((section: any, index: number) => ({
+        id: `page-${index + 1}-${makeTabId(section.title, String(section.id || index + 1))}`,
+        label: section.title || `Page ${index + 1}`,
+        html: renderCustomSectionHtml(section),
+    }));
 
     const customPagesAll: any[] = Array.isArray(cc.customPages) ? cc.customPages : [];
-    const customPagesHtml = customPagesAll
+    const structuredPageTabs = customPagesAll
         .filter((p: any) => p.active !== false)
-        .map((p: any) => {
+        .map((p: any, index: number) => {
             const items: any[] = (p.items || []).filter((it: any) => it.active !== false);
             const itemCardsHtml = items.length
                 ? `<div class="cp-cards">${items.map((it: any) => `
@@ -4162,13 +4180,18 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                         ${it.description ? `<div class="cp-card-desc">${escapeHtml(it.description)}</div>` : ''}
                     </div>`).join('')}</div>`
                 : '';
-            return `
+            const html = `
             <section class="cp-section">
                 <h2 class="cp-title">${escapeHtml(p.title || '')}</h2>
                 ${p.description ? `<p class="cp-desc">${escapeHtml(p.description)}</p>` : ''}
                 ${itemCardsHtml}
             </section>`;
-        }).join('');
+            return {
+                id: `page-structured-${index + 1}-${makeTabId(p.title, `structured-${index + 1}`)}`,
+                label: p.title || `Page ${index + 1}`,
+                html,
+            };
+        });
 
     const ctaHtml = formUrl
         ? `
@@ -4293,7 +4316,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         /* ── Cover / Hero ── */
         .cover { background: var(--cover); color: var(--cover-text); padding: 80px 24px; text-align: center; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
         .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: cover; background-position: center;` : ''} z-index: 0; }
-        .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.65) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
+        .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,${(coverOverlayAlpha * 0.65).toFixed(2)}) 0%, rgba(0,0,0,${coverOverlayAlpha.toFixed(2)}) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover-inner { position: relative; z-index: 2; max-width: 740px; margin: 0 auto; }
         .logo { max-height: 72px; margin: 0 auto 22px; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.35)); }
         .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; margin-bottom: 14px; }
@@ -4307,8 +4330,19 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .filter-pill:hover { border-color: var(--primary); color: var(--primary); }
         .filter-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 
+        /* ── Website Tabs ── */
+        .site-tabs { display: flex; justify-content: center; gap: 8px; margin: 28px auto 10px; padding: 6px; width: max-content; max-width: 100%; overflow-x: auto; background: rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.08); border-radius: 999px; scrollbar-width: none; }
+        .site-tabs::-webkit-scrollbar { display: none; }
+        .site-tab { border: 0; background: transparent; color: #64748b; padding: 10px 18px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; }
+        .site-tab:hover { color: var(--heading); background: rgba(255,255,255,0.7); }
+        .site-tab.active { background: #fff; color: var(--heading); box-shadow: 0 8px 26px rgba(15,23,42,0.10); }
+        .site-tab-panel { display: none; animation: panelFade 0.28s ease; }
+        .site-tab-panel.active { display: block; }
+        @keyframes panelFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @media (max-width: 640px) { .site-tabs { justify-content: flex-start; width: 100%; border-radius: 18px; } .site-tab { padding: 9px 14px; font-size: 12px; } }
+
         /* ── Section Heading ── */
-        .section-title { font-size: clamp(20px, 4vw, 30px); font-weight: 800; color: var(--heading); margin: 32px 0 4px; padding-bottom: 12px; border-bottom: 3px solid var(--primary); display: inline-block; }
+        .section-title { display: block; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); opacity: 0.75; margin: 34px 0 24px; padding: 0; border: 0; }
 
         /* About */
         /* ── About Us — Apple-minimal ── */
@@ -4328,10 +4362,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         @media (max-width: 760px) { .about { margin: 48px 0; } .about-label { margin-bottom: 28px; } }
 
         /* Custom pages (Catalog sections) */
-        .custom-page { margin: 40px 0; padding: 28px 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-        .custom-page + .custom-page { margin-top: 20px; }
-        .custom-page-title { font-size: clamp(20px, 3.5vw, 32px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid; }
-        .custom-page-content { font-size: 16px; line-height: 1.75; color: var(--text); text-align: justify; hyphens: auto; }
+        .custom-page { margin: 64px auto; padding: 0; background: transparent; border: 0; box-shadow: none; max-width: 980px; }
+        .custom-page + .custom-page { margin-top: 64px; }
+        .custom-page-title { display: block; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); opacity: 0.75; margin: 0 0 36px; padding: 0; border: 0; }
+        .custom-page-content { max-width: 760px; margin: 0 auto; font-size: clamp(16px, 2vw, 20px); line-height: 1.8; color: var(--text); text-align: justify; hyphens: auto; }
         .custom-page .img-grid { display: grid; gap: 14px; margin-top: 24px; }
         .custom-page .img-grid-single { grid-template-columns: 1fr; }
         .custom-page .img-grid-2 { grid-template-columns: 1fr 1fr; }
@@ -4340,12 +4374,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         @media (max-width: 640px) {
             .custom-page .img-grid-2, .custom-page .img-grid-3 { grid-template-columns: 1fr; }
         }
-        .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #f1f5f9; background: #fafafa; }
+        .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 18px; box-shadow: 0 18px 50px rgba(15,23,42,0.10); border: 1px solid #f1f5f9; background: #fafafa; }
 
         /* Custom Pages - item card grid (partners, certifications, etc.) */
-        .cp-section { margin: 40px 0; padding: 32px 24px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-        .cp-title { font-size: clamp(20px, 3.5vw, 30px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--heading); margin: 0 0 14px; padding-bottom: 14px; border-bottom: 3px solid var(--primary); }
-        .cp-desc { font-size: 15px; line-height: 1.8; color: var(--text); text-align: justify; hyphens: auto; margin: 0 0 24px; }
+        .cp-section { margin: 64px auto; padding: 0; background: transparent; border: 0; box-shadow: none; max-width: 980px; }
+        .cp-title { display: block; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); opacity: 0.75; margin: 0 0 30px; padding: 0; border: 0; }
+        .cp-desc { max-width: 760px; margin: 0 auto 28px; font-size: clamp(16px, 2vw, 20px); line-height: 1.8; color: var(--text); text-align: justify; hyphens: auto; }
         .cp-cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
         @media (max-width: 480px) { .cp-cards { grid-template-columns: 1fr 1fr; gap: 12px; } }
         .cp-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 14px; display: flex; flex-direction: column; align-items: center; text-align: center; break-inside: avoid; }
@@ -4436,7 +4470,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .cta-hint { font-size: 12px; opacity: 0.7; margin-top: 14px; }
 
         /* ── Footer ── */
-        footer { background: var(--primary); color: #fff; padding: 56px 24px 40px; text-align: center; }
+        footer { background: var(--primary); color: #fff; padding: 56px 24px 40px; text-align: center; position: relative; overflow: hidden; }
+        footer::before { content: ''; position: absolute; inset: 0; ${cc.backCoverImage ? `background-image: url('${escapeAttr(cc.backCoverImage)}'); background-size: cover; background-position: center;` : ''} opacity: ${cc.backCoverImage ? '1' : '0'}; z-index: 0; }
+        footer::after { content: ''; position: absolute; inset: 0; background: rgba(15,23,42,${backCoverOverlayAlpha.toFixed(2)}); z-index: 1; ${cc.backCoverImage ? '' : 'display:none;'} }
+        footer > * { position: relative; z-index: 2; }
         footer h3 { font-size: 13px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.7; margin-bottom: 10px; }
         footer .contact-grid { display: grid; gap: 10px; max-width: 480px; margin: 0 auto 32px; }
         footer .row { font-size: 14px; }
@@ -4646,6 +4683,29 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
     const js = `
         (function(){
+            var siteTabs = document.querySelectorAll('[data-site-tab]');
+            var sitePanels = document.querySelectorAll('[data-site-panel]');
+            siteTabs.forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var id = btn.getAttribute('data-site-tab');
+                    siteTabs.forEach(function(b){ b.classList.toggle('active', b === btn); });
+                    sitePanels.forEach(function(panel){
+                        panel.classList.toggle('active', panel.getAttribute('data-site-panel') === id);
+                    });
+                    if (window.history && id) {
+                        try { window.history.replaceState(null, '', '#' + id); } catch(e) {}
+                    }
+                });
+            });
+            if (window.location.hash && siteTabs.length) {
+                var target = window.location.hash.slice(1);
+                var startTab = null;
+                siteTabs.forEach(function(btn){
+                    if (btn.getAttribute('data-site-tab') === target) startTab = btn;
+                });
+                if (startTab) startTab.click();
+            }
+
             var carousels = document.querySelectorAll('.carousel');
             carousels.forEach(function(car){
                 var slides = car.querySelectorAll('.slide');
@@ -5230,6 +5290,30 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             ${allGroups.map((g: string) => `<button class="filter-pill" data-filter="${escapeAttr(g)}">${escapeHtml(g)}</button>`).join('')}
         </div>` : '';
 
+    const productsPanelHtml = `
+    <section class="products-section">
+        <h2 class="section-title">${escapeHtml(tCombined('productList') || 'Products')}</h2>
+        ${filterBarHtml}
+        <div class="grid">
+            ${productCards || '<p style="color:#94a3b8;padding:24px 0;">No products to display.</p>'}
+        </div>
+    </section>
+    ${ctaHtml}`;
+    const websiteTabs = [
+        { id: 'products', label: tCombined('productList') || 'Products', html: productsPanelHtml },
+        ...(aboutUsHtml ? [{ id: 'about', label: 'About Us', html: aboutUsHtml }] : []),
+        ...customSectionTabs,
+        ...structuredPageTabs,
+    ];
+    const websiteTabNavHtml = websiteTabs.length > 1
+        ? `<nav class="site-tabs" aria-label="Trading Hub pages">${websiteTabs
+              .map((tab, index) => `<button type="button" class="site-tab${index === 0 ? ' active' : ''}" data-site-tab="${escapeAttr(tab.id)}">${escapeHtml(tab.label)}</button>`)
+              .join('')}</nav>`
+        : '';
+    const websitePanelsHtml = websiteTabs
+        .map((tab, index) => `<div class="site-tab-panel${index === 0 ? ' active' : ''}" data-site-panel="${escapeAttr(tab.id)}">${tab.html}</div>`)
+        .join('');
+
     // Firebase backend script (embedded as ES module). Only included when an inquiry endpoint is provided.
     const inq = (inquiryEndpoint && inquiryEndpoint.firebaseConfig && inquiryEndpoint.ownerId) ? inquiryEndpoint : null;
     const firebaseInquiryScript = (inq && cartEnabled) ? `
@@ -5273,19 +5357,8 @@ ${topbarHtml}
 </header>
 
 <main class="container">
-    ${aboutUsHtml}
-    ${customSectionsBeforeHtml}
-    <section class="products-section">
-        <h2 class="section-title">${escapeHtml(tCombined('productList') || 'Products')}</h2>
-        ${filterBarHtml}
-        <div class="grid">
-            ${productCards || '<p style="color:#94a3b8;padding:24px 0;">No products to display.</p>'}
-        </div>
-    </section>
-
-    ${customSectionsAfterHtml}
-    ${customPagesHtml}
-    ${ctaHtml}
+    ${websiteTabNavHtml}
+    ${websitePanelsHtml}
 </main>
 
 <footer>
@@ -15043,7 +15116,7 @@ function AppInner() {
                                 const pubRef = doc(db, 'catalog_short_links', shortCode);
                                 const existing = await getDoc(pubRef);
                                 if (existing.exists()) continue;
-                                const shortUrlFull = new URL(`?c=${encodeURIComponent(shortCode)}`, window.location.href).href;
+                                const shortUrlFull = buildPublicAppUrl({ c: shortCode });
                                 await setDoc(pubRef, {
                                     url,
                                     appId: dataAppId,
@@ -15225,8 +15298,7 @@ function AppInner() {
                         const existing = await getDoc(pubRef);
                         if (!existing.exists()) {
                             await setDoc(pubRef, { url, appId, ownerUserId: activeOwnerUid, storagePath: path, createdAt: serverTimestamp() });
-                            const base = window.location.origin + window.location.pathname;
-                            shortUrl = `${base}?mh=${shortCode}`;
+                            shortUrl = buildPublicAppUrl({ mh: shortCode });
                             break;
                         }
                     }
@@ -16884,27 +16956,29 @@ function AppInner() {
                                           <p className="text-[10px] text-slate-400">Opens this app once, then sends the visitor to your catalog file.</p>
                                       </div>
                                   ) : null}
-                                  <div className="space-y-1">
-                                      <label className="text-[10px] font-semibold text-slate-500 uppercase">Direct file link</label>
-                                      <div className="flex gap-2">
-                                      <input
-                                          type="text"
-                                          value={shareLinkInfo.url}
-                                          readOnly
-                                          onFocus={(e) => e.currentTarget.select()}
-                                          className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 font-mono outline-none focus:border-emerald-500 truncate"
-                                      />
-                                      <button
-                                          onClick={handleCopyShareLink}
-                                          className="flex-shrink-0 bg-slate-900 text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-800"
-                                      >
-                                          Copy
-                                      </button>
-                                  </div>
-                                  </div>
+                                  {!shareLinkInfo.shortUrl && (
+                                      <div className="space-y-1">
+                                          <label className="text-[10px] font-semibold text-slate-500 uppercase">Direct file link</label>
+                                          <div className="flex gap-2">
+                                          <input
+                                              type="text"
+                                              value={shareLinkInfo.url}
+                                              readOnly
+                                              onFocus={(e) => e.currentTarget.select()}
+                                              className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 font-mono outline-none focus:border-emerald-500 truncate"
+                                          />
+                                          <button
+                                              onClick={handleCopyShareLink}
+                                              className="flex-shrink-0 bg-slate-900 text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-slate-800"
+                                          >
+                                              Copy
+                                          </button>
+                                      </div>
+                                      </div>
+                                  )}
                                   <div className="flex gap-2">
                                       <a
-                                          href={shareLinkInfo.url}
+                                          href={shareLinkInfo.shortUrl || shareLinkInfo.url}
                                           target="_blank"
                                           rel="noopener"
                                           className="flex-1 bg-blue-600 text-white text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-blue-700 text-center"
@@ -17422,6 +17496,156 @@ function AppInner() {
 
                   {/* HTML Editor / Live Preview */}
                   <div className="flex flex-1 overflow-hidden">
+                      <aside className="w-80 hidden xl:block border-r border-slate-200 bg-white overflow-y-auto p-4 space-y-4">
+                          <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-3">
+                              <h3 className="text-sm font-black text-violet-900 flex items-center gap-2">
+                                  <Globe2 className="w-4 h-4" />
+                                  Trading Hub Editor
+                              </h3>
+                              <p className="text-[11px] text-violet-700/80 leading-relaxed mt-1">
+                                  Edit cover, About Us and website pages here, then press <b>Import from Catalog</b> to rebuild the published HTML.
+                              </p>
+                          </div>
+
+                          <div className="space-y-2">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Hub Title</label>
+                              <input
+                                  type="text"
+                                  value={catalogConfig.title}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, title: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-500"
+                              />
+                              <textarea
+                                  rows={2}
+                                  value={catalogConfig.subtitle || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, subtitle: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-500 resize-none"
+                                  placeholder="Subtitle"
+                              />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cover</label>
+                                  {catalogConfig.coverImage ? (
+                                      <div className="relative rounded-xl overflow-hidden border border-slate-200 group">
+                                          <img src={catalogConfig.coverImage} alt="" className="h-24 w-full object-cover" />
+                                          <button
+                                              type="button"
+                                              onClick={() => setCatalogConfig({ ...catalogConfig, coverImage: '' })}
+                                              className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"
+                                          >
+                                              <X className="w-3 h-3" />
+                                          </button>
+                                      </div>
+                                  ) : (
+                                      <label className="h-24 flex flex-col items-center justify-center gap-1 border-2 border-dashed border-slate-300 rounded-xl text-slate-400 hover:bg-slate-50 cursor-pointer">
+                                          <Upload className="w-4 h-4" />
+                                          <span className="text-[10px] font-semibold">Upload</span>
+                                          <input type="file" accept="image/*" onChange={handleCatalogCoverUpload} className="hidden" />
+                                      </label>
+                                  )}
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Back Cover</label>
+                                  {catalogConfig.backCoverImage ? (
+                                      <div className="relative rounded-xl overflow-hidden border border-slate-200 group">
+                                          <img src={catalogConfig.backCoverImage} alt="" className="h-24 w-full object-cover" />
+                                          <button
+                                              type="button"
+                                              onClick={() => setCatalogConfig({ ...catalogConfig, backCoverImage: '' })}
+                                              className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"
+                                          >
+                                              <X className="w-3 h-3" />
+                                          </button>
+                                      </div>
+                                  ) : (
+                                      <label className="h-24 flex flex-col items-center justify-center gap-1 border-2 border-dashed border-slate-300 rounded-xl text-slate-400 hover:bg-slate-50 cursor-pointer">
+                                          <Upload className="w-4 h-4" />
+                                          <span className="text-[10px] font-semibold">Upload</span>
+                                          <input type="file" accept="image/*" onChange={handleBackCoverUpload} className="hidden" />
+                                      </label>
+                                  )}
+                              </div>
+                          </div>
+
+                          <div className="space-y-2 border-t border-slate-100 pt-4">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                      type="checkbox"
+                                      checked={catalogConfig.showAboutUs || false}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, showAboutUs: e.target.checked })}
+                                      className="rounded text-violet-600 focus:ring-violet-500"
+                                  />
+                                  <span className="text-xs font-bold text-slate-700">About Us tab</span>
+                              </label>
+                              {catalogConfig.showAboutUs && (
+                                  <>
+                                      <textarea
+                                          rows={5}
+                                          value={catalogConfig.aboutUsText || ''}
+                                          onChange={(e) => setCatalogConfig({ ...catalogConfig, aboutUsText: e.target.value })}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-500 resize-none"
+                                          placeholder="Company story, strengths, mission..."
+                                      />
+                                      <div className="flex flex-wrap gap-2">
+                                          {(catalogConfig.aboutUsImages || []).map((img, i) => (
+                                              <div key={i} className="w-12 h-12 relative group/about">
+                                                  <img src={img} alt="" className="w-full h-full object-cover rounded-lg border border-slate-200" />
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => setCatalogConfig({ ...catalogConfig, aboutUsImages: (catalogConfig.aboutUsImages || []).filter((_, idx) => idx !== i) })}
+                                                      className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover/about:opacity-100"
+                                                  >
+                                                      <X className="w-2.5 h-2.5" />
+                                                  </button>
+                                              </div>
+                                          ))}
+                                          <label className="w-12 h-12 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center text-slate-400 cursor-pointer hover:bg-slate-50">
+                                              <Plus className="w-4 h-4" />
+                                              <input type="file" multiple accept="image/*" onChange={handleAboutUsImagesUpload} className="hidden" />
+                                          </label>
+                                      </div>
+                                  </>
+                              )}
+                          </div>
+
+                          <div className="space-y-2 border-t border-slate-100 pt-4">
+                              <div className="flex items-center justify-between">
+                                  <h3 className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                                      <Layers className="w-4 h-4 text-violet-600" />
+                                      Website tabs
+                                  </h3>
+                                  <button
+                                      type="button"
+                                      onClick={handleAddSection}
+                                      className="text-[11px] font-bold text-violet-700 hover:underline flex items-center gap-1"
+                                  >
+                                      <Plus className="w-3 h-3" />
+                                      Add page
+                                  </button>
+                              </div>
+                              <div className="space-y-2">
+                                  {(catalogConfig.sections || []).map((section) => (
+                                      <div key={section.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+                                          <span className="flex-1 min-w-0 truncate text-xs font-semibold text-slate-700">{section.title}</span>
+                                          <button type="button" onClick={() => setEditingSection(section)} className="text-slate-400 hover:text-violet-600 p-1">
+                                              <Edit3 className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button type="button" onClick={() => handleDeleteSection(section.id)} className="text-slate-400 hover:text-red-600 p-1">
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                      </div>
+                                  ))}
+                                  {(catalogConfig.sections || []).length === 0 && (
+                                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                                          Add About Us or new pages; they will publish as tabs in the Trading Hub website.
+                                      </p>
+                                  )}
+                              </div>
+                          </div>
+                      </aside>
+
                       {metaHubEditorMode === 'code' ? (
                           <textarea
                               className="flex-1 w-full font-mono text-xs text-green-300 bg-slate-900 p-4 resize-none outline-none border-0"
@@ -17478,20 +17702,22 @@ function AppInner() {
                                               >Copy</button>
                                           </div>
                                       )}
-                                      <div className="flex items-center gap-2">
-                                          <span className="text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Direct URL</span>
-                                          <input
-                                              type="text"
-                                              readOnly
-                                              value={metaHubLinkInfo.url}
-                                              onFocus={(e) => e.currentTarget.select()}
-                                              className="flex-1 text-xs font-mono border border-slate-200 rounded px-2 py-1 bg-slate-50 outline-none truncate"
-                                          />
-                                          <button
-                                              onClick={async () => { try { await navigator.clipboard.writeText(metaHubLinkInfo.url); alert('Copied!'); } catch { window.prompt('Copy:', metaHubLinkInfo.url); } }}
-                                              className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-700"
-                                          >Copy</button>
-                                      </div>
+                                      {!metaHubLinkInfo.shortUrl && (
+                                          <div className="flex items-center gap-2">
+                                              <span className="text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Direct URL</span>
+                                              <input
+                                                  type="text"
+                                                  readOnly
+                                                  value={metaHubLinkInfo.url}
+                                                  onFocus={(e) => e.currentTarget.select()}
+                                                  className="flex-1 text-xs font-mono border border-slate-200 rounded px-2 py-1 bg-slate-50 outline-none truncate"
+                                              />
+                                              <button
+                                                  onClick={async () => { try { await navigator.clipboard.writeText(metaHubLinkInfo.url); alert('Copied!'); } catch { window.prompt('Copy:', metaHubLinkInfo.url); } }}
+                                                  className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-700"
+                                              >Copy</button>
+                                          </div>
+                                      )}
                                   </div>
                                   {metaHubLinkInfo.qr && (
                                       <img src={metaHubLinkInfo.qr} alt="QR" className="w-14 h-14 rounded border border-slate-200 flex-shrink-0" />
