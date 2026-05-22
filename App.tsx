@@ -2440,6 +2440,12 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyQrColor: '#0f172a',
     storyQrBgColor: '#ffffff',
     storyProductIds: [],
+    storyWebsiteProductsTabLabel: '',
+    storyWebsiteAboutTabLabel: '',
+    storyWebsitePagesTabLabel: 'Pages',
+    storyWebsiteShowProductsTab: true,
+    storyWebsiteShowAboutTab: true,
+    storyWebsiteShowPagesTab: true,
     storyFontFamily: 'inter',
     storyHeroAlign: 'left',
     storyTitleBold: true,
@@ -16025,16 +16031,12 @@ ${html}
 
             ctx.fillStyle = storyStyle === 'editorial' ? '#f8fafc' : '#ffffff';
             ctx.fillRect(sx, sy + heroH, sw, sh - heroH);
-            if (storyStyle === 'website') {
+            if (storyStyle === 'website' && storyWebsiteTabsForRender.length > 0) {
                 const tabsY = sy + heroH + 130 + storyTabsOffsetPx;
                 fillRounded(sx + 210, tabsY, sw - 420, 150, 75, 'rgba(15,23,42,0.05)');
-                const tabLabels = [
-                    catalogConfig.productTabLabel || 'Product List',
-                    catalogConfig.aboutUsTabLabel || 'About Us',
-                    'Pages',
-                ];
+                const tabLabels = storyWebsiteTabsForRender.map((tab) => tab.label);
                 tabLabels.forEach((label, index) => {
-                    const tabW = (sw - 500) / 3;
+                    const tabW = (sw - 500) / Math.max(1, tabLabels.length);
                     const tx = sx + 250 + index * tabW;
                     fillRounded(tx, tabsY + 30, tabW - 22, 92, 46, index === 0 ? '#ffffff' : 'rgba(255,255,255,0)');
                     ctx.fillStyle = index === 0 ? (catalogConfig.headingColor || '#0f172a') : 'rgba(15,23,42,0.46)';
@@ -16189,6 +16191,25 @@ ${html}
     const storyExtraPreviewBg = storyHexToRgba(catalogConfig.storyExtraBoxColor, Number(catalogConfig.storyExtraBoxOpacityPct ?? 70), '#0f172a');
     const storyQrColor = catalogConfig.storyQrColor || '#0f172a';
     const storyQrBgColor = catalogConfig.storyQrBgColor || '#ffffff';
+    const storyWebsiteTabsRaw = [
+        {
+            key: 'products',
+            enabled: catalogConfig.storyWebsiteShowProductsTab !== false,
+            label: (catalogConfig.storyWebsiteProductsTabLabel || catalogConfig.productTabLabel || 'Product List').trim() || 'Product List',
+        },
+        {
+            key: 'about',
+            enabled: catalogConfig.storyWebsiteShowAboutTab !== false,
+            label: (catalogConfig.storyWebsiteAboutTabLabel || catalogConfig.aboutUsTabLabel || 'About Us').trim() || 'About Us',
+        },
+        {
+            key: 'pages',
+            enabled: catalogConfig.storyWebsiteShowPagesTab !== false,
+            label: (catalogConfig.storyWebsitePagesTabLabel || 'Pages').trim() || 'Pages',
+        },
+    ];
+    const storyWebsiteTabs = storyWebsiteTabsRaw.filter((tab) => tab.enabled);
+    const storyWebsiteTabsForRender = storyWebsiteTabs;
     const storyExtraFontSize = storyNumberSetting(catalogConfig.storyExtraTextFontSizePx, 13, 8, 30);
     const storyCtaOpacity = storyNumberSetting(catalogConfig.storyCtaBgOpacityPct, 100, 0, 100);
     const storyExtraOpacity = storyNumberSetting(catalogConfig.storyExtraBoxOpacityPct, 70, 0, 100);
@@ -18946,6 +18967,64 @@ ${html}
                       </div>
 
                       <div className="space-y-2 border-t border-slate-100 pt-4">
+                          <div className="flex items-center justify-between gap-2">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Website Preview Tabs</label>
+                              <span className="text-[10px] font-bold text-slate-400">{storyWebsiteTabs.length} shown</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-snug">
+                              Edit tab titles and choose which tabs appear in the website-style story.
+                          </p>
+                          {[
+                              {
+                                  key: 'products',
+                                  label: 'Products tab',
+                                  showKey: 'storyWebsiteShowProductsTab' as keyof CatalogConfig,
+                                  textKey: 'storyWebsiteProductsTabLabel' as keyof CatalogConfig,
+                                  value: catalogConfig.storyWebsiteProductsTabLabel || '',
+                                  placeholder: catalogConfig.productTabLabel || 'Product List',
+                                  checked: catalogConfig.storyWebsiteShowProductsTab !== false,
+                              },
+                              {
+                                  key: 'about',
+                                  label: 'About tab',
+                                  showKey: 'storyWebsiteShowAboutTab' as keyof CatalogConfig,
+                                  textKey: 'storyWebsiteAboutTabLabel' as keyof CatalogConfig,
+                                  value: catalogConfig.storyWebsiteAboutTabLabel || '',
+                                  placeholder: catalogConfig.aboutUsTabLabel || 'About Us',
+                                  checked: catalogConfig.storyWebsiteShowAboutTab !== false,
+                              },
+                              {
+                                  key: 'pages',
+                                  label: 'Pages tab',
+                                  showKey: 'storyWebsiteShowPagesTab' as keyof CatalogConfig,
+                                  textKey: 'storyWebsitePagesTabLabel' as keyof CatalogConfig,
+                                  value: catalogConfig.storyWebsitePagesTabLabel || '',
+                                  placeholder: 'Pages',
+                                  checked: catalogConfig.storyWebsiteShowPagesTab !== false,
+                              },
+                          ].map((tab) => (
+                              <div key={tab.key} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2 space-y-1.5">
+                                  <label className="flex items-center gap-2 text-[10px] font-bold text-slate-600 cursor-pointer">
+                                      <input
+                                          type="checkbox"
+                                          checked={tab.checked}
+                                          onChange={(e) => setCatalogConfig({ ...catalogConfig, [tab.showKey]: e.target.checked })}
+                                          className="rounded text-slate-900 focus:ring-slate-900"
+                                      />
+                                      Show {tab.label}
+                                  </label>
+                                  <input
+                                      type="text"
+                                      value={tab.value}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, [tab.textKey]: e.target.value })}
+                                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900 bg-white"
+                                      placeholder={tab.placeholder}
+                                  />
+                              </div>
+                          ))}
+                      </div>
+
+                      <div className="space-y-2 border-t border-slate-100 pt-4">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Editable Story Text</label>
                           <input
                               type="text"
@@ -19497,17 +19576,17 @@ ${html}
                                   </div>
                               </div>
 
-                              {storyPreviewStyle === 'website' && (
+                              {storyPreviewStyle === 'website' && storyWebsiteTabsForRender.length > 0 && (
                                   <div
                                       className="absolute inset-x-5 rounded-full border border-slate-200 bg-white/90 p-1.5 shadow-lg flex gap-1"
                                       style={{ top: `${Math.max(35, 43 + storyTabsOffset)}%` }}
                                   >
-                                      {[catalogConfig.productTabLabel || 'Product List', catalogConfig.aboutUsTabLabel || 'About Us', 'Pages'].map((label, index) => (
+                                      {storyWebsiteTabsForRender.map((tab, index) => (
                                           <div
-                                              key={`${label}-${index}`}
+                                              key={`${tab.key}-${index}`}
                                               className={`flex-1 truncate rounded-full px-2 py-1.5 text-center text-[9px] font-black ${index === 0 ? 'bg-slate-950 text-white' : 'text-slate-500'}`}
                                           >
-                                              {label}
+                                              {tab.label}
                                           </div>
                                       ))}
                                   </div>

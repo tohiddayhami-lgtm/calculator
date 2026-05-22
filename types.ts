@@ -402,6 +402,12 @@ export interface CatalogConfig {
   storyQrColor?: string;
   storyQrBgColor?: string;
   storyProductIds?: number[];
+  storyWebsiteProductsTabLabel?: string;
+  storyWebsiteAboutTabLabel?: string;
+  storyWebsitePagesTabLabel?: string;
+  storyWebsiteShowProductsTab?: boolean;
+  storyWebsiteShowAboutTab?: boolean;
+  storyWebsiteShowPagesTab?: boolean;
   storyFontFamily?: 'inter' | 'sf' | 'vazir' | 'vazirmatn' | 'shabnam';
   storyHeroAlign?: 'left' | 'center' | 'right';
   storyTitleBold?: boolean;
