@@ -357,6 +357,13 @@ export interface CatalogConfig {
   showAboutUs?: boolean;
   productTabLabel?: string;
   aboutUsTabLabel?: string;
+  extraPageTitleFontSizePx?: number;
+  extraPageTitleBold?: boolean;
+  extraPageTitleAlign?: 'left' | 'center' | 'right' | 'justify';
+  extraPageBodyFontSizePx?: number;
+  extraPageBodyBold?: boolean;
+  extraPageBodyAlign?: 'left' | 'center' | 'right' | 'justify';
+  extraPageTextDirection?: 'auto' | 'ltr' | 'rtl';
   aboutUsText?: string;
   aboutUsImages?: string[];
   aboutUsImageLayout?: 'top' | 'bottom' | 'side-right' | 'side-left' | 'grid';

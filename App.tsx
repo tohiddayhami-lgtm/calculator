@@ -2406,6 +2406,13 @@ function createDefaultCatalogConfig(): CatalogConfig {
     showAboutUs: false,
     productTabLabel: 'Product List',
     aboutUsTabLabel: 'About Us',
+    extraPageTitleFontSizePx: 11,
+    extraPageTitleBold: true,
+    extraPageTitleAlign: 'center',
+    extraPageBodyFontSizePx: 18,
+    extraPageBodyBold: false,
+    extraPageBodyAlign: 'justify',
+    extraPageTextDirection: 'auto',
     aboutUsText: '',
     aboutUsImages: [],
     aboutUsImageLayout: 'side-right',
@@ -3910,6 +3917,27 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const coverTitleClampMin = Math.max(16, Math.round(coverTitlePx * 0.45));
     const coverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.coverOverlayOpacity ?? 60) || 0) / 100));
     const backCoverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.backCoverOverlayOpacity ?? 60) || 0) / 100));
+    const normalizeExtraAlign = (value: any, fallback: 'left' | 'center' | 'right' | 'justify') =>
+        ['left', 'center', 'right', 'justify'].includes(value) ? value : fallback;
+    const extraTitleAlign = normalizeExtraAlign(cc.extraPageTitleAlign, 'center');
+    const extraBodyAlign = normalizeExtraAlign(cc.extraPageBodyAlign, 'justify');
+    const extraDirection = ['ltr', 'rtl'].includes(cc.extraPageTextDirection) ? cc.extraPageTextDirection : '';
+    const extraTitleFontSizePx = Math.min(56, Math.max(10, Number(cc.extraPageTitleFontSizePx) || 11));
+    const extraBodyFontSizePx = Math.min(32, Math.max(12, Number(cc.extraPageBodyFontSizePx) || 18));
+    const extraTitleWeight = cc.extraPageTitleBold === false ? 500 : 800;
+    const extraBodyWeight = cc.extraPageBodyBold ? 650 : 400;
+    const extraTitleStyle = [
+        `font-size:${extraTitleFontSizePx}px`,
+        `font-weight:${extraTitleWeight}`,
+        `text-align:${extraTitleAlign}`,
+        extraDirection ? `direction:${extraDirection}` : '',
+    ].filter(Boolean).join(';');
+    const extraBodyStyle = [
+        `font-size:${extraBodyFontSizePx}px`,
+        `font-weight:${extraBodyWeight}`,
+        `text-align:${extraBodyAlign}`,
+        extraDirection ? `direction:${extraDirection}` : '',
+    ].filter(Boolean).join(';');
     const baseUnit = cc.baseUnit || tCombined('pcs') || 'pcs';
     const showPrices = cc.showPrices !== false;
     const priceBasis = cc.priceBasis || 'unit';
@@ -4089,7 +4117,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             const parasHtml = rawParas
                 .map(
                     (para: string) =>
-                        `<p class="about-para${isFarsiPara(para) ? ' rtl' : ''}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`
+                        `<p class="about-para${isFarsiPara(para) ? ' rtl' : ''}" style="${escapeAttr(extraBodyStyle)}">${escapeHtml(para).replace(/\n/g, '<br>')}</p>`
                 )
                 .join('');
 
@@ -4097,7 +4125,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             const imgPanel = imgs.length
                 ? `<div class="about-img-panel">${imgs.map((img: string) => `<img src="${escapeAttr(img)}" alt="" loading="lazy" />`).join('')}</div>`
                 : '';
-            const textPanel = `<div class="about-text-panel">${parasHtml}</div>`;
+            const textPanel = `<div class="about-text-panel" style="${escapeAttr(extraBodyStyle)}">${parasHtml}</div>`;
 
             let bodyClass = `about-body${imgs.length ? ' has-images' : ''}`;
             let bodyContent = '';
@@ -4116,7 +4144,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
             return `
             <section class="about">
-                <span class="about-label">${escapeHtml(cc.aboutUsTabLabel || 'About Us')}</span>
+                <span class="about-label" style="${escapeAttr(extraTitleStyle)}">${escapeHtml(cc.aboutUsTabLabel || 'About Us')}</span>
                 <div class="${bodyClass}">${bodyContent}</div>
             </section>`;
         })()
@@ -4133,7 +4161,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
     const sectionsAll: any[] = Array.isArray(cc.sections) ? cc.sections : [];
     const renderCustomSectionHtml = (section: any) => {
-        const align = section.alignment || 'left';
+        const align = cc.extraPageBodyAlign || section.alignment || 'justify';
         const textAlign = align === 'justify' ? 'justify' : align;
         const imgs: string[] =
             section.images && section.images.length > 0
@@ -4156,10 +4184,15 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             : '';
         const title = escapeHtml(section.title || 'Page');
         const content = escapeHtml(section.content || '');
+        const customPageBodyStyle = [
+            extraBodyStyle,
+            `text-align:${escapeAttr(textAlign)}`,
+            'white-space:pre-wrap',
+        ].join(';');
         return `
         <section class="custom-page">
-            <h2 class="custom-page-title">${title}</h2>
-            <div class="custom-page-content" style="text-align:${escapeAttr(textAlign)};white-space:pre-wrap">${content}</div>
+            <h2 class="custom-page-title" style="${escapeAttr(extraTitleStyle)}">${title}</h2>
+            <div class="custom-page-content" style="${escapeAttr(customPageBodyStyle)}">${content}</div>
             ${imgsHtml}
         </section>`;
     };
@@ -4184,8 +4217,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 : '';
             const html = `
             <section class="cp-section">
-                <h2 class="cp-title">${escapeHtml(p.title || '')}</h2>
-                ${p.description ? `<p class="cp-desc">${escapeHtml(p.description)}</p>` : ''}
+                <h2 class="cp-title" style="${escapeAttr(extraTitleStyle)}">${escapeHtml(p.title || '')}</h2>
+                ${p.description ? `<p class="cp-desc" style="${escapeAttr(extraBodyStyle)}">${escapeHtml(p.description)}</p>` : ''}
                 ${itemCardsHtml}
             </section>`;
             return {
@@ -15332,12 +15365,58 @@ function AppInner() {
         }
     };
 
+    const patchMetaHubExtraTypographyHtml = (html: string, nextCatalogConfig: CatalogConfig): string => {
+        if (!html.trim() || typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') return html;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const normalizeAlign = (value: any, fallback: 'left' | 'center' | 'right' | 'justify') =>
+                ['left', 'center', 'right', 'justify'].includes(value) ? value : fallback;
+            const titleSize = Math.min(56, Math.max(10, Number(nextCatalogConfig.extraPageTitleFontSizePx) || 11));
+            const bodySize = Math.min(32, Math.max(12, Number(nextCatalogConfig.extraPageBodyFontSizePx) || 18));
+            const titleAlign = normalizeAlign(nextCatalogConfig.extraPageTitleAlign, 'center');
+            const bodyAlign = normalizeAlign(nextCatalogConfig.extraPageBodyAlign, 'justify');
+            const titleWeight = nextCatalogConfig.extraPageTitleBold === false ? '500' : '800';
+            const bodyWeight = nextCatalogConfig.extraPageBodyBold ? '650' : '400';
+            const direction = nextCatalogConfig.extraPageTextDirection === 'ltr' || nextCatalogConfig.extraPageTextDirection === 'rtl'
+                ? nextCatalogConfig.extraPageTextDirection
+                : '';
+            const applyTypography = (selector: string, mode: 'title' | 'body') => {
+                doc.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+                    el.style.fontSize = `${mode === 'title' ? titleSize : bodySize}px`;
+                    el.style.fontWeight = mode === 'title' ? titleWeight : bodyWeight;
+                    el.style.textAlign = mode === 'title' ? titleAlign : bodyAlign;
+                    if (direction) {
+                        el.style.direction = direction;
+                    } else {
+                        el.style.removeProperty('direction');
+                    }
+                });
+            };
+            applyTypography('.about-label, .custom-page-title, .cp-title', 'title');
+            applyTypography('.about-text-panel, .about-para, .custom-page-content, .cp-desc', 'body');
+            return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
+        } catch {
+            return html;
+        }
+    };
+
     const updateTradingHubTheme = (patch: Partial<CatalogConfig>) => {
         const nextCatalogConfig = { ...catalogConfig, ...patch };
         const currentHtml = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
         setCatalogConfig(nextCatalogConfig);
         if (currentHtml.trim()) {
             setMetaHubHtml(patchMetaHubThemeHtml(currentHtml, nextCatalogConfig));
+            setMetaHubPreviewKey(k => k + 1);
+        }
+    };
+
+    const updateTradingHubExtraTypography = (patch: Pick<Partial<CatalogConfig>, 'extraPageTitleFontSizePx' | 'extraPageTitleBold' | 'extraPageTitleAlign' | 'extraPageBodyFontSizePx' | 'extraPageBodyBold' | 'extraPageBodyAlign' | 'extraPageTextDirection'>) => {
+        const nextCatalogConfig = { ...catalogConfig, ...patch };
+        const currentHtml = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
+        setCatalogConfig(nextCatalogConfig);
+        if (currentHtml.trim()) {
+            setMetaHubHtml(patchMetaHubExtraTypographyHtml(currentHtml, nextCatalogConfig));
             setMetaHubPreviewKey(k => k + 1);
         }
     };
@@ -17811,6 +17890,137 @@ ${html}
                               <p className="text-[10px] text-slate-400 leading-snug">
                                   Tab buttons are locked in Visual Edit so the product list cannot be deleted by mistake.
                               </p>
+                          </div>
+
+                          <div className="space-y-3 border-t border-slate-100 pt-4">
+                              <h3 className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                                  <Type className="w-4 h-4 text-violet-600" />
+                                  About & Pages Typography
+                              </h3>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold flex justify-between">
+                                          <span>Title size</span>
+                                          <span>{catalogConfig.extraPageTitleFontSizePx ?? 11}px</span>
+                                      </span>
+                                      <input
+                                          type="range"
+                                          min={10}
+                                          max={56}
+                                          value={catalogConfig.extraPageTitleFontSizePx ?? 11}
+                                          onChange={(e) => updateTradingHubExtraTypography({ extraPageTitleFontSizePx: Number(e.target.value) })}
+                                          className="w-full accent-violet-600"
+                                      />
+                                  </label>
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold flex justify-between">
+                                          <span>Text size</span>
+                                          <span>{catalogConfig.extraPageBodyFontSizePx ?? 18}px</span>
+                                      </span>
+                                      <input
+                                          type="range"
+                                          min={12}
+                                          max={32}
+                                          value={catalogConfig.extraPageBodyFontSizePx ?? 18}
+                                          onChange={(e) => updateTradingHubExtraTypography({ extraPageBodyFontSizePx: Number(e.target.value) })}
+                                          className="w-full accent-violet-600"
+                                      />
+                                  </label>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Title align</span>
+                                      <select
+                                          value={catalogConfig.extraPageTitleAlign || 'center'}
+                                          onChange={(e) => updateTradingHubExtraTypography({ extraPageTitleAlign: e.target.value as CatalogConfig['extraPageTitleAlign'] })}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-violet-500 bg-white"
+                                      >
+                                          <option value="left">Left</option>
+                                          <option value="center">Center</option>
+                                          <option value="right">Right</option>
+                                          <option value="justify">Justify</option>
+                                      </select>
+                                  </label>
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Text align</span>
+                                      <select
+                                          value={catalogConfig.extraPageBodyAlign || 'justify'}
+                                          onChange={(e) => updateTradingHubExtraTypography({ extraPageBodyAlign: e.target.value as CatalogConfig['extraPageBodyAlign'] })}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-violet-500 bg-white"
+                                      >
+                                          <option value="left">Left</option>
+                                          <option value="center">Center</option>
+                                          <option value="right">Right</option>
+                                          <option value="justify">Justify</option>
+                                      </select>
+                                  </label>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Text direction</span>
+                                      <select
+                                          value={catalogConfig.extraPageTextDirection || 'auto'}
+                                          onChange={(e) => updateTradingHubExtraTypography({ extraPageTextDirection: e.target.value as CatalogConfig['extraPageTextDirection'] })}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-violet-500 bg-white"
+                                      >
+                                          <option value="auto">Auto</option>
+                                          <option value="ltr">Left to right</option>
+                                          <option value="rtl">Right to left</option>
+                                      </select>
+                                  </label>
+                                  <div className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Weight</span>
+                                      <div className="grid grid-cols-2 gap-1">
+                                          <button
+                                              type="button"
+                                              onClick={() => updateTradingHubExtraTypography({ extraPageTitleBold: !(catalogConfig.extraPageTitleBold !== false) })}
+                                              className={`text-[10px] rounded-lg border px-2 py-2 font-bold ${catalogConfig.extraPageTitleBold !== false ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200'}`}
+                                          >
+                                              Title B
+                                          </button>
+                                          <button
+                                              type="button"
+                                              onClick={() => updateTradingHubExtraTypography({ extraPageBodyBold: !(catalogConfig.extraPageBodyBold || false) })}
+                                              className={`text-[10px] rounded-lg border px-2 py-2 font-bold ${catalogConfig.extraPageBodyBold ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200'}`}
+                                          >
+                                              Text B
+                                          </button>
+                                      </div>
+                                  </div>
+                              </div>
+                              <div className="flex gap-1">
+                                  {[
+                                      { key: 'left', icon: AlignLeft, label: 'Left' },
+                                      { key: 'center', icon: AlignCenter, label: 'Center' },
+                                      { key: 'right', icon: AlignRight, label: 'Right' },
+                                      { key: 'justify', icon: AlignJustify, label: 'Justify' },
+                                  ].map(({ key, icon: Icon, label }) => (
+                                      <button
+                                          key={key}
+                                          type="button"
+                                          title={`Body ${label}`}
+                                          onClick={() => updateTradingHubExtraTypography({ extraPageBodyAlign: key as CatalogConfig['extraPageBodyAlign'] })}
+                                          className={`flex-1 flex items-center justify-center rounded-lg border px-2 py-2 ${catalogConfig.extraPageBodyAlign === key ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                                      >
+                                          <Icon className="w-3.5 h-3.5" />
+                                      </button>
+                                  ))}
+                              </div>
+                              <button
+                                  type="button"
+                                  onClick={() => updateTradingHubExtraTypography({
+                                      extraPageTitleFontSizePx: 11,
+                                      extraPageTitleBold: true,
+                                      extraPageTitleAlign: 'center',
+                                      extraPageBodyFontSizePx: 18,
+                                      extraPageBodyBold: false,
+                                      extraPageBodyAlign: 'justify',
+                                      extraPageTextDirection: 'auto',
+                                  })}
+                                  className="w-full text-[10px] font-bold text-slate-500 hover:text-violet-700 border border-slate-200 rounded-lg py-2 hover:bg-violet-50"
+                              >
+                                  Reset Apple-minimal style
+                              </button>
                           </div>
 
                           <div className="space-y-3 border-t border-slate-100 pt-4">
