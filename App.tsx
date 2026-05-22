@@ -19350,28 +19350,64 @@ ${html}
                               ) : shareLinkInfo.url ? (
                                   <div className="space-y-2">
                                       <p className="font-black">لینک آنلاین کاتالوگ آماده است.</p>
-                                      <input
-                                          type="text"
-                                          readOnly
-                                          value={shareLinkInfo.shortUrl || shareLinkInfo.url}
-                                          onFocus={(e) => e.currentTarget.select()}
-                                          className="w-full rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[11px] font-mono text-slate-700 outline-none"
-                                      />
-                                      <div className="flex gap-2">
-                                          <button
-                                              type="button"
-                                              onClick={shareLinkInfo.shortUrl ? handleCopyShareShortLink : handleCopyShareLink}
-                                              className="flex-1 rounded-lg bg-emerald-700 text-white py-1.5 font-bold hover:bg-emerald-800"
-                                          >
-                                              Copy Link
-                                          </button>
+                                      {shareLinkInfo.shortUrl && (
+                                          <div className="space-y-1">
+                                              <label className="text-[10px] font-black text-emerald-700 uppercase">Short link</label>
+                                              <div className="flex gap-2">
+                                                  <input
+                                                      type="text"
+                                                      readOnly
+                                                      value={shareLinkInfo.shortUrl}
+                                                      onFocus={(e) => e.currentTarget.select()}
+                                                      className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[11px] font-mono text-slate-700 outline-none"
+                                                  />
+                                                  <button
+                                                      type="button"
+                                                      onClick={handleCopyShareShortLink}
+                                                      className="rounded-lg bg-emerald-700 text-white px-3 py-1.5 font-bold hover:bg-emerald-800"
+                                                  >
+                                                      Copy
+                                                  </button>
+                                              </div>
+                                          </div>
+                                      )}
+                                      <div className="space-y-1">
+                                          <label className="text-[10px] font-black text-slate-600 uppercase">Direct link</label>
+                                          <div className="flex gap-2">
+                                              <input
+                                                  type="text"
+                                                  readOnly
+                                                  value={shareLinkInfo.url}
+                                                  onFocus={(e) => e.currentTarget.select()}
+                                                  className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[11px] font-mono text-slate-700 outline-none"
+                                              />
+                                              <button
+                                                  type="button"
+                                                  onClick={handleCopyShareLink}
+                                                  className="rounded-lg bg-slate-700 text-white px-3 py-1.5 font-bold hover:bg-slate-800"
+                                              >
+                                                  Copy
+                                              </button>
+                                          </div>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                          {shareLinkInfo.shortUrl && (
+                                              <a
+                                                  href={shareLinkInfo.shortUrl}
+                                                  target="_blank"
+                                                  rel="noopener"
+                                                  className="rounded-lg bg-white border border-emerald-200 text-emerald-800 py-1.5 font-bold text-center hover:bg-emerald-100"
+                                              >
+                                                  Open Short
+                                              </a>
+                                          )}
                                           <a
-                                              href={shareLinkInfo.shortUrl || shareLinkInfo.url}
+                                              href={shareLinkInfo.url}
                                               target="_blank"
                                               rel="noopener"
-                                              className="flex-1 rounded-lg bg-white border border-emerald-200 text-emerald-800 py-1.5 font-bold text-center hover:bg-emerald-100"
+                                              className="rounded-lg bg-white border border-slate-200 text-slate-800 py-1.5 font-bold text-center hover:bg-slate-100"
                                           >
-                                              Open
+                                              Open Direct
                                           </a>
                                       </div>
                                   </div>
