@@ -5917,10 +5917,12 @@ function AppInner() {
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
   const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'meta-trading-hub'>('catalog');
   const [metaHubHtml, setMetaHubHtml] = useState<string>('');
-  const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'preview'>('code');
+  const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'visual' | 'preview'>('code');
   const [metaHubLinkInfo, setMetaHubLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
   const [savedMetaHubLinks, setSavedMetaHubLinks] = useState<any[]>([]);
   const [metaHubPreviewKey, setMetaHubPreviewKey] = useState(0);
+  const metaHubHtmlFileInputRef = useRef<HTMLInputElement | null>(null);
+  const metaHubVisualFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
   const [serviceInvoiceDiscountCurrency, setServiceInvoiceDiscountCurrency] = useState('USD');
@@ -15276,18 +15278,101 @@ function AppInner() {
             inquiryEndpoint
         });
         setMetaHubHtml(html);
-        setMetaHubEditorMode('code');
+        setMetaHubEditorMode('visual');
+        setMetaHubPreviewKey(k => k + 1);
+    };
+
+    const normalizeImportedMetaHubHtml = (raw: string): string => {
+        const html = raw.trim();
+        if (!html) return '';
+        if (/<!doctype|<html[\s>]/i.test(html)) return html;
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(catalogConfig.title || 'Trading Hub')}</title>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+    };
+
+    const handleImportMetaHubHtmlFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        try {
+            const raw = await file.text();
+            const html = normalizeImportedMetaHubHtml(raw);
+            if (!html) {
+                alert('The selected HTML file is empty.');
+                return;
+            }
+            setMetaHubHtml(html);
+            setMetaHubEditorMode('visual');
+            setMetaHubPreviewKey(k => k + 1);
+        } catch (err: any) {
+            alert('Could not import HTML: ' + (err?.message || err));
+        }
+    };
+
+    const extractVisualMetaHubHtml = (): string | null => {
+        const doc = metaHubVisualFrameRef.current?.contentDocument;
+        if (!doc?.documentElement) return null;
+        doc.getElementById('meta-hub-visual-editor-style')?.remove();
+        try { doc.designMode = 'off'; } catch {}
+        return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
+    };
+
+    const saveVisualMetaHubEdits = (): string => {
+        const edited = extractVisualMetaHubHtml();
+        if (!edited) return metaHubHtml;
+        setMetaHubHtml(edited);
+        try {
+            localStorage.setItem('metaHubHtmlDraft', edited);
+        } catch {}
+        return edited;
+    };
+
+    const handleMetaHubVisualLoad = () => {
+        const doc = metaHubVisualFrameRef.current?.contentDocument;
+        if (!doc) return;
+        if (metaHubEditorMode !== 'visual') return;
+        try {
+            doc.designMode = 'on';
+            if (!doc.getElementById('meta-hub-visual-editor-style')) {
+                const style = doc.createElement('style');
+                style.id = 'meta-hub-visual-editor-style';
+                style.textContent = `
+                    body { cursor: text !important; }
+                    a, button { cursor: text !important; }
+                    *:focus { outline: 2px solid rgba(124,58,237,.45) !important; outline-offset: 2px !important; }
+                `;
+                doc.head.appendChild(style);
+            }
+        } catch (err) {
+            console.warn('Visual editor could not start:', err);
+        }
+    };
+
+    const handleSaveVisualMetaHubEdits = () => {
+        saveVisualMetaHubEdits();
+        setMetaHubPreviewKey(k => k + 1);
+        alert('Visual edits saved into the HTML draft.');
     };
 
     const handlePublishMetaHub = async () => {
-        if (!metaHubHtml.trim()) { alert('First import catalog HTML or write HTML content.'); return; }
+        const htmlToPublish = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
+        if (!htmlToPublish.trim()) { alert('First import catalog HTML or write HTML content.'); return; }
         if (!user || !storage) { alert('You must be signed in to publish.'); return; }
         setMetaHubLinkInfo({ url: '', qr: '', uploading: true });
         try {
             const safeTitle = (catalogConfig.title || 'meta-hub').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'meta-hub';
             const path = `users/${activeOwnerUid}/meta-hub/${safeTitle}-${Date.now()}.html`;
             const ref = storageRef(storage, path);
-            await uploadString(ref, metaHubHtml, 'raw', { contentType: 'text/html; charset=utf-8' });
+            await uploadString(ref, htmlToPublish, 'raw', { contentType: 'text/html; charset=utf-8' });
             const url = await getDownloadURL(ref);
             let shortUrl: string | undefined;
             if (db && !isDemoMode && user.uid !== DEMO_USER_ID) {
@@ -15326,9 +15411,10 @@ function AppInner() {
     };
 
     const handleDownloadMetaHub = () => {
-        if (!metaHubHtml.trim()) return;
+        const htmlToDownload = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
+        if (!htmlToDownload.trim()) return;
         const safeTitle = (catalogConfig.title || 'meta-hub').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'meta-hub';
-        const blob = new Blob([metaHubHtml], { type: 'text/html;charset=utf-8' });
+        const blob = new Blob([htmlToDownload], { type: 'text/html;charset=utf-8' });
         const objUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = objUrl;
@@ -17458,20 +17544,56 @@ function AppInner() {
                       >
                           <Download className="w-3.5 h-3.5" /> Import from Catalog
                       </button>
+                      <input
+                          ref={metaHubHtmlFileInputRef}
+                          type="file"
+                          accept=".html,.htm,text/html"
+                          className="hidden"
+                          onChange={handleImportMetaHubHtmlFile}
+                      />
+                      <button
+                          type="button"
+                          onClick={() => metaHubHtmlFileInputRef.current?.click()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white border border-violet-200 text-violet-700 rounded-lg hover:bg-violet-50"
+                      >
+                          <FileUp className="w-3.5 h-3.5" /> Import HTML
+                      </button>
                       <div className="flex bg-slate-200 p-0.5 rounded-lg">
                           <button
-                              onClick={() => setMetaHubEditorMode('code')}
+                              onClick={() => {
+                                  if (metaHubEditorMode === 'visual') saveVisualMetaHubEdits();
+                                  setMetaHubEditorMode('code');
+                              }}
                               className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors ${metaHubEditorMode === 'code' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                           >
                               <Edit3 className="w-3 h-3" /> Code
                           </button>
                           <button
-                              onClick={() => { setMetaHubEditorMode('preview'); setMetaHubPreviewKey(k => k + 1); }}
+                              onClick={() => { setMetaHubEditorMode('visual'); setMetaHubPreviewKey(k => k + 1); }}
+                              className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors ${metaHubEditorMode === 'visual' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                              <Pencil className="w-3 h-3" /> Visual Edit
+                          </button>
+                          <button
+                              onClick={() => {
+                                  if (metaHubEditorMode === 'visual') saveVisualMetaHubEdits();
+                                  setMetaHubEditorMode('preview');
+                                  setMetaHubPreviewKey(k => k + 1);
+                              }}
                               className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors ${metaHubEditorMode === 'preview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                           >
                               <Globe2 className="w-3 h-3" /> Preview
                           </button>
                       </div>
+                      {metaHubEditorMode === 'visual' && (
+                          <button
+                              type="button"
+                              onClick={handleSaveVisualMetaHubEdits}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 shadow-sm"
+                          >
+                              <Save className="w-3.5 h-3.5" /> Save Visual Edits
+                          </button>
+                      )}
                       <div className="flex-1" />
                       {metaHubHtml.trim() && (
                           <span className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -17654,6 +17776,29 @@ function AppInner() {
                               placeholder={'Click "Import from Catalog" to load the catalog HTML, then freely edit it here.\n\nOr paste / write any HTML you want — it will be published as a standalone page at your own link.'}
                               spellCheck={false}
                           />
+                      ) : metaHubEditorMode === 'visual' ? (
+                          metaHubHtml.trim() ? (
+                              <div className="relative flex-1 min-w-0 bg-white">
+                                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-violet-700 text-white text-[11px] font-semibold shadow-lg pointer-events-none">
+                                      Visual Edit: click any text and edit it, then Save Visual Edits
+                                  </div>
+                                  <iframe
+                                      ref={metaHubVisualFrameRef}
+                                      key={`visual-${metaHubPreviewKey}`}
+                                      className="w-full h-full border-0"
+                                      srcDoc={metaHubHtml}
+                                      title="Meta Trading Hub Visual Editor"
+                                      sandbox="allow-scripts allow-same-origin"
+                                      onLoad={handleMetaHubVisualLoad}
+                                  />
+                              </div>
+                          ) : (
+                              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50 gap-3">
+                                  <Globe2 className="w-12 h-12 opacity-30" />
+                                  <p className="text-sm font-medium">No HTML imported yet</p>
+                                  <p className="text-xs">Import from Catalog, import an HTML file, or paste HTML in Code mode.</p>
+                              </div>
+                          )
                       ) : (
                           metaHubHtml.trim() ? (
                               <iframe
