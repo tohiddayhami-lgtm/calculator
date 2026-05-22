@@ -355,6 +355,8 @@ export interface CatalogConfig {
   
   // Extra Company Pages
   showAboutUs?: boolean;
+  tradingHubNavStyle?: 'tabs' | 'dropdown';
+  productCategoryStyle?: 'pills' | 'dropdown';
   productTabLabel?: string;
   aboutUsTabLabel?: string;
   aboutUsText?: string;

@@ -2404,6 +2404,8 @@ function createDefaultCatalogConfig(): CatalogConfig {
     baseUnit: '',
     coverOverlayOpacity: 60,
     showAboutUs: false,
+    tradingHubNavStyle: 'tabs',
+    productCategoryStyle: 'pills',
     productTabLabel: 'Product List',
     aboutUsTabLabel: 'About Us',
     aboutUsText: '',
@@ -3910,6 +3912,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const coverTitleClampMin = Math.max(16, Math.round(coverTitlePx * 0.45));
     const coverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.coverOverlayOpacity ?? 60) || 0) / 100));
     const backCoverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.backCoverOverlayOpacity ?? 60) || 0) / 100));
+    const tradingHubNavStyle = cc.tradingHubNavStyle === 'dropdown' ? 'dropdown' : 'tabs';
+    const productCategoryStyle = cc.productCategoryStyle === 'dropdown' ? 'dropdown' : 'pills';
     const baseUnit = cc.baseUnit || tCombined('pcs') || 'pcs';
     const showPrices = cc.showPrices !== false;
     const priceBasis = cc.priceBasis || 'unit';
@@ -4331,6 +4335,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .filter-pill { flex-shrink: 0; padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 2px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; transition: all 0.18s; white-space: nowrap; line-height: 1; }
         .filter-pill:hover { border-color: var(--primary); color: var(--primary); }
         .filter-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .category-select-wrap { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 20px auto 4px; }
+        .category-select-label { font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #94a3b8; }
+        .category-select { min-width: min(320px, 100%); appearance: none; border: 1px solid rgba(15,23,42,0.12); background: #fff; color: var(--heading); border-radius: 999px; padding: 11px 42px 11px 18px; font-size: 13px; font-weight: 800; box-shadow: 0 10px 28px rgba(15,23,42,0.08); background-image: linear-gradient(45deg, transparent 50%, #64748b 50%), linear-gradient(135deg, #64748b 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
+        @media (max-width: 640px) { .category-select-wrap { align-items: stretch; flex-direction: column; } .category-select { width: 100%; } }
 
         /* ── Website Tabs ── */
         .site-tabs { display: flex; justify-content: center; gap: 8px; margin: 28px auto 10px; padding: 6px; width: max-content; max-width: 100%; overflow-x: auto; background: rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.08); border-radius: 999px; scrollbar-width: none; }
@@ -4340,8 +4348,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .site-tab.active { background: #fff; color: var(--heading); box-shadow: 0 8px 26px rgba(15,23,42,0.10); }
         .site-tab-panel { display: none; animation: panelFade 0.28s ease; }
         .site-tab-panel.active { display: block; }
+        .site-menu { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 28px auto 10px; }
+        .site-menu-label { font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #94a3b8; }
+        .site-tab-select { min-width: min(360px, 100%); appearance: none; border: 1px solid rgba(15,23,42,0.12); background: #fff; color: var(--heading); border-radius: 999px; padding: 12px 44px 12px 20px; font-size: 14px; font-weight: 900; box-shadow: 0 12px 32px rgba(15,23,42,0.10); background-image: linear-gradient(45deg, transparent 50%, #64748b 50%), linear-gradient(135deg, #64748b 50%, transparent 50%); background-position: calc(100% - 22px) 50%, calc(100% - 16px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
         @keyframes panelFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-        @media (max-width: 640px) { .site-tabs { justify-content: flex-start; width: 100%; border-radius: 18px; } .site-tab { padding: 9px 14px; font-size: 12px; } }
+        @media (max-width: 640px) { .site-tabs { justify-content: flex-start; width: 100%; border-radius: 18px; } .site-tab { padding: 9px 14px; font-size: 12px; } .site-menu { align-items: stretch; flex-direction: column; } .site-tab-select { width: 100%; } }
 
         /* ── Section Heading ── */
         .section-title { display: block; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); opacity: 0.75; margin: 34px 0 24px; padding: 0; border: 0; }
@@ -4686,26 +4697,38 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const js = `
         (function(){
             var siteTabs = document.querySelectorAll('[data-site-tab]');
+            var siteSelects = document.querySelectorAll('[data-site-tab-select]');
             var sitePanels = document.querySelectorAll('[data-site-panel]');
+            function setActiveSiteTab(id) {
+                if (!id) return;
+                siteTabs.forEach(function(btn){
+                    btn.classList.toggle('active', btn.getAttribute('data-site-tab') === id);
+                });
+                siteSelects.forEach(function(sel){ sel.value = id; });
+                sitePanels.forEach(function(panel){
+                    panel.classList.toggle('active', panel.getAttribute('data-site-panel') === id);
+                });
+                if (window.history) {
+                    try { window.history.replaceState(null, '', '#' + id); } catch(e) {}
+                }
+            }
             siteTabs.forEach(function(btn){
                 btn.addEventListener('click', function(){
-                    var id = btn.getAttribute('data-site-tab');
-                    siteTabs.forEach(function(b){ b.classList.toggle('active', b === btn); });
-                    sitePanels.forEach(function(panel){
-                        panel.classList.toggle('active', panel.getAttribute('data-site-panel') === id);
-                    });
-                    if (window.history && id) {
-                        try { window.history.replaceState(null, '', '#' + id); } catch(e) {}
-                    }
+                    setActiveSiteTab(btn.getAttribute('data-site-tab'));
                 });
             });
-            if (window.location.hash && siteTabs.length) {
-                var target = window.location.hash.slice(1);
-                var startTab = null;
-                siteTabs.forEach(function(btn){
-                    if (btn.getAttribute('data-site-tab') === target) startTab = btn;
+            siteSelects.forEach(function(sel){
+                sel.addEventListener('change', function(){
+                    setActiveSiteTab(sel.value);
                 });
-                if (startTab) startTab.click();
+            });
+            if (window.location.hash && (siteTabs.length || siteSelects.length)) {
+                var target = window.location.hash.slice(1);
+                var hasTarget = false;
+                sitePanels.forEach(function(panel){
+                    if (panel.getAttribute('data-site-panel') === target) hasTarget = true;
+                });
+                if (hasTarget) setActiveSiteTab(target);
             }
 
             var carousels = document.querySelectorAll('.carousel');
@@ -5286,11 +5309,22 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     // Category filter bar (only if products have groups)
     const allGroups: string[] = [];
     products.forEach((p: any) => { if (p.group && !allGroups.includes(p.group)) allGroups.push(p.group); });
-    const filterBarHtml = allGroups.length > 1 ? `
+    const categoryOptionsHtml = `<option value="all">All products</option>${allGroups.map((g: string) => `<option value="${escapeAttr(g)}">${escapeHtml(g)}</option>`).join('')}`;
+    const filterBarHtml = allGroups.length > 1
+        ? productCategoryStyle === 'dropdown'
+            ? `
+        <div class="category-select-wrap">
+            <span class="category-select-label">Category</span>
+            <select class="category-select" data-filter-select aria-label="Product category">
+                ${categoryOptionsHtml}
+            </select>
+        </div>`
+            : `
         <div class="filter-bar">
             <button class="filter-pill active" data-filter="all">All</button>
             ${allGroups.map((g: string) => `<button class="filter-pill" data-filter="${escapeAttr(g)}">${escapeHtml(g)}</button>`).join('')}
-        </div>` : '';
+        </div>`
+        : '';
 
     const productsPanelHtml = `
     <section class="products-section">
@@ -5308,9 +5342,13 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         ...structuredPageTabs,
     ];
     const websiteTabNavHtml = websiteTabs.length > 1
-        ? `<nav class="site-tabs" aria-label="Trading Hub pages">${websiteTabs
-              .map((tab, index) => `<button type="button" class="site-tab${index === 0 ? ' active' : ''}" data-site-tab="${escapeAttr(tab.id)}">${escapeHtml(tab.label)}</button>`)
-              .join('')}</nav>`
+        ? tradingHubNavStyle === 'dropdown'
+            ? `<div class="site-menu"><span class="site-menu-label">Menu</span><select class="site-tab-select" data-site-tab-select aria-label="Trading Hub menu">${websiteTabs
+                  .map((tab, index) => `<option value="${escapeAttr(tab.id)}"${index === 0 ? ' selected' : ''}>${escapeHtml(tab.label)}</option>`)
+                  .join('')}</select></div>`
+            : `<nav class="site-tabs" aria-label="Trading Hub pages">${websiteTabs
+                  .map((tab, index) => `<button type="button" class="site-tab${index === 0 ? ' active' : ''}" data-site-tab="${escapeAttr(tab.id)}">${escapeHtml(tab.label)}</button>`)
+                  .join('')}</nav>`
         : '';
     const websitePanelsHtml = websiteTabs
         .map((tab, index) => `<div class="site-tab-panel${index === 0 ? ' active' : ''}" data-site-panel="${escapeAttr(tab.id)}">${tab.html}</div>`)
@@ -5405,19 +5443,27 @@ ${firebaseInquiryScript}
         syncCount();
         new MutationObserver(syncCount).observe(fabCount, { childList: true, characterData: true, subtree: true });
     }
-    // Category filter pills
+    // Category filters
     var pills = document.querySelectorAll('.filter-pill');
-    if (pills.length) {
-        var cards = document.querySelectorAll('.card');
-        var activeFilter = 'all';
+    var filterSelects = document.querySelectorAll('[data-filter-select]');
+    if (pills.length || filterSelects.length) {
+        var cards = document.querySelectorAll('.card[data-group]');
+        function applyProductFilter(activeFilter) {
+            pills.forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-filter') === activeFilter); });
+            filterSelects.forEach(function(sel){ sel.value = activeFilter; });
+            cards.forEach(function(card){
+                var g = card.getAttribute('data-group') || '';
+                card.classList.toggle('hidden', activeFilter !== 'all' && g !== activeFilter);
+            });
+        }
         pills.forEach(function(pill){
             pill.addEventListener('click', function(){
-                activeFilter = pill.getAttribute('data-filter') || 'all';
-                pills.forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-filter') === activeFilter); });
-                cards.forEach(function(card){
-                    var g = card.getAttribute('data-group') || '';
-                    card.classList.toggle('hidden', activeFilter !== 'all' && g !== activeFilter);
-                });
+                applyProductFilter(pill.getAttribute('data-filter') || 'all');
+            });
+        });
+        filterSelects.forEach(function(sel){
+            sel.addEventListener('change', function(){
+                applyProductFilter(sel.value || 'all');
             });
         });
     }
@@ -15320,12 +15366,184 @@ function AppInner() {
             const aboutLabel = nextCatalogConfig.aboutUsTabLabel || 'About Us';
             const productTab = doc.querySelector('[data-site-tab="products"]');
             if (productTab) productTab.textContent = productLabel;
+            const productOption = doc.querySelector('[data-site-tab-select] option[value="products"]');
+            if (productOption) productOption.textContent = productLabel;
             const productPanel = doc.querySelector('[data-site-panel="products"] .section-title');
             if (productPanel) productPanel.textContent = productLabel;
             const aboutTab = doc.querySelector('[data-site-tab="about"]');
             if (aboutTab) aboutTab.textContent = aboutLabel;
+            const aboutOption = doc.querySelector('[data-site-tab-select] option[value="about"]');
+            if (aboutOption) aboutOption.textContent = aboutLabel;
             const aboutPanel = doc.querySelector('[data-site-panel="about"] .about-label, .about .about-label');
             if (aboutPanel) aboutPanel.textContent = aboutLabel;
+            return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
+        } catch {
+            return html;
+        }
+    };
+
+    const patchMetaHubNavigationHtml = (html: string, nextCatalogConfig: CatalogConfig): string => {
+        if (!html.trim() || typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') return html;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const navStyle = nextCatalogConfig.tradingHubNavStyle === 'dropdown' ? 'dropdown' : 'tabs';
+            const categoryStyle = nextCatalogConfig.productCategoryStyle === 'dropdown' ? 'dropdown' : 'pills';
+
+            const ensureDropdownAssets = () => {
+                if (!doc.getElementById('meta-hub-dropdown-style')) {
+                    const style = doc.createElement('style');
+                    style.id = 'meta-hub-dropdown-style';
+                    style.textContent = `
+.site-menu,.category-select-wrap{display:flex;justify-content:center;align-items:center;gap:10px;margin:28px auto 10px}.category-select-wrap{margin-top:20px}.site-menu-label,.category-select-label{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8}.site-tab-select,.category-select{min-width:min(360px,100%);appearance:none;border:1px solid rgba(15,23,42,.12);background:#fff;color:var(--heading,#0f172a);border-radius:999px;padding:12px 44px 12px 20px;font-size:14px;font-weight:900;box-shadow:0 12px 32px rgba(15,23,42,.1);background-image:linear-gradient(45deg,transparent 50%,#64748b 50%),linear-gradient(135deg,#64748b 50%,transparent 50%);background-position:calc(100% - 22px) 50%,calc(100% - 16px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat}.category-select{min-width:min(320px,100%);padding:11px 42px 11px 18px;font-size:13px}@media(max-width:640px){.site-menu,.category-select-wrap{align-items:stretch;flex-direction:column}.site-tab-select,.category-select{width:100%}}`;
+                    doc.head.appendChild(style);
+                }
+                const oldRuntime = doc.getElementById('meta-hub-dropdown-runtime');
+                oldRuntime?.remove();
+                const script = doc.createElement('script');
+                script.id = 'meta-hub-dropdown-runtime';
+                script.textContent = `
+(function(){
+  function setActiveSiteTab(id){
+    if(!id)return;
+    document.querySelectorAll('[data-site-tab]').forEach(function(btn){btn.classList.toggle('active',btn.getAttribute('data-site-tab')===id);});
+    document.querySelectorAll('[data-site-tab-select]').forEach(function(sel){sel.value=id;});
+    document.querySelectorAll('[data-site-panel]').forEach(function(panel){panel.classList.toggle('active',panel.getAttribute('data-site-panel')===id);});
+    try{window.history.replaceState(null,'','#'+id);}catch(e){}
+  }
+  document.querySelectorAll('[data-site-tab-select]').forEach(function(sel){sel.addEventListener('change',function(){setActiveSiteTab(sel.value);});});
+  document.querySelectorAll('[data-site-tab]').forEach(function(btn){btn.addEventListener('click',function(){setActiveSiteTab(btn.getAttribute('data-site-tab'));});});
+  function applyProductFilter(value){
+    var active=value||'all';
+    document.querySelectorAll('.filter-pill').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-filter')===active);});
+    document.querySelectorAll('[data-filter-select]').forEach(function(sel){sel.value=active;});
+    document.querySelectorAll('.card[data-group]').forEach(function(card){var g=card.getAttribute('data-group')||'';card.classList.toggle('hidden',active!=='all'&&g!==active);});
+  }
+  document.querySelectorAll('[data-filter-select]').forEach(function(sel){sel.addEventListener('change',function(){applyProductFilter(sel.value);});});
+  document.querySelectorAll('.filter-pill').forEach(function(pill){pill.addEventListener('click',function(){applyProductFilter(pill.getAttribute('data-filter')||'all');});});
+})();`;
+                doc.body.appendChild(script);
+            };
+
+            const panelActive = doc.querySelector<HTMLElement>('[data-site-panel].active')?.getAttribute('data-site-panel') || '';
+            let tabEntries = Array.from(doc.querySelectorAll<HTMLElement>('[data-site-tab]')).map((el, index) => ({
+                id: el.getAttribute('data-site-tab') || '',
+                label: el.textContent?.trim() || `Page ${index + 1}`,
+            })).filter(entry => entry.id);
+            if (!tabEntries.length) {
+                tabEntries = Array.from(doc.querySelectorAll<HTMLOptionElement>('[data-site-tab-select] option')).map((el, index) => ({
+                    id: el.value,
+                    label: el.textContent?.trim() || `Page ${index + 1}`,
+                })).filter(entry => entry.id);
+            }
+            if (!tabEntries.length) {
+                tabEntries = Array.from(doc.querySelectorAll<HTMLElement>('[data-site-panel]')).map((el, index) => ({
+                    id: el.getAttribute('data-site-panel') || '',
+                    label: el.querySelector('.section-title, .about-label, h1, h2')?.textContent?.trim() || `Page ${index + 1}`,
+                })).filter(entry => entry.id);
+            }
+            if (tabEntries.length > 1) {
+                const activeId = panelActive || tabEntries[0].id;
+                const currentNav = doc.querySelector('.site-tabs, .site-menu');
+                const newNav = navStyle === 'dropdown' ? doc.createElement('div') : doc.createElement('nav');
+                if (navStyle === 'dropdown') {
+                    newNav.className = 'site-menu';
+                    const label = doc.createElement('span');
+                    label.className = 'site-menu-label';
+                    label.textContent = 'Menu';
+                    const select = doc.createElement('select');
+                    select.className = 'site-tab-select';
+                    select.setAttribute('data-site-tab-select', '');
+                    select.setAttribute('aria-label', 'Trading Hub menu');
+                    tabEntries.forEach(entry => {
+                        const option = doc.createElement('option');
+                        option.value = entry.id;
+                        option.textContent = entry.label;
+                        option.selected = entry.id === activeId;
+                        select.appendChild(option);
+                    });
+                    newNav.appendChild(label);
+                    newNav.appendChild(select);
+                } else {
+                    newNav.className = 'site-tabs';
+                    newNav.setAttribute('aria-label', 'Trading Hub pages');
+                    tabEntries.forEach(entry => {
+                        const button = doc.createElement('button');
+                        button.type = 'button';
+                        button.className = `site-tab${entry.id === activeId ? ' active' : ''}`;
+                        button.setAttribute('data-site-tab', entry.id);
+                        button.textContent = entry.label;
+                        newNav.appendChild(button);
+                    });
+                }
+                if (currentNav?.parentElement) {
+                    currentNav.replaceWith(newNav);
+                } else {
+                    const firstPanel = doc.querySelector('[data-site-panel]');
+                    firstPanel?.parentElement?.insertBefore(newNav, firstPanel);
+                }
+            }
+
+            let activeFilter = doc.querySelector<HTMLElement>('.filter-pill.active')?.getAttribute('data-filter') || '';
+            activeFilter = activeFilter || doc.querySelector<HTMLSelectElement>('[data-filter-select]')?.value || 'all';
+            let categoryEntries = Array.from(doc.querySelectorAll<HTMLElement>('.filter-pill')).map((el) => ({
+                value: el.getAttribute('data-filter') || '',
+                label: el.textContent?.trim() || '',
+            })).filter(entry => entry.value);
+            if (!categoryEntries.length) {
+                categoryEntries = Array.from(doc.querySelectorAll<HTMLOptionElement>('[data-filter-select] option')).map((el) => ({
+                    value: el.value,
+                    label: el.textContent?.trim() || el.value,
+                })).filter(entry => entry.value);
+            }
+            const productGroups = Array.from(doc.querySelectorAll<HTMLElement>('.card[data-group]')).map(card => card.getAttribute('data-group') || '').filter(Boolean);
+            productGroups.forEach(group => {
+                if (!categoryEntries.some(entry => entry.value === group)) categoryEntries.push({ value: group, label: group });
+            });
+            if (categoryEntries.length && !categoryEntries.some(entry => entry.value === 'all')) {
+                categoryEntries.unshift({ value: 'all', label: 'All products' });
+            }
+            if (categoryEntries.length > 1) {
+                const currentFilter = doc.querySelector('.filter-bar, .category-select-wrap');
+                const newFilter = categoryStyle === 'dropdown' ? doc.createElement('div') : doc.createElement('div');
+                if (categoryStyle === 'dropdown') {
+                    newFilter.className = 'category-select-wrap';
+                    const label = doc.createElement('span');
+                    label.className = 'category-select-label';
+                    label.textContent = 'Category';
+                    const select = doc.createElement('select');
+                    select.className = 'category-select';
+                    select.setAttribute('data-filter-select', '');
+                    select.setAttribute('aria-label', 'Product category');
+                    categoryEntries.forEach(entry => {
+                        const option = doc.createElement('option');
+                        option.value = entry.value;
+                        option.textContent = entry.value === 'all' ? 'All products' : entry.label;
+                        option.selected = entry.value === activeFilter;
+                        select.appendChild(option);
+                    });
+                    newFilter.appendChild(label);
+                    newFilter.appendChild(select);
+                } else {
+                    newFilter.className = 'filter-bar';
+                    categoryEntries.forEach(entry => {
+                        const button = doc.createElement('button');
+                        button.type = 'button';
+                        button.className = `filter-pill${entry.value === activeFilter ? ' active' : ''}`;
+                        button.setAttribute('data-filter', entry.value);
+                        button.textContent = entry.value === 'all' ? 'All' : entry.label;
+                        newFilter.appendChild(button);
+                    });
+                }
+                if (currentFilter?.parentElement) {
+                    currentFilter.replaceWith(newFilter);
+                } else {
+                    const grid = doc.querySelector('[data-site-panel="products"] .grid, .products-section .grid');
+                    grid?.parentElement?.insertBefore(newFilter, grid);
+                }
+            }
+
+            ensureDropdownAssets();
             return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
         } catch {
             return html;
@@ -15338,6 +15556,16 @@ function AppInner() {
         setCatalogConfig(nextCatalogConfig);
         if (currentHtml.trim()) {
             setMetaHubHtml(patchMetaHubThemeHtml(currentHtml, nextCatalogConfig));
+            setMetaHubPreviewKey(k => k + 1);
+        }
+    };
+
+    const updateTradingHubNavigation = (patch: Pick<Partial<CatalogConfig>, 'tradingHubNavStyle' | 'productCategoryStyle'>) => {
+        const nextCatalogConfig = { ...catalogConfig, ...patch };
+        const currentHtml = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
+        setCatalogConfig(nextCatalogConfig);
+        if (currentHtml.trim()) {
+            setMetaHubHtml(patchMetaHubNavigationHtml(currentHtml, nextCatalogConfig));
             setMetaHubPreviewKey(k => k + 1);
         }
     };
@@ -15432,7 +15660,9 @@ ${html}
                 'select',
                 'textarea',
                 '.site-tabs',
+                '.site-menu',
                 '.filter-bar',
+                '.category-select-wrap',
                 '.topbar',
                 '.cart-fab',
                 '.cart-overlay',
@@ -17808,8 +18038,32 @@ ${html}
                                       placeholder="About Us"
                                   />
                               </label>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <label className="space-y-1 block">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Tab menu</span>
+                                      <select
+                                          value={catalogConfig.tradingHubNavStyle || 'tabs'}
+                                          onChange={(e) => updateTradingHubNavigation({ tradingHubNavStyle: e.target.value as CatalogConfig['tradingHubNavStyle'] })}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-violet-500 bg-white"
+                                      >
+                                          <option value="tabs">Tabs</option>
+                                          <option value="dropdown">Drop Down</option>
+                                      </select>
+                                  </label>
+                                  <label className="space-y-1 block">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Product groups</span>
+                                      <select
+                                          value={catalogConfig.productCategoryStyle || 'pills'}
+                                          onChange={(e) => updateTradingHubNavigation({ productCategoryStyle: e.target.value as CatalogConfig['productCategoryStyle'] })}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-2 outline-none focus:border-violet-500 bg-white"
+                                      >
+                                          <option value="pills">Buttons</option>
+                                          <option value="dropdown">Drop Down</option>
+                                      </select>
+                                  </label>
+                              </div>
                               <p className="text-[10px] text-slate-400 leading-snug">
-                                  Tab buttons are locked in Visual Edit so the product list cannot be deleted by mistake.
+                                  Product categories come from the product table <b>Group</b> column. Tab buttons and dropdowns are locked in Visual Edit.
                               </p>
                           </div>
 
