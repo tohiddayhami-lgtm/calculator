@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, Fragment, useCallback, Suspense, lazy } from 'react';
+import { toBlob as htmlToImageBlob } from 'html-to-image';
 // ─── New modular architecture imports ───────────────────────────────────────
 import AppContext from './contexts/AppContext';
 import AppHeader from './components/AppHeader';
@@ -15808,33 +15809,6 @@ ${html}
             try { await document.fonts.ready; } catch {}
         }
 
-        const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
-        const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ''));
-            reader.onerror = () => reject(reader.error || new Error('Could not read image data.'));
-            reader.readAsDataURL(blob);
-        });
-        const imageSourceToDataUrl = async (src: string) => {
-            const trimmed = src.trim();
-            if (!trimmed || trimmed.startsWith('data:')) return trimmed;
-            if (trimmed.startsWith('blob:')) {
-                try {
-                    const response = await fetch(trimmed);
-                    return response.ok ? await blobToDataUrl(await response.blob()) : null;
-                } catch {
-                    return null;
-                }
-            }
-            if (!/^https?:\/\//i.test(trimmed)) return trimmed;
-            try {
-                const response = await fetch(trimmed, { mode: 'cors' });
-                return response.ok ? await blobToDataUrl(await response.blob()) : null;
-            } catch {
-                return null;
-            }
-        };
-
         const images = Array.from(element.querySelectorAll('img'));
         await Promise.all(images.map((img) => {
             if (img.complete && img.naturalWidth > 0) return Promise.resolve();
@@ -15844,77 +15818,23 @@ ${html}
             });
         }));
 
-        const clone = element.cloneNode(true) as HTMLElement;
-        const sourceElements = [element, ...Array.from(element.querySelectorAll<HTMLElement>('*'))];
-        const cloneElements = [clone, ...Array.from(clone.querySelectorAll<HTMLElement>('*'))];
-
-        sourceElements.forEach((source, index) => {
-            const target = cloneElements[index];
-            if (!target) return;
-            const computed = window.getComputedStyle(source);
-            const inlineStyles: string[] = [];
-            for (let i = 0; i < computed.length; i += 1) {
-                const prop = computed.item(i);
-                inlineStyles.push(`${prop}:${computed.getPropertyValue(prop)};`);
-            }
-            target.setAttribute('style', inlineStyles.join(''));
-            target.removeAttribute('contenteditable');
+        const blob = await htmlToImageBlob(element, {
+            cacheBust: true,
+            canvasWidth: targetWidth,
+            canvasHeight: targetHeight,
+            width: rect.width,
+            height: rect.height,
+            imagePlaceholder: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+            pixelRatio: targetWidth / rect.width,
+            skipAutoScale: true,
+            style: {
+                margin: '0',
+                transform: 'none',
+                transformOrigin: 'top left',
+            },
         });
-
-        await Promise.all(sourceElements.map(async (source, index) => {
-            const target = cloneElements[index];
-            if (!target) return;
-            if (source instanceof HTMLImageElement && target instanceof HTMLImageElement) {
-                target.src = await imageSourceToDataUrl(source.currentSrc || source.src) || transparentPixel;
-            }
-            const bg = window.getComputedStyle(source).backgroundImage;
-            const urlMatch = bg.match(/url\(["']?(.+?)["']?\)/);
-            if (urlMatch?.[1]) {
-                const dataUrl = await imageSourceToDataUrl(urlMatch[1]);
-                target.style.backgroundImage = dataUrl ? bg.replace(urlMatch[1], dataUrl) : 'none';
-            }
-        }));
-
-        clone.style.width = `${rect.width}px`;
-        clone.style.height = `${rect.height}px`;
-        clone.style.margin = '0';
-        clone.style.transform = 'none';
-        clone.style.transformOrigin = 'top left';
-
-        const scaleX = targetWidth / rect.width;
-        const scaleY = targetHeight / rect.height;
-        const serialized = new XMLSerializer().serializeToString(clone);
-        const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}">
-  <foreignObject width="${targetWidth}" height="${targetHeight}">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="width:${targetWidth}px;height:${targetHeight}px;overflow:hidden;">
-      <div style="width:${rect.width}px;height:${rect.height}px;transform:scale(${scaleX},${scaleY});transform-origin:top left;">
-        ${serialized}
-      </div>
-    </div>
-  </foreignObject>
-</svg>`;
-
-        const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-        try {
-            const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-                const image = new Image();
-                image.onload = () => resolve(image);
-                image.onerror = () => reject(new Error('Could not render the live story preview.'));
-                image.src = svgUrl;
-            });
-            const canvas = document.createElement('canvas');
-            canvas.width = targetWidth;
-            canvas.height = targetHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error('Canvas is not available in this browser.');
-            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-            const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-            if (!blob) throw new Error('Could not create the story image.');
-            return blob;
-        } finally {
-            URL.revokeObjectURL(svgUrl);
-        }
+        if (!blob) throw new Error('Could not render the live story preview.');
+        return blob;
     };
 
     const handleDownloadMetaHubStoryImage = async () => {
@@ -15925,14 +15845,11 @@ ${html}
                 const safeTitle = (catalogConfig.title || 'trading-hub')
                     .replace(/[^a-z0-9-_]+/gi, '-')
                     .replace(/^-+|-+$/g, '') || 'trading-hub';
-                try {
-                    const blob = await renderStoryPreviewElementToPng(storyPreviewRef.current);
-                    downloadStoryBlob(blob, `${safeTitle}-instagram-story-8k.png`);
-                    return;
-                } catch (previewErr) {
-                    console.warn('Live story preview export failed; falling back to canvas renderer.', previewErr);
-                }
+                const blob = await renderStoryPreviewElementToPng(storyPreviewRef.current);
+                downloadStoryBlob(blob, `${safeTitle}-instagram-story-8k.png`);
+                return;
             }
+            throw new Error('Story preview is not ready.');
 
             const htmlForStory = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
             const parserAvailable = typeof DOMParser !== 'undefined';
