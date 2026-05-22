@@ -2482,15 +2482,6 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyCtaTitleColor: '',
     storyCtaTextColor: '',
     storyFooterColor: '',
-    catalogTermLabel: 'Incoterm',
-    catalogTermQuickLabel: 'Pricing for',
-    catalogDestinationLabel: 'Destination Port / City',
-    catalogDestinationPlaceholder: 'e.g. Hamburg, DE',
-    catalogTermDisplayNames: {},
-    catalogShowVolumeTiers: false,
-    catalogVolumeTierTerm: 'FOB',
-    catalogVolumeTierTitle: 'Volume tier pricing',
-    catalogVolumeTierNote: 'Indicative bulk prices based on selected quantity range.',
     googleFormUrl: '',
     googleFormButtonText: 'Send Purchase Request',
     googleFormHelperText: 'Tap below to fill out the order form',
@@ -3966,11 +3957,10 @@ interface BuildCatalogHtmlArgs {
     catalogConfig: any;
     qrDataUrl: string;
     tCombined: (key: string) => string;
-    volumeTiers?: Array<{ id: string; minCartons: number; maxCartons: number | null; adjustment: number }>;
     inquiryEndpoint?: { firebaseConfig: any; appId: string; ownerId: string } | null;
 }
 
-const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombined, volumeTiers = [], inquiryEndpoint }: BuildCatalogHtmlArgs): string => {
+const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombined, inquiryEndpoint }: BuildCatalogHtmlArgs): string => {
     const cc = catalogConfig || {};
     const primary = cc.primaryColor || '#0f172a';
     const heading = cc.headingColor || primary;
@@ -4024,28 +4014,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const cartButtonText = cc.cartButtonText || 'Request Quote';
     const cartTitle = cc.cartTitle || 'Your Inquiry Cart';
     const orderThankYouText = cc.orderThankYouText || 'Thank you! Your inquiry has been received.';
-    const termDisplayNames = (cc.catalogTermDisplayNames && typeof cc.catalogTermDisplayNames === 'object')
-        ? cc.catalogTermDisplayNames as Record<string, string>
-        : {};
-    const termLabel = (cc.catalogTermLabel || 'Incoterm').trim() || 'Incoterm';
-    const termQuickLabel = (cc.catalogTermQuickLabel || 'Pricing for').trim() || 'Pricing for';
-    const destinationLabel = (cc.catalogDestinationLabel || 'Destination Port / City').trim() || 'Destination Port / City';
-    const destinationPlaceholder = (cc.catalogDestinationPlaceholder || 'e.g. Hamburg, DE').trim() || 'e.g. Hamburg, DE';
-    const displayTerm = (term: string) => (termDisplayNames[term] || '').trim() || term;
-    const catalogVolumeTiers = (cc.catalogShowVolumeTiers === true ? volumeTiers : [])
-        .filter(t => Number.isFinite(Number(t.minCartons)) && Number.isFinite(Number(t.adjustment)))
-        .map(t => ({
-            ...t,
-            minCartons: Math.max(1, Math.round(Number(t.minCartons) || 1)),
-            maxCartons: t.maxCartons == null ? null : Math.max(1, Math.round(Number(t.maxCartons) || 1)),
-            adjustment: Number(t.adjustment) || 0,
-        }))
-        .sort((a, b) => a.minCartons - b.minCartons);
-    const catalogVolumeTierTerm = (cc.catalogVolumeTierTerm || priceTerms[0] || 'FOB').trim();
-    const catalogVolumeTierTitle = (cc.catalogVolumeTierTitle || 'Volume tier pricing').trim() || 'Volume tier pricing';
-    const catalogVolumeTierNote = (cc.catalogVolumeTierNote || 'Indicative bulk prices based on selected quantity range.').trim();
-    const tierUnitSell = (baseUnitSell: number, adjustment: number) =>
-        Math.max(0, baseUnitSell * (1 + (adjustment || 0) / 100));
 
     // Convert target prices using rates from app — passed via products that already have toOutput-applied targetUnitOutput? No, we need to compute here.
     // We'll add helper that uses rates inline. Pass conversion via product's already-computed scenarioPrices for sell, and the raw targetPrice we convert via simple ratio that we don't have here.
@@ -4088,7 +4056,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     : '';
                 return `
                     <div class="price-row">
-                        <span class="term-badge" style="background:${primary}" title="${escapeAttr(term)}">${escapeHtml(displayTerm(term))}</span>
+                        <span class="term-badge" style="background:${primary}">${escapeHtml(term)}</span>
                         <div class="price-values">${unitDisplay}${packDisplay}</div>
                     </div>
                 `;
@@ -4125,38 +4093,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 ${profitHtml}
             `;
         }
-
-        const volumeTierHtml = showPrices && catalogVolumeTiers.length > 0
-            ? (() => {
-                const basePrice = (p.scenarioPrices && p.scenarioPrices[catalogVolumeTierTerm]) || p.unitSellPrice || 0;
-                if (!basePrice) return '';
-                const rows = catalogVolumeTiers.map((tier) => {
-                    const range = tier.maxCartons == null
-                        ? `${tier.minCartons}+`
-                        : `${tier.minCartons}–${Math.max(tier.minCartons, tier.maxCartons)}`;
-                    const adjusted = tierUnitSell(basePrice, tier.adjustment);
-                    const adj = tier.adjustment || 0;
-                    const adjLabel = adj === 0 ? 'base' : `${adj > 0 ? '+' : ''}${adj}%`;
-                    return `
-                        <div class="volume-row">
-                            <span class="volume-range">${escapeHtml(range)} ctn</span>
-                            <span class="volume-price">${formatMoneyHtml(adjusted, outCurr)}</span>
-                            <span class="volume-adj ${adj < 0 ? 'discount' : adj > 0 ? 'surcharge' : ''}">${escapeHtml(adjLabel)}</span>
-                        </div>
-                    `;
-                }).join('');
-                return `
-                    <details class="volume-pricing">
-                        <summary>
-                            <span>${escapeHtml(catalogVolumeTierTitle)}</span>
-                            <small>${escapeHtml(displayTerm(catalogVolumeTierTerm))}</small>
-                        </summary>
-                        <div class="volume-rows">${rows}</div>
-                        ${catalogVolumeTierNote ? `<div class="volume-note">${escapeHtml(catalogVolumeTierNote)}</div>` : ''}
-                    </details>
-                `;
-            })()
-            : '';
 
         const descHtml = p.catalogDescription
             ? `<p class="description">${escapeHtml(p.catalogDescription)}</p>`
@@ -4220,7 +4156,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     ${descHtml}
                     <div class="meta-grid">${packHtml}${moqHtml}</div>
                     ${(showPrices || targetRowHtml) ? `<div class="prices">${priceRows}${targetRowHtml}</div>` : ''}
-                    ${volumeTierHtml}
                     ${addToCartBtn}
                     ${inquireBtn}
                 </div>
@@ -4611,22 +4546,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .profit-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; padding: 3px 8px; border-radius: 5px; align-self: flex-end; margin-top: 2px; }
         .profit-dot { width: 5px; height: 5px; border-radius: 50%; background: #10b981; }
 
-        .volume-pricing { margin-top: 4px; border: 1px solid #e2e8f0; border-radius: 10px; background: linear-gradient(180deg,#ffffff,#f8fafc); overflow: hidden; }
-        .volume-pricing summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; font-size: 11px; font-weight: 800; color: var(--heading); }
-        .volume-pricing summary::-webkit-details-marker { display: none; }
-        .volume-pricing summary::after { content: '+'; color: var(--primary); font-size: 14px; line-height: 1; font-weight: 900; }
-        .volume-pricing[open] summary::after { content: '−'; }
-        .volume-pricing summary small { font-size: 9px; color: #64748b; font-weight: 800; background: #f1f5f9; border-radius: 999px; padding: 2px 6px; text-transform: uppercase; }
-        .volume-rows { border-top: 1px solid #e2e8f0; }
-        .volume-row { display: grid; grid-template-columns: minmax(62px,0.8fr) 1.3fr minmax(44px,0.6fr); align-items: center; gap: 6px; padding: 6px 10px; font-size: 10px; border-top: 1px solid #f1f5f9; }
-        .volume-row:first-child { border-top: none; }
-        .volume-range { color: #64748b; font-weight: 700; }
-        .volume-price { text-align: right; color: #0f172a; font-weight: 900; font-size: 11px; }
-        .volume-adj { justify-self: end; font-weight: 800; color: #64748b; background: #f1f5f9; border-radius: 999px; padding: 2px 6px; }
-        .volume-adj.discount { color: #047857; background: #d1fae5; }
-        .volume-adj.surcharge { color: #be123c; background: #ffe4e6; }
-        .volume-note { border-top: 1px solid #f1f5f9; padding: 6px 10px; color: #94a3b8; font-size: 9px; line-height: 1.4; }
-
         .card-cta { display: block; text-align: center; margin-top: 10px; padding: 11px 12px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; border-radius: 10px; transition: transform 0.15s, opacity 0.15s; border: none; cursor: pointer; width: 100%; letter-spacing: 0.01em; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
         .card-cta:hover { opacity: 0.92; }
         .card-cta:active { transform: scale(0.97); opacity: 0.88; }
@@ -4780,8 +4699,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             <div class="cart-body" id="cart-body">
                 <div class="cart-empty" id="cart-empty">No items yet. Tap "Add to Inquiry" on a product to start.</div>
                 <div class="cart-incoterm-quick" id="cart-incoterm-quick" style="display:none;">
-                    <span class="label">${escapeHtml(termQuickLabel)}</span>
-                    ${incoterms.map((t, i) => `<button type="button" data-quick-term="${escapeAttr(t)}"${i === 0 ? ' class="active"' : ''}>${escapeHtml(displayTerm(t))}</button>`).join('')}
+                    <span class="label">Pricing for</span>
+                    ${incoterms.map((t, i) => `<button type="button" data-quick-term="${escapeAttr(t)}"${i === 0 ? ' class="active"' : ''}>${escapeHtml(t)}</button>`).join('')}
                 </div>
                 <div id="cart-list"></div>
             </div>
@@ -4795,10 +4714,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     <span id="cart-sum-qty">0</span>
                 </div>
                 <div class="cart-summary-row total">
-                    <span class="label">Estimated total <span class="term-pill" id="cart-sum-term">${escapeHtml(displayTerm(incoterms[0] || ''))}</span></span>
+                    <span class="label">Estimated total <span class="term-pill" id="cart-sum-term">${escapeHtml(incoterms[0] || '')}</span></span>
                     <span class="amount" id="cart-sum-total">—</span>
                 </div>
-                <div class="cart-summary-hint" id="cart-sum-hint">Indicative price based on the ${escapeHtml(termLabel)} above. Final quote will be confirmed by the seller.</div>
+                <div class="cart-summary-hint" id="cart-sum-hint">Indicative price based on the Incoterm above. Final quote will be confirmed by the seller.</div>
             </div>
             <form class="cart-form" id="cart-form" autocomplete="on" novalidate>
                 <h3>Your Information</h3>
@@ -4812,16 +4731,16 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 </div>
                 <div class="grid2">
                     <div class="field"><label class="req" for="cf-country">Country</label><input id="cf-country" name="country" type="text" required autocomplete="country-name" /></div>
-                    <div class="field"><label class="req" for="cf-port">${escapeHtml(destinationLabel)}</label>
-                        <input id="cf-port" name="destination_port" type="text" required list="cf-port-list" placeholder="${escapeAttr(destinationPlaceholder)}" />
+                    <div class="field"><label class="req" for="cf-port">Destination Port / City</label>
+                        <input id="cf-port" name="destination_port" type="text" required list="cf-port-list" placeholder="e.g. Hamburg, DE" />
                         ${orderPorts.length ? `<datalist id="cf-port-list">${orderPorts.map(p => `<option value="${escapeAttr(p)}"></option>`).join('')}</datalist>` : ''}
                     </div>
                 </div>
                 <div class="grid2">
-                    <div class="field"><label class="req" for="cf-incoterm">${escapeHtml(termLabel)}</label>
+                    <div class="field"><label class="req" for="cf-incoterm">Incoterm</label>
                         <select id="cf-incoterm" name="incoterm" required>
                             <option value="">Select...</option>
-                            ${incoterms.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(displayTerm(t))}</option>`).join('')}
+                            ${incoterms.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('')}
                         </select>
                     </div>
                     <div class="field"><label for="cf-payment">Preferred Payment</label>
@@ -4943,15 +4862,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             var quickEl = document.getElementById('cart-incoterm-quick');
             var incotermSelect = form ? form.querySelector('[name="incoterm"]') : null;
             var INCOTERMS = ${JSON.stringify(incoterms)};
-            var TERM_LABELS = ${JSON.stringify(termDisplayNames)};
-            var TERM_FIELD_LABEL = ${JSON.stringify(termLabel)};
             var DEFAULT_TERM = INCOTERMS[0] || '';
             var SELLER_CURRENCY = ${JSON.stringify(outCurr)};
             var TERM_KEY = 'cat_cart_term_v1';
             var selectedTerm = '';
             try { selectedTerm = localStorage.getItem(TERM_KEY) || ''; } catch(e){}
             if (!selectedTerm || INCOTERMS.indexOf(selectedTerm) < 0) selectedTerm = DEFAULT_TERM;
-            function displayTerm(t){ return (TERM_LABELS && TERM_LABELS[t]) ? TERM_LABELS[t] : (t || '—'); }
 
             function fmtMoney(n, ccy){
                 ccy = ccy || SELLER_CURRENCY || 'USD';
@@ -5014,7 +4930,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 var unitLabel = (mode === 'pack' && hasPack) ? 'pack' : (it.unit || 'unit');
                 var priceHtml = lineHasPrice(it)
                     ? '<div class="line-price"><span>' + fmtMoney(total, it.currency || SELLER_CURRENCY) + '</span><span class="unit-rate">' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + ' / ' + escapeText(unitLabel) + '</span></div>'
-                    : '<div class="line-price"><span class="no-price">Price on request for ' + escapeText(displayTerm(selectedTerm)) + '</span></div>';
+                    : '<div class="line-price"><span class="no-price">Price on request for ' + escapeText(selectedTerm || '—') + '</span></div>';
                 var row = document.createElement('div');
                 row.className = 'cart-item';
                 row.setAttribute('data-key', key);
@@ -5120,7 +5036,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 summaryEl.style.display = 'block';
                 if (summaryLinesEl) summaryLinesEl.textContent = String(totalLines());
                 if (summaryQtyEl) summaryQtyEl.textContent = String(totalUnits());
-                if (summaryTermEl) summaryTermEl.textContent = displayTerm(selectedTerm);
+                if (summaryTermEl) summaryTermEl.textContent = selectedTerm || '—';
                 var t = totalsForTerm();
                 if (summaryTotalEl) {
                     if (!selectedTerm) {
@@ -5133,13 +5049,13 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 }
                 if (summaryHintEl) {
                     if (!selectedTerm) {
-                        summaryHintEl.textContent = 'Select a ' + TERM_FIELD_LABEL + ' above to see the indicative total.';
+                        summaryHintEl.textContent = 'Select an Incoterm above to see the indicative total.';
                     } else if (!t.anyPriced) {
-                        summaryHintEl.textContent = 'No public prices were published for ' + displayTerm(selectedTerm) + '. The seller will respond with a quote.';
+                        summaryHintEl.textContent = 'No public prices were published for ' + selectedTerm + '. The seller will respond with a quote.';
                     } else if (!t.allPriced) {
-                        summaryHintEl.textContent = '* Some items had no public price for ' + displayTerm(selectedTerm) + ' and are excluded from the estimate. The final quote will be confirmed by the seller.';
+                        summaryHintEl.textContent = '* Some items had no public price for ' + selectedTerm + ' and are excluded from the estimate. The final quote will be confirmed by the seller.';
                     } else {
-                        summaryHintEl.textContent = 'Indicative price based on the ' + TERM_FIELD_LABEL + ' above. Final quote will be confirmed by the seller.';
+                        summaryHintEl.textContent = 'Indicative price based on the Incoterm above. Final quote will be confirmed by the seller.';
                     }
                 }
             }
@@ -5286,12 +5202,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     var unitLabel = (it.mode === 'pack' && it.pack) ? 'pack' : (it.unit || 'unit');
                     var priceStr = hasPrice
                         ? '  @ ' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + '/' + unitLabel + ' = ' + fmtMoney(lTotal, it.currency || SELLER_CURRENCY)
-                        : '  (price on request for ' + displayTerm(selectedTerm) + ')';
+                        : '  (price on request for ' + (selectedTerm || '—') + ')';
                     lines.push((i+1) + '. ' + it.name + ' [' + (it.sku || '-') + ']  Qty: ' + qtyStr + priceStr);
                 });
                 lines.push('');
                 lines.push('=== TOTAL ===');
-                lines.push(TERM_FIELD_LABEL + ': ' + displayTerm(selectedTerm) + (selectedTerm ? ' [' + selectedTerm + ']' : ''));
+                lines.push('Incoterm: ' + (selectedTerm || '—'));
                 if (anyPriced) {
                     lines.push('Estimated total: ' + fmtMoney(grand, SELLER_CURRENCY) + (allPriced ? '' : ' (partial — some items priced on request)'));
                 } else {
@@ -10466,15 +10382,6 @@ function AppInner() {
             showQrCode: project.data.catalogConfig.showQrCode || false,
             qrCodeValue: project.data.catalogConfig.qrCodeValue || '',
             qrCodeLabel: project.data.catalogConfig.qrCodeLabel || 'Scan to visit',
-            catalogTermLabel: project.data.catalogConfig.catalogTermLabel || 'Incoterm',
-            catalogTermQuickLabel: project.data.catalogConfig.catalogTermQuickLabel || 'Pricing for',
-            catalogDestinationLabel: project.data.catalogConfig.catalogDestinationLabel || 'Destination Port / City',
-            catalogDestinationPlaceholder: project.data.catalogConfig.catalogDestinationPlaceholder || 'e.g. Hamburg, DE',
-            catalogTermDisplayNames: project.data.catalogConfig.catalogTermDisplayNames || {},
-            catalogShowVolumeTiers: project.data.catalogConfig.catalogShowVolumeTiers || false,
-            catalogVolumeTierTerm: project.data.catalogConfig.catalogVolumeTierTerm || loadedPriceTerms[0] || 'FOB',
-            catalogVolumeTierTitle: project.data.catalogConfig.catalogVolumeTierTitle || 'Volume tier pricing',
-            catalogVolumeTierNote: project.data.catalogConfig.catalogVolumeTierNote || 'Indicative bulk prices based on selected quantity range.',
             googleFormUrl: project.data.catalogConfig.googleFormUrl || '',
             googleFormButtonText: project.data.catalogConfig.googleFormButtonText || 'Send Purchase Request',
             googleFormHelperText: project.data.catalogConfig.googleFormHelperText || 'Tap below to fill out the order form',
@@ -15323,7 +15230,6 @@ function AppInner() {
                 catalogConfig,
                 qrDataUrl,
                 tCombined,
-                volumeTiers,
                 inquiryEndpoint
             });
             const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
@@ -15425,7 +15331,6 @@ function AppInner() {
                 catalogConfig,
                 qrDataUrl,
                 tCombined,
-                volumeTiers,
                 inquiryEndpoint
             });
             const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
@@ -15504,7 +15409,6 @@ function AppInner() {
             catalogConfig: nextCatalogConfig,
             qrDataUrl,
             tCombined,
-            volumeTiers,
             inquiryEndpoint
         });
     };
@@ -16672,57 +16576,6 @@ ${html}
                               ))}
                           </div>
 
-                          <div className="mt-3 space-y-2 bg-slate-50 border border-slate-200 rounded-md p-2">
-                              <div className="grid grid-cols-2 gap-2">
-                                  <div className="space-y-1">
-                                      <label className="text-[10px] text-slate-500 font-semibold">Term field label</label>
-                                      <input
-                                          type="text"
-                                          value={catalogConfig.catalogTermLabel || ''}
-                                          onChange={(e) => setCatalogConfig({...catalogConfig, catalogTermLabel: e.target.value})}
-                                          className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none bg-white"
-                                          placeholder="Incoterm / Delivery option / Service type"
-                                      />
-                                  </div>
-                                  <div className="space-y-1">
-                                      <label className="text-[10px] text-slate-500 font-semibold">Cart quick label</label>
-                                      <input
-                                          type="text"
-                                          value={catalogConfig.catalogTermQuickLabel || ''}
-                                          onChange={(e) => setCatalogConfig({...catalogConfig, catalogTermQuickLabel: e.target.value})}
-                                          className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none bg-white"
-                                          placeholder="Pricing for / Delivery by"
-                                      />
-                                  </div>
-                              </div>
-                              <div className="space-y-1">
-                                  <label className="text-[10px] text-slate-500 font-semibold">Display names for catalog terms</label>
-                                  <div className="grid grid-cols-1 gap-1">
-                                      {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].filter(t => (catalogConfig.priceTerms || []).includes(t) || (catalogConfig.orderIncoterms || []).includes(t)).map(t => (
-                                          <div key={`catalog-term-name-${t}`} className="flex items-center gap-2">
-                                              <span className="w-10 text-[10px] font-black text-slate-500">{t}</span>
-                                              <input
-                                                  type="text"
-                                                  value={catalogConfig.catalogTermDisplayNames?.[t] || ''}
-                                                  onChange={(e) => setCatalogConfig({
-                                                      ...catalogConfig,
-                                                      catalogTermDisplayNames: {
-                                                          ...(catalogConfig.catalogTermDisplayNames || {}),
-                                                          [t]: e.target.value,
-                                                      },
-                                                  })}
-                                                  className="flex-1 text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none bg-white"
-                                                  placeholder={t === 'EXW' ? 'Store pickup' : t === 'FOB' ? 'City delivery' : t === 'DDP' ? 'Door delivery' : `Display instead of ${t}`}
-                                              />
-                                          </div>
-                                      ))}
-                                  </div>
-                                  <p className="text-[10px] text-slate-400 leading-snug">
-                                      Internal pricing still uses EXW/FOB/etc. These names only change what customers see in the catalog and inquiry cart.
-                                  </p>
-                              </div>
-                          </div>
-
                           {/* Target Price Toggle */}
                           <div className="mt-3 space-y-2 bg-amber-50/40 border border-amber-100 rounded-md p-2">
                               <label className="flex items-center gap-2 cursor-pointer">
@@ -16761,50 +16614,6 @@ ${html}
                                               className="w-full text-xs border border-emerald-200 rounded px-2 py-1 focus:border-emerald-500 outline-none bg-white"
                                           />
                                       )}
-                                  </>
-                              )}
-                          </div>
-
-                          <div className="mt-3 space-y-2 bg-violet-50/50 border border-violet-100 rounded-md p-2">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                      type="checkbox"
-                                      checked={catalogConfig.catalogShowVolumeTiers || false}
-                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogShowVolumeTiers: e.target.checked})}
-                                      className="rounded border-violet-300 text-violet-600 focus:ring-violet-500"
-                                  />
-                                  <span className="text-xs font-semibold text-violet-800">Show compact volume tier pricing</span>
-                              </label>
-                              {catalogConfig.catalogShowVolumeTiers && (
-                                  <>
-                                      <div className="grid grid-cols-2 gap-2">
-                                          <input
-                                              type="text"
-                                              value={catalogConfig.catalogVolumeTierTitle || ''}
-                                              onChange={(e) => setCatalogConfig({...catalogConfig, catalogVolumeTierTitle: e.target.value})}
-                                              className="w-full text-xs border border-violet-200 rounded px-2 py-1.5 focus:border-violet-500 outline-none bg-white"
-                                              placeholder="Volume tier pricing"
-                                          />
-                                          <select
-                                              value={catalogConfig.catalogVolumeTierTerm || (catalogConfig.priceTerms || [])[0] || 'FOB'}
-                                              onChange={(e) => setCatalogConfig({...catalogConfig, catalogVolumeTierTerm: e.target.value})}
-                                              className="w-full text-xs border border-violet-200 rounded px-2 py-1.5 focus:border-violet-500 outline-none bg-white"
-                                          >
-                                              {['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].map(t => (
-                                                  <option key={`volume-term-${t}`} value={t}>{catalogConfig.catalogTermDisplayNames?.[t] || t}</option>
-                                              ))}
-                                          </select>
-                                      </div>
-                                      <input
-                                          type="text"
-                                          value={catalogConfig.catalogVolumeTierNote || ''}
-                                          onChange={(e) => setCatalogConfig({...catalogConfig, catalogVolumeTierNote: e.target.value})}
-                                          className="w-full text-xs border border-violet-200 rounded px-2 py-1.5 focus:border-violet-500 outline-none bg-white"
-                                          placeholder="Short note shown under the tier table"
-                                      />
-                                      <p className="text-[10px] text-violet-700/80 leading-snug">
-                                          Uses tiers from the Profit report. It appears collapsed inside each product card, so it does not take catalog space until opened.
-                                      </p>
                                   </>
                               )}
                           </div>
@@ -17184,7 +16993,7 @@ ${html}
                                               />
                                           </div>
                                           <div className="space-y-1">
-                                              <label className="text-[10px] text-slate-500 font-semibold">Available {catalogConfig.catalogTermLabel || 'Incoterm'} options (comma-separated)</label>
+                                              <label className="text-[10px] text-slate-500 font-semibold">Available Incoterms (comma-separated)</label>
                                               <input
                                                   type="text"
                                                   value={(catalogConfig.orderIncoterms || []).join(', ')}
@@ -17192,28 +17001,6 @@ ${html}
                                                   className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white font-mono"
                                                   placeholder="EXW, FOB, CIF, DDP"
                                               />
-                                          </div>
-                                          <div className="grid grid-cols-2 gap-2">
-                                              <div className="space-y-1">
-                                                  <label className="text-[10px] text-slate-500 font-semibold">Destination field label</label>
-                                                  <input
-                                                      type="text"
-                                                      value={catalogConfig.catalogDestinationLabel || ''}
-                                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogDestinationLabel: e.target.value})}
-                                                      className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
-                                                      placeholder="Destination Port / City"
-                                                  />
-                                              </div>
-                                              <div className="space-y-1">
-                                                  <label className="text-[10px] text-slate-500 font-semibold">Destination placeholder</label>
-                                                  <input
-                                                      type="text"
-                                                      value={catalogConfig.catalogDestinationPlaceholder || ''}
-                                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogDestinationPlaceholder: e.target.value})}
-                                                      className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
-                                                      placeholder="e.g. Muscat, Qurum branch"
-                                                  />
-                                              </div>
                                           </div>
                                           <div className="space-y-1">
                                               <label className="text-[10px] text-slate-500 font-semibold">Suggested ports (comma-separated, optional)</label>

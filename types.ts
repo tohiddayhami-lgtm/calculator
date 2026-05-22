@@ -444,17 +444,6 @@ export interface CatalogConfig {
   storyCtaTextColor?: string;
   storyFooterColor?: string;
 
-  // Catalog-facing labels for non-export businesses. Internal pricing keys can stay EXW/FOB/etc.
-  catalogTermLabel?: string;
-  catalogTermQuickLabel?: string;
-  catalogDestinationLabel?: string;
-  catalogDestinationPlaceholder?: string;
-  catalogTermDisplayNames?: Record<string, string>;
-  catalogShowVolumeTiers?: boolean;
-  catalogVolumeTierTerm?: string;
-  catalogVolumeTierTitle?: string;
-  catalogVolumeTierNote?: string;
-
   // Google Form / Order Form CTA on HTML export & back page
   googleFormUrl?: string;
   googleFormButtonText?: string;
