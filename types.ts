@@ -355,6 +355,8 @@ export interface CatalogConfig {
   
   // Extra Company Pages
   showAboutUs?: boolean;
+  productTabLabel?: string;
+  aboutUsTabLabel?: string;
   aboutUsText?: string;
   aboutUsImages?: string[];
   aboutUsImageLayout?: 'top' | 'bottom' | 'side-right' | 'side-left' | 'grid';

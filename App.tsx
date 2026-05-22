@@ -2404,6 +2404,8 @@ function createDefaultCatalogConfig(): CatalogConfig {
     baseUnit: '',
     coverOverlayOpacity: 60,
     showAboutUs: false,
+    productTabLabel: 'Product List',
+    aboutUsTabLabel: 'About Us',
     aboutUsText: '',
     aboutUsImages: [],
     aboutUsImageLayout: 'side-right',
@@ -4114,7 +4116,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
             return `
             <section class="about">
-                <span class="about-label">About Us</span>
+                <span class="about-label">${escapeHtml(cc.aboutUsTabLabel || 'About Us')}</span>
                 <div class="${bodyClass}">${bodyContent}</div>
             </section>`;
         })()
@@ -5292,7 +5294,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
 
     const productsPanelHtml = `
     <section class="products-section">
-        <h2 class="section-title">${escapeHtml(tCombined('productList') || 'Products')}</h2>
+        <h2 class="section-title">${escapeHtml(cc.productTabLabel || tCombined('productList') || 'Products')}</h2>
         ${filterBarHtml}
         <div class="grid">
             ${productCards || '<p style="color:#94a3b8;padding:24px 0;">No products to display.</p>'}
@@ -5300,8 +5302,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     </section>
     ${ctaHtml}`;
     const websiteTabs = [
-        { id: 'products', label: tCombined('productList') || 'Products', html: productsPanelHtml },
-        ...(aboutUsHtml ? [{ id: 'about', label: 'About Us', html: aboutUsHtml }] : []),
+        { id: 'products', label: cc.productTabLabel || tCombined('productList') || 'Products', html: productsPanelHtml },
+        ...(aboutUsHtml ? [{ id: 'about', label: cc.aboutUsTabLabel || 'About Us', html: aboutUsHtml }] : []),
         ...customSectionTabs,
         ...structuredPageTabs,
     ];
@@ -15309,12 +15311,43 @@ function AppInner() {
         return out;
     };
 
+    const patchMetaHubTabLabelsHtml = (html: string, nextCatalogConfig: CatalogConfig): string => {
+        if (!html.trim() || typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') return html;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const productLabel = nextCatalogConfig.productTabLabel || tCombined('productList') || 'Products';
+            const aboutLabel = nextCatalogConfig.aboutUsTabLabel || 'About Us';
+            const productTab = doc.querySelector('[data-site-tab="products"]');
+            if (productTab) productTab.textContent = productLabel;
+            const productPanel = doc.querySelector('[data-site-panel="products"] .section-title');
+            if (productPanel) productPanel.textContent = productLabel;
+            const aboutTab = doc.querySelector('[data-site-tab="about"]');
+            if (aboutTab) aboutTab.textContent = aboutLabel;
+            const aboutPanel = doc.querySelector('[data-site-panel="about"] .about-label, .about .about-label');
+            if (aboutPanel) aboutPanel.textContent = aboutLabel;
+            return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
+        } catch {
+            return html;
+        }
+    };
+
     const updateTradingHubTheme = (patch: Partial<CatalogConfig>) => {
         const nextCatalogConfig = { ...catalogConfig, ...patch };
         const currentHtml = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
         setCatalogConfig(nextCatalogConfig);
         if (currentHtml.trim()) {
             setMetaHubHtml(patchMetaHubThemeHtml(currentHtml, nextCatalogConfig));
+            setMetaHubPreviewKey(k => k + 1);
+        }
+    };
+
+    const updateTradingHubTabLabels = (patch: Pick<Partial<CatalogConfig>, 'productTabLabel' | 'aboutUsTabLabel'>) => {
+        const nextCatalogConfig = { ...catalogConfig, ...patch };
+        const currentHtml = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
+        setCatalogConfig(nextCatalogConfig);
+        if (currentHtml.trim()) {
+            setMetaHubHtml(patchMetaHubTabLabelsHtml(currentHtml, nextCatalogConfig));
             setMetaHubPreviewKey(k => k + 1);
         }
     };
@@ -17748,6 +17781,36 @@ ${html}
                                   className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-500 resize-none"
                                   placeholder="Subtitle"
                               />
+                          </div>
+
+                          <div className="space-y-2 border-t border-slate-100 pt-4">
+                              <h3 className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                                  <LayoutTemplate className="w-4 h-4 text-violet-600" />
+                                  Tab titles
+                              </h3>
+                              <label className="space-y-1 block">
+                                  <span className="text-[10px] text-slate-500 font-semibold">Products tab</span>
+                                  <input
+                                      type="text"
+                                      value={catalogConfig.productTabLabel || ''}
+                                      onChange={(e) => updateTradingHubTabLabels({ productTabLabel: e.target.value })}
+                                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-500"
+                                      placeholder="Product List"
+                                  />
+                              </label>
+                              <label className="space-y-1 block">
+                                  <span className="text-[10px] text-slate-500 font-semibold">About tab</span>
+                                  <input
+                                      type="text"
+                                      value={catalogConfig.aboutUsTabLabel || ''}
+                                      onChange={(e) => updateTradingHubTabLabels({ aboutUsTabLabel: e.target.value })}
+                                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-violet-500"
+                                      placeholder="About Us"
+                                  />
+                              </label>
+                              <p className="text-[10px] text-slate-400 leading-snug">
+                                  Tab buttons are locked in Visual Edit so the product list cannot be deleted by mistake.
+                              </p>
                           </div>
 
                           <div className="space-y-3 border-t border-slate-100 pt-4">
