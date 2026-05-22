@@ -398,6 +398,8 @@ export interface CatalogConfig {
   storyFooterText?: string;
   storyShowProducts?: boolean;
   storyShowQr?: boolean;
+  storyQrColor?: string;
+  storyQrBgColor?: string;
   storyProductIds?: number[];
   storyFontFamily?: 'inter' | 'sf' | 'vazir' | 'vazirmatn' | 'shabnam';
   storyHeroAlign?: 'left' | 'center' | 'right';

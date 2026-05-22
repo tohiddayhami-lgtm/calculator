@@ -2436,6 +2436,8 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyFooterText: 'Instagram Story 9:16 • 4320 × 7680 PNG',
     storyShowProducts: true,
     storyShowQr: true,
+    storyQrColor: '#0f172a',
+    storyQrBgColor: '#ffffff',
     storyProductIds: [],
     storyFontFamily: 'inter',
     storyHeroAlign: 'left',
@@ -15788,6 +15790,8 @@ ${html}
             const storyExtraTextColor = catalogConfig.storyExtraTextColor || '#ffffff';
             const storyCtaBg = storyHexToRgba(catalogConfig.storyCtaBgColor, Number(catalogConfig.storyCtaBgOpacityPct ?? 100), storyStyle === 'editorial' || storyStyle === 'website' ? (catalogConfig.primaryColor || '#0f172a') : '#0f172a');
             const storyExtraBg = storyHexToRgba(catalogConfig.storyExtraBoxColor, Number(catalogConfig.storyExtraBoxOpacityPct ?? 70), '#0f172a');
+            const storyQrColor = catalogConfig.storyQrColor || '#0f172a';
+            const storyQrBgColor = catalogConfig.storyQrBgColor || '#ffffff';
             const storyEyebrowCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyEyebrowFontSizePx, 10, 7, 22) * 7.8);
             const storyTitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyTitleFontSizePx, 34, 18, 58) * 5.47);
             const storySubtitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storySubtitleFontSizePx, 14, 9, 28) * 5.15);
@@ -15862,7 +15866,12 @@ ${html}
             const coverImg = await loadImage(catalogConfig.coverImage || catalogConfig.backCoverImage || '');
             const logoImg = await loadImage(catalogConfig.logoImage || '');
             const qrImg = liveUrl
-                ? await loadImage(await QRCode.toDataURL(liveUrl, { width: 1024, margin: 1, errorCorrectionLevel: 'M' }))
+                ? await loadImage(await QRCode.toDataURL(liveUrl, {
+                    width: 1024,
+                    margin: 1,
+                    errorCorrectionLevel: 'M',
+                    color: { dark: storyQrColor, light: storyQrBgColor },
+                }))
                 : null;
             const productImages = await Promise.all(productPreview.map(p => loadImage(p.image || (p.gallery || [])[0] || '')));
 
@@ -16058,7 +16067,7 @@ ${html}
             ctx.font = `${catalogConfig.storyCtaTextBold ? '800' : '600'} ${storyCtaTextCanvasFont}px ${storyFontStack}`;
             wrapText(storyCtaText, sx + 320, ctaY + 250, sw - 980, Math.round(storyCtaTextCanvasFont * 1.32), 2);
             if (storyShowQr && qrImg) {
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = storyQrBgColor;
                 roundedRect(sx + sw - 680, ctaY + 105, 430, 430, 56);
                 ctx.fill();
                 ctx.drawImage(qrImg, sx + sw - 640, ctaY + 145, 350, 350);
@@ -16126,6 +16135,8 @@ ${html}
     const storyExtraTextAlign = storyNormalizeAlign(catalogConfig.storyExtraTextAlign);
     const storyCtaPreviewBg = storyHexToRgba(catalogConfig.storyCtaBgColor, Number(catalogConfig.storyCtaBgOpacityPct ?? 100), storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? (catalogConfig.primaryColor || '#0f172a') : '#ffffff');
     const storyExtraPreviewBg = storyHexToRgba(catalogConfig.storyExtraBoxColor, Number(catalogConfig.storyExtraBoxOpacityPct ?? 70), '#0f172a');
+    const storyQrColor = catalogConfig.storyQrColor || '#0f172a';
+    const storyQrBgColor = catalogConfig.storyQrBgColor || '#ffffff';
     const storyExtraFontSize = storyNumberSetting(catalogConfig.storyExtraTextFontSizePx, 13, 8, 30);
     const storyCtaOpacity = storyNumberSetting(catalogConfig.storyCtaBgOpacityPct, 100, 0, 100);
     const storyExtraOpacity = storyNumberSetting(catalogConfig.storyExtraBoxOpacityPct, 70, 0, 100);
@@ -19201,6 +19212,36 @@ ${html}
                           </label>
                       </div>
 
+                      {catalogConfig.storyShowQr !== false && (
+                          <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                              <label className="space-y-1">
+                                  <span className="text-[10px] font-semibold text-slate-500">QR color</span>
+                                  <input
+                                      type="color"
+                                      value={storyQrColor}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, storyQrColor: e.target.value })}
+                                      className="w-full h-8 rounded border-0 p-0 cursor-pointer"
+                                  />
+                              </label>
+                              <label className="space-y-1">
+                                  <span className="text-[10px] font-semibold text-slate-500">QR background</span>
+                                  <input
+                                      type="color"
+                                      value={storyQrBgColor}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, storyQrBgColor: e.target.value })}
+                                      className="w-full h-8 rounded border-0 p-0 cursor-pointer"
+                                  />
+                              </label>
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({ ...catalogConfig, storyQrColor: '#0f172a', storyQrBgColor: '#ffffff' })}
+                                  className="col-span-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 border border-slate-200 rounded-lg py-2 hover:bg-slate-50"
+                              >
+                                  Reset QR colors
+                              </button>
+                          </div>
+                      )}
+
                       <div className="space-y-2 border-t border-slate-100 pt-4">
                           <div className="flex items-center justify-between gap-2">
                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Story Products</label>
@@ -19446,8 +19487,29 @@ ${html}
                                       </div>
                                   </div>
                                   {catalogConfig.storyShowQr !== false && (
-                                      <div className="w-16 h-16 rounded-xl bg-white p-1 flex items-center justify-center text-[8px] font-bold text-slate-400 shrink-0">
-                                          {metaHubLinkInfo?.qr ? <img src={metaHubLinkInfo.qr} alt="QR" className="w-full h-full object-contain" /> : 'QR'}
+                                      <div
+                                          className="w-16 h-16 rounded-xl p-1.5 flex items-center justify-center shrink-0 border shadow-sm"
+                                          style={{ backgroundColor: storyQrBgColor, borderColor: storyQrColor }}
+                                          title="QR color preview"
+                                      >
+                                          <div className="grid grid-cols-7 gap-[1px] w-full h-full">
+                                              {Array.from({ length: 49 }).map((_, i) => {
+                                                  const x = i % 7;
+                                                  const y = Math.floor(i / 7);
+                                                  const finder =
+                                                      (x < 2 && y < 2) ||
+                                                      (x > 4 && y < 2) ||
+                                                      (x < 2 && y > 4);
+                                                  const pattern = finder || [10, 12, 16, 18, 22, 24, 25, 29, 31, 33, 37, 40, 44, 46].includes(i);
+                                                  return (
+                                                      <span
+                                                          key={i}
+                                                          className="rounded-[1px]"
+                                                          style={{ backgroundColor: pattern ? storyQrColor : storyQrBgColor }}
+                                                      />
+                                                  );
+                                              })}
+                                          </div>
                                       </div>
                                   )}
                               </div>
