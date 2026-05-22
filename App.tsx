@@ -2487,6 +2487,10 @@ function createDefaultCatalogConfig(): CatalogConfig {
     catalogDestinationLabel: 'Destination Port / City',
     catalogDestinationPlaceholder: 'e.g. Hamburg, DE',
     catalogTermDisplayNames: {},
+    catalogShowVolumeTiers: false,
+    catalogVolumeTierTerm: 'FOB',
+    catalogVolumeTierTitle: 'Volume Pricing',
+    catalogVolumeTierNote: 'Higher quantities unlock better pricing and visible savings.',
     googleFormUrl: '',
     googleFormButtonText: 'Send Purchase Request',
     googleFormHelperText: 'Tap below to fill out the order form',
@@ -3960,12 +3964,13 @@ interface BuildCatalogHtmlArgs {
     products: any[];
     config: any;
     catalogConfig: any;
+    volumeTiers?: Array<{ id?: string; minCartons: number; maxCartons: number | null; adjustment: number }>;
     qrDataUrl: string;
     tCombined: (key: string) => string;
     inquiryEndpoint?: { firebaseConfig: any; appId: string; ownerId: string } | null;
 }
 
-const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombined, inquiryEndpoint }: BuildCatalogHtmlArgs): string => {
+const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], qrDataUrl, tCombined, inquiryEndpoint }: BuildCatalogHtmlArgs): string => {
     const cc = catalogConfig || {};
     const primary = cc.primaryColor || '#0f172a';
     const heading = cc.headingColor || primary;
@@ -4027,6 +4032,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const destinationLabel = (cc.catalogDestinationLabel || 'Destination Port / City').trim() || 'Destination Port / City';
     const destinationPlaceholder = (cc.catalogDestinationPlaceholder || 'e.g. Hamburg, DE').trim() || 'e.g. Hamburg, DE';
     const displayTerm = (term: string) => (termDisplayNames[term] || '').trim() || term;
+    const showVolumeTiers = cc.catalogShowVolumeTiers === true && volumeTiers.length > 0;
+    const volumeTierTerm = (cc.catalogVolumeTierTerm || priceTerms[0] || incoterms[0] || 'FOB').trim();
+    const volumeTierTitle = (cc.catalogVolumeTierTitle || 'Volume Pricing').trim() || 'Volume Pricing';
+    const volumeTierNote = (cc.catalogVolumeTierNote || 'Higher quantities unlock better pricing and visible savings.').trim();
 
     // Convert target prices using rates from app — passed via products that already have toOutput-applied targetUnitOutput? No, we need to compute here.
     // We'll add helper that uses rates inline. Pass conversion via product's already-computed scenarioPrices for sell, and the raw targetPrice we convert via simple ratio that we don't have here.
@@ -4074,6 +4083,54 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     </div>
                 `;
             }).join('')
+            : '';
+
+        const volumeTierHtml = showPrices && showVolumeTiers
+            ? (() => {
+                const baseUnitPrice = (p.scenarioPrices && p.scenarioPrices[volumeTierTerm]) || 0;
+                if (!baseUnitPrice) return '';
+                const unitLabel = p.itemsPerPack && p.itemsPerPack > 1
+                    ? 'cartons'
+                    : (p.measurementUnit || baseUnit || 'units');
+                const rows = volumeTiers
+                    .filter(tier => Number.isFinite(Number(tier.minCartons)))
+                    .map((tier, idx) => {
+                        const adjustedUnitPrice = Math.max(0, baseUnitPrice * (1 + (Number(tier.adjustment) || 0) / 100));
+                        const saving = Math.max(0, baseUnitPrice - adjustedUnitPrice);
+                        const range = `${formatNumber(Number(tier.minCartons) || 1)}${tier.maxCartons != null ? `-${formatNumber(Number(tier.maxCartons) || 0)}` : '+'}`;
+                        const saveBadge = saving > 0
+                            ? `<span class="volume-save">Save ${Math.abs(Number(tier.adjustment) || 0).toFixed(1).replace(/\.0$/, '')}%</span>`
+                            : (Number(tier.adjustment) || 0) > 0
+                                ? `<span class="volume-surcharge">+${Math.abs(Number(tier.adjustment) || 0).toFixed(1).replace(/\.0$/, '')}%</span>`
+                                : `<span class="volume-neutral">Base</span>`;
+                        const savingText = saving > 0
+                            ? `<span class="volume-saved">${formatMoneyHtml(saving, outCurr)} less / ${escapeHtml(p.measurementUnit || baseUnit || 'unit')}</span>`
+                            : '';
+                        return `
+                            <div class="volume-tier-row">
+                                <div>
+                                    <span class="volume-range">${escapeHtml(range)} ${escapeHtml(unitLabel)}</span>
+                                    ${saveBadge}
+                                </div>
+                                <div class="volume-price">
+                                    <strong>${formatMoneyHtml(adjustedUnitPrice, outCurr)}</strong>
+                                    ${savingText}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                if (!rows) return '';
+                return `
+                    <div class="volume-tiers">
+                        <div class="volume-tier-head">
+                            <span>${escapeHtml(volumeTierTitle)}</span>
+                            <em>${escapeHtml(displayTerm(volumeTierTerm))}</em>
+                        </div>
+                        ${rows}
+                        ${volumeTierNote ? `<p class="volume-note">${escapeHtml(volumeTierNote)}</p>` : ''}
+                    </div>
+                `;
+            })()
             : '';
 
         let targetRowHtml = '';
@@ -4169,6 +4226,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     ${descHtml}
                     <div class="meta-grid">${packHtml}${moqHtml}</div>
                     ${(showPrices || targetRowHtml) ? `<div class="prices">${priceRows}${targetRowHtml}</div>` : ''}
+                    ${volumeTierHtml}
                     ${addToCartBtn}
                     ${inquireBtn}
                 </div>
@@ -4558,6 +4616,20 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
         .price-unit { font-size: 10px; font-weight: 400; color: #94a3b8; text-transform: uppercase; }
         .profit-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; padding: 3px 8px; border-radius: 5px; align-self: flex-end; margin-top: 2px; }
         .profit-dot { width: 5px; height: 5px; border-radius: 50%; background: #10b981; }
+
+        .volume-tiers { margin-top: 8px; border: 1px solid #f5d0fe; background: linear-gradient(180deg,#fff7ed,#fff); border-radius: 12px; overflow: hidden; }
+        .volume-tier-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: #fffbeb; border-bottom: 1px solid #fde68a; color: #92400e; font-size: 11px; font-weight: 900; }
+        .volume-tier-head em { font-style: normal; font-size: 9px; color: #a16207; background: #fef3c7; border: 1px solid #fde68a; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+        .volume-tier-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; border-top: 1px solid #f8fafc; align-items: center; }
+        .volume-range { display: block; font-size: 10px; font-weight: 800; color: #334155; }
+        .volume-price { text-align: right; display: flex; flex-direction: column; gap: 1px; }
+        .volume-price strong { font-size: 12px; color: #0f172a; }
+        .volume-save, .volume-surcharge, .volume-neutral { display: inline-flex; margin-top: 3px; font-size: 9px; font-weight: 900; border-radius: 999px; padding: 2px 6px; }
+        .volume-save { background: #dcfce7; color: #047857; border: 1px solid #bbf7d0; }
+        .volume-surcharge { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+        .volume-neutral { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+        .volume-saved { font-size: 9px; font-weight: 700; color: #059669; }
+        .volume-note { padding: 0 10px 8px; color: #92400e; font-size: 9.5px; line-height: 1.35; }
 
         .card-cta { display: block; text-align: center; margin-top: 10px; padding: 11px 12px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; border-radius: 10px; transition: transform 0.15s, opacity 0.15s; border: none; cursor: pointer; width: 100%; letter-spacing: 0.01em; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
         .card-cta:hover { opacity: 0.92; }
@@ -10406,6 +10478,10 @@ function AppInner() {
             catalogDestinationLabel: project.data.catalogConfig.catalogDestinationLabel || 'Destination Port / City',
             catalogDestinationPlaceholder: project.data.catalogConfig.catalogDestinationPlaceholder || 'e.g. Hamburg, DE',
             catalogTermDisplayNames: project.data.catalogConfig.catalogTermDisplayNames || {},
+            catalogShowVolumeTiers: project.data.catalogConfig.catalogShowVolumeTiers === true,
+            catalogVolumeTierTerm: project.data.catalogConfig.catalogVolumeTierTerm || loadedPriceTerms[0] || 'FOB',
+            catalogVolumeTierTitle: project.data.catalogConfig.catalogVolumeTierTitle || 'Volume Pricing',
+            catalogVolumeTierNote: project.data.catalogConfig.catalogVolumeTierNote || 'Higher quantities unlock better pricing and visible savings.',
             cartEnabled: project.data.catalogConfig.cartEnabled !== undefined ? project.data.catalogConfig.cartEnabled : true,
             orderEmail: project.data.catalogConfig.orderEmail || 'info@tohiddayhami.com',
             orderIncoterms: project.data.catalogConfig.orderIncoterms || ['EXW', 'FOB', 'CIF', 'DDP'],
@@ -10873,6 +10949,9 @@ function AppInner() {
           },
           priceTerms: prev.priceTerms?.length ? prev.priceTerms : ['EXW', 'FOB', 'DDP'],
           orderIncoterms: prev.orderIncoterms?.length ? prev.orderIncoterms : ['EXW', 'FOB', 'DDP'],
+          catalogVolumeTierTerm: prev.catalogVolumeTierTerm || 'FOB',
+          catalogVolumeTierTitle: prev.catalogVolumeTierTitle || 'تخفیف خرید حجمی',
+          catalogVolumeTierNote: prev.catalogVolumeTierNote || 'با سفارش تعداد بیشتر، قیمت هر واحد کمتر می‌شود و صرفه‌جویی شما شفاف نمایش داده می‌شود.',
       }));
   };
 
@@ -12749,6 +12828,30 @@ function AppInner() {
     const costTotal = activeItems.reduce((sum, p) => sum + ((p.unitCostOutput || 0) * (p.qty || 0)), 0);
     const primarySell = scenarioTotal('EXW');
     const primaryProfit = primarySell - costTotal;
+    const volumeTierTerm = scenarioDefs.some(s => s.term === catalogConfig.catalogVolumeTierTerm)
+      ? catalogConfig.catalogVolumeTierTerm!
+      : scenarioDefs[0].term;
+    const volumeTierScenarioLabel = scenarioDefs.find(s => s.term === volumeTierTerm)?.label || volumeTierTerm;
+    const totalRetailQty = activeItems.reduce((sum, p) => sum + (p.qty || 0), 0);
+    const addVolumeTier = () => {
+      const last = volumeTiers[volumeTiers.length - 1];
+      const newMin = last ? (last.maxCartons ?? last.minCartons) + 1 : 1;
+      setVolumeTiers([...volumeTiers, {
+        id: `tier_${Date.now()}`,
+        minCartons: newMin,
+        maxCartons: null,
+        adjustment: -5,
+      }]);
+    };
+    const updateVolumeTier = (id: string, patch: Partial<(typeof volumeTiers)[number]>) =>
+      setVolumeTiers(volumeTiers.map((tier) => tier.id === id ? { ...tier, ...patch } : tier));
+    const removeVolumeTier = (id: string) => setVolumeTiers(volumeTiers.filter((tier) => tier.id !== id));
+    const tierRetailRevenue = (tier: (typeof volumeTiers)[number]) =>
+      activeItems.reduce((sum, p) => {
+        const price = ((p.scenarioPrices as Record<string, number> | undefined)?.[volumeTierTerm] || 0);
+        return sum + Math.max(0, price * (1 + (tier.adjustment || 0) / 100)) * (p.qty || 0);
+      }, 0);
+    const baseRetailAverageUnit = totalRetailQty > 0 ? scenarioTotal(volumeTierTerm as ScenarioTerm) / totalRetailQty : 0;
 
     return (
       <div className="space-y-4">
@@ -12901,6 +13004,130 @@ function AppInner() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 bg-amber-100/70 border-b border-amber-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black text-amber-950 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                Volume Pricing Tiers
+              </h3>
+              <p className="text-xs text-amber-800/80 mt-0.5">برای فروش حجمی، تخفیف پلکانی بساز تا مشتری در کاتالوگ ببیند با خرید بیشتر چقدر صرفه‌جویی می‌کند.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-2 rounded-xl bg-white border border-amber-200 px-3 py-2 text-xs font-bold text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={catalogConfig.catalogShowVolumeTiers === true}
+                  onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogShowVolumeTiers: e.target.checked })}
+                  className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                />
+                نمایش در کاتالوگ
+              </label>
+              <select
+                value={volumeTierTerm}
+                onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogVolumeTierTerm: e.target.value })}
+                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-amber-500"
+                title="Pricing scenario used for the public tier table"
+              >
+                {scenarioDefs.map((s) => <option key={`tier-term-${s.term}`} value={s.term}>{s.label}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={addVolumeTier}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 text-white px-3 py-2 text-xs font-black hover:bg-amber-700"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Tier
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 space-y-3">
+            <div className="grid md:grid-cols-[1fr,1fr] gap-2">
+              <input
+                type="text"
+                value={catalogConfig.catalogVolumeTierTitle || ''}
+                onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogVolumeTierTitle: e.target.value })}
+                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs outline-none focus:border-amber-500"
+                placeholder="Catalog title, e.g. Volume Pricing"
+              />
+              <input
+                type="text"
+                value={catalogConfig.catalogVolumeTierNote || ''}
+                onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogVolumeTierNote: e.target.value })}
+                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs outline-none focus:border-amber-500"
+                placeholder="Short customer note"
+              />
+            </div>
+
+            {volumeTiers.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-amber-300 bg-white/60 px-4 py-6 text-center text-sm text-amber-700">
+                هنوز tier تعریف نشده است. با Add Tier بازه مقدار و درصد تخفیف را اضافه کن.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {volumeTiers.map((tier, idx) => {
+                  const tierRevenue = tierRetailRevenue(tier);
+                  const saved = Math.max(0, scenarioTotal(volumeTierTerm as ScenarioTerm) - tierRevenue);
+                  const adjustedAverage = totalRetailQty > 0 ? tierRevenue / totalRetailQty : 0;
+                  return (
+                    <div key={`service-volume-tier-${tier.id}`} className="grid lg:grid-cols-[4.5rem,1fr,1fr,auto] gap-2 items-center rounded-xl border border-amber-200 bg-white p-2">
+                      <span className="text-[10px] font-black text-amber-700">Tier {idx + 1}</span>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <FormattedNumberInput
+                          value={tier.minCartons}
+                          onChange={(v) => updateVolumeTier(tier.id, { minCartons: Math.max(1, v ?? 1) })}
+                          className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center font-bold"
+                        />
+                        <span className="text-slate-400">تا</span>
+                        <FormattedNumberInput
+                          optional
+                          value={tier.maxCartons ?? undefined}
+                          onChange={(v) => updateVolumeTier(tier.id, { maxCartons: v != null ? Math.max(tier.minCartons, v) : null })}
+                          className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center font-bold"
+                          placeholder="∞"
+                        />
+                        <span className="text-[10px] text-slate-400">qty</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="text-slate-500">Price adjustment</span>
+                        <button
+                          type="button"
+                          onClick={() => updateVolumeTier(tier.id, { adjustment: -(tier.adjustment || 0) })}
+                          className={`rounded-lg border px-2 py-1 text-[10px] font-black ${(tier.adjustment || 0) <= 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-600'}`}
+                        >
+                          {(tier.adjustment || 0) <= 0 ? 'Discount' : 'Surcharge'}
+                        </button>
+                        <FormattedNumberInput
+                          optional
+                          value={tier.adjustment === 0 ? undefined : Math.abs(tier.adjustment || 0)}
+                          onChange={(v) => {
+                            const abs = v ?? 0;
+                            const sign = (tier.adjustment || 0) > 0 ? 1 : -1;
+                            updateVolumeTier(tier.id, { adjustment: abs === 0 ? 0 : sign * abs });
+                          }}
+                          className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-center font-black"
+                          placeholder="0"
+                        />
+                        <span className="font-bold text-slate-400">%</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <div className="text-right">
+                          <p className="font-black text-slate-800">{formatMoney(adjustedAverage, config.outputCurrency)} / unit</p>
+                          <p className="text-emerald-700 font-bold">{saved > 0 ? `${formatMoney(saved, config.outputCurrency)} customer saving` : `${volumeTierScenarioLabel} base ${formatMoney(baseRetailAverageUnit, config.outputCurrency)}`}</p>
+                        </div>
+                        <button type="button" onClick={() => removeVolumeTier(tier.id)} className="text-slate-300 hover:text-red-500 p-1">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -14896,14 +15123,32 @@ function AppInner() {
                     </h3>
                     <p className="text-[10px] text-amber-700 mt-0.5">قیمت‌گذاری بر اساس حجم سفارش — هر چه بیشتر بخری، ارزان‌تر</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addVolumeTier}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Tier
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-2 rounded-lg bg-white border border-amber-200 px-2.5 py-1.5 text-[10px] font-black text-amber-900">
+                      <input
+                        type="checkbox"
+                        checked={catalogConfig.catalogShowVolumeTiers === true}
+                        onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogShowVolumeTiers: e.target.checked })}
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      Show in catalog
+                    </label>
+                    <select
+                      value={catalogConfig.catalogVolumeTierTerm || profitLossReportTerm || 'FOB'}
+                      onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogVolumeTierTerm: e.target.value })}
+                      className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-slate-700 outline-none focus:border-amber-500"
+                    >
+                      {(['EXW','FCA','FOB','CIF','DDP'] as const).map((t) => <option key={`catalog-tier-export-${t}`} value={t}>{t}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={addVolumeTier}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Tier
+                    </button>
+                  </div>
                 </div>
 
                 {volumeTiers.length === 0 ? (
@@ -15500,6 +15745,7 @@ function AppInner() {
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
                 config,
                 catalogConfig,
+                volumeTiers,
                 qrDataUrl,
                 tCombined,
                 inquiryEndpoint
@@ -15607,6 +15853,7 @@ function AppInner() {
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
                 config,
                 catalogConfig,
+                volumeTiers,
                 qrDataUrl,
                 tCombined,
                 inquiryEndpoint
@@ -15685,6 +15932,7 @@ function AppInner() {
             products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
             config,
             catalogConfig: nextCatalogConfig,
+            volumeTiers,
             qrDataUrl,
             tCombined,
             inquiryEndpoint
@@ -16860,6 +17108,46 @@ ${html}
                               ))}
                           </div>
 
+                          <div className="mt-3 space-y-2 bg-amber-50/40 border border-amber-100 rounded-md p-2">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                      type="checkbox"
+                                      checked={catalogConfig.catalogShowVolumeTiers === true}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogShowVolumeTiers: e.target.checked})}
+                                      className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                  />
+                                  <span className="text-xs font-semibold text-amber-800">Show Volume Pricing Tiers in catalog</span>
+                              </label>
+                              {catalogConfig.catalogShowVolumeTiers === true && (
+                                  <div className="space-y-2">
+                                      <div className="grid grid-cols-2 gap-2">
+                                          <input
+                                              type="text"
+                                              value={catalogConfig.catalogVolumeTierTitle || ''}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, catalogVolumeTierTitle: e.target.value})}
+                                              placeholder="Volume Pricing"
+                                              className="w-full text-xs border border-amber-200 rounded px-2 py-1 focus:border-amber-500 outline-none bg-white"
+                                          />
+                                          <select
+                                              value={catalogConfig.catalogVolumeTierTerm || catalogConfig.priceTerms?.[0] || 'FOB'}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, catalogVolumeTierTerm: e.target.value})}
+                                              className="w-full text-xs border border-amber-200 rounded px-2 py-1 bg-white outline-none"
+                                          >
+                                              {(['EXW','FCA','FOB','CIF','DDP'] as const).map(t => <option key={`cat-volume-term-${t}`} value={t}>{t}</option>)}
+                                          </select>
+                                      </div>
+                                      <textarea
+                                          rows={2}
+                                          value={catalogConfig.catalogVolumeTierNote || ''}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, catalogVolumeTierNote: e.target.value})}
+                                          placeholder="Customer-facing note about savings"
+                                          className="w-full text-xs border border-amber-200 rounded px-2 py-1 focus:border-amber-500 outline-none bg-white resize-none"
+                                      />
+                                      <p className="text-[10px] text-amber-700">{volumeTiers.length} tiers configured from the dashboard Volume Pricing Tiers section.</p>
+                                  </div>
+                              )}
+                          </div>
+
                           {/* Target Price Toggle */}
                           <div className="mt-3 space-y-2 bg-amber-50/40 border border-amber-100 rounded-md p-2">
                               <label className="flex items-center gap-2 cursor-pointer">
@@ -17964,7 +18252,7 @@ ${html}
                                                                 
                                                                 return (
                                                                     <div key={term} className="flex justify-between items-end py-0.5">
-                                                                        <span className="font-bold text-[10px] px-2 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: catalogConfig.primaryColor }}>{term}</span>
+                                                                        <span className="font-bold text-[10px] px-2 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: catalogConfig.primaryColor }}>{catalogConfig.catalogTermDisplayNames?.[term] || term}</span>
                                                                         <div className="text-right">
                                                                             {(catalogConfig.priceBasis === 'unit' || catalogConfig.priceBasis === 'both') && (
                                                                                 <span className="font-bold block text-xs md:text-sm text-slate-800">{uPrice} <span className="text-[9px] font-normal text-slate-400 uppercase">/{displayUnit}</span></span>
@@ -18007,6 +18295,32 @@ ${html}
                                                             })()}
                                                         </div>
                                                     )}
+                                                    {catalogConfig.showPrices && catalogConfig.catalogShowVolumeTiers === true && volumeTiers.length > 0 && (() => {
+                                                        const tierTerm = catalogConfig.catalogVolumeTierTerm || catalogConfig.priceTerms?.[0] || 'FOB';
+                                                        const basePrice = p.scenarioPrices?.[tierTerm] || 0;
+                                                        if (!basePrice) return null;
+                                                        return (
+                                                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
+                                                                <div className="flex justify-between items-center px-2 py-1 bg-amber-100/70 text-[10px] font-black text-amber-900">
+                                                                    <span>{catalogConfig.catalogVolumeTierTitle || 'Volume Pricing'}</span>
+                                                                    <span>{catalogConfig.catalogTermDisplayNames?.[tierTerm] || tierTerm}</span>
+                                                                </div>
+                                                                {volumeTiers.slice(0, 3).map((tier) => {
+                                                                    const adjusted = Math.max(0, basePrice * (1 + (tier.adjustment || 0) / 100));
+                                                                    const savePct = Math.max(0, -(tier.adjustment || 0));
+                                                                    return (
+                                                                        <div key={`preview-volume-${p.id}-${tier.id}`} className="flex justify-between gap-2 px-2 py-1 text-[10px] border-t border-amber-100">
+                                                                            <span className="font-bold text-slate-600">{formatNumber(tier.minCartons)}{tier.maxCartons != null ? `-${formatNumber(tier.maxCartons)}` : '+'}</span>
+                                                                            <span className="text-right">
+                                                                                <b className="text-slate-800">{formatMoney(adjusted, config.outputCurrency)}</b>
+                                                                                {savePct > 0 && <em className="not-italic text-emerald-700 font-bold ml-1">Save {savePct.toFixed(1).replace(/\.0$/, '')}%</em>}
+                                                                            </span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         </div>
@@ -18846,6 +19160,49 @@ ${html}
                                   </div>
                               ))}
                           </div>
+                          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-2 space-y-2">
+                              <label className="flex items-center gap-2 text-xs font-black text-amber-900">
+                                  <input
+                                      type="checkbox"
+                                      checked={catalogConfig.catalogShowVolumeTiers === true}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogShowVolumeTiers: e.target.checked })}
+                                      className="rounded text-amber-600 focus:ring-amber-500"
+                                  />
+                                  نمایش Volume Pricing در کاتالوگ
+                              </label>
+                              {catalogConfig.catalogShowVolumeTiers === true && (
+                                  <div className="space-y-2">
+                                      <div className="grid grid-cols-2 gap-2">
+                                          <input
+                                              type="text"
+                                              value={catalogConfig.catalogVolumeTierTitle || ''}
+                                              onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogVolumeTierTitle: e.target.value })}
+                                              className="w-full text-xs border border-amber-200 rounded-lg px-3 py-2 outline-none focus:border-amber-500 bg-white"
+                                              placeholder="Volume Pricing title"
+                                          />
+                                          <select
+                                              value={catalogConfig.catalogVolumeTierTerm || catalogConfig.priceTerms?.[0] || 'FOB'}
+                                              onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogVolumeTierTerm: e.target.value })}
+                                              className="text-xs border border-amber-200 rounded-lg px-2 py-2 bg-white outline-none focus:border-amber-500"
+                                          >
+                                              {SCENARIO_TERMS.map((term) => (
+                                                  <option key={`shop-tier-term-${term}`} value={term}>{catalogConfig.catalogTermDisplayNames?.[term] || term}</option>
+                                              ))}
+                                          </select>
+                                      </div>
+                                      <textarea
+                                          rows={2}
+                                          value={catalogConfig.catalogVolumeTierNote || ''}
+                                          onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogVolumeTierNote: e.target.value })}
+                                          className="w-full text-xs border border-amber-200 rounded-lg px-3 py-2 outline-none focus:border-amber-500 resize-none bg-white"
+                                          placeholder="متن کوتاه برای توضیح صرفه‌جویی مشتری"
+                                      />
+                                      <p className="text-[10px] text-amber-700">
+                                          تعداد tierها از بخش Volume Pricing Tiers در داشبورد تنظیم می‌شود. تعداد فعلی: {volumeTiers.length}
+                                      </p>
+                                  </div>
+                              )}
+                          </div>
                       </div>
 
                       <div className="space-y-3 border border-slate-200 rounded-2xl p-3">
@@ -19034,6 +19391,7 @@ ${html}
                                   title: catalogConfig.title,
                                   showMOQ: catalogConfig.showMOQ,
                                   terms: catalogConfig.catalogTermDisplayNames,
+                                  volume: [catalogConfig.catalogShowVolumeTiers, catalogConfig.catalogVolumeTierTerm, catalogConfig.catalogVolumeTierTitle, catalogConfig.catalogVolumeTierNote, volumeTiers],
                                   products: products.map(p => [p.id, p.name, p.catalogName, p.catalogMOQ, p.catalogDescription, p.active]),
                               })}`}
                               title="Catalogue Shop Preview"

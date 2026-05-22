@@ -450,6 +450,10 @@ export interface CatalogConfig {
   catalogDestinationLabel?: string;
   catalogDestinationPlaceholder?: string;
   catalogTermDisplayNames?: Record<string, string>;
+  catalogShowVolumeTiers?: boolean;
+  catalogVolumeTierTerm?: string;
+  catalogVolumeTierTitle?: string;
+  catalogVolumeTierNote?: string;
 
   // Google Form / Order Form CTA on HTML export & back page
   googleFormUrl?: string;
