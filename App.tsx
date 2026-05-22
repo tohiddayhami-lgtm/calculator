@@ -6160,6 +6160,15 @@ function AppInner() {
   const [formPublishing, setFormPublishing] = useState<string | null>(null);
   const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
   const [publicIsoView, setPublicIsoView] = useState<{ key: string; doc: IsoDocumentDef & any } | null>(null);
+  const [publicCatalogView, setPublicCatalogView] = useState<{ key: string; kind: 'catalog' | 'meta-hub'; url: string; title?: string } | null>(null);
+  const [publicCatalogLoading, setPublicCatalogLoading] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const sp = new URLSearchParams(window.location.search);
+    const c = sp.get('c');
+    const mh = sp.get('mh');
+    return !!((c && /^[A-Za-z0-9]{8,14}$/.test(c)) || (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)));
+  });
+  const [publicCatalogError, setPublicCatalogError] = useState('');
   const [publicIsoSubmitter, setPublicIsoSubmitter] = useState({ name: '', email: '', organization: '', notes: '' });
   const [publicIsoAnswers, setPublicIsoAnswers] = useState<Record<string, string | number | boolean | string[]>>({});
   const [publicIsoChecklist, setPublicIsoChecklist] = useState<Record<string, { checked: boolean; comment: string }>>({});
@@ -7340,50 +7349,52 @@ function AppInner() {
     return () => unsub();
   }, [db, dataAppId]);
 
-  // Short link ?c=CODE → redirect to hosted catalog HTML (full Storage URL)
+  // Short links ?c=CODE / ?mh=CODE open inside this domain instead of redirecting
+  // to the raw Storage URL, so the browser address stays on calculator.tohiddayhami.com.
   useEffect(() => {
-    if (!db || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
     const c = sp.get('c');
-    if (!c || !/^[A-Za-z0-9]{8,14}$/.test(c)) return;
+    const mh = sp.get('mh');
+    const catalogKey = c && /^[A-Za-z0-9]{8,14}$/.test(c) ? c : '';
+    const metaHubKey = mh && /^[A-Za-z0-9]{8,14}$/.test(mh) ? mh : '';
+    const key = catalogKey || metaHubKey;
+    if (!key) return;
+    const kind: 'catalog' | 'meta-hub' = catalogKey ? 'catalog' : 'meta-hub';
+    const collectionName = kind === 'catalog' ? 'catalog_short_links' : 'meta_hub_links';
     let cancelled = false;
     (async () => {
+      setPublicCatalogLoading(true);
+      setPublicCatalogError('');
       try {
-        const snap = await getDoc(doc(db, 'catalog_short_links', c));
-        if (cancelled || !snap.exists()) return;
+        if (!db) throw new Error('Public link database is not configured.');
+        const snap = await getDoc(doc(db, collectionName, key));
+        if (cancelled) return;
+        if (!snap.exists()) throw new Error('This public link was not found or is no longer active.');
         const target = snap.data()?.url;
         if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
-          window.location.replace(target);
+          setPublicCatalogView({
+            key,
+            kind,
+            url: target,
+            title: snap.data()?.catalogTitle || snap.data()?.title || (kind === 'catalog' ? 'Catalog' : 'Meta Trading Hub'),
+          });
+        } else {
+          throw new Error('This public link does not contain a valid catalog URL.');
         }
-      } catch (e) {
-        console.error('Catalog short link redirect failed:', e);
+      } catch (e: any) {
+        if (!cancelled) {
+          console.error('Public catalog link load failed:', e);
+          setPublicCatalogError(e?.message || String(e));
+          setPublicCatalogView(null);
+        }
+      } finally {
+        if (!cancelled) setPublicCatalogLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [db]);
-
-  // Short link ?mh=CODE → redirect to hosted Meta Trading Hub HTML (full Storage URL)
-  useEffect(() => {
-    if (!db || typeof window === 'undefined') return;
-    const sp = new URLSearchParams(window.location.search);
-    const mh = sp.get('mh');
-    if (!mh || !/^[A-Za-z0-9]{8,14}$/.test(mh)) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, 'meta_hub_links', mh));
-        if (cancelled || !snap.exists()) return;
-        const target = snap.data()?.url;
-        if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
-          window.location.replace(target);
-        }
-      } catch (e) {
-        console.error('Meta hub short link redirect failed:', e);
-      }
-    })();
-    return () => { cancelled = true; };
   }, [db]);
 
   // Meta Trading Hub: load saved draft from localStorage on first mount
@@ -18526,7 +18537,7 @@ ${html}
                                                   Copy
                                               </button>
                                           </div>
-                                          <p className="text-[10px] text-slate-400">Opens this app once, then sends the visitor to your catalog file.</p>
+                                          <p className="text-[10px] text-slate-400">Opens the catalog inside calculator.tohiddayhami.com without changing the browser address to the Storage file.</p>
                                       </div>
                                   ) : null}
                                   {!shareLinkInfo.shortUrl && (
@@ -27810,8 +27821,66 @@ ${html}
           return k && k.length >= 8 ? k : null;
         })()
       : null;
+  const publicCatalogUrlKey =
+    typeof window !== 'undefined'
+      ? (() => {
+          const sp = new URLSearchParams(window.location.search);
+          const c = sp.get('c');
+          const mh = sp.get('mh');
+          if (c && /^[A-Za-z0-9]{8,14}$/.test(c)) return c;
+          if (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)) return mh;
+          return null;
+        })()
+      : null;
 
-  if (authLoading && !publicFormUrlKey && !publicIsoUrlKey) {
+  const renderPublicCatalogViewer = () => (
+    <div className="fixed inset-0 bg-slate-950 text-white flex flex-col">
+      <div className="h-12 px-3 md:px-4 bg-slate-950 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
+        <div className="min-w-0">
+          <div className="text-xs font-black truncate">
+            {publicCatalogView?.title || (publicCatalogView?.kind === 'meta-hub' ? 'Meta Trading Hub' : 'Catalog')}
+          </div>
+          <div className="text-[10px] text-slate-400 truncate">Opened on calculator.tohiddayhami.com</div>
+        </div>
+        {publicCatalogView?.url && (
+          <a
+            href={publicCatalogView.url}
+            target="_blank"
+            rel="noopener"
+            className="shrink-0 rounded-lg bg-white/10 border border-white/15 px-3 py-1.5 text-[11px] font-bold hover:bg-white/15"
+          >
+            Open Original
+          </a>
+        )}
+      </div>
+      {publicCatalogLoading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-emerald-300" />
+            <p className="text-sm text-slate-300">Loading public catalog...</p>
+          </div>
+        </div>
+      ) : publicCatalogView?.url ? (
+        <iframe
+          title={publicCatalogView.title || 'Public catalog'}
+          src={publicCatalogView.url}
+          className="flex-1 w-full border-0 bg-white"
+          sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads"
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="bg-white text-slate-800 rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 text-center">
+            <Globe className="w-10 h-10 mx-auto text-slate-300 mb-3" />
+            <h1 className="text-lg font-black">Public link unavailable</h1>
+            <p className="text-sm text-slate-500 mt-2">{publicCatalogError || 'This catalog link could not be opened.'}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  if (authLoading && !publicFormUrlKey && !publicIsoUrlKey && !publicCatalogUrlKey) {
     return (
       <div className="fixed inset-0 bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm text-center shadow-sm">
@@ -27828,6 +27897,10 @@ ${html}
 
   if (publicIsoUrlKey) {
     return renderPublicIsoDocument();
+  }
+
+  if (publicCatalogUrlKey) {
+    return renderPublicCatalogViewer();
   }
 
   if (!user) {
