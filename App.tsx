@@ -2371,7 +2371,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     coverImage: '',
     primaryColor: '#0f172a',
     backgroundColor: '#ffffff',
-    textColor: '#334155',
+    textColor: '#111111',
     headingColor: '#0f172a',
     coverColor: '#0f172a',
     layoutMode: 'grid',
@@ -3900,7 +3900,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const cc = catalogConfig || {};
     const primary = cc.primaryColor || '#0f172a';
     const heading = cc.headingColor || primary;
-    const text = cc.textColor || '#334155';
+    const text = cc.textColor || '#111111';
     const bg = cc.backgroundColor || '#ffffff';
     const cover = cc.coverColor || '#0f172a';
     const coverText = cc.coverTextColor || '#ffffff';
@@ -15265,21 +15265,58 @@ function AppInner() {
     };
 
     // ── Meta Trading Hub helper functions ────────────────────────────
-    const handleImportCatalogToMetaHub = () => {
+    const buildMetaHubHtmlFromCatalogConfig = (nextCatalogConfig: CatalogConfig = catalogConfig) => {
         const inquiryEndpoint = (user && firebaseConfig && firebaseConfig.apiKey)
             ? { firebaseConfig, appId, ownerId: activeOwnerUid }
             : null;
-        const html = buildCatalogHtml({
+        return buildCatalogHtml({
             products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
             config,
-            catalogConfig,
+            catalogConfig: nextCatalogConfig,
             qrDataUrl,
             tCombined,
             inquiryEndpoint
         });
+    };
+
+    const handleImportCatalogToMetaHub = () => {
+        const html = buildMetaHubHtmlFromCatalogConfig();
         setMetaHubHtml(html);
         setMetaHubEditorMode('visual');
         setMetaHubPreviewKey(k => k + 1);
+    };
+
+    const patchMetaHubThemeHtml = (html: string, nextCatalogConfig: CatalogConfig): string => {
+        if (!html.trim()) return html;
+        let out = html;
+        const values: Record<string, string> = {
+            primary: nextCatalogConfig.primaryColor || '#0f172a',
+            heading: nextCatalogConfig.headingColor || nextCatalogConfig.primaryColor || '#0f172a',
+            text: nextCatalogConfig.textColor || '#111111',
+            bg: nextCatalogConfig.backgroundColor || '#ffffff',
+            'cover-text': nextCatalogConfig.coverTextColor || '#ffffff',
+        };
+        Object.entries(values).forEach(([name, value]) => {
+            const re = new RegExp(`(--${name}\\s*:\\s*)[^;]+(;?)`);
+            if (re.test(out)) {
+                out = out.replace(re, `$1${value}$2`);
+            }
+        });
+        out = out.replace(
+            /<meta\s+name=["']theme-color["']\s+content=["'][^"']*["']\s*>/i,
+            `<meta name="theme-color" content="${values.primary}">`
+        );
+        return out;
+    };
+
+    const updateTradingHubTheme = (patch: Partial<CatalogConfig>) => {
+        const nextCatalogConfig = { ...catalogConfig, ...patch };
+        const currentHtml = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
+        setCatalogConfig(nextCatalogConfig);
+        if (currentHtml.trim()) {
+            setMetaHubHtml(patchMetaHubThemeHtml(currentHtml, nextCatalogConfig));
+            setMetaHubPreviewKey(k => k + 1);
+        }
     };
 
     const normalizeImportedMetaHubHtml = (raw: string): string => {
@@ -15322,6 +15359,14 @@ ${html}
         const doc = metaHubVisualFrameRef.current?.contentDocument;
         if (!doc?.documentElement) return null;
         doc.getElementById('meta-hub-visual-editor-style')?.remove();
+        doc.querySelectorAll('[data-meta-visual-editable]').forEach((el) => {
+            el.removeAttribute('contenteditable');
+            el.removeAttribute('data-meta-visual-editable');
+        });
+        doc.querySelectorAll('[data-meta-visual-locked]').forEach((el) => {
+            el.removeAttribute('contenteditable');
+            el.removeAttribute('data-meta-visual-locked');
+        });
         try { doc.designMode = 'off'; } catch {}
         return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
     };
@@ -15341,14 +15386,73 @@ ${html}
         if (!doc) return;
         if (metaHubEditorMode !== 'visual') return;
         try {
-            doc.designMode = 'on';
+            try { doc.designMode = 'off'; } catch {}
+            const lockSelector = [
+                'script',
+                'style',
+                'noscript',
+                'svg',
+                'nav',
+                'button',
+                'a',
+                'input',
+                'select',
+                'textarea',
+                '.site-tabs',
+                '.filter-bar',
+                '.topbar',
+                '.cart-fab',
+                '.cart-overlay',
+                '.cart-drawer',
+                '.thanks-overlay',
+            ].join(',');
+            doc.querySelectorAll(lockSelector).forEach((el) => {
+                (el as HTMLElement).contentEditable = 'false';
+                el.setAttribute('data-meta-visual-locked', '1');
+            });
+            const editableSelector = [
+                '.cover h1',
+                '.cover .subtitle',
+                '.cover .collection',
+                '.about-label',
+                '.about-para',
+                '.custom-page-title',
+                '.custom-page-content',
+                '.cp-title',
+                '.cp-desc',
+                '.cp-card-name',
+                '.cp-card-desc',
+                '.section-title',
+                '.product-name',
+                '.description',
+                '.meta-value',
+                '.price-amount',
+                'footer h3',
+                'footer .row',
+                '.footer-text',
+                'h1',
+                'h2',
+                'h3',
+                'p',
+                'li',
+                'figcaption',
+                'blockquote',
+            ].join(',');
+            doc.querySelectorAll(editableSelector).forEach((el) => {
+                if (el.closest(lockSelector)) return;
+                const text = (el.textContent || '').trim();
+                if (!text) return;
+                (el as HTMLElement).contentEditable = 'true';
+                el.setAttribute('data-meta-visual-editable', '1');
+            });
             if (!doc.getElementById('meta-hub-visual-editor-style')) {
                 const style = doc.createElement('style');
                 style.id = 'meta-hub-visual-editor-style';
                 style.textContent = `
-                    body { cursor: text !important; }
-                    a, button { cursor: text !important; }
-                    *:focus { outline: 2px solid rgba(124,58,237,.45) !important; outline-offset: 2px !important; }
+                    [data-meta-visual-editable="1"] { cursor: text !important; }
+                    [data-meta-visual-editable="1"]:hover { outline: 1px dashed rgba(124,58,237,.36) !important; outline-offset: 3px !important; }
+                    [data-meta-visual-editable="1"]:focus { outline: 2px solid rgba(124,58,237,.58) !important; outline-offset: 3px !important; }
+                    [data-meta-visual-locked="1"] { cursor: default !important; }
                 `;
                 doc.head.appendChild(style);
             }
@@ -17646,6 +17750,63 @@ ${html}
                               />
                           </div>
 
+                          <div className="space-y-3 border-t border-slate-100 pt-4">
+                              <div className="flex items-center justify-between gap-2">
+                                  <h3 className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                                      <Palette className="w-4 h-4 text-violet-600" />
+                                      Page colors
+                                  </h3>
+                                  <button
+                                      type="button"
+                                      onClick={() => updateTradingHubTheme({ textColor: '#111111', headingColor: '#0f172a' })}
+                                      className="text-[10px] font-bold text-slate-500 hover:text-violet-700"
+                                  >
+                                      Black text
+                                  </button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Theme</span>
+                                      <input
+                                          type="color"
+                                          value={catalogConfig.primaryColor || '#0f172a'}
+                                          onChange={(e) => updateTradingHubTheme({ primaryColor: e.target.value })}
+                                          className="w-full h-8 rounded cursor-pointer border-0 p-0"
+                                      />
+                                  </label>
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Page text</span>
+                                      <input
+                                          type="color"
+                                          value={catalogConfig.textColor || '#111111'}
+                                          onChange={(e) => updateTradingHubTheme({ textColor: e.target.value })}
+                                          className="w-full h-8 rounded cursor-pointer border-0 p-0"
+                                      />
+                                  </label>
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Headings</span>
+                                      <input
+                                          type="color"
+                                          value={catalogConfig.headingColor || catalogConfig.primaryColor || '#0f172a'}
+                                          onChange={(e) => updateTradingHubTheme({ headingColor: e.target.value })}
+                                          className="w-full h-8 rounded cursor-pointer border-0 p-0"
+                                      />
+                                  </label>
+                                  <label className="space-y-1">
+                                      <span className="text-[10px] text-slate-500 font-semibold">Background</span>
+                                      <input
+                                          type="color"
+                                          value={catalogConfig.backgroundColor || '#ffffff'}
+                                          onChange={(e) => updateTradingHubTheme({ backgroundColor: e.target.value })}
+                                          className="w-full h-8 rounded cursor-pointer border-0 p-0"
+                                      />
+                                  </label>
+                              </div>
+                              <p className="text-[10px] text-slate-400 leading-snug">
+                                  Theme changes update the HTML draft variables. Use <b>Import from Catalog</b> if you want to fully rebuild from calculator data.
+                              </p>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-2">
                                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cover</label>
@@ -17780,7 +17941,7 @@ ${html}
                           metaHubHtml.trim() ? (
                               <div className="relative flex-1 min-w-0 bg-white">
                                   <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-violet-700 text-white text-[11px] font-semibold shadow-lg pointer-events-none">
-                                      Visual Edit: click any text and edit it, then Save Visual Edits
+                                      Visual Edit: edit highlighted text only. Product tabs/buttons are locked.
                                   </div>
                                   <iframe
                                       ref={metaHubVisualFrameRef}
