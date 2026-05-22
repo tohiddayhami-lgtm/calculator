@@ -420,6 +420,7 @@ export interface CatalogConfig {
   storyExtraBoxOpacityPct?: number;
   storyEyebrowOffsetPct?: number;
   storyHeroOffsetPct?: number;
+  storyTabsOffsetPct?: number;
   storyProductsOffsetPct?: number;
   storyCtaOffsetPct?: number;
   storyFooterOffsetPct?: number;

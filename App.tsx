@@ -2458,6 +2458,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyExtraBoxOpacityPct: 70,
     storyEyebrowOffsetPct: 0,
     storyHeroOffsetPct: 0,
+    storyTabsOffsetPct: 0,
     storyProductsOffsetPct: 0,
     storyCtaOffsetPct: 0,
     storyFooterOffsetPct: 0,
@@ -15777,6 +15778,7 @@ ${html}
                 align === 'center' ? left + w / 2 : align === 'right' ? left + w : left;
             const storyEyebrowOffsetPx = storyNumberSetting(catalogConfig.storyEyebrowOffsetPct, 0, -18, 18) * height / 100;
             const storyHeroOffsetPx = storyNumberSetting(catalogConfig.storyHeroOffsetPct, 0, -18, 18) * height / 100;
+            const storyTabsOffsetPx = storyNumberSetting(catalogConfig.storyTabsOffsetPct, 0, -18, 18) * height / 100;
             const storyProductsOffsetPx = storyNumberSetting(catalogConfig.storyProductsOffsetPct, 0, -18, 18) * height / 100;
             const storyCtaOffsetPx = storyNumberSetting(catalogConfig.storyCtaOffsetPct, 0, -18, 18) * height / 100;
             const storyFooterOffsetPx = storyNumberSetting(catalogConfig.storyFooterOffsetPct, 0, -18, 18) * height / 100;
@@ -15868,8 +15870,8 @@ ${html}
             const qrImg = liveUrl
                 ? await loadImage(await QRCode.toDataURL(liveUrl, {
                     width: 1024,
-                    margin: 1,
-                    errorCorrectionLevel: 'M',
+                    margin: 2,
+                    errorCorrectionLevel: 'H',
                     color: { dark: storyQrColor, light: storyQrBgColor },
                 }))
                 : null;
@@ -15980,7 +15982,8 @@ ${html}
             ctx.fillStyle = storyStyle === 'editorial' ? '#f8fafc' : '#ffffff';
             ctx.fillRect(sx, sy + heroH, sw, sh - heroH);
             if (storyStyle === 'website') {
-                fillRounded(sx + 210, sy + heroH + 130, sw - 420, 150, 75, 'rgba(15,23,42,0.05)');
+                const tabsY = sy + heroH + 130 + storyTabsOffsetPx;
+                fillRounded(sx + 210, tabsY, sw - 420, 150, 75, 'rgba(15,23,42,0.05)');
                 const tabLabels = [
                     catalogConfig.productTabLabel || 'Product List',
                     catalogConfig.aboutUsTabLabel || 'About Us',
@@ -15989,11 +15992,11 @@ ${html}
                 tabLabels.forEach((label, index) => {
                     const tabW = (sw - 500) / 3;
                     const tx = sx + 250 + index * tabW;
-                    fillRounded(tx, sy + heroH + 160, tabW - 22, 92, 46, index === 0 ? '#ffffff' : 'rgba(255,255,255,0)');
+                    fillRounded(tx, tabsY + 30, tabW - 22, 92, 46, index === 0 ? '#ffffff' : 'rgba(255,255,255,0)');
                     ctx.fillStyle = index === 0 ? (catalogConfig.headingColor || '#0f172a') : 'rgba(15,23,42,0.46)';
                     ctx.font = `800 34px ${storyFontStack}`;
                     ctx.textAlign = 'center';
-                    ctx.fillText(label, tx + (tabW - 22) / 2, sy + heroH + 219);
+                    ctx.fillText(label, tx + (tabW - 22) / 2, tabsY + 89);
                 });
                 ctx.textAlign = 'left';
             }
@@ -16067,10 +16070,14 @@ ${html}
             ctx.font = `${catalogConfig.storyCtaTextBold ? '800' : '600'} ${storyCtaTextCanvasFont}px ${storyFontStack}`;
             wrapText(storyCtaText, sx + 320, ctaY + 250, sw - 980, Math.round(storyCtaTextCanvasFont * 1.32), 2);
             if (storyShowQr && qrImg) {
+                const qrBox = 480;
+                const qrSize = 400;
+                const qrX = sx + sw - 730;
+                const qrY = ctaY + 70;
                 ctx.fillStyle = storyQrBgColor;
-                roundedRect(sx + sw - 680, ctaY + 105, 430, 430, 56);
+                roundedRect(qrX, qrY, qrBox, qrBox, 64);
                 ctx.fill();
-                ctx.drawImage(qrImg, sx + sw - 640, ctaY + 145, 350, 350);
+                ctx.drawImage(qrImg, qrX + (qrBox - qrSize) / 2, qrY + (qrBox - qrSize) / 2, qrSize, qrSize);
             }
             ctx.restore();
 
@@ -16115,6 +16122,7 @@ ${html}
     const storyPreviewFooter = (catalogConfig.storyFooterText || '').trim() || 'Instagram Story 9:16 • 4320 × 7680 PNG';
     const storyEyebrowOffset = storyNumberSetting(catalogConfig.storyEyebrowOffsetPct, 0, -18, 18);
     const storyHeroOffset = storyNumberSetting(catalogConfig.storyHeroOffsetPct, 0, -18, 18);
+    const storyTabsOffset = storyNumberSetting(catalogConfig.storyTabsOffsetPct, 0, -18, 18);
     const storyProductsOffset = storyNumberSetting(catalogConfig.storyProductsOffsetPct, 0, -18, 18);
     const storyCtaOffset = storyNumberSetting(catalogConfig.storyCtaOffsetPct, 0, -18, 18);
     const storyFooterOffset = storyNumberSetting(catalogConfig.storyFooterOffsetPct, 0, -18, 18);
@@ -16140,9 +16148,23 @@ ${html}
     const storyExtraFontSize = storyNumberSetting(catalogConfig.storyExtraTextFontSizePx, 13, 8, 30);
     const storyCtaOpacity = storyNumberSetting(catalogConfig.storyCtaBgOpacityPct, 100, 0, 100);
     const storyExtraOpacity = storyNumberSetting(catalogConfig.storyExtraBoxOpacityPct, 70, 0, 100);
+    const storyQrModules = (() => {
+        try {
+            const qr = (QRCode as any).create(storyLiveUrl || 'https://calculator.tohiddayhami.com/', {
+                errorCorrectionLevel: 'H',
+            });
+            return {
+                size: qr.modules.size as number,
+                data: qr.modules.data as boolean[],
+            };
+        } catch {
+            return null;
+        }
+    })();
     const storyLayoutControls: Array<{ key: keyof CatalogConfig; label: string; value: number }> = [
         { key: 'storyEyebrowOffsetPct', label: 'Top label', value: storyEyebrowOffset },
         { key: 'storyHeroOffsetPct', label: 'Title box', value: storyHeroOffset },
+        { key: 'storyTabsOffsetPct', label: 'Website tabs', value: storyTabsOffset },
         { key: 'storyExtraTextOffsetPct', label: 'Extra text', value: storyNumberSetting(catalogConfig.storyExtraTextOffsetPct, 0, -18, 18) },
         { key: 'storyProductsOffsetPct', label: 'Products', value: storyProductsOffset },
         { key: 'storyCtaOffsetPct', label: 'CTA box', value: storyCtaOffset },
@@ -19103,6 +19125,7 @@ ${html}
                                       ...catalogConfig,
                                       storyEyebrowOffsetPct: 0,
                                       storyHeroOffsetPct: 0,
+                                      storyTabsOffsetPct: 0,
                                       storyExtraTextOffsetPct: 0,
                                       storyProductsOffsetPct: 0,
                                       storyCtaOffsetPct: 0,
@@ -19399,7 +19422,7 @@ ${html}
                               {storyPreviewStyle === 'website' && (
                                   <div
                                       className="absolute inset-x-5 rounded-full border border-slate-200 bg-white/90 p-1.5 shadow-lg flex gap-1"
-                                      style={{ top: `${Math.max(35, 43 + storyHeroOffset)}%` }}
+                                      style={{ top: `${Math.max(35, 43 + storyTabsOffset)}%` }}
                                   >
                                       {[catalogConfig.productTabLabel || 'Product List', catalogConfig.aboutUsTabLabel || 'About Us', 'Pages'].map((label, index) => (
                                           <div
@@ -19490,26 +19513,21 @@ ${html}
                                       <div
                                           className="w-16 h-16 rounded-xl p-1.5 flex items-center justify-center shrink-0 border shadow-sm"
                                           style={{ backgroundColor: storyQrBgColor, borderColor: storyQrColor }}
-                                          title="QR color preview"
+                                          title="Story QR preview"
                                       >
-                                          <div className="grid grid-cols-7 gap-[1px] w-full h-full">
-                                              {Array.from({ length: 49 }).map((_, i) => {
-                                                  const x = i % 7;
-                                                  const y = Math.floor(i / 7);
-                                                  const finder =
-                                                      (x < 2 && y < 2) ||
-                                                      (x > 4 && y < 2) ||
-                                                      (x < 2 && y > 4);
-                                                  const pattern = finder || [10, 12, 16, 18, 22, 24, 25, 29, 31, 33, 37, 40, 44, 46].includes(i);
-                                                  return (
-                                                      <span
-                                                          key={i}
-                                                          className="rounded-[1px]"
-                                                          style={{ backgroundColor: pattern ? storyQrColor : storyQrBgColor }}
-                                                      />
-                                                  );
-                                              })}
-                                          </div>
+                                          {storyQrModules ? (
+                                              <svg viewBox={`0 0 ${storyQrModules.size} ${storyQrModules.size}`} className="w-full h-full block" aria-label="QR preview">
+                                                  <rect width={storyQrModules.size} height={storyQrModules.size} fill={storyQrBgColor} />
+                                                  {storyQrModules.data.map((enabled, i) => {
+                                                      if (!enabled) return null;
+                                                      const x = i % storyQrModules.size;
+                                                      const y = Math.floor(i / storyQrModules.size);
+                                                      return <rect key={i} x={x} y={y} width={1} height={1} fill={storyQrColor} />;
+                                                  })}
+                                              </svg>
+                                          ) : (
+                                              <span className="text-[8px] font-bold" style={{ color: storyQrColor }}>QR</span>
+                                          )}
                                       </div>
                                   )}
                               </div>
