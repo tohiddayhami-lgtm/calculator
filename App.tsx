@@ -27834,42 +27834,24 @@ ${html}
       : null;
 
   const renderPublicCatalogViewer = () => (
-    <div className="fixed inset-0 bg-slate-950 text-white flex flex-col">
-      <div className="h-12 px-3 md:px-4 bg-slate-950 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
-        <div className="min-w-0">
-          <div className="text-xs font-black truncate">
-            {publicCatalogView?.title || (publicCatalogView?.kind === 'meta-hub' ? 'Meta Trading Hub' : 'Catalog')}
-          </div>
-          <div className="text-[10px] text-slate-400 truncate">Opened on calculator.tohiddayhami.com</div>
-        </div>
-        {publicCatalogView?.url && (
-          <a
-            href={publicCatalogView.url}
-            target="_blank"
-            rel="noopener"
-            className="shrink-0 rounded-lg bg-white/10 border border-white/15 px-3 py-1.5 text-[11px] font-bold hover:bg-white/15"
-          >
-            Open Original
-          </a>
-        )}
-      </div>
+    <div className="fixed inset-0 bg-white text-slate-900">
       {publicCatalogLoading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-emerald-300" />
-            <p className="text-sm text-slate-300">Loading public catalog...</p>
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-emerald-600" />
+            <p className="text-sm text-slate-500">Loading catalog...</p>
           </div>
         </div>
       ) : publicCatalogView?.url ? (
         <iframe
           title={publicCatalogView.title || 'Public catalog'}
           src={publicCatalogView.url}
-          className="flex-1 w-full border-0 bg-white"
+          className="absolute inset-0 w-full h-full border-0 bg-white"
           sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads"
           referrerPolicy="strict-origin-when-cross-origin"
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center p-4">
+        <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
           <div className="bg-white text-slate-800 rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 text-center">
             <Globe className="w-10 h-10 mx-auto text-slate-300 mb-3" />
             <h1 className="text-lg font-black">Public link unavailable</h1>
