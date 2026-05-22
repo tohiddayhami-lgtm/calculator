@@ -6448,7 +6448,7 @@ function AppInner() {
   const [researchEntries, setResearchEntries] = useState<DashboardResearchEntry[]>([]);
   const [researchUploadingKey, setResearchUploadingKey] = useState<string | null>(null);
   const [dashboardTodos, setDashboardTodos] = useState<DashboardTodoItem[]>([]);
-  const [dashboardSubView, setDashboardSubView] = useState<'workspace' | 'warehouse'>('workspace');
+  const [dashboardSubView, setDashboardSubView] = useState<'workspace' | 'service-retail' | 'warehouse'>('workspace');
   const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>(() =>
     defaultWarehouseLocations(),
   );
@@ -10808,6 +10808,53 @@ function AppInner() {
       setProducts(products.map(p => p.id === id ? { ...p, [field]: val } : p)); 
   };
 
+  const updateProductPatch = (id: number, patch: Partial<Product>) => {
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
+  };
+
+  const addServiceRetailItem = () => {
+      const sku = formatSku(nextSkuNumber(products));
+      const id = Date.now();
+      setProducts(prev => [
+          ...prev,
+          {
+              id,
+              name: '',
+              qty: 1,
+              unitPrice: 0,
+              currency: config.outputCurrency || 'USD',
+              itemsPerPack: 1,
+              packPrice: 0,
+              active: true,
+              priceInputMode: 'unit',
+              group: '',
+              measurementUnit: 'unit',
+              sku,
+              gallery: [],
+              galleryVideos: [],
+              scenarioManualUnitSellPrices: {},
+          },
+      ]);
+  };
+
+  const applyServiceRetailCatalogPreset = () => {
+      setCatalogConfig(prev => ({
+          ...prev,
+          catalogTermLabel: prev.catalogTermLabel && prev.catalogTermLabel !== 'Incoterm' ? prev.catalogTermLabel : 'گزینه فروش / تحویل',
+          catalogTermQuickLabel: prev.catalogTermQuickLabel && prev.catalogTermQuickLabel !== 'Pricing for' ? prev.catalogTermQuickLabel : 'قیمت برای',
+          catalogDestinationLabel: prev.catalogDestinationLabel && prev.catalogDestinationLabel !== 'Destination Port / City' ? prev.catalogDestinationLabel : 'شهر / محل ارائه خدمات',
+          catalogDestinationPlaceholder: prev.catalogDestinationPlaceholder && prev.catalogDestinationPlaceholder !== 'e.g. Hamburg, DE' ? prev.catalogDestinationPlaceholder : 'مثلاً مسقط، شعبه، محله یا آدرس مشتری',
+          catalogTermDisplayNames: {
+              ...(prev.catalogTermDisplayNames || {}),
+              EXW: prev.catalogTermDisplayNames?.EXW || 'تحویل حضوری / پایه',
+              FOB: prev.catalogTermDisplayNames?.FOB || 'ارسال محلی',
+              DDP: prev.catalogTermDisplayNames?.DDP || 'تحویل درب مشتری / فول سرویس',
+          },
+          priceTerms: prev.priceTerms?.length ? prev.priceTerms : ['EXW', 'FOB', 'DDP'],
+          orderIncoterms: prev.orderIncoterms?.length ? prev.orderIncoterms : ['EXW', 'FOB', 'DDP'],
+      }));
+  };
+
   const setScenarioMapValue = <T,>(map: Record<string, T> | undefined, term: string, val: T | undefined | null | '') => {
       const next = { ...(map || {}) };
       if (val === undefined || val === null || val === '') {
@@ -12669,6 +12716,196 @@ function AppInner() {
     );
   };
 
+  const renderServiceRetailDashboard = () => {
+    const activeItems = calculations.processedProducts.filter(p => p.active !== false);
+    const scenarioDefs: Array<{ term: ScenarioTerm; label: string; hint: string }> = [
+      { term: 'EXW', label: catalogConfig.catalogTermDisplayNames?.EXW || 'تحویل حضوری / پایه', hint: 'قیمت پایه فروش' },
+      { term: 'FOB', label: catalogConfig.catalogTermDisplayNames?.FOB || 'ارسال محلی', hint: 'فروش با ارسال یا بسته‌بندی ساده' },
+      { term: 'DDP', label: catalogConfig.catalogTermDisplayNames?.DDP || 'درب مشتری / فول سرویس', hint: 'تحویل کامل یا اجرای خدمت' },
+    ];
+    const scenarioTotal = (term: ScenarioTerm) =>
+      activeItems.reduce((sum, p) => sum + (((p.scenarioPrices as Record<string, number> | undefined)?.[term] || 0) * (p.qty || 0)), 0);
+    const costTotal = activeItems.reduce((sum, p) => sum + ((p.unitCostOutput || 0) * (p.qty || 0)), 0);
+    const primarySell = scenarioTotal('EXW');
+    const primaryProfit = primarySell - costTotal;
+
+    return (
+      <div className="space-y-4">
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 rounded-2xl text-white p-5 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-indigo-200 font-bold">Services & Retail Calculator</p>
+              <h2 className="text-xl font-black mt-1">محاسبات خدمات و محصولات فروشگاهی</h2>
+              <p className="text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
+                برای کسب‌وکارهایی مثل خدمات، فروشگاه، کیک و شیرینی تازه، مزون، تعمیرات یا سفارش محلی. این بخش ترم‌های صادراتی را نمایش نمی‌دهد؛ فقط سناریوهای فروش را تنظیم می‌کند و همان محصولات مستقیماً وارد کاتالوگ مشترک می‌شوند.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={applyServiceRetailCatalogPreset}
+                className="px-3 py-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/15 text-xs font-bold"
+              >
+                آماده‌سازی کاتالوگ غیرصادراتی
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('catalog')}
+                className="px-3 py-2 rounded-xl bg-white text-slate-900 hover:bg-slate-100 text-xs font-black"
+              >
+                رفتن به کاتالوگ
+              </button>
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-3 mt-5">
+            <div className="rounded-xl bg-white/10 border border-white/10 p-3">
+              <div className="text-[10px] text-slate-300 font-bold uppercase">Items</div>
+              <div className="text-2xl font-black mt-1">{activeItems.length}</div>
+            </div>
+            <div className="rounded-xl bg-white/10 border border-white/10 p-3">
+              <div className="text-[10px] text-slate-300 font-bold uppercase">Base sales</div>
+              <div className="text-lg font-black mt-1">{formatMoney(primarySell, config.outputCurrency)}</div>
+            </div>
+            <div className="rounded-xl bg-white/10 border border-white/10 p-3">
+              <div className="text-[10px] text-slate-300 font-bold uppercase">Estimated profit</div>
+              <div className={`text-lg font-black mt-1 ${primaryProfit >= 0 ? 'text-emerald-200' : 'text-rose-200'}`}>{formatMoney(primaryProfit, config.outputCurrency)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black text-slate-900">ورود محصولات / خدمات</h3>
+              <p className="text-xs text-slate-500 mt-0.5">قیمت تمام‌شده و سناریوهای فروش داخلی را وارد کن؛ کاتالوگ از همین داده‌ها استفاده می‌کند.</p>
+            </div>
+            <button
+              type="button"
+              onClick={addServiceRetailItem}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700"
+            >
+              <Plus className="w-4 h-4" /> افزودن آیتم
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left min-w-[220px]">Product / Service</th>
+                  <th className="px-3 py-2 text-center w-28">Qty</th>
+                  <th className="px-3 py-2 text-center w-32">Unit</th>
+                  <th className="px-3 py-2 text-right min-w-[170px]">Cost</th>
+                  {scenarioDefs.map(s => <th key={s.term} className="px-3 py-2 text-right min-w-[170px]">{s.label}</th>)}
+                  <th className="px-3 py-2 text-right min-w-[130px]">Margin</th>
+                  <th className="px-3 py-2 text-center w-12"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {products.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-10 text-center text-slate-400">هنوز آیتمی ثبت نشده است.</td>
+                  </tr>
+                ) : products.map((p) => {
+                  const computed = calculations.processedProducts.find(x => x.id === p.id) || p;
+                  const cost = computed.unitCostOutput || 0;
+                  const baseSell = (computed.scenarioPrices as Record<string, number> | undefined)?.EXW || 0;
+                  const margin = baseSell > 0 ? ((baseSell - cost) / baseSell) * 100 : 0;
+                  return (
+                    <tr key={p.id} className={`${p.active === false ? 'opacity-50 bg-slate-50/70' : 'hover:bg-slate-50/40'}`}>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={p.active !== false}
+                            onChange={() => toggleProductActive(p.id)}
+                            className="rounded border-slate-300 text-indigo-600"
+                            title="Show in calculations and catalog"
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <input
+                              value={p.name}
+                              onChange={(e) => updateProduct(p.id, 'name', e.target.value)}
+                              className="w-full font-bold text-slate-800 border border-transparent hover:border-slate-200 focus:border-indigo-400 rounded px-2 py-1 outline-none"
+                              placeholder="نام محصول یا خدمت"
+                            />
+                            <input
+                              value={p.group || ''}
+                              onChange={(e) => updateProduct(p.id, 'group', e.target.value)}
+                              className="w-full text-xs text-slate-500 border border-transparent hover:border-slate-200 focus:border-indigo-400 rounded px-2 py-0.5 outline-none"
+                              placeholder="دسته‌بندی مثل شیرینی، مشاوره، تعمیرات..."
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <FormattedNumberInput value={p.qty} onChange={(val) => updateProduct(p.id, 'qty', val ?? 0)} className="w-20 mx-auto border border-slate-200 rounded-lg px-2 py-1 text-center font-bold" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <input value={p.measurementUnit || ''} onChange={(e) => updateProduct(p.id, 'measurementUnit', e.target.value)} className="w-24 mx-auto block border border-slate-200 rounded-lg px-2 py-1 text-center text-xs" placeholder="kg / box / hour" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex justify-end gap-1">
+                          <FormattedNumberInput value={p.unitPrice} onChange={(val) => updateProduct(p.id, 'unitPrice', val ?? 0)} className="w-24 border border-slate-200 rounded-lg px-2 py-1 text-right font-bold" />
+                          <select value={p.currency} onChange={(e) => updateProduct(p.id, 'currency', e.target.value)} className="w-20 border border-slate-200 rounded-lg px-1 py-1 text-xs">
+                            {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                      </td>
+                      {scenarioDefs.map((s) => (
+                        <td key={s.term} className="px-3 py-3">
+                          <div className="flex flex-col items-end gap-1">
+                            <FormattedNumberInput
+                              optional
+                              value={p.scenarioManualUnitSellPrices?.[s.term] ?? undefined}
+                              onChange={(val) => updateProductScenarioMap(p.id, 'scenarioManualUnitSellPrices', s.term, val && val > 0 ? val : undefined)}
+                              className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-right font-black text-slate-800"
+                              placeholder={formatNumber((computed.scenarioPrices as Record<string, number> | undefined)?.[s.term] || 0)}
+                            />
+                            <span className="text-[9px] text-slate-400">{s.hint}</span>
+                          </div>
+                        </td>
+                      ))}
+                      <td className="px-3 py-3 text-right">
+                        <div className={`font-black ${margin >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{Number.isFinite(margin) ? `${margin.toFixed(1)}%` : '—'}</div>
+                        <div className="text-[10px] text-slate-400">{formatMoney(Math.max(0, baseSell - cost), config.outputCurrency)} / unit</div>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <button type="button" onClick={() => setProducts(prev => prev.filter(x => x.id !== p.id))} className="text-slate-300 hover:text-red-500">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-3 gap-3">
+          {scenarioDefs.map(s => {
+            const total = scenarioTotal(s.term);
+            const profit = total - costTotal;
+            return (
+              <div key={`service-card-${s.term}`} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-black text-slate-800">{s.label}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{s.term} internal pricing key</div>
+                  </div>
+                  <span className="text-[10px] rounded-full bg-slate-100 px-2 py-1 text-slate-500 font-bold">{activeItems.length} item</span>
+                </div>
+                <div className="mt-3 text-lg font-black text-slate-900">{formatMoney(total, config.outputCurrency)}</div>
+                <div className={`text-xs font-bold mt-1 ${profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>Profit: {formatMoney(profit, config.outputCurrency)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboard = () => (
     <div className="space-y-6" data-dashboard-layout="export-warehouse-only">
       <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1 gap-1 shadow-sm">
@@ -12683,6 +12920,18 @@ function AppInner() {
         >
           <LayoutDashboard className="w-4 h-4" />
           محاسبه صادرات
+        </button>
+        <button
+          type="button"
+          onClick={() => setDashboardSubView('service-retail')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+            dashboardSubView === 'service-retail'
+              ? 'bg-white text-indigo-800 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <BadgeCheck className="w-4 h-4" />
+          محاسبات خدمات و محصولات
         </button>
         {canUseWarehouse && (
           <button
@@ -12711,6 +12960,8 @@ function AppInner() {
           productSettings={warehouseProductSettings}
           setProductSettings={setWarehouseProductSettings}
         />
+      ) : dashboardSubView === 'service-retail' ? (
+        renderServiceRetailDashboard()
       ) : (
       <>
       {/* 1. CONFIG BAR */}

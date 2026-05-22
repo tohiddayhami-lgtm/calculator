@@ -163,7 +163,7 @@ export type AppContextValue = {
 
   // View / Navigation
   view: AppView; setView: (v: AppView) => void;
-  dashboardSubView: 'workspace' | 'warehouse'; setDashboardSubView: (v: 'workspace' | 'warehouse') => void;
+  dashboardSubView: 'workspace' | 'service-retail' | 'warehouse'; setDashboardSubView: (v: 'workspace' | 'service-retail' | 'warehouse') => void;
   showRateSettings: boolean; setShowRateSettings: (v: boolean) => void;
 
   // Project / Save / Load
