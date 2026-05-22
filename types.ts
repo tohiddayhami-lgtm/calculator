@@ -468,6 +468,10 @@ export interface CatalogConfig {
   cartButtonText?: string;
   cartTitle?: string;
   orderThankYouText?: string;
+  catalogCartShowTermSelector?: boolean; // show/hide the "Pricing for" FOB quick selector (default true)
+  catalogCartShowPackToggle?: boolean;   // show/hide unit/pack mode toggle per cart item (default true)
+  catalogCartShowSavings?: boolean;      // show "your savings" row in cart summary (default false)
+  catalogCartSavingsLabel?: string;      // custom label for the savings line
   showCustomization?: boolean;
   customizationText?: string;
   showPartners?: boolean;

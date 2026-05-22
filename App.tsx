@@ -2509,6 +2509,10 @@ function createDefaultCatalogConfig(): CatalogConfig {
     cartTitle: 'Your Inquiry Cart',
     orderThankYouText:
       'Thank you! Your inquiry has been received. We will prepare a proforma invoice and contact you shortly.',
+    catalogCartShowTermSelector: true,
+    catalogCartShowPackToggle: true,
+    catalogCartShowSavings: false,
+    catalogCartSavingsLabel: 'Your savings from this purchase',
     showCompanyPhotos: false,
     companyPhotos: [],
     sections: [],
@@ -4024,6 +4028,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const cartButtonText = cc.cartButtonText || 'Request Quote';
     const cartTitle = cc.cartTitle || 'Your Inquiry Cart';
     const orderThankYouText = cc.orderThankYouText || 'Thank you! Your inquiry has been received.';
+    const cartShowTermSelector = cc.catalogCartShowTermSelector !== false;
+    const cartShowPackToggle = cc.catalogCartShowPackToggle !== false;
+    const cartShowSavings = cc.catalogCartShowSavings === true;
+    const cartSavingsLabel = (cc.catalogCartSavingsLabel || 'Your savings from this purchase').trim() || 'Your savings from this purchase';
     const termDisplayNames = (cc.catalogTermDisplayNames && typeof cc.catalogTermDisplayNames === 'object')
         ? cc.catalogTermDisplayNames as Record<string, string>
         : {};
@@ -4730,6 +4738,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .cart-summary-row .label { display: flex; align-items: center; gap: 6px; }
         .cart-summary-row .term-pill { background: var(--primary); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; }
         .cart-summary-hint { font-size: 11px; color: #64748b; padding: 6px 0 0; line-height: 1.4; }
+        .cart-summary-row.savings { color: #059669; font-weight: 700; background: #f0fdf4; border-radius: 6px; padding: 4px 6px; margin: 2px 0; border: 1px solid #bbf7d0; }
+        .cart-summary-row.savings .savings-amount { color: #047857; font-weight: 800; }
+        .cart-item .tier-price-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 700; background: #dcfce7; color: #047857; border: 1px solid #bbf7d0; border-radius: 4px; padding: 1px 5px; margin-top: 2px; }
         .cart-incoterm-quick {
             display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
             background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 8px;
@@ -4783,10 +4794,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             </header>
             <div class="cart-body" id="cart-body">
                 <div class="cart-empty" id="cart-empty">No items yet. Tap "Add to Inquiry" on a product to start.</div>
-                <div class="cart-incoterm-quick" id="cart-incoterm-quick" style="display:none;">
+                ${cartShowTermSelector ? `<div class="cart-incoterm-quick" id="cart-incoterm-quick" style="display:none;">
                     <span class="label">${escapeHtml(termQuickLabel)}</span>
                     ${incoterms.map((t, i) => `<button type="button" data-quick-term="${escapeAttr(t)}"${i === 0 ? ' class="active"' : ''}>${escapeHtml(displayTerm(t))}</button>`).join('')}
-                </div>
+                </div>` : ''}
                 <div id="cart-list"></div>
             </div>
             <div class="cart-summary" id="cart-summary" style="display:none;">
@@ -4798,6 +4809,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                     <span class="label">Total quantity</span>
                     <span id="cart-sum-qty">0</span>
                 </div>
+                ${cartShowSavings ? `<div class="cart-summary-row savings" id="cart-sum-savings-row" style="display:none;">
+                    <span class="label">&#127381; ${escapeHtml(cartSavingsLabel)}</span>
+                    <span class="savings-amount" id="cart-sum-savings">—</span>
+                </div>` : ''}
                 <div class="cart-summary-row total">
                     <span class="label">Estimated total <span class="term-pill" id="cart-sum-term">${escapeHtml(displayTerm(incoterms[0] || ''))}</span></span>
                     <span class="amount" id="cart-sum-total">—</span>
@@ -4921,6 +4936,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             var ORDER_EMAIL = ${JSON.stringify(orderEmail)};
             var SUBJECT_PREFIX = ${JSON.stringify(catalogConfig.title || 'Catalog Inquiry')};
             var INQ_BACKEND = ${JSON.stringify(inquiryEndpoint && inquiryEndpoint.firebaseConfig && inquiryEndpoint.ownerId ? { appId: inquiryEndpoint.appId || 'export-pro-default', ownerId: inquiryEndpoint.ownerId } : null)};
+            var VOLUME_TIERS = ${JSON.stringify(showVolumeTiers ? volumeTiers : [])};
+            var SHOW_PACK_TOGGLE = ${JSON.stringify(cartShowPackToggle)};
+            var SHOW_SAVINGS = ${JSON.stringify(cartShowSavings)};
+            var SAVINGS_LABEL = ${JSON.stringify(cartSavingsLabel)};
             var STORAGE_KEY = 'cat_cart_v2';
             var cart = {};
             try { cart = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch(e){ cart = {}; }
@@ -4944,6 +4963,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             var summaryTotalEl = document.getElementById('cart-sum-total');
             var summaryTermEl = document.getElementById('cart-sum-term');
             var summaryHintEl = document.getElementById('cart-sum-hint');
+            var summarySavingsRowEl = document.getElementById('cart-sum-savings-row');
+            var summarySavingsEl = document.getElementById('cart-sum-savings');
             var quickEl = document.getElementById('cart-incoterm-quick');
             var incotermSelect = form ? form.querySelector('[name="incoterm"]') : null;
             var INCOTERMS = ${JSON.stringify(incoterms)};
@@ -4985,7 +5006,30 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             }
             function totalLines(){ return Object.keys(cart).length; }
 
+            function getActiveTier(qty){
+                if (!VOLUME_TIERS || !VOLUME_TIERS.length) return null;
+                var matched = null;
+                for (var i = 0; i < VOLUME_TIERS.length; i++){
+                    var tier = VOLUME_TIERS[i];
+                    var min = Number(tier.minCartons) || 0;
+                    var max = (tier.maxCartons != null && tier.maxCartons !== '') ? Number(tier.maxCartons) : Infinity;
+                    if (qty >= min && qty <= max) matched = tier;
+                }
+                return matched;
+            }
+            function applyTier(baseRate, qty){
+                var tier = getActiveTier(qty);
+                if (!tier) return baseRate;
+                return Math.max(0, baseRate * (1 + (Number(tier.adjustment) || 0) / 100));
+            }
+
             function lineRate(it){
+                var prices = (it.mode === 'pack' && it.pack > 0) ? (it.packPrices || {}) : (it.unitPrices || {});
+                var base = Number(prices[selectedTerm]) || 0;
+                if (!base || !VOLUME_TIERS || !VOLUME_TIERS.length) return base;
+                return applyTier(base, it.qty || 0);
+            }
+            function lineBaseRate(it){
                 var prices = (it.mode === 'pack' && it.pack > 0) ? (it.packPrices || {}) : (it.unitPrices || {});
                 return Number(prices[selectedTerm]) || 0;
             }
@@ -5004,7 +5048,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 var mode = it.mode || (hasPack ? 'pack' : 'unit');
                 it.mode = mode;
                 var totalUnitsForItem = (mode === 'pack' && hasPack) ? (it.qty || 0) * it.pack : (it.qty || 0);
-                var modeToggle = hasPack
+                var showPackToggleForItem = SHOW_PACK_TOGGLE && hasPack;
+                var modeToggle = showPackToggleForItem
                     ? '<div class="mode-toggle">' +
                           '<button type="button" data-mode="unit" class="' + (mode === 'unit' ? 'active' : '') + '">' + escapeText(it.unit || 'Unit') + '</button>' +
                           '<button type="button" data-mode="pack" class="' + (mode === 'pack' ? 'active' : '') + '">Pack</button>' +
@@ -5014,10 +5059,16 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                     ? '<div class="total-line">= <strong>' + totalUnitsForItem + '</strong> ' + escapeText(it.unit || 'units') + ' (' + (it.qty || 0) + ' × ' + it.pack + ')</div>'
                     : '';
                 var rate = lineRate(it);
+                var baseRate = lineBaseRate(it);
                 var total = lineTotal(it);
                 var unitLabel = (mode === 'pack' && hasPack) ? 'pack' : (it.unit || 'unit');
+                var tierBadge = '';
+                if (VOLUME_TIERS && VOLUME_TIERS.length && baseRate > 0 && rate < baseRate) {
+                    var savingPct = Math.round((baseRate - rate) / baseRate * 100);
+                    tierBadge = '<span class="tier-price-badge">&#127381; Volume: -' + savingPct + '%</span>';
+                }
                 var priceHtml = lineHasPrice(it)
-                    ? '<div class="line-price"><span>' + fmtMoney(total, it.currency || SELLER_CURRENCY) + '</span><span class="unit-rate">' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + ' / ' + escapeText(unitLabel) + '</span></div>'
+                    ? '<div class="line-price"><span>' + fmtMoney(total, it.currency || SELLER_CURRENCY) + '</span><span class="unit-rate">' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + ' / ' + escapeText(unitLabel) + '</span></div>' + tierBadge
                     : '<div class="line-price"><span class="no-price">Price on request for ' + escapeText(selectedTerm ? termName(selectedTerm) : '—') + '</span></div>';
                 var row = document.createElement('div');
                 row.className = 'cart-item';
@@ -5118,6 +5169,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 if (keys.length === 0) {
                     summaryEl.style.display = 'none';
                     if (quickEl) quickEl.style.display = 'none';
+                    if (summarySavingsRowEl) summarySavingsRowEl.style.display = 'none';
                     return;
                 }
                 if (quickEl) quickEl.style.display = INCOTERMS.length > 1 ? 'flex' : 'none';
@@ -5133,6 +5185,23 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                         summaryTotalEl.textContent = fmtMoney(t.grand, SELLER_CURRENCY) + (t.allPriced ? '' : '*');
                     } else {
                         summaryTotalEl.textContent = 'On request';
+                    }
+                }
+                if (SHOW_SAVINGS && VOLUME_TIERS && VOLUME_TIERS.length && summarySavingsRowEl && summarySavingsEl) {
+                    var totalSavings = 0;
+                    Object.keys(cart).forEach(function(k){
+                        var it = cart[k];
+                        var base = lineBaseRate(it);
+                        var adjusted = lineRate(it);
+                        if (base > 0 && adjusted < base) {
+                            totalSavings += (base - adjusted) * (it.qty || 0);
+                        }
+                    });
+                    if (totalSavings > 0) {
+                        summarySavingsRowEl.style.display = 'flex';
+                        summarySavingsEl.textContent = '- ' + fmtMoney(totalSavings, SELLER_CURRENCY);
+                    } else {
+                        summarySavingsRowEl.style.display = 'none';
                     }
                 }
                 if (summaryHintEl) {
@@ -5298,6 +5367,16 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 lines.push(TERM_LABEL + ': ' + (selectedTerm ? termName(selectedTerm) : '—'));
                 if (anyPriced) {
                     lines.push('Estimated total: ' + fmtMoney(grand, SELLER_CURRENCY) + (allPriced ? '' : ' (partial — some items priced on request)'));
+                    if (SHOW_SAVINGS && VOLUME_TIERS && VOLUME_TIERS.length) {
+                        var totalSav = 0;
+                        Object.keys(cart).forEach(function(k){
+                            var it = cart[k];
+                            var base = lineBaseRate(it);
+                            var adj = lineRate(it);
+                            if (base > 0 && adj < base) totalSav += (base - adj) * (it.qty || 0);
+                        });
+                        if (totalSav > 0) lines.push(SAVINGS_LABEL + ': ' + fmtMoney(totalSav, SELLER_CURRENCY));
+                    }
                 } else {
                     lines.push('Estimated total: on request');
                 }
@@ -17605,6 +17684,35 @@ ${html}
                                                   placeholder="We will get back to you shortly"
                                               />
                                           </div>
+                                          {/* Cart display options */}
+                                          <div className="space-y-1.5 border-t border-emerald-100 pt-2">
+                                              <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Cart Display Options</p>
+                                              <label className="flex items-center gap-2 cursor-pointer">
+                                                  <input type="checkbox" className="rounded text-emerald-600"
+                                                      checked={catalogConfig.catalogCartShowTermSelector !== false}
+                                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogCartShowTermSelector: e.target.checked})} />
+                                                  <span className="text-[11px] text-slate-700">Show "Pricing for" (FOB/CIF…) quick selector in cart</span>
+                                              </label>
+                                              <label className="flex items-center gap-2 cursor-pointer">
+                                                  <input type="checkbox" className="rounded text-emerald-600"
+                                                      checked={catalogConfig.catalogCartShowPackToggle !== false}
+                                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogCartShowPackToggle: e.target.checked})} />
+                                                  <span className="text-[11px] text-slate-700">Show Unit / Pack toggle per cart item</span>
+                                              </label>
+                                              <label className="flex items-center gap-2 cursor-pointer">
+                                                  <input type="checkbox" className="rounded text-emerald-600"
+                                                      checked={catalogConfig.catalogCartShowSavings === true}
+                                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogCartShowSavings: e.target.checked})} />
+                                                  <span className="text-[11px] text-slate-700">Show customer savings from volume pricing</span>
+                                              </label>
+                                              {catalogConfig.catalogCartShowSavings && (
+                                                  <input type="text"
+                                                      value={catalogConfig.catalogCartSavingsLabel || ''}
+                                                      onChange={(e) => setCatalogConfig({...catalogConfig, catalogCartSavingsLabel: e.target.value})}
+                                                      className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white"
+                                                      placeholder="Your savings from this purchase" />
+                                              )}
+                                          </div>
                                           <div className="rounded-md border border-emerald-200 bg-white p-2 space-y-1.5">
                                               <p className="text-[10px] text-emerald-800 leading-snug">
                                                   <b>How it works:</b> Customer orders from your HTML catalog are saved <b>directly to your Firebase database</b> (no third-party services, works in every country). You see new inquiries in real time inside the app — click the <Inbox className="w-3 h-3 inline-block -mt-0.5" /> <b>Inquiries</b> icon at the top of the page.
@@ -19273,6 +19381,35 @@ ${html}
                               className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500 resize-none"
                               placeholder="Thank-you message"
                           />
+                          {/* Cart display toggles */}
+                          <div className="space-y-1.5 border-t border-slate-100 pt-2">
+                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide">گزینه‌های نمایش در کارت</p>
+                              <label className="flex items-center gap-2 cursor-pointer text-[11px] text-slate-700">
+                                  <input type="checkbox" className="rounded text-emerald-600"
+                                      checked={catalogConfig.catalogCartShowTermSelector !== false}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogCartShowTermSelector: e.target.checked })} />
+                                  نمایش انتخاب Incoterm (FOB/CIF…) در بالای سبد
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer text-[11px] text-slate-700">
+                                  <input type="checkbox" className="rounded text-emerald-600"
+                                      checked={catalogConfig.catalogCartShowPackToggle !== false}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogCartShowPackToggle: e.target.checked })} />
+                                  نمایش تاگل Unit / Pack در هر آیتم کارت
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer text-[11px] text-slate-700">
+                                  <input type="checkbox" className="rounded text-emerald-600"
+                                      checked={catalogConfig.catalogCartShowSavings === true}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogCartShowSavings: e.target.checked })} />
+                                  نمایش "سود شما از این خرید" (Volume tiers)
+                              </label>
+                              {catalogConfig.catalogCartShowSavings && (
+                                  <input type="text"
+                                      value={catalogConfig.catalogCartSavingsLabel || ''}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogCartSavingsLabel: e.target.value })}
+                                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                      placeholder="Your savings from this purchase" />
+                              )}
+                          </div>
                       </div>
 
                       <div className="space-y-3 border border-slate-200 rounded-2xl p-3">
