@@ -389,7 +389,7 @@ export interface CatalogConfig {
   qrCodeLabel?: string;
 
   // Trading Hub Instagram Story export
-  storyPresentationStyle?: 'phone' | 'editorial' | 'product';
+  storyPresentationStyle?: 'phone' | 'editorial' | 'product' | 'website';
   storyEyebrow?: string;
   storyTitle?: string;
   storySubtitle?: string;
@@ -398,6 +398,7 @@ export interface CatalogConfig {
   storyFooterText?: string;
   storyShowProducts?: boolean;
   storyShowQr?: boolean;
+  storyProductIds?: number[];
 
   // Google Form / Order Form CTA on HTML export & back page
   googleFormUrl?: string;

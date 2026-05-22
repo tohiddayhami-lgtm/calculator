@@ -2436,6 +2436,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyFooterText: 'Instagram Story 9:16 • 4320 × 7680 PNG',
     storyShowProducts: true,
     storyShowQr: true,
+    storyProductIds: [],
     googleFormUrl: '',
     googleFormButtonText: 'Send Purchase Request',
     googleFormHelperText: 'Tap below to fill out the order form',
@@ -15651,6 +15652,25 @@ ${html}
         setTimeout(() => URL.revokeObjectURL(objUrl), 1500);
     };
 
+    const storySelectableProducts = calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id));
+    const selectedStoryProductIds = (catalogConfig.storyProductIds || []).filter((id) =>
+        storySelectableProducts.some((p) => p.id === id)
+    ).slice(0, 3);
+    const storySelectedProducts = selectedStoryProductIds.length
+        ? selectedStoryProductIds
+              .map((id) => storySelectableProducts.find((p) => p.id === id))
+              .filter((p): p is (typeof storySelectableProducts)[number] => Boolean(p))
+        : storySelectableProducts.slice(0, 3);
+    const toggleStoryProduct = (productId: number) => {
+        const current = (catalogConfig.storyProductIds || []).filter((id) =>
+            storySelectableProducts.some((p) => p.id === id)
+        );
+        const next = current.includes(productId)
+            ? current.filter((id) => id !== productId)
+            : [...current.slice(-2), productId];
+        setCatalogConfig({ ...catalogConfig, storyProductIds: next });
+    };
+
     const handleDownloadMetaHubStoryImage = async () => {
         if (isGeneratingMetaHubStory) return;
         setIsGeneratingMetaHubStory(true);
@@ -15683,9 +15703,7 @@ ${html}
                 '';
             const storyCtaText = (catalogConfig.storyCtaText || '').trim() || liveUrl || 'Publish the hub to add a live QR link';
             const storyFooterText = (catalogConfig.storyFooterText || '').trim() || 'Instagram Story 9:16 • 4320 × 7680 PNG';
-            const productPreview = calculations.processedProducts
-                .filter(p => p.isActive && isProductIncluded(p.id))
-                .slice(0, 3);
+            const productPreview = storySelectedProducts;
 
             const width = 4320;
             const height = 7680;
@@ -15764,6 +15782,10 @@ ${html}
                 bgGradient.addColorStop(0, '#f8fafc');
                 bgGradient.addColorStop(0.55, '#e2e8f0');
                 bgGradient.addColorStop(1, '#cbd5e1');
+            } else if (storyStyle === 'website') {
+                bgGradient.addColorStop(0, '#f8fafc');
+                bgGradient.addColorStop(0.42, catalogConfig.primaryColor || '#0f172a');
+                bgGradient.addColorStop(1, '#020617');
             } else if (storyStyle === 'product') {
                 bgGradient.addColorStop(0, catalogConfig.primaryColor || '#7c3aed');
                 bgGradient.addColorStop(0.48, '#111827');
@@ -15784,14 +15806,14 @@ ${html}
                 ctx.restore();
             }
             const overlay = ctx.createLinearGradient(0, 0, 0, height);
-            overlay.addColorStop(0, storyStyle === 'editorial' ? 'rgba(255,255,255,0.52)' : 'rgba(2,6,23,0.18)');
-            overlay.addColorStop(0.45, storyStyle === 'editorial' ? 'rgba(255,255,255,0.72)' : 'rgba(2,6,23,0.56)');
+            overlay.addColorStop(0, storyStyle === 'editorial' ? 'rgba(255,255,255,0.52)' : storyStyle === 'website' ? 'rgba(255,255,255,0.28)' : 'rgba(2,6,23,0.18)');
+            overlay.addColorStop(0.45, storyStyle === 'editorial' ? 'rgba(255,255,255,0.72)' : storyStyle === 'website' ? 'rgba(15,23,42,0.42)' : 'rgba(2,6,23,0.56)');
             overlay.addColorStop(1, storyStyle === 'editorial' ? 'rgba(248,250,252,0.94)' : 'rgba(2,6,23,0.92)');
             ctx.fillStyle = overlay;
             ctx.fillRect(0, 0, width, height);
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.58)' : 'rgba(255,255,255,0.72)';
+            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.58)' : storyStyle === 'website' ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.72)';
             ctx.font = '800 78px Inter, Arial, sans-serif';
             ctx.letterSpacing = '18px';
             ctx.fillText(storyEyebrow.toUpperCase(), width / 2, 520);
@@ -15816,10 +15838,10 @@ ${html}
             ctx.save();
             roundedRect(sx, sy, sw, sh, 190);
             ctx.clip();
-            ctx.fillStyle = storyStyle === 'product' ? '#f8fafc' : (catalogConfig.backgroundColor || '#ffffff');
+            ctx.fillStyle = storyStyle === 'product' || storyStyle === 'website' ? '#f8fafc' : (catalogConfig.backgroundColor || '#ffffff');
             ctx.fillRect(sx, sy, sw, sh);
 
-            const heroH = 1880;
+            const heroH = storyStyle === 'website' ? 1620 : 1880;
             if (coverImg) {
                 drawImageCover(coverImg, sx, sy, sw, heroH);
             } else {
@@ -15856,14 +15878,32 @@ ${html}
 
             ctx.fillStyle = storyStyle === 'editorial' ? '#f8fafc' : '#ffffff';
             ctx.fillRect(sx, sy + heroH, sw, sh - heroH);
+            if (storyStyle === 'website') {
+                fillRounded(sx + 210, sy + heroH + 130, sw - 420, 150, 75, 'rgba(15,23,42,0.05)');
+                const tabLabels = [
+                    catalogConfig.productTabLabel || 'Product List',
+                    catalogConfig.aboutUsTabLabel || 'About Us',
+                    'Pages',
+                ];
+                tabLabels.forEach((label, index) => {
+                    const tabW = (sw - 500) / 3;
+                    const tx = sx + 250 + index * tabW;
+                    fillRounded(tx, sy + heroH + 160, tabW - 22, 92, 46, index === 0 ? '#ffffff' : 'rgba(255,255,255,0)');
+                    ctx.fillStyle = index === 0 ? (catalogConfig.headingColor || '#0f172a') : 'rgba(15,23,42,0.46)';
+                    ctx.font = '800 34px Inter, Arial, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(label, tx + (tabW - 22) / 2, sy + heroH + 219);
+                });
+                ctx.textAlign = 'left';
+            }
             ctx.fillStyle = catalogConfig.headingColor || '#0f172a';
             ctx.font = '900 96px Inter, Arial, sans-serif';
-            ctx.fillText(catalogConfig.productTabLabel || 'Product List', sx + 210, sy + heroH + 250);
+            ctx.fillText(catalogConfig.productTabLabel || 'Product List', sx + 210, sy + heroH + (storyStyle === 'website' ? 460 : 250));
             ctx.fillStyle = 'rgba(15,23,42,0.55)';
             ctx.font = '600 46px Inter, Arial, sans-serif';
-            ctx.fillText(`${productPreview.length || calculations.processedProducts.filter(p => p.isActive).length} featured products`, sx + 210, sy + heroH + 330);
+            ctx.fillText(`${productPreview.length || storySelectableProducts.length} featured products`, sx + 210, sy + heroH + (storyStyle === 'website' ? 540 : 330));
 
-            const cardY = sy + heroH + 520;
+            const cardY = sy + heroH + (storyStyle === 'website' ? 710 : 520);
             const cardW = (sw - 520) / 3;
             if (storyShowProducts) productPreview.forEach((p, index) => {
                 const x = sx + 210 + index * (cardW + 50);
@@ -15899,7 +15939,7 @@ ${html}
             });
 
             const ctaY = sy + sh - 980;
-            fillRounded(sx + 210, ctaY, sw - 420, 610, 96, storyStyle === 'editorial' ? (catalogConfig.primaryColor || '#0f172a') : '#0f172a');
+            fillRounded(sx + 210, ctaY, sw - 420, 610, 96, storyStyle === 'editorial' || storyStyle === 'website' ? (catalogConfig.primaryColor || '#0f172a') : '#0f172a');
             ctx.fillStyle = '#ffffff';
             ctx.font = '900 84px Inter, Arial, sans-serif';
             ctx.fillText(storyCtaTitle, sx + 320, ctaY + 150);
@@ -15945,7 +15985,7 @@ ${html}
     };
 
     const storyLiveUrl = metaHubLinkInfo?.shortUrl || metaHubLinkInfo?.url || catalogConfig.qrCodeValue || catalogConfig.website || '';
-    const storyPreviewProducts = calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)).slice(0, 3);
+    const storyPreviewProducts = storySelectedProducts;
     const storyPreviewStyle = catalogConfig.storyPresentationStyle || 'phone';
     const storyPreviewTitle = (catalogConfig.storyTitle || '').trim() || catalogConfig.title || 'Trading Hub';
     const storyPreviewSubtitle = (catalogConfig.storySubtitle || '').trim() || catalogConfig.subtitle || 'New product catalog is live';
@@ -15957,6 +15997,7 @@ ${html}
         { id: 'phone', title: 'Phone Launch', description: 'Mobile mockup, catalog preview, QR CTA' },
         { id: 'editorial', title: 'Editorial Clean', description: 'Bright premium magazine style' },
         { id: 'product', title: 'Product Focus', description: 'Bolder hero and stronger product cards' },
+        { id: 'website', title: 'Website Preview', description: 'Keeps the Trading Hub website/tab feeling' },
     ];
 
     return (
@@ -18746,6 +18787,58 @@ ${html}
                           </label>
                       </div>
 
+                      <div className="space-y-2 border-t border-slate-100 pt-4">
+                          <div className="flex items-center justify-between gap-2">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Story Products</label>
+                              <span className="text-[10px] font-bold text-slate-400">{selectedStoryProductIds.length || Math.min(3, storySelectableProducts.length)}/3</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-snug">
+                              Select up to 3 products. If none are selected, the first 3 active catalog products are used.
+                          </p>
+                          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                              {storySelectableProducts.map((p) => {
+                                  const selected = selectedStoryProductIds.includes(p.id);
+                                  const disabled = !selected && selectedStoryProductIds.length >= 3;
+                                  return (
+                                      <button
+                                          key={p.id}
+                                          type="button"
+                                          onClick={() => toggleStoryProduct(p.id)}
+                                          disabled={disabled}
+                                          className={`w-full flex items-center gap-2 rounded-xl border p-2 text-left transition-all ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'} ${disabled ? 'opacity-45 cursor-not-allowed' : ''}`}
+                                      >
+                                          {p.image ? (
+                                              <img src={p.image} alt="" className="w-10 h-10 rounded-lg object-cover bg-slate-100 shrink-0" />
+                                          ) : (
+                                              <div className="w-10 h-10 rounded-lg bg-slate-100 shrink-0" />
+                                          )}
+                                          <div className="min-w-0 flex-1">
+                                              <div className="text-xs font-bold truncate">{p.catalogName || p.name || 'Product'}</div>
+                                              <div className={`text-[10px] truncate ${selected ? 'text-white/60' : 'text-slate-400'}`}>{p.group || p.sku || 'No group'}</div>
+                                          </div>
+                                          <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${selected ? 'border-white bg-white text-slate-900' : 'border-slate-300 text-transparent'}`}>
+                                              <CheckCircle className="w-3.5 h-3.5" />
+                                          </span>
+                                      </button>
+                                  );
+                              })}
+                              {storySelectableProducts.length === 0 && (
+                                  <p className="text-[11px] text-slate-400 border border-dashed border-slate-200 rounded-xl p-3 text-center">
+                                      No active products available for the story yet.
+                                  </p>
+                              )}
+                          </div>
+                          {selectedStoryProductIds.length > 0 && (
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({ ...catalogConfig, storyProductIds: [] })}
+                                  className="w-full text-[10px] font-bold text-slate-500 hover:text-slate-900 border border-slate-200 rounded-lg py-2 hover:bg-slate-50"
+                              >
+                                  Clear product selection
+                              </button>
+                          )}
+                      </div>
+
                       <div className="flex gap-2">
                           <button
                               type="button"
@@ -18786,12 +18879,14 @@ ${html}
                               <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-1">9:16</span>
                           </div>
                           <div
-                              className={`relative aspect-[9/16] w-full overflow-hidden rounded-[2rem] shadow-2xl border ${storyPreviewStyle === 'editorial' ? 'border-slate-200 bg-slate-100 text-slate-950' : 'border-slate-900 bg-slate-950 text-white'}`}
+                              className={`relative aspect-[9/16] w-full overflow-hidden rounded-[2rem] shadow-2xl border ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'border-slate-200 bg-slate-100 text-slate-950' : 'border-slate-900 bg-slate-950 text-white'}`}
                               style={{
                                   backgroundImage: catalogConfig.coverImage
-                                      ? `linear-gradient(${storyPreviewStyle === 'editorial' ? 'rgba(248,250,252,.72), rgba(248,250,252,.96)' : 'rgba(2,6,23,.28), rgba(2,6,23,.92)'}), url(${catalogConfig.coverImage})`
+                                      ? `linear-gradient(${storyPreviewStyle === 'editorial' ? 'rgba(248,250,252,.72), rgba(248,250,252,.96)' : storyPreviewStyle === 'website' ? 'rgba(248,250,252,.58), rgba(2,6,23,.84)' : 'rgba(2,6,23,.28), rgba(2,6,23,.92)'}), url(${catalogConfig.coverImage})`
                                       : storyPreviewStyle === 'editorial'
                                       ? 'linear-gradient(160deg,#ffffff,#e2e8f0)'
+                                      : storyPreviewStyle === 'website'
+                                      ? `linear-gradient(160deg,#f8fafc,${catalogConfig.primaryColor || '#0f172a'},#020617)`
                                       : `linear-gradient(160deg, ${catalogConfig.primaryColor || '#0f172a'}, #020617)`,
                                   backgroundSize: 'cover',
                                   backgroundPosition: 'center',
@@ -18802,13 +18897,13 @@ ${html}
                                       contentEditable
                                       suppressContentEditableWarning
                                       onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyEyebrow: e.currentTarget.textContent || '' })}
-                                      className={`outline-none text-center text-[10px] font-black tracking-[0.28em] uppercase ${storyPreviewStyle === 'editorial' ? 'text-slate-500' : 'text-white/70'}`}
+                                      className={`outline-none text-center text-[10px] font-black tracking-[0.28em] uppercase ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'text-slate-500' : 'text-white/70'}`}
                                   >
                                       {storyPreviewEyebrow}
                                   </div>
                               </div>
 
-                              <div className={`${storyPreviewStyle === 'product' ? 'absolute inset-x-5 top-24' : 'absolute inset-x-6 top-20'} rounded-[1.8rem] ${storyPreviewStyle === 'editorial' ? 'bg-white/85 text-slate-950' : 'bg-black/35 text-white'} backdrop-blur-md border ${storyPreviewStyle === 'editorial' ? 'border-white' : 'border-white/15'} p-5 shadow-xl`}>
+                              <div className={`${storyPreviewStyle === 'product' ? 'absolute inset-x-5 top-24' : 'absolute inset-x-6 top-20'} rounded-[1.8rem] ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'bg-white/88 text-slate-950' : 'bg-black/35 text-white'} backdrop-blur-md border ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'border-white' : 'border-white/15'} p-5 shadow-xl`}>
                                   <div
                                       contentEditable
                                       suppressContentEditableWarning
@@ -18821,14 +18916,27 @@ ${html}
                                       contentEditable
                                       suppressContentEditableWarning
                                       onBlur={(e) => setCatalogConfig({ ...catalogConfig, storySubtitle: e.currentTarget.textContent || '' })}
-                                      className={`outline-none mt-3 text-sm leading-relaxed ${storyPreviewStyle === 'editorial' ? 'text-slate-600' : 'text-white/76'}`}
+                                      className={`outline-none mt-3 text-sm leading-relaxed ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'text-slate-600' : 'text-white/76'}`}
                                   >
                                       {storyPreviewSubtitle}
                                   </div>
                               </div>
 
+                              {storyPreviewStyle === 'website' && (
+                                  <div className="absolute inset-x-5 top-[20.75rem] rounded-full border border-slate-200 bg-white/90 p-1.5 shadow-lg flex gap-1">
+                                      {[catalogConfig.productTabLabel || 'Product List', catalogConfig.aboutUsTabLabel || 'About Us', 'Pages'].map((label, index) => (
+                                          <div
+                                              key={`${label}-${index}`}
+                                              className={`flex-1 truncate rounded-full px-2 py-1.5 text-center text-[9px] font-black ${index === 0 ? 'bg-slate-950 text-white' : 'text-slate-500'}`}
+                                          >
+                                              {label}
+                                          </div>
+                                      ))}
+                                  </div>
+                              )}
+
                               {catalogConfig.storyShowProducts !== false && storyPreviewProducts.length > 0 && (
-                                  <div className={`absolute inset-x-5 ${storyPreviewStyle === 'product' ? 'bottom-44' : 'bottom-48'} grid grid-cols-3 gap-2`}>
+                                  <div className={`absolute inset-x-5 ${storyPreviewStyle === 'product' ? 'bottom-44' : storyPreviewStyle === 'website' ? 'bottom-52' : 'bottom-48'} grid grid-cols-3 gap-2`}>
                                       {storyPreviewProducts.map((p) => (
                                           <div key={p.id} className={`${storyPreviewStyle === 'editorial' ? 'bg-white text-slate-900' : 'bg-white text-slate-900'} rounded-2xl p-2 shadow-lg`}>
                                               <div className="aspect-square rounded-xl overflow-hidden bg-slate-100">
