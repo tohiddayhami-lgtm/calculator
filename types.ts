@@ -399,6 +399,23 @@ export interface CatalogConfig {
   storyShowProducts?: boolean;
   storyShowQr?: boolean;
   storyProductIds?: number[];
+  storyEyebrowOffsetPct?: number;
+  storyHeroOffsetPct?: number;
+  storyProductsOffsetPct?: number;
+  storyCtaOffsetPct?: number;
+  storyFooterOffsetPct?: number;
+  storyEyebrowFontSizePx?: number;
+  storyTitleFontSizePx?: number;
+  storySubtitleFontSizePx?: number;
+  storyCtaTitleFontSizePx?: number;
+  storyCtaTextFontSizePx?: number;
+  storyFooterFontSizePx?: number;
+  storyEyebrowColor?: string;
+  storyTitleColor?: string;
+  storySubtitleColor?: string;
+  storyCtaTitleColor?: string;
+  storyCtaTextColor?: string;
+  storyFooterColor?: string;
 
   // Google Form / Order Form CTA on HTML export & back page
   googleFormUrl?: string;

@@ -2437,6 +2437,23 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyShowProducts: true,
     storyShowQr: true,
     storyProductIds: [],
+    storyEyebrowOffsetPct: 0,
+    storyHeroOffsetPct: 0,
+    storyProductsOffsetPct: 0,
+    storyCtaOffsetPct: 0,
+    storyFooterOffsetPct: 0,
+    storyEyebrowFontSizePx: 10,
+    storyTitleFontSizePx: 34,
+    storySubtitleFontSizePx: 14,
+    storyCtaTitleFontSizePx: 14,
+    storyCtaTextFontSizePx: 10,
+    storyFooterFontSizePx: 8,
+    storyEyebrowColor: '',
+    storyTitleColor: '',
+    storySubtitleColor: '',
+    storyCtaTitleColor: '',
+    storyCtaTextColor: '',
+    storyFooterColor: '',
     googleFormUrl: '',
     googleFormButtonText: 'Send Purchase Request',
     googleFormHelperText: 'Tap below to fill out the order form',
@@ -15661,6 +15678,11 @@ ${html}
               .map((id) => storySelectableProducts.find((p) => p.id === id))
               .filter((p): p is (typeof storySelectableProducts)[number] => Boolean(p))
         : storySelectableProducts.slice(0, 3);
+    const storyNumberSetting = (value: any, fallback: number, min: number, max: number) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.min(max, Math.max(min, n));
+    };
     const toggleStoryProduct = (productId: number) => {
         const current = (catalogConfig.storyProductIds || []).filter((id) =>
             storySelectableProducts.some((p) => p.id === id)
@@ -15704,9 +15726,26 @@ ${html}
             const storyCtaText = (catalogConfig.storyCtaText || '').trim() || liveUrl || 'Publish the hub to add a live QR link';
             const storyFooterText = (catalogConfig.storyFooterText || '').trim() || 'Instagram Story 9:16 • 4320 × 7680 PNG';
             const productPreview = storySelectedProducts;
-
             const width = 4320;
             const height = 7680;
+            const storyEyebrowOffsetPx = storyNumberSetting(catalogConfig.storyEyebrowOffsetPct, 0, -18, 18) * height / 100;
+            const storyHeroOffsetPx = storyNumberSetting(catalogConfig.storyHeroOffsetPct, 0, -18, 18) * height / 100;
+            const storyProductsOffsetPx = storyNumberSetting(catalogConfig.storyProductsOffsetPct, 0, -18, 18) * height / 100;
+            const storyCtaOffsetPx = storyNumberSetting(catalogConfig.storyCtaOffsetPct, 0, -18, 18) * height / 100;
+            const storyFooterOffsetPx = storyNumberSetting(catalogConfig.storyFooterOffsetPct, 0, -18, 18) * height / 100;
+            const storyEyebrowColor = catalogConfig.storyEyebrowColor || (storyStyle === 'editorial' || storyStyle === 'website' ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.72)');
+            const storyTitleColor = catalogConfig.storyTitleColor || '#ffffff';
+            const storySubtitleColor = catalogConfig.storySubtitleColor || 'rgba(255,255,255,0.82)';
+            const storyCtaTitleColor = catalogConfig.storyCtaTitleColor || '#ffffff';
+            const storyCtaTextColor = catalogConfig.storyCtaTextColor || 'rgba(255,255,255,0.72)';
+            const storyFooterColor = catalogConfig.storyFooterColor || (storyStyle === 'editorial' ? 'rgba(15,23,42,0.48)' : 'rgba(255,255,255,0.54)');
+            const storyEyebrowCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyEyebrowFontSizePx, 10, 7, 22) * 7.8);
+            const storyTitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyTitleFontSizePx, 34, 18, 58) * 5.47);
+            const storySubtitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storySubtitleFontSizePx, 14, 9, 28) * 5.15);
+            const storyCtaTitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyCtaTitleFontSizePx, 14, 9, 28) * 6);
+            const storyCtaTextCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyCtaTextFontSizePx, 10, 7, 22) * 4.4);
+            const storyFooterCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyFooterFontSizePx, 8, 6, 18) * 5.5);
+
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
@@ -15813,10 +15852,10 @@ ${html}
             ctx.fillRect(0, 0, width, height);
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.58)' : storyStyle === 'website' ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.72)';
-            ctx.font = '800 78px Inter, Arial, sans-serif';
+            ctx.fillStyle = storyEyebrowColor;
+            ctx.font = `800 ${storyEyebrowCanvasFont}px Inter, Arial, sans-serif`;
             ctx.letterSpacing = '18px';
-            ctx.fillText(storyEyebrow.toUpperCase(), width / 2, 520);
+            ctx.fillText(storyEyebrow.toUpperCase(), width / 2, 520 + storyEyebrowOffsetPx);
             ctx.letterSpacing = '0px';
 
             const phoneX = 520;
@@ -15869,12 +15908,12 @@ ${html}
             }
 
             ctx.textAlign = 'left';
-            ctx.fillStyle = '#ffffff';
-            ctx.font = storyStyle === 'product' ? '950 210px Inter, Arial, sans-serif' : '900 186px Inter, Arial, sans-serif';
-            wrapText(title, sx + 210, sy + heroH - 570, sw - 420, 205, 3);
-            ctx.fillStyle = 'rgba(255,255,255,0.82)';
-            ctx.font = '600 72px Inter, Arial, sans-serif';
-            wrapText(subtitle, sx + 210, sy + heroH - 125, sw - 420, 92, 2);
+            ctx.fillStyle = storyTitleColor;
+            ctx.font = `${storyStyle === 'product' ? '950' : '900'} ${storyTitleCanvasFont}px Inter, Arial, sans-serif`;
+            wrapText(title, sx + 210, sy + heroH - 570 + storyHeroOffsetPx, sw - 420, Math.round(storyTitleCanvasFont * 1.1), 3);
+            ctx.fillStyle = storySubtitleColor;
+            ctx.font = `600 ${storySubtitleCanvasFont}px Inter, Arial, sans-serif`;
+            wrapText(subtitle, sx + 210, sy + heroH - 125 + storyHeroOffsetPx, sw - 420, Math.round(storySubtitleCanvasFont * 1.28), 2);
 
             ctx.fillStyle = storyStyle === 'editorial' ? '#f8fafc' : '#ffffff';
             ctx.fillRect(sx, sy + heroH, sw, sh - heroH);
@@ -15903,7 +15942,7 @@ ${html}
             ctx.font = '600 46px Inter, Arial, sans-serif';
             ctx.fillText(`${productPreview.length || storySelectableProducts.length} featured products`, sx + 210, sy + heroH + (storyStyle === 'website' ? 540 : 330));
 
-            const cardY = sy + heroH + (storyStyle === 'website' ? 710 : 520);
+            const cardY = sy + heroH + (storyStyle === 'website' ? 710 : 520) + storyProductsOffsetPx;
             const cardW = (sw - 520) / 3;
             if (storyShowProducts) productPreview.forEach((p, index) => {
                 const x = sx + 210 + index * (cardW + 50);
@@ -15938,14 +15977,14 @@ ${html}
                 }
             });
 
-            const ctaY = sy + sh - 980;
+            const ctaY = sy + sh - 980 + storyCtaOffsetPx;
             fillRounded(sx + 210, ctaY, sw - 420, 610, 96, storyStyle === 'editorial' || storyStyle === 'website' ? (catalogConfig.primaryColor || '#0f172a') : '#0f172a');
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '900 84px Inter, Arial, sans-serif';
+            ctx.fillStyle = storyCtaTitleColor;
+            ctx.font = `900 ${storyCtaTitleCanvasFont}px Inter, Arial, sans-serif`;
             ctx.fillText(storyCtaTitle, sx + 320, ctaY + 150);
-            ctx.fillStyle = 'rgba(255,255,255,0.72)';
-            ctx.font = '600 44px Inter, Arial, sans-serif';
-            wrapText(storyCtaText, sx + 320, ctaY + 250, sw - 980, 58, 2);
+            ctx.fillStyle = storyCtaTextColor;
+            ctx.font = `600 ${storyCtaTextCanvasFont}px Inter, Arial, sans-serif`;
+            wrapText(storyCtaText, sx + 320, ctaY + 250, sw - 980, Math.round(storyCtaTextCanvasFont * 1.32), 2);
             if (storyShowQr && qrImg) {
                 ctx.fillStyle = '#ffffff';
                 roundedRect(sx + sw - 680, ctaY + 105, 430, 430, 56);
@@ -15955,15 +15994,15 @@ ${html}
             ctx.restore();
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = storyStyle === 'editorial' ? '#0f172a' : '#ffffff';
-            ctx.font = '900 126px Inter, Arial, sans-serif';
-            ctx.fillText(title, width / 2, 6740);
-            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.68)' : 'rgba(255,255,255,0.74)';
-            ctx.font = '600 62px Inter, Arial, sans-serif';
-            wrapText(subtitle, width / 2, 6860, 3220, 82, 2);
-            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.48)' : 'rgba(255,255,255,0.54)';
-            ctx.font = '700 44px Inter, Arial, sans-serif';
-            ctx.fillText(storyFooterText, width / 2, 7420);
+            ctx.fillStyle = storyTitleColor;
+            ctx.font = `900 ${Math.round(storyTitleCanvasFont * 0.68)}px Inter, Arial, sans-serif`;
+            ctx.fillText(title, width / 2, 6740 + storyFooterOffsetPx);
+            ctx.fillStyle = storySubtitleColor;
+            ctx.font = `600 ${Math.round(storySubtitleCanvasFont * 0.86)}px Inter, Arial, sans-serif`;
+            wrapText(subtitle, width / 2, 6860 + storyFooterOffsetPx, 3220, Math.round(storySubtitleCanvasFont * 1.14), 2);
+            ctx.fillStyle = storyFooterColor;
+            ctx.font = `700 ${storyFooterCanvasFont}px Inter, Arial, sans-serif`;
+            ctx.fillText(storyFooterText, width / 2, 7420 + storyFooterOffsetPx);
 
             const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
             if (!blob) throw new Error('Could not render the story image.');
@@ -15993,6 +16032,38 @@ ${html}
     const storyPreviewCtaTitle = (catalogConfig.storyCtaTitle || '').trim() || 'Open the full Trading Hub';
     const storyPreviewCtaText = (catalogConfig.storyCtaText || '').trim() || storyLiveUrl || 'Publish the hub to add a live QR link';
     const storyPreviewFooter = (catalogConfig.storyFooterText || '').trim() || 'Instagram Story 9:16 • 4320 × 7680 PNG';
+    const storyEyebrowOffset = storyNumberSetting(catalogConfig.storyEyebrowOffsetPct, 0, -18, 18);
+    const storyHeroOffset = storyNumberSetting(catalogConfig.storyHeroOffsetPct, 0, -18, 18);
+    const storyProductsOffset = storyNumberSetting(catalogConfig.storyProductsOffsetPct, 0, -18, 18);
+    const storyCtaOffset = storyNumberSetting(catalogConfig.storyCtaOffsetPct, 0, -18, 18);
+    const storyFooterOffset = storyNumberSetting(catalogConfig.storyFooterOffsetPct, 0, -18, 18);
+    const storyEyebrowFontSize = storyNumberSetting(catalogConfig.storyEyebrowFontSizePx, 10, 7, 22);
+    const storyTitleFontSize = storyNumberSetting(catalogConfig.storyTitleFontSizePx, 34, 18, 58);
+    const storySubtitleFontSize = storyNumberSetting(catalogConfig.storySubtitleFontSizePx, 14, 9, 28);
+    const storyCtaTitleFontSize = storyNumberSetting(catalogConfig.storyCtaTitleFontSizePx, 14, 9, 28);
+    const storyCtaTextFontSize = storyNumberSetting(catalogConfig.storyCtaTextFontSizePx, 10, 7, 22);
+    const storyFooterFontSize = storyNumberSetting(catalogConfig.storyFooterFontSizePx, 8, 6, 18);
+    const storyEyebrowPreviewColor = catalogConfig.storyEyebrowColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#475569' : 'rgba(255,255,255,.72)');
+    const storyTitlePreviewColor = catalogConfig.storyTitleColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#0f172a' : '#ffffff');
+    const storySubtitlePreviewColor = catalogConfig.storySubtitleColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#475569' : 'rgba(255,255,255,.76)');
+    const storyCtaTitlePreviewColor = catalogConfig.storyCtaTitleColor || (storyPreviewStyle === 'editorial' ? '#ffffff' : storyPreviewStyle === 'website' ? '#ffffff' : '#0f172a');
+    const storyCtaTextPreviewColor = catalogConfig.storyCtaTextColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'rgba(255,255,255,.62)' : '#64748b');
+    const storyFooterPreviewColor = catalogConfig.storyFooterColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#64748b' : 'rgba(255,255,255,.45)');
+    const storyLayoutControls: Array<{ key: keyof CatalogConfig; label: string; value: number }> = [
+        { key: 'storyEyebrowOffsetPct', label: 'Top label', value: storyEyebrowOffset },
+        { key: 'storyHeroOffsetPct', label: 'Title box', value: storyHeroOffset },
+        { key: 'storyProductsOffsetPct', label: 'Products', value: storyProductsOffset },
+        { key: 'storyCtaOffsetPct', label: 'CTA box', value: storyCtaOffset },
+        { key: 'storyFooterOffsetPct', label: 'Footer', value: storyFooterOffset },
+    ];
+    const storyTypographyControls: Array<{ sizeKey: keyof CatalogConfig; colorKey: keyof CatalogConfig; label: string; size: number; color: string; min: number; max: number }> = [
+        { sizeKey: 'storyEyebrowFontSizePx', colorKey: 'storyEyebrowColor', label: 'Top label', size: storyEyebrowFontSize, color: catalogConfig.storyEyebrowColor || '#ffffff', min: 7, max: 22 },
+        { sizeKey: 'storyTitleFontSizePx', colorKey: 'storyTitleColor', label: 'Title', size: storyTitleFontSize, color: catalogConfig.storyTitleColor || '#ffffff', min: 18, max: 58 },
+        { sizeKey: 'storySubtitleFontSizePx', colorKey: 'storySubtitleColor', label: 'Subtitle', size: storySubtitleFontSize, color: catalogConfig.storySubtitleColor || '#ffffff', min: 9, max: 28 },
+        { sizeKey: 'storyCtaTitleFontSizePx', colorKey: 'storyCtaTitleColor', label: 'CTA title', size: storyCtaTitleFontSize, color: catalogConfig.storyCtaTitleColor || '#ffffff', min: 9, max: 28 },
+        { sizeKey: 'storyCtaTextFontSizePx', colorKey: 'storyCtaTextColor', label: 'CTA text', size: storyCtaTextFontSize, color: catalogConfig.storyCtaTextColor || '#ffffff', min: 7, max: 22 },
+        { sizeKey: 'storyFooterFontSizePx', colorKey: 'storyFooterColor', label: 'Footer', size: storyFooterFontSize, color: catalogConfig.storyFooterColor || '#ffffff', min: 6, max: 18 },
+    ];
     const storyStyleOptions: Array<{ id: NonNullable<CatalogConfig['storyPresentationStyle']>; title: string; description: string }> = [
         { id: 'phone', title: 'Phone Launch', description: 'Mobile mockup, catalog preview, QR CTA' },
         { id: 'editorial', title: 'Editorial Clean', description: 'Bright premium magazine style' },
@@ -18766,6 +18837,100 @@ ${html}
                           />
                       </div>
 
+                      <div className="space-y-3 border-t border-slate-100 pt-4">
+                          <div className="flex items-center justify-between gap-2">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Move Boxes Up / Down</label>
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({
+                                      ...catalogConfig,
+                                      storyEyebrowOffsetPct: 0,
+                                      storyHeroOffsetPct: 0,
+                                      storyProductsOffsetPct: 0,
+                                      storyCtaOffsetPct: 0,
+                                      storyFooterOffsetPct: 0,
+                                  })}
+                                  className="text-[10px] font-bold text-slate-400 hover:text-slate-900"
+                              >
+                                  Reset
+                              </button>
+                          </div>
+                          <div className="space-y-2">
+                              {storyLayoutControls.map((control) => (
+                                  <label key={String(control.key)} className="block space-y-1">
+                                      <span className="flex justify-between text-[10px] font-semibold text-slate-500">
+                                          <span>{control.label}</span>
+                                          <span>{control.value > 0 ? '+' : ''}{control.value}%</span>
+                                      </span>
+                                      <input
+                                          type="range"
+                                          min={-18}
+                                          max={18}
+                                          step={1}
+                                          value={control.value}
+                                          onChange={(e) => setCatalogConfig({ ...catalogConfig, [control.key]: Number(e.target.value) })}
+                                          className="w-full accent-slate-900"
+                                      />
+                                  </label>
+                              ))}
+                          </div>
+                      </div>
+
+                      <div className="space-y-3 border-t border-slate-100 pt-4">
+                          <div className="flex items-center justify-between gap-2">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Font Size & Color</label>
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({
+                                      ...catalogConfig,
+                                      storyEyebrowFontSizePx: 10,
+                                      storyTitleFontSizePx: 34,
+                                      storySubtitleFontSizePx: 14,
+                                      storyCtaTitleFontSizePx: 14,
+                                      storyCtaTextFontSizePx: 10,
+                                      storyFooterFontSizePx: 8,
+                                      storyEyebrowColor: '',
+                                      storyTitleColor: '',
+                                      storySubtitleColor: '',
+                                      storyCtaTitleColor: '',
+                                      storyCtaTextColor: '',
+                                      storyFooterColor: '',
+                                  })}
+                                  className="text-[10px] font-bold text-slate-400 hover:text-slate-900"
+                              >
+                                  Reset
+                              </button>
+                          </div>
+                          <div className="space-y-2">
+                              {storyTypographyControls.map((control) => (
+                                  <div key={String(control.sizeKey)} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2">
+                                      <div className="flex items-center justify-between gap-2 mb-1">
+                                          <span className="text-[10px] font-bold text-slate-600">{control.label}</span>
+                                          <div className="flex items-center gap-2">
+                                              <span className="text-[10px] font-bold text-slate-400">{control.size}px</span>
+                                              <input
+                                                  type="color"
+                                                  value={control.color}
+                                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, [control.colorKey]: e.target.value })}
+                                                  className="w-7 h-7 rounded border-0 p-0 cursor-pointer bg-transparent"
+                                                  title={`${control.label} color`}
+                                              />
+                                          </div>
+                                      </div>
+                                      <input
+                                          type="range"
+                                          min={control.min}
+                                          max={control.max}
+                                          step={1}
+                                          value={control.size}
+                                          onChange={(e) => setCatalogConfig({ ...catalogConfig, [control.sizeKey]: Number(e.target.value) })}
+                                          className="w-full accent-slate-900"
+                                      />
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
                           <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs font-semibold text-slate-700 cursor-pointer">
                               <input
@@ -18892,23 +19057,28 @@ ${html}
                                   backgroundPosition: 'center',
                               }}
                           >
-                              <div className="absolute inset-x-0 top-0 p-7">
+                              <div className="absolute inset-x-0 p-7" style={{ top: `${Math.max(0, 4 + storyEyebrowOffset)}%` }}>
                                   <div
                                       contentEditable
                                       suppressContentEditableWarning
                                       onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyEyebrow: e.currentTarget.textContent || '' })}
-                                      className={`outline-none text-center text-[10px] font-black tracking-[0.28em] uppercase ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'text-slate-500' : 'text-white/70'}`}
+                                      className="outline-none text-center font-black tracking-[0.28em] uppercase"
+                                      style={{ color: storyEyebrowPreviewColor, fontSize: storyEyebrowFontSize }}
                                   >
                                       {storyPreviewEyebrow}
                                   </div>
                               </div>
 
-                              <div className={`${storyPreviewStyle === 'product' ? 'absolute inset-x-5 top-24' : 'absolute inset-x-6 top-20'} rounded-[1.8rem] ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'bg-white/88 text-slate-950' : 'bg-black/35 text-white'} backdrop-blur-md border ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'border-white' : 'border-white/15'} p-5 shadow-xl`}>
+                              <div
+                                  className={`absolute ${storyPreviewStyle === 'product' ? 'inset-x-5' : 'inset-x-6'} rounded-[1.8rem] ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'bg-white/88 text-slate-950' : 'bg-black/35 text-white'} backdrop-blur-md border ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'border-white' : 'border-white/15'} p-5 shadow-xl`}
+                                  style={{ top: `${Math.max(6, (storyPreviewStyle === 'product' ? 18 : 12) + storyHeroOffset)}%` }}
+                              >
                                   <div
                                       contentEditable
                                       suppressContentEditableWarning
                                       onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyTitle: e.currentTarget.textContent || '' })}
-                                      className={`outline-none font-black leading-[0.95] ${storyPreviewStyle === 'product' ? 'text-[42px]' : 'text-[34px]'}`}
+                                      className="outline-none font-black leading-[0.95]"
+                                      style={{ color: storyTitlePreviewColor, fontSize: storyTitleFontSize }}
                                   >
                                       {storyPreviewTitle}
                                   </div>
@@ -18916,14 +19086,18 @@ ${html}
                                       contentEditable
                                       suppressContentEditableWarning
                                       onBlur={(e) => setCatalogConfig({ ...catalogConfig, storySubtitle: e.currentTarget.textContent || '' })}
-                                      className={`outline-none mt-3 text-sm leading-relaxed ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'text-slate-600' : 'text-white/76'}`}
+                                      className="outline-none mt-3 leading-relaxed"
+                                      style={{ color: storySubtitlePreviewColor, fontSize: storySubtitleFontSize }}
                                   >
                                       {storyPreviewSubtitle}
                                   </div>
                               </div>
 
                               {storyPreviewStyle === 'website' && (
-                                  <div className="absolute inset-x-5 top-[20.75rem] rounded-full border border-slate-200 bg-white/90 p-1.5 shadow-lg flex gap-1">
+                                  <div
+                                      className="absolute inset-x-5 rounded-full border border-slate-200 bg-white/90 p-1.5 shadow-lg flex gap-1"
+                                      style={{ top: `${Math.max(35, 43 + storyHeroOffset)}%` }}
+                                  >
                                       {[catalogConfig.productTabLabel || 'Product List', catalogConfig.aboutUsTabLabel || 'About Us', 'Pages'].map((label, index) => (
                                           <div
                                               key={`${label}-${index}`}
@@ -18936,7 +19110,10 @@ ${html}
                               )}
 
                               {catalogConfig.storyShowProducts !== false && storyPreviewProducts.length > 0 && (
-                                  <div className={`absolute inset-x-5 ${storyPreviewStyle === 'product' ? 'bottom-44' : storyPreviewStyle === 'website' ? 'bottom-52' : 'bottom-48'} grid grid-cols-3 gap-2`}>
+                                  <div
+                                      className="absolute inset-x-5 grid grid-cols-3 gap-2"
+                                      style={{ bottom: `${Math.max(8, (storyPreviewStyle === 'product' ? 27 : storyPreviewStyle === 'website' ? 32 : 30) - storyProductsOffset)}%` }}
+                                  >
                                       {storyPreviewProducts.map((p) => (
                                           <div key={p.id} className={`${storyPreviewStyle === 'editorial' ? 'bg-white text-slate-900' : 'bg-white text-slate-900'} rounded-2xl p-2 shadow-lg`}>
                                               <div className="aspect-square rounded-xl overflow-hidden bg-slate-100">
@@ -18949,13 +19126,17 @@ ${html}
                                   </div>
                               )}
 
-                              <div className={`absolute inset-x-5 bottom-6 rounded-3xl p-4 ${storyPreviewStyle === 'editorial' ? 'bg-slate-950 text-white' : 'bg-white text-slate-950'} shadow-2xl flex items-center gap-3`}>
+                              <div
+                                  className={`absolute inset-x-5 rounded-3xl p-4 ${storyPreviewStyle === 'editorial' ? 'bg-slate-950 text-white' : 'bg-white text-slate-950'} shadow-2xl flex items-center gap-3`}
+                                  style={{ bottom: `${Math.max(2, 5 - storyCtaOffset)}%` }}
+                              >
                                   <div className="flex-1 min-w-0">
                                       <div
                                           contentEditable
                                           suppressContentEditableWarning
                                           onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyCtaTitle: e.currentTarget.textContent || '' })}
-                                          className="outline-none text-sm font-black"
+                                          className="outline-none font-black"
+                                          style={{ color: storyCtaTitlePreviewColor, fontSize: storyCtaTitleFontSize }}
                                       >
                                           {storyPreviewCtaTitle}
                                       </div>
@@ -18963,7 +19144,8 @@ ${html}
                                           contentEditable
                                           suppressContentEditableWarning
                                           onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyCtaText: e.currentTarget.textContent || '' })}
-                                          className={`outline-none mt-1 text-[10px] leading-snug ${storyPreviewStyle === 'editorial' ? 'text-white/60' : 'text-slate-500'}`}
+                                          className="outline-none mt-1 leading-snug"
+                                          style={{ color: storyCtaTextPreviewColor, fontSize: storyCtaTextFontSize }}
                                       >
                                           {storyPreviewCtaText}
                                       </div>
@@ -18978,7 +19160,8 @@ ${html}
                                   contentEditable
                                   suppressContentEditableWarning
                                   onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyFooterText: e.currentTarget.textContent || '' })}
-                                  className={`absolute inset-x-5 bottom-1 outline-none text-center text-[8px] font-semibold ${storyPreviewStyle === 'editorial' ? 'text-slate-500' : 'text-white/45'}`}
+                                  className="absolute inset-x-5 outline-none text-center font-semibold"
+                                  style={{ bottom: `${Math.max(0, 1 - storyFooterOffset)}%`, color: storyFooterPreviewColor, fontSize: storyFooterFontSize }}
                               >
                                   {storyPreviewFooter}
                               </div>
