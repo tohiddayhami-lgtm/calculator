@@ -2436,6 +2436,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyFooterText: 'Instagram Story 9:16 • 4320 × 7680 PNG',
     storyShowProducts: true,
     storyShowQr: true,
+    storyQrValue: '',
     storyQrColor: '#0f172a',
     storyQrBgColor: '#ffffff',
     storyProductIds: [],
@@ -6004,6 +6005,8 @@ function AppInner() {
   const [savedMetaHubLinks, setSavedMetaHubLinks] = useState<any[]>([]);
   const [metaHubPreviewKey, setMetaHubPreviewKey] = useState(0);
   const [isGeneratingMetaHubStory, setIsGeneratingMetaHubStory] = useState(false);
+  const [storyQrPreviewDataUrl, setStoryQrPreviewDataUrl] = useState('');
+  const [storyQrPreviewError, setStoryQrPreviewError] = useState('');
   const metaHubHtmlFileInputRef = useRef<HTMLInputElement | null>(null);
   const metaHubVisualFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
@@ -7303,6 +7306,46 @@ function AppInner() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [metaHubHtml]);
+
+  // Story Studio: render an actual QR preview with the selected content and colors.
+  useEffect(() => {
+    let cancelled = false;
+    const value = (
+      catalogConfig.storyQrValue ||
+      metaHubLinkInfo?.shortUrl ||
+      metaHubLinkInfo?.url ||
+      catalogConfig.qrCodeValue ||
+      catalogConfig.website ||
+      'https://calculator.tohiddayhami.com/'
+    ).trim();
+    const dark = catalogConfig.storyQrColor || '#0f172a';
+    const light = catalogConfig.storyQrBgColor || '#ffffff';
+    setStoryQrPreviewError('');
+    QRCode.toDataURL(value, {
+      width: 512,
+      margin: 2,
+      errorCorrectionLevel: 'H',
+      color: { dark, light },
+    })
+      .then((url) => {
+        if (!cancelled) setStoryQrPreviewDataUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStoryQrPreviewDataUrl('');
+          setStoryQrPreviewError(err?.message || 'QR could not be generated.');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [
+    catalogConfig.storyQrValue,
+    catalogConfig.storyQrColor,
+    catalogConfig.storyQrBgColor,
+    catalogConfig.qrCodeValue,
+    catalogConfig.website,
+    metaHubLinkInfo?.shortUrl,
+    metaHubLinkInfo?.url,
+  ]);
 
   // Public form view: ?form=KEY (no app login required when accessLevel is public)
   useEffect(() => {
@@ -15761,6 +15804,7 @@ ${html}
             const storyShowProducts = catalogConfig.storyShowProducts !== false;
             const storyShowQr = catalogConfig.storyShowQr !== false;
             const liveUrl =
+                (catalogConfig.storyQrValue || '').trim() ||
                 metaHubLinkInfo?.shortUrl ||
                 metaHubLinkInfo?.url ||
                 catalogConfig.qrCodeValue ||
@@ -15868,7 +15912,7 @@ ${html}
             const coverImg = await loadImage(catalogConfig.coverImage || catalogConfig.backCoverImage || '');
             const logoImg = await loadImage(catalogConfig.logoImage || '');
             const qrImg = liveUrl
-                ? await loadImage(await QRCode.toDataURL(liveUrl, {
+                ? await loadImage(storyQrPreviewDataUrl || await QRCode.toDataURL(liveUrl, {
                     width: 1024,
                     margin: 2,
                     errorCorrectionLevel: 'H',
@@ -16111,7 +16155,7 @@ ${html}
         }
     };
 
-    const storyLiveUrl = metaHubLinkInfo?.shortUrl || metaHubLinkInfo?.url || catalogConfig.qrCodeValue || catalogConfig.website || '';
+    const storyLiveUrl = (catalogConfig.storyQrValue || '').trim() || metaHubLinkInfo?.shortUrl || metaHubLinkInfo?.url || catalogConfig.qrCodeValue || catalogConfig.website || '';
     const storyPreviewProducts = storySelectedProducts;
     const storyPreviewStyle = catalogConfig.storyPresentationStyle || 'phone';
     const storyPreviewTitle = (catalogConfig.storyTitle || '').trim() || catalogConfig.title || 'Trading Hub';
@@ -16148,19 +16192,7 @@ ${html}
     const storyExtraFontSize = storyNumberSetting(catalogConfig.storyExtraTextFontSizePx, 13, 8, 30);
     const storyCtaOpacity = storyNumberSetting(catalogConfig.storyCtaBgOpacityPct, 100, 0, 100);
     const storyExtraOpacity = storyNumberSetting(catalogConfig.storyExtraBoxOpacityPct, 70, 0, 100);
-    const storyQrModules = (() => {
-        try {
-            const qr = (QRCode as any).create(storyLiveUrl || 'https://calculator.tohiddayhami.com/', {
-                errorCorrectionLevel: 'H',
-            });
-            return {
-                size: qr.modules.size as number,
-                data: qr.modules.data as boolean[],
-            };
-        } catch {
-            return null;
-        }
-    })();
+    const storyQrHasLowContrast = storyQrColor.toLowerCase() === storyQrBgColor.toLowerCase();
     const storyLayoutControls: Array<{ key: keyof CatalogConfig; label: string; value: number }> = [
         { key: 'storyEyebrowOffsetPct', label: 'Top label', value: storyEyebrowOffset },
         { key: 'storyHeroOffsetPct', label: 'Title box', value: storyHeroOffset },
@@ -19236,7 +19268,33 @@ ${html}
                       </div>
 
                       {catalogConfig.storyShowQr !== false && (
-                          <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                          <div className="space-y-2 border-t border-slate-100 pt-4">
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">QR Builder</label>
+                              <textarea
+                                  rows={2}
+                                  value={catalogConfig.storyQrValue || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, storyQrValue: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900 resize-none font-mono"
+                                  placeholder={metaHubLinkInfo?.shortUrl || metaHubLinkInfo?.url || catalogConfig.qrCodeValue || catalogConfig.website || 'Paste URL or text for QR'}
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                      type="button"
+                                      onClick={() => setCatalogConfig({ ...catalogConfig, storyQrValue: metaHubLinkInfo?.shortUrl || metaHubLinkInfo?.url || '' })}
+                                      className="text-[10px] font-bold text-slate-600 border border-slate-200 rounded-lg py-2 hover:bg-slate-50 disabled:opacity-40"
+                                      disabled={!metaHubLinkInfo?.shortUrl && !metaHubLinkInfo?.url}
+                                  >
+                                      Use Published Link
+                                  </button>
+                                  <button
+                                      type="button"
+                                      onClick={() => setCatalogConfig({ ...catalogConfig, storyQrValue: catalogConfig.website || '' })}
+                                      className="text-[10px] font-bold text-slate-600 border border-slate-200 rounded-lg py-2 hover:bg-slate-50"
+                                  >
+                                      Use Website
+                                  </button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
                               <label className="space-y-1">
                                   <span className="text-[10px] font-semibold text-slate-500">QR color</span>
                                   <input
@@ -19255,13 +19313,33 @@ ${html}
                                       className="w-full h-8 rounded border-0 p-0 cursor-pointer"
                                   />
                               </label>
+                              </div>
                               <button
                                   type="button"
                                   onClick={() => setCatalogConfig({ ...catalogConfig, storyQrColor: '#0f172a', storyQrBgColor: '#ffffff' })}
-                                  className="col-span-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 border border-slate-200 rounded-lg py-2 hover:bg-slate-50"
+                                  className="w-full text-[10px] font-bold text-slate-500 hover:text-slate-900 border border-slate-200 rounded-lg py-2 hover:bg-slate-50"
                               >
                                   Reset QR colors
                               </button>
+                              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center gap-3">
+                                  <div className="w-20 h-20 rounded-xl border bg-white p-1.5 shrink-0" style={{ backgroundColor: storyQrBgColor, borderColor: storyQrColor }}>
+                                      {storyQrPreviewDataUrl ? (
+                                          <img src={storyQrPreviewDataUrl} alt="Story QR preview" className="w-full h-full object-contain block" />
+                                      ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-[9px] font-bold text-slate-400">QR</div>
+                                      )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                      <div className="text-[10px] font-bold text-slate-600">Preview uses the same QR as the 8K export.</div>
+                                      <div className="text-[10px] text-slate-400 truncate mt-1">{storyLiveUrl || 'No QR content yet'}</div>
+                                      {storyQrHasLowContrast && (
+                                          <div className="text-[10px] text-red-600 font-semibold mt-1">QR color and background are the same.</div>
+                                      )}
+                                      {storyQrPreviewError && (
+                                          <div className="text-[10px] text-red-600 font-semibold mt-1">{storyQrPreviewError}</div>
+                                      )}
+                                  </div>
+                              </div>
                           </div>
                       )}
 
@@ -19515,16 +19593,8 @@ ${html}
                                           style={{ backgroundColor: storyQrBgColor, borderColor: storyQrColor }}
                                           title="Story QR preview"
                                       >
-                                          {storyQrModules ? (
-                                              <svg viewBox={`0 0 ${storyQrModules.size} ${storyQrModules.size}`} className="w-full h-full block" aria-label="QR preview">
-                                                  <rect width={storyQrModules.size} height={storyQrModules.size} fill={storyQrBgColor} />
-                                                  {storyQrModules.data.map((enabled, i) => {
-                                                      if (!enabled) return null;
-                                                      const x = i % storyQrModules.size;
-                                                      const y = Math.floor(i / storyQrModules.size);
-                                                      return <rect key={i} x={x} y={y} width={1} height={1} fill={storyQrColor} />;
-                                                  })}
-                                              </svg>
+                                          {storyQrPreviewDataUrl ? (
+                                              <img src={storyQrPreviewDataUrl} alt="Story QR" className="w-full h-full object-contain block" />
                                           ) : (
                                               <span className="text-[8px] font-bold" style={{ color: storyQrColor }}>QR</span>
                                           )}

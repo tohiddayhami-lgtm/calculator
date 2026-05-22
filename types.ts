@@ -398,6 +398,7 @@ export interface CatalogConfig {
   storyFooterText?: string;
   storyShowProducts?: boolean;
   storyShowQr?: boolean;
+  storyQrValue?: string;
   storyQrColor?: string;
   storyQrBgColor?: string;
   storyProductIds?: number[];
