@@ -2427,6 +2427,15 @@ function createDefaultCatalogConfig(): CatalogConfig {
     showQrCode: false,
     qrCodeValue: '',
     qrCodeLabel: 'Scan to visit',
+    storyPresentationStyle: 'phone',
+    storyEyebrow: 'NEW CATALOG IS LIVE',
+    storyTitle: '',
+    storySubtitle: '',
+    storyCtaTitle: 'Open the full Trading Hub',
+    storyCtaText: '',
+    storyFooterText: 'Instagram Story 9:16 • 4320 × 7680 PNG',
+    storyShowProducts: true,
+    storyShowQr: true,
     googleFormUrl: '',
     googleFormButtonText: 'Send Purchase Request',
     googleFormHelperText: 'Tap below to fill out the order form',
@@ -5950,7 +5959,7 @@ function AppInner() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
-  const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'meta-trading-hub'>('catalog');
+  const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'meta-trading-hub' | 'story-studio'>('catalog');
   const [metaHubHtml, setMetaHubHtml] = useState<string>('');
   const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'visual' | 'preview'>('code');
   const [metaHubLinkInfo, setMetaHubLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
@@ -15652,19 +15661,28 @@ ${html}
                 ? new DOMParser().parseFromString(htmlForStory, 'text/html')
                 : null;
             const title =
+                (catalogConfig.storyTitle || '').trim() ||
                 doc?.querySelector('.cover h1, h1')?.textContent?.trim() ||
                 catalogConfig.title ||
                 'Trading Hub';
             const subtitle =
+                (catalogConfig.storySubtitle || '').trim() ||
                 doc?.querySelector('.cover .subtitle, .subtitle, meta[name="description"]')?.textContent?.trim() ||
                 catalogConfig.subtitle ||
                 'New product catalog is live';
+            const storyStyle = catalogConfig.storyPresentationStyle || 'phone';
+            const storyEyebrow = (catalogConfig.storyEyebrow || '').trim() || 'NEW CATALOG IS LIVE';
+            const storyCtaTitle = (catalogConfig.storyCtaTitle || '').trim() || 'Open the full Trading Hub';
+            const storyShowProducts = catalogConfig.storyShowProducts !== false;
+            const storyShowQr = catalogConfig.storyShowQr !== false;
             const liveUrl =
                 metaHubLinkInfo?.shortUrl ||
                 metaHubLinkInfo?.url ||
                 catalogConfig.qrCodeValue ||
                 catalogConfig.website ||
                 '';
+            const storyCtaText = (catalogConfig.storyCtaText || '').trim() || liveUrl || 'Publish the hub to add a live QR link';
+            const storyFooterText = (catalogConfig.storyFooterText || '').trim() || 'Instagram Story 9:16 • 4320 × 7680 PNG';
             const productPreview = calculations.processedProducts
                 .filter(p => p.isActive && isProductIncluded(p.id))
                 .slice(0, 3);
@@ -15742,9 +15760,19 @@ ${html}
             const productImages = await Promise.all(productPreview.map(p => loadImage(p.image || (p.gallery || [])[0] || '')));
 
             const bgGradient = ctx.createLinearGradient(0, 0, width, height);
-            bgGradient.addColorStop(0, catalogConfig.primaryColor || '#0f172a');
-            bgGradient.addColorStop(0.52, '#111827');
-            bgGradient.addColorStop(1, '#020617');
+            if (storyStyle === 'editorial') {
+                bgGradient.addColorStop(0, '#f8fafc');
+                bgGradient.addColorStop(0.55, '#e2e8f0');
+                bgGradient.addColorStop(1, '#cbd5e1');
+            } else if (storyStyle === 'product') {
+                bgGradient.addColorStop(0, catalogConfig.primaryColor || '#7c3aed');
+                bgGradient.addColorStop(0.48, '#111827');
+                bgGradient.addColorStop(1, '#020617');
+            } else {
+                bgGradient.addColorStop(0, catalogConfig.primaryColor || '#0f172a');
+                bgGradient.addColorStop(0.52, '#111827');
+                bgGradient.addColorStop(1, '#020617');
+            }
             ctx.fillStyle = bgGradient;
             ctx.fillRect(0, 0, width, height);
 
@@ -15756,17 +15784,17 @@ ${html}
                 ctx.restore();
             }
             const overlay = ctx.createLinearGradient(0, 0, 0, height);
-            overlay.addColorStop(0, 'rgba(2,6,23,0.18)');
-            overlay.addColorStop(0.45, 'rgba(2,6,23,0.56)');
-            overlay.addColorStop(1, 'rgba(2,6,23,0.92)');
+            overlay.addColorStop(0, storyStyle === 'editorial' ? 'rgba(255,255,255,0.52)' : 'rgba(2,6,23,0.18)');
+            overlay.addColorStop(0.45, storyStyle === 'editorial' ? 'rgba(255,255,255,0.72)' : 'rgba(2,6,23,0.56)');
+            overlay.addColorStop(1, storyStyle === 'editorial' ? 'rgba(248,250,252,0.94)' : 'rgba(2,6,23,0.92)');
             ctx.fillStyle = overlay;
             ctx.fillRect(0, 0, width, height);
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = 'rgba(255,255,255,0.72)';
+            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.58)' : 'rgba(255,255,255,0.72)';
             ctx.font = '800 78px Inter, Arial, sans-serif';
             ctx.letterSpacing = '18px';
-            ctx.fillText('NEW CATALOG IS LIVE', width / 2, 520);
+            ctx.fillText(storyEyebrow.toUpperCase(), width / 2, 520);
             ctx.letterSpacing = '0px';
 
             const phoneX = 520;
@@ -15777,7 +15805,7 @@ ${html}
             ctx.shadowColor = 'rgba(0,0,0,0.62)';
             ctx.shadowBlur = 110;
             ctx.shadowOffsetY = 70;
-            fillRounded(phoneX, phoneY, phoneW, phoneH, 260, '#050816');
+            fillRounded(phoneX, phoneY, phoneW, phoneH, 260, storyStyle === 'editorial' ? '#ffffff' : '#050816');
             ctx.restore();
 
             const screenPad = 112;
@@ -15788,7 +15816,7 @@ ${html}
             ctx.save();
             roundedRect(sx, sy, sw, sh, 190);
             ctx.clip();
-            ctx.fillStyle = catalogConfig.backgroundColor || '#ffffff';
+            ctx.fillStyle = storyStyle === 'product' ? '#f8fafc' : (catalogConfig.backgroundColor || '#ffffff');
             ctx.fillRect(sx, sy, sw, sh);
 
             const heroH = 1880;
@@ -15820,13 +15848,13 @@ ${html}
 
             ctx.textAlign = 'left';
             ctx.fillStyle = '#ffffff';
-            ctx.font = '900 186px Inter, Arial, sans-serif';
+            ctx.font = storyStyle === 'product' ? '950 210px Inter, Arial, sans-serif' : '900 186px Inter, Arial, sans-serif';
             wrapText(title, sx + 210, sy + heroH - 570, sw - 420, 205, 3);
             ctx.fillStyle = 'rgba(255,255,255,0.82)';
             ctx.font = '600 72px Inter, Arial, sans-serif';
             wrapText(subtitle, sx + 210, sy + heroH - 125, sw - 420, 92, 2);
 
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = storyStyle === 'editorial' ? '#f8fafc' : '#ffffff';
             ctx.fillRect(sx, sy + heroH, sw, sh - heroH);
             ctx.fillStyle = catalogConfig.headingColor || '#0f172a';
             ctx.font = '900 96px Inter, Arial, sans-serif';
@@ -15837,7 +15865,7 @@ ${html}
 
             const cardY = sy + heroH + 520;
             const cardW = (sw - 520) / 3;
-            productPreview.forEach((p, index) => {
+            if (storyShowProducts) productPreview.forEach((p, index) => {
                 const x = sx + 210 + index * (cardW + 50);
                 ctx.save();
                 ctx.shadowColor = 'rgba(15,23,42,0.12)';
@@ -15871,14 +15899,14 @@ ${html}
             });
 
             const ctaY = sy + sh - 980;
-            fillRounded(sx + 210, ctaY, sw - 420, 610, 96, '#0f172a');
+            fillRounded(sx + 210, ctaY, sw - 420, 610, 96, storyStyle === 'editorial' ? (catalogConfig.primaryColor || '#0f172a') : '#0f172a');
             ctx.fillStyle = '#ffffff';
             ctx.font = '900 84px Inter, Arial, sans-serif';
-            ctx.fillText('Open the full Trading Hub', sx + 320, ctaY + 150);
+            ctx.fillText(storyCtaTitle, sx + 320, ctaY + 150);
             ctx.fillStyle = 'rgba(255,255,255,0.72)';
             ctx.font = '600 44px Inter, Arial, sans-serif';
-            wrapText(liveUrl || 'Publish the hub to add a live QR link', sx + 320, ctaY + 250, sw - 980, 58, 2);
-            if (qrImg) {
+            wrapText(storyCtaText, sx + 320, ctaY + 250, sw - 980, 58, 2);
+            if (storyShowQr && qrImg) {
                 ctx.fillStyle = '#ffffff';
                 roundedRect(sx + sw - 680, ctaY + 105, 430, 430, 56);
                 ctx.fill();
@@ -15887,15 +15915,15 @@ ${html}
             ctx.restore();
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = storyStyle === 'editorial' ? '#0f172a' : '#ffffff';
             ctx.font = '900 126px Inter, Arial, sans-serif';
             ctx.fillText(title, width / 2, 6740);
-            ctx.fillStyle = 'rgba(255,255,255,0.74)';
+            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.68)' : 'rgba(255,255,255,0.74)';
             ctx.font = '600 62px Inter, Arial, sans-serif';
             wrapText(subtitle, width / 2, 6860, 3220, 82, 2);
-            ctx.fillStyle = 'rgba(255,255,255,0.54)';
+            ctx.fillStyle = storyStyle === 'editorial' ? 'rgba(15,23,42,0.48)' : 'rgba(255,255,255,0.54)';
             ctx.font = '700 44px Inter, Arial, sans-serif';
-            ctx.fillText('Instagram Story 9:16 • 4320 × 7680 PNG', width / 2, 7420);
+            ctx.fillText(storyFooterText, width / 2, 7420);
 
             const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
             if (!blob) throw new Error('Could not render the story image.');
@@ -15916,6 +15944,21 @@ ${html}
         }
     };
 
+    const storyLiveUrl = metaHubLinkInfo?.shortUrl || metaHubLinkInfo?.url || catalogConfig.qrCodeValue || catalogConfig.website || '';
+    const storyPreviewProducts = calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)).slice(0, 3);
+    const storyPreviewStyle = catalogConfig.storyPresentationStyle || 'phone';
+    const storyPreviewTitle = (catalogConfig.storyTitle || '').trim() || catalogConfig.title || 'Trading Hub';
+    const storyPreviewSubtitle = (catalogConfig.storySubtitle || '').trim() || catalogConfig.subtitle || 'New product catalog is live';
+    const storyPreviewEyebrow = (catalogConfig.storyEyebrow || '').trim() || 'NEW CATALOG IS LIVE';
+    const storyPreviewCtaTitle = (catalogConfig.storyCtaTitle || '').trim() || 'Open the full Trading Hub';
+    const storyPreviewCtaText = (catalogConfig.storyCtaText || '').trim() || storyLiveUrl || 'Publish the hub to add a live QR link';
+    const storyPreviewFooter = (catalogConfig.storyFooterText || '').trim() || 'Instagram Story 9:16 • 4320 × 7680 PNG';
+    const storyStyleOptions: Array<{ id: NonNullable<CatalogConfig['storyPresentationStyle']>; title: string; description: string }> = [
+        { id: 'phone', title: 'Phone Launch', description: 'Mobile mockup, catalog preview, QR CTA' },
+        { id: 'editorial', title: 'Editorial Clean', description: 'Bright premium magazine style' },
+        { id: 'product', title: 'Product Focus', description: 'Bolder hero and stronger product cards' },
+    ];
+
     return (
       <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 8rem)' }}>
           {/* ── TAB BAR ────────────────────────────────────────────────── */}
@@ -15931,6 +15974,12 @@ ${html}
                   className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'meta-trading-hub' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
               >
                   <Globe2 className="w-4 h-4" /> Meta Trading Hub
+              </button>
+              <button
+                  onClick={() => setCatalogPageTab('story-studio')}
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'story-studio' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                  <ImageIcon className="w-4 h-4" /> Story Studio
               </button>
           </div>
 
@@ -18598,6 +18647,236 @@ ${html}
                           ) : null}
                       </div>
                   )}
+              </div>
+          )}
+          {catalogPageTab === 'story-studio' && (
+              <div className="flex flex-col xl:flex-row overflow-hidden bg-slate-100" style={{ height: 'calc(100vh - 9.5rem)' }}>
+                  <aside className="w-full xl:w-96 bg-white border-b xl:border-b-0 xl:border-r border-slate-200 overflow-y-auto p-4 space-y-4">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                              <ImageIcon className="w-4 h-4" />
+                              Story Studio
+                          </h3>
+                          <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+                              Edit the promotional story text live, choose a presentation style, then export a 4320×7680 PNG for Instagram Story.
+                          </p>
+                      </div>
+
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Presentation Style</label>
+                          <div className="grid gap-2">
+                              {storyStyleOptions.map((style) => (
+                                  <button
+                                      key={style.id}
+                                      type="button"
+                                      onClick={() => setCatalogConfig({ ...catalogConfig, storyPresentationStyle: style.id })}
+                                      className={`text-left rounded-xl border p-3 transition-all ${storyPreviewStyle === style.id ? 'border-slate-900 bg-slate-900 text-white shadow-lg' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}
+                                  >
+                                      <div className="text-xs font-black">{style.title}</div>
+                                      <div className={`text-[10px] mt-0.5 ${storyPreviewStyle === style.id ? 'text-white/70' : 'text-slate-400'}`}>{style.description}</div>
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+
+                      <div className="space-y-2 border-t border-slate-100 pt-4">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Editable Story Text</label>
+                          <input
+                              type="text"
+                              value={catalogConfig.storyEyebrow || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyEyebrow: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900"
+                              placeholder="NEW CATALOG IS LIVE"
+                          />
+                          <input
+                              type="text"
+                              value={catalogConfig.storyTitle || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyTitle: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900"
+                              placeholder={catalogConfig.title || 'Story title'}
+                          />
+                          <textarea
+                              rows={2}
+                              value={catalogConfig.storySubtitle || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storySubtitle: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900 resize-none"
+                              placeholder={catalogConfig.subtitle || 'Story subtitle'}
+                          />
+                          <input
+                              type="text"
+                              value={catalogConfig.storyCtaTitle || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyCtaTitle: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900"
+                              placeholder="Open the full Trading Hub"
+                          />
+                          <textarea
+                              rows={2}
+                              value={catalogConfig.storyCtaText || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyCtaText: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900 resize-none"
+                              placeholder={storyLiveUrl || 'CTA helper text or link'}
+                          />
+                          <input
+                              type="text"
+                              value={catalogConfig.storyFooterText || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyFooterText: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900"
+                              placeholder="Footer line"
+                          />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                  type="checkbox"
+                                  checked={catalogConfig.storyShowProducts !== false}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, storyShowProducts: e.target.checked })}
+                                  className="rounded text-slate-900 focus:ring-slate-900"
+                              />
+                              Products
+                          </label>
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                  type="checkbox"
+                                  checked={catalogConfig.storyShowQr !== false}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, storyShowQr: e.target.checked })}
+                                  className="rounded text-slate-900 focus:ring-slate-900"
+                              />
+                              QR / Link
+                          </label>
+                      </div>
+
+                      <div className="flex gap-2">
+                          <button
+                              type="button"
+                              onClick={() => setCatalogConfig({
+                                  ...catalogConfig,
+                                  storyEyebrow: 'NEW CATALOG IS LIVE',
+                                  storyTitle: '',
+                                  storySubtitle: '',
+                                  storyCtaTitle: 'Open the full Trading Hub',
+                                  storyCtaText: '',
+                                  storyFooterText: 'Instagram Story 9:16 • 4320 × 7680 PNG',
+                                  storyShowProducts: true,
+                                  storyShowQr: true,
+                              })}
+                              className="flex-1 px-3 py-2 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                              Reset Text
+                          </button>
+                          <button
+                              type="button"
+                              onClick={handleDownloadMetaHubStoryImage}
+                              disabled={isGeneratingMetaHubStory}
+                              className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
+                          >
+                              {isGeneratingMetaHubStory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                              Export PNG
+                          </button>
+                      </div>
+                  </aside>
+
+                  <main className="flex-1 overflow-y-auto p-4 xl:p-8 flex items-start justify-center">
+                      <div className="w-full max-w-[430px]">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                              <div>
+                                  <h3 className="text-sm font-black text-slate-900">Live Preview</h3>
+                                  <p className="text-[11px] text-slate-500">Click the text inside the story to edit it directly.</p>
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-1">9:16</span>
+                          </div>
+                          <div
+                              className={`relative aspect-[9/16] w-full overflow-hidden rounded-[2rem] shadow-2xl border ${storyPreviewStyle === 'editorial' ? 'border-slate-200 bg-slate-100 text-slate-950' : 'border-slate-900 bg-slate-950 text-white'}`}
+                              style={{
+                                  backgroundImage: catalogConfig.coverImage
+                                      ? `linear-gradient(${storyPreviewStyle === 'editorial' ? 'rgba(248,250,252,.72), rgba(248,250,252,.96)' : 'rgba(2,6,23,.28), rgba(2,6,23,.92)'}), url(${catalogConfig.coverImage})`
+                                      : storyPreviewStyle === 'editorial'
+                                      ? 'linear-gradient(160deg,#ffffff,#e2e8f0)'
+                                      : `linear-gradient(160deg, ${catalogConfig.primaryColor || '#0f172a'}, #020617)`,
+                                  backgroundSize: 'cover',
+                                  backgroundPosition: 'center',
+                              }}
+                          >
+                              <div className="absolute inset-x-0 top-0 p-7">
+                                  <div
+                                      contentEditable
+                                      suppressContentEditableWarning
+                                      onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyEyebrow: e.currentTarget.textContent || '' })}
+                                      className={`outline-none text-center text-[10px] font-black tracking-[0.28em] uppercase ${storyPreviewStyle === 'editorial' ? 'text-slate-500' : 'text-white/70'}`}
+                                  >
+                                      {storyPreviewEyebrow}
+                                  </div>
+                              </div>
+
+                              <div className={`${storyPreviewStyle === 'product' ? 'absolute inset-x-5 top-24' : 'absolute inset-x-6 top-20'} rounded-[1.8rem] ${storyPreviewStyle === 'editorial' ? 'bg-white/85 text-slate-950' : 'bg-black/35 text-white'} backdrop-blur-md border ${storyPreviewStyle === 'editorial' ? 'border-white' : 'border-white/15'} p-5 shadow-xl`}>
+                                  <div
+                                      contentEditable
+                                      suppressContentEditableWarning
+                                      onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyTitle: e.currentTarget.textContent || '' })}
+                                      className={`outline-none font-black leading-[0.95] ${storyPreviewStyle === 'product' ? 'text-[42px]' : 'text-[34px]'}`}
+                                  >
+                                      {storyPreviewTitle}
+                                  </div>
+                                  <div
+                                      contentEditable
+                                      suppressContentEditableWarning
+                                      onBlur={(e) => setCatalogConfig({ ...catalogConfig, storySubtitle: e.currentTarget.textContent || '' })}
+                                      className={`outline-none mt-3 text-sm leading-relaxed ${storyPreviewStyle === 'editorial' ? 'text-slate-600' : 'text-white/76'}`}
+                                  >
+                                      {storyPreviewSubtitle}
+                                  </div>
+                              </div>
+
+                              {catalogConfig.storyShowProducts !== false && storyPreviewProducts.length > 0 && (
+                                  <div className={`absolute inset-x-5 ${storyPreviewStyle === 'product' ? 'bottom-44' : 'bottom-48'} grid grid-cols-3 gap-2`}>
+                                      {storyPreviewProducts.map((p) => (
+                                          <div key={p.id} className={`${storyPreviewStyle === 'editorial' ? 'bg-white text-slate-900' : 'bg-white text-slate-900'} rounded-2xl p-2 shadow-lg`}>
+                                              <div className="aspect-square rounded-xl overflow-hidden bg-slate-100">
+                                                  {p.image ? <img src={p.image} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-200" />}
+                                              </div>
+                                              <div className="mt-2 text-[10px] font-black leading-tight line-clamp-2">{p.catalogName || p.name || 'Product'}</div>
+                                              {p.group ? <div className="mt-1 text-[8px] font-bold text-slate-500 truncate">{p.group}</div> : null}
+                                          </div>
+                                      ))}
+                                  </div>
+                              )}
+
+                              <div className={`absolute inset-x-5 bottom-6 rounded-3xl p-4 ${storyPreviewStyle === 'editorial' ? 'bg-slate-950 text-white' : 'bg-white text-slate-950'} shadow-2xl flex items-center gap-3`}>
+                                  <div className="flex-1 min-w-0">
+                                      <div
+                                          contentEditable
+                                          suppressContentEditableWarning
+                                          onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyCtaTitle: e.currentTarget.textContent || '' })}
+                                          className="outline-none text-sm font-black"
+                                      >
+                                          {storyPreviewCtaTitle}
+                                      </div>
+                                      <div
+                                          contentEditable
+                                          suppressContentEditableWarning
+                                          onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyCtaText: e.currentTarget.textContent || '' })}
+                                          className={`outline-none mt-1 text-[10px] leading-snug ${storyPreviewStyle === 'editorial' ? 'text-white/60' : 'text-slate-500'}`}
+                                      >
+                                          {storyPreviewCtaText}
+                                      </div>
+                                  </div>
+                                  {catalogConfig.storyShowQr !== false && (
+                                      <div className="w-16 h-16 rounded-xl bg-white p-1 flex items-center justify-center text-[8px] font-bold text-slate-400 shrink-0">
+                                          {metaHubLinkInfo?.qr ? <img src={metaHubLinkInfo.qr} alt="QR" className="w-full h-full object-contain" /> : 'QR'}
+                                      </div>
+                                  )}
+                              </div>
+                              <div
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyFooterText: e.currentTarget.textContent || '' })}
+                                  className={`absolute inset-x-5 bottom-1 outline-none text-center text-[8px] font-semibold ${storyPreviewStyle === 'editorial' ? 'text-slate-500' : 'text-white/45'}`}
+                              >
+                                  {storyPreviewFooter}
+                              </div>
+                          </div>
+                      </div>
+                  </main>
               </div>
           )}
       </div>

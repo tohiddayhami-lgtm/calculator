@@ -388,6 +388,17 @@ export interface CatalogConfig {
   qrCodeValue?: string;
   qrCodeLabel?: string;
 
+  // Trading Hub Instagram Story export
+  storyPresentationStyle?: 'phone' | 'editorial' | 'product';
+  storyEyebrow?: string;
+  storyTitle?: string;
+  storySubtitle?: string;
+  storyCtaTitle?: string;
+  storyCtaText?: string;
+  storyFooterText?: string;
+  storyShowProducts?: boolean;
+  storyShowQr?: boolean;
+
   // Google Form / Order Form CTA on HTML export & back page
   googleFormUrl?: string;
   googleFormButtonText?: string;
