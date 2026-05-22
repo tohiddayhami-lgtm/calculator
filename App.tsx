@@ -6013,6 +6013,7 @@ function AppInner() {
   const [isGeneratingMetaHubStory, setIsGeneratingMetaHubStory] = useState(false);
   const [storyQrPreviewDataUrl, setStoryQrPreviewDataUrl] = useState('');
   const [storyQrPreviewError, setStoryQrPreviewError] = useState('');
+  const storyPreviewRef = useRef<HTMLDivElement | null>(null);
   const metaHubHtmlFileInputRef = useRef<HTMLInputElement | null>(null);
   const metaHubVisualFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
@@ -15785,10 +15786,109 @@ ${html}
         setCatalogConfig({ ...catalogConfig, storyProductIds: next });
     };
 
+    const downloadStoryBlob = (blob: Blob, fileName: string) => {
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
+    };
+
+    const renderStoryPreviewElementToPng = async (
+        element: HTMLElement,
+        targetWidth = 4320,
+        targetHeight = 7680,
+    ): Promise<Blob> => {
+        const rect = element.getBoundingClientRect();
+        if (!rect.width || !rect.height) throw new Error('Story preview is not visible.');
+        if (document.fonts?.ready) {
+            try { await document.fonts.ready; } catch {}
+        }
+
+        const images = Array.from(element.querySelectorAll('img'));
+        await Promise.all(images.map((img) => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise<void>((resolve) => {
+                img.addEventListener('load', () => resolve(), { once: true });
+                img.addEventListener('error', () => resolve(), { once: true });
+            });
+        }));
+
+        const clone = element.cloneNode(true) as HTMLElement;
+        const sourceElements = [element, ...Array.from(element.querySelectorAll<HTMLElement>('*'))];
+        const cloneElements = [clone, ...Array.from(clone.querySelectorAll<HTMLElement>('*'))];
+
+        sourceElements.forEach((source, index) => {
+            const target = cloneElements[index];
+            if (!target) return;
+            const computed = window.getComputedStyle(source);
+            const inlineStyles: string[] = [];
+            for (let i = 0; i < computed.length; i += 1) {
+                const prop = computed.item(i);
+                inlineStyles.push(`${prop}:${computed.getPropertyValue(prop)};`);
+            }
+            target.setAttribute('style', inlineStyles.join(''));
+            target.removeAttribute('contenteditable');
+        });
+
+        clone.style.width = `${rect.width}px`;
+        clone.style.height = `${rect.height}px`;
+        clone.style.margin = '0';
+        clone.style.transform = 'none';
+        clone.style.transformOrigin = 'top left';
+
+        const scaleX = targetWidth / rect.width;
+        const scaleY = targetHeight / rect.height;
+        const serialized = new XMLSerializer().serializeToString(clone);
+        const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}">
+  <foreignObject width="${targetWidth}" height="${targetHeight}">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:${targetWidth}px;height:${targetHeight}px;overflow:hidden;">
+      <div style="width:${rect.width}px;height:${rect.height}px;transform:scale(${scaleX},${scaleY});transform-origin:top left;">
+        ${serialized}
+      </div>
+    </div>
+  </foreignObject>
+</svg>`;
+
+        const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+        try {
+            const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = () => reject(new Error('Could not render the live story preview.'));
+                image.src = svgUrl;
+            });
+            const canvas = document.createElement('canvas');
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Canvas is not available in this browser.');
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (!blob) throw new Error('Could not create the story image.');
+            return blob;
+        } finally {
+            URL.revokeObjectURL(svgUrl);
+        }
+    };
+
     const handleDownloadMetaHubStoryImage = async () => {
         if (isGeneratingMetaHubStory) return;
         setIsGeneratingMetaHubStory(true);
         try {
+            if (storyPreviewRef.current) {
+                const safeTitle = (catalogConfig.title || 'trading-hub')
+                    .replace(/[^a-z0-9-_]+/gi, '-')
+                    .replace(/^-+|-+$/g, '') || 'trading-hub';
+                const blob = await renderStoryPreviewElementToPng(storyPreviewRef.current);
+                downloadStoryBlob(blob, `${safeTitle}-instagram-story-8k.png`);
+                return;
+            }
+
             const htmlForStory = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
             const parserAvailable = typeof DOMParser !== 'undefined';
             const doc = htmlForStory.trim() && parserAvailable
@@ -19516,6 +19616,7 @@ ${html}
                               <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-1">9:16</span>
                           </div>
                           <div
+                              ref={storyPreviewRef}
                               className={`relative aspect-[9/16] w-full overflow-hidden rounded-[2rem] shadow-2xl border ${storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'border-slate-200 bg-slate-100 text-slate-950' : 'border-slate-900 bg-slate-950 text-white'}`}
                               style={{
                                   backgroundImage: catalogConfig.coverImage
