@@ -5956,6 +5956,7 @@ function AppInner() {
   const [metaHubLinkInfo, setMetaHubLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
   const [savedMetaHubLinks, setSavedMetaHubLinks] = useState<any[]>([]);
   const [metaHubPreviewKey, setMetaHubPreviewKey] = useState(0);
+  const [isGeneratingMetaHubStory, setIsGeneratingMetaHubStory] = useState(false);
   const metaHubHtmlFileInputRef = useRef<HTMLInputElement | null>(null);
   const metaHubVisualFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
@@ -15641,6 +15642,280 @@ ${html}
         setTimeout(() => URL.revokeObjectURL(objUrl), 1500);
     };
 
+    const handleDownloadMetaHubStoryImage = async () => {
+        if (isGeneratingMetaHubStory) return;
+        setIsGeneratingMetaHubStory(true);
+        try {
+            const htmlForStory = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
+            const parserAvailable = typeof DOMParser !== 'undefined';
+            const doc = htmlForStory.trim() && parserAvailable
+                ? new DOMParser().parseFromString(htmlForStory, 'text/html')
+                : null;
+            const title =
+                doc?.querySelector('.cover h1, h1')?.textContent?.trim() ||
+                catalogConfig.title ||
+                'Trading Hub';
+            const subtitle =
+                doc?.querySelector('.cover .subtitle, .subtitle, meta[name="description"]')?.textContent?.trim() ||
+                catalogConfig.subtitle ||
+                'New product catalog is live';
+            const liveUrl =
+                metaHubLinkInfo?.shortUrl ||
+                metaHubLinkInfo?.url ||
+                catalogConfig.qrCodeValue ||
+                catalogConfig.website ||
+                '';
+            const productPreview = calculations.processedProducts
+                .filter(p => p.isActive && isProductIncluded(p.id))
+                .slice(0, 3);
+
+            const width = 4320;
+            const height = 7680;
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Canvas is not available in this browser.');
+            if (document.fonts?.ready) {
+                try { await document.fonts.ready; } catch {}
+            }
+
+            const loadImage = (src?: string): Promise<HTMLImageElement | null> => new Promise((resolve) => {
+                if (!src) return resolve(null);
+                const img = new Image();
+                if (!src.startsWith('data:')) img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = () => resolve(null);
+                img.src = src;
+            });
+            const roundedRect = (x: number, y: number, w: number, h: number, r: number) => {
+                const rr = Math.min(r, w / 2, h / 2);
+                ctx.beginPath();
+                ctx.moveTo(x + rr, y);
+                ctx.lineTo(x + w - rr, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+                ctx.lineTo(x + w, y + h - rr);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+                ctx.lineTo(x + rr, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+                ctx.lineTo(x, y + rr);
+                ctx.quadraticCurveTo(x, y, x + rr, y);
+                ctx.closePath();
+            };
+            const drawImageCover = (img: HTMLImageElement, x: number, y: number, w: number, h: number) => {
+                const scale = Math.max(w / img.width, h / img.height);
+                const sw = w / scale;
+                const sh = h / scale;
+                const sx = (img.width - sw) / 2;
+                const sy = (img.height - sh) / 2;
+                ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+            };
+            const wrapText = (textValue: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) => {
+                const words = String(textValue || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+                const lines: string[] = [];
+                let line = '';
+                for (const word of words) {
+                    const test = line ? `${line} ${word}` : word;
+                    if (ctx.measureText(test).width > maxWidth && line) {
+                        lines.push(line);
+                        line = word;
+                        if (lines.length >= maxLines) break;
+                    } else {
+                        line = test;
+                    }
+                }
+                if (line && lines.length < maxLines) lines.push(line);
+                lines.forEach((ln, i) => ctx.fillText(i === maxLines - 1 && lines.length === maxLines && words.join(' ').length > ln.length ? `${ln.replace(/[.,،;:!?]*$/, '')}...` : ln, x, y + i * lineHeight));
+                return lines.length * lineHeight;
+            };
+            const fillRounded = (x: number, y: number, w: number, h: number, r: number, fillStyle: string | CanvasGradient) => {
+                roundedRect(x, y, w, h, r);
+                ctx.fillStyle = fillStyle;
+                ctx.fill();
+            };
+
+            const coverImg = await loadImage(catalogConfig.coverImage || catalogConfig.backCoverImage || '');
+            const logoImg = await loadImage(catalogConfig.logoImage || '');
+            const qrImg = liveUrl
+                ? await loadImage(await QRCode.toDataURL(liveUrl, { width: 1024, margin: 1, errorCorrectionLevel: 'M' }))
+                : null;
+            const productImages = await Promise.all(productPreview.map(p => loadImage(p.image || (p.gallery || [])[0] || '')));
+
+            const bgGradient = ctx.createLinearGradient(0, 0, width, height);
+            bgGradient.addColorStop(0, catalogConfig.primaryColor || '#0f172a');
+            bgGradient.addColorStop(0.52, '#111827');
+            bgGradient.addColorStop(1, '#020617');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            if (coverImg) {
+                ctx.save();
+                ctx.globalAlpha = 0.42;
+                ctx.filter = 'blur(28px) saturate(1.25)';
+                drawImageCover(coverImg, -180, -180, width + 360, height + 360);
+                ctx.restore();
+            }
+            const overlay = ctx.createLinearGradient(0, 0, 0, height);
+            overlay.addColorStop(0, 'rgba(2,6,23,0.18)');
+            overlay.addColorStop(0.45, 'rgba(2,6,23,0.56)');
+            overlay.addColorStop(1, 'rgba(2,6,23,0.92)');
+            ctx.fillStyle = overlay;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(255,255,255,0.72)';
+            ctx.font = '800 78px Inter, Arial, sans-serif';
+            ctx.letterSpacing = '18px';
+            ctx.fillText('NEW CATALOG IS LIVE', width / 2, 520);
+            ctx.letterSpacing = '0px';
+
+            const phoneX = 520;
+            const phoneY = 850;
+            const phoneW = 3280;
+            const phoneH = 5480;
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.62)';
+            ctx.shadowBlur = 110;
+            ctx.shadowOffsetY = 70;
+            fillRounded(phoneX, phoneY, phoneW, phoneH, 260, '#050816');
+            ctx.restore();
+
+            const screenPad = 112;
+            const sx = phoneX + screenPad;
+            const sy = phoneY + screenPad;
+            const sw = phoneW - screenPad * 2;
+            const sh = phoneH - screenPad * 2;
+            ctx.save();
+            roundedRect(sx, sy, sw, sh, 190);
+            ctx.clip();
+            ctx.fillStyle = catalogConfig.backgroundColor || '#ffffff';
+            ctx.fillRect(sx, sy, sw, sh);
+
+            const heroH = 1880;
+            if (coverImg) {
+                drawImageCover(coverImg, sx, sy, sw, heroH);
+            } else {
+                const heroGradient = ctx.createLinearGradient(sx, sy, sx + sw, sy + heroH);
+                heroGradient.addColorStop(0, catalogConfig.primaryColor || '#0f172a');
+                heroGradient.addColorStop(1, '#334155');
+                ctx.fillStyle = heroGradient;
+                ctx.fillRect(sx, sy, sw, heroH);
+            }
+            const heroOverlay = ctx.createLinearGradient(sx, sy, sx, sy + heroH);
+            heroOverlay.addColorStop(0, 'rgba(0,0,0,0.18)');
+            heroOverlay.addColorStop(1, 'rgba(0,0,0,0.66)');
+            ctx.fillStyle = heroOverlay;
+            ctx.fillRect(sx, sy, sw, heroH);
+
+            if (logoImg) {
+                const logoSize = 300;
+                ctx.save();
+                roundedRect(sx + 160, sy + 150, logoSize, logoSize, 82);
+                ctx.clip();
+                ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                ctx.fillRect(sx + 160, sy + 150, logoSize, logoSize);
+                drawImageCover(logoImg, sx + 190, sy + 180, logoSize - 60, logoSize - 60);
+                ctx.restore();
+            }
+
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 186px Inter, Arial, sans-serif';
+            wrapText(title, sx + 210, sy + heroH - 570, sw - 420, 205, 3);
+            ctx.fillStyle = 'rgba(255,255,255,0.82)';
+            ctx.font = '600 72px Inter, Arial, sans-serif';
+            wrapText(subtitle, sx + 210, sy + heroH - 125, sw - 420, 92, 2);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(sx, sy + heroH, sw, sh - heroH);
+            ctx.fillStyle = catalogConfig.headingColor || '#0f172a';
+            ctx.font = '900 96px Inter, Arial, sans-serif';
+            ctx.fillText(catalogConfig.productTabLabel || 'Product List', sx + 210, sy + heroH + 250);
+            ctx.fillStyle = 'rgba(15,23,42,0.55)';
+            ctx.font = '600 46px Inter, Arial, sans-serif';
+            ctx.fillText(`${productPreview.length || calculations.processedProducts.filter(p => p.isActive).length} featured products`, sx + 210, sy + heroH + 330);
+
+            const cardY = sy + heroH + 520;
+            const cardW = (sw - 520) / 3;
+            productPreview.forEach((p, index) => {
+                const x = sx + 210 + index * (cardW + 50);
+                ctx.save();
+                ctx.shadowColor = 'rgba(15,23,42,0.12)';
+                ctx.shadowBlur = 36;
+                ctx.shadowOffsetY = 20;
+                fillRounded(x, cardY, cardW, 1020, 76, '#ffffff');
+                ctx.restore();
+                roundedRect(x, cardY, cardW, 1020, 76);
+                ctx.strokeStyle = 'rgba(15,23,42,0.08)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                ctx.save();
+                roundedRect(x + 38, cardY + 38, cardW - 76, 560, 54);
+                ctx.clip();
+                if (productImages[index]) {
+                    drawImageCover(productImages[index]!, x + 38, cardY + 38, cardW - 76, 560);
+                } else {
+                    ctx.fillStyle = '#f1f5f9';
+                    ctx.fillRect(x + 38, cardY + 38, cardW - 76, 560);
+                }
+                ctx.restore();
+                ctx.fillStyle = '#0f172a';
+                ctx.font = '800 54px Inter, Arial, sans-serif';
+                wrapText(p.catalogName || p.name || 'Product', x + 54, cardY + 710, cardW - 108, 68, 2);
+                if (p.group) {
+                    fillRounded(x + 54, cardY + 880, Math.min(430, 110 + ctx.measureText(p.group).width), 86, 43, catalogConfig.primaryColor || '#0f172a');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '800 34px Inter, Arial, sans-serif';
+                    ctx.fillText(p.group, x + 94, cardY + 935);
+                }
+            });
+
+            const ctaY = sy + sh - 980;
+            fillRounded(sx + 210, ctaY, sw - 420, 610, 96, '#0f172a');
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 84px Inter, Arial, sans-serif';
+            ctx.fillText('Open the full Trading Hub', sx + 320, ctaY + 150);
+            ctx.fillStyle = 'rgba(255,255,255,0.72)';
+            ctx.font = '600 44px Inter, Arial, sans-serif';
+            wrapText(liveUrl || 'Publish the hub to add a live QR link', sx + 320, ctaY + 250, sw - 980, 58, 2);
+            if (qrImg) {
+                ctx.fillStyle = '#ffffff';
+                roundedRect(sx + sw - 680, ctaY + 105, 430, 430, 56);
+                ctx.fill();
+                ctx.drawImage(qrImg, sx + sw - 640, ctaY + 145, 350, 350);
+            }
+            ctx.restore();
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '900 126px Inter, Arial, sans-serif';
+            ctx.fillText(title, width / 2, 6740);
+            ctx.fillStyle = 'rgba(255,255,255,0.74)';
+            ctx.font = '600 62px Inter, Arial, sans-serif';
+            wrapText(subtitle, width / 2, 6860, 3220, 82, 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.54)';
+            ctx.font = '700 44px Inter, Arial, sans-serif';
+            ctx.fillText('Instagram Story 9:16 • 4320 × 7680 PNG', width / 2, 7420);
+
+            const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (!blob) throw new Error('Could not render the story image.');
+            const safeTitle = (catalogConfig.title || 'trading-hub').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'trading-hub';
+            const objUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objUrl;
+            a.download = `${safeTitle}-instagram-story-8k.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
+        } catch (err: any) {
+            console.error('Story export failed', err);
+            alert('Could not create the 8K story image: ' + (err?.message || err));
+        } finally {
+            setIsGeneratingMetaHubStory(false);
+        }
+    };
+
     return (
       <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 8rem)' }}>
           {/* ── TAB BAR ────────────────────────────────────────────────── */}
@@ -17822,6 +18097,20 @@ ${html}
                           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                           <Download className="w-3.5 h-3.5" /> Download HTML
+                      </button>
+                      <button
+                          type="button"
+                          onClick={handleDownloadMetaHubStoryImage}
+                          disabled={isGeneratingMetaHubStory}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 shadow-sm disabled:opacity-50 disabled:cursor-wait"
+                          title="Export a 4320×7680 PNG for Instagram Story"
+                      >
+                          {isGeneratingMetaHubStory ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                              <ImageIcon className="w-3.5 h-3.5" />
+                          )}
+                          8K Story PNG
                       </button>
                       <button
                           onClick={handlePublishMetaHub}
