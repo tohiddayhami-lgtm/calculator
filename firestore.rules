@@ -252,6 +252,40 @@ service cloud.firestore {
                             );
     }
 
+    // Meta Trading Hub saved link metadata (owner only)
+    match /artifacts/{appId}/users/{userId}/metaHubLinks/{linkId} {
+      allow read, write: if canAccessUserData(appId, userId);
+    }
+
+    // Meta Trading Hub public short-link lookup (same rules as catalog_short_links)
+    match /meta_hub_links/{code} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['url', 'ownerUserId', 'storagePath', 'createdAt'])
+                    && (
+                      request.resource.data.ownerUserId == request.auth.uid
+                      || (
+                        request.resource.data.keys().hasAny(['appId'])
+                        && isMaster(request.resource.data.appId)
+                      )
+                    )
+                    && request.resource.data.url is string
+                    && request.resource.data.storagePath is string
+                    && request.resource.data.url.size() < 4000
+                    && request.resource.data.storagePath.size() < 500
+                    && code.size() >= 8
+                    && code.size() <= 16;
+      allow delete: if request.auth != null
+                    && (
+                      resource.data.ownerUserId == request.auth.uid
+                      || (
+                        resource.data.keys().hasAny(['appId'])
+                        && isMaster(resource.data.appId)
+                      )
+                    );
+      allow update: if false;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

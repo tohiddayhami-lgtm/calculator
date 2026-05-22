@@ -5842,6 +5842,11 @@ function AppInner() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
+  const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'meta-trading-hub'>('catalog');
+  const [metaHubHtml, setMetaHubHtml] = useState<string>('');
+  const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'preview'>('code');
+  const [metaHubLinkInfo, setMetaHubLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
+  const [savedMetaHubLinks, setSavedMetaHubLinks] = useState<any[]>([]);
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
   const [serviceInvoiceDiscountCurrency, setServiceInvoiceDiscountCurrency] = useState('USD');
@@ -7099,6 +7104,28 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
+  }, [db]);
+
+  // Short link ?mh=CODE → redirect to hosted Meta Trading Hub HTML (full Storage URL)
+  useEffect(() => {
+    if (!db || typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const mh = sp.get('mh');
+    if (!mh || !/^[A-Za-z0-9]{8,14}$/.test(mh)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'meta_hub_links', mh));
+        if (cancelled || !snap.exists()) return;
+        const target = snap.data()?.url;
+        if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
+          window.location.replace(target);
+        }
+      } catch (e) {
+        console.error('Meta hub short link redirect failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [db]);
 
   // Public form view: ?form=KEY (no app login required when accessLevel is public)
@@ -15144,8 +15171,100 @@ function AppInner() {
         await handleCopyShareLink();
     };
 
+    // ── Meta Trading Hub helper functions ────────────────────────────
+    const handleImportCatalogToMetaHub = () => {
+        const inquiryEndpoint = (user && firebaseConfig && firebaseConfig.apiKey)
+            ? { firebaseConfig, appId, ownerId: activeOwnerUid }
+            : null;
+        const html = buildCatalogHtml({
+            products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
+            config,
+            catalogConfig,
+            qrDataUrl,
+            tCombined,
+            inquiryEndpoint
+        });
+        setMetaHubHtml(html);
+        setMetaHubEditorMode('code');
+    };
+
+    const handlePublishMetaHub = async () => {
+        if (!metaHubHtml.trim()) { alert('First import catalog HTML or write HTML content.'); return; }
+        if (!user || !storage) { alert('You must be signed in to publish.'); return; }
+        setMetaHubLinkInfo({ url: '', qr: '', uploading: true });
+        try {
+            const safeTitle = (catalogConfig.title || 'meta-hub').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'meta-hub';
+            const path = `users/${activeOwnerUid}/meta-hub/${safeTitle}-${Date.now()}.html`;
+            const ref = storageRef(storage, path);
+            await uploadString(ref, metaHubHtml, 'raw', { contentType: 'text/html; charset=utf-8' });
+            const url = await getDownloadURL(ref);
+            let shortUrl: string | undefined;
+            if (db && !isDemoMode && user.uid !== DEMO_USER_ID) {
+                for (let attempt = 0; attempt < 24; attempt++) {
+                    const shortCode = generateCatalogShortCode(10);
+                    const pubRef = doc(db, 'meta_hub_links', shortCode);
+                    const existing = await getDoc(pubRef);
+                    if (!existing.exists()) {
+                        await setDoc(pubRef, { url, appId, ownerUserId: activeOwnerUid, storagePath: path, createdAt: serverTimestamp() });
+                        const base = window.location.origin + window.location.pathname;
+                        shortUrl = `${base}?mh=${shortCode}`;
+                        break;
+                    }
+                }
+            }
+            let qr = '';
+            try { qr = await QRCode.toDataURL(shortUrl || url, { width: 256, margin: 1 }); } catch {}
+            setMetaHubLinkInfo({ url, shortUrl, qr, uploading: false });
+            if (db && user) {
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', activeOwnerUid, 'metaHubLinks'), {
+                        fullUrl: url, shortUrl: shortUrl || null, storagePath: path,
+                        title: catalogConfig.title || 'Meta Hub', createdAt: serverTimestamp()
+                    });
+                    const snap = await getDocs(query(collection(db, 'artifacts', appId, 'users', activeOwnerUid, 'metaHubLinks'), orderBy('createdAt', 'desc'), limit(20)));
+                    setSavedMetaHubLinks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                } catch {}
+            }
+        } catch (err: any) {
+            setMetaHubLinkInfo({ url: '', qr: '', uploading: false, error: err?.message || String(err) });
+            setTimeout(() => setMetaHubLinkInfo(null), 4000);
+        }
+    };
+
+    const handleDownloadMetaHub = () => {
+        if (!metaHubHtml.trim()) return;
+        const safeTitle = (catalogConfig.title || 'meta-hub').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'meta-hub';
+        const blob = new Blob([metaHubHtml], { type: 'text/html;charset=utf-8' });
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = `${safeTitle}-meta-hub.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 1500);
+    };
+
     return (
-      <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
+      <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 8rem)' }}>
+          {/* ── TAB BAR ────────────────────────────────────────────────── */}
+          <div className="flex border-b border-slate-200 bg-white print:hidden flex-shrink-0">
+              <button
+                  onClick={() => setCatalogPageTab('catalog')}
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'catalog' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                  <LayoutTemplate className="w-4 h-4" /> Catalog
+              </button>
+              <button
+                  onClick={() => setCatalogPageTab('meta-trading-hub')}
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'meta-trading-hub' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                  <Globe2 className="w-4 h-4" /> Meta Trading Hub
+              </button>
+          </div>
+
+          {catalogPageTab === 'catalog' && (
+          <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
           {/* SIDEBAR CONTROLS (Hide in Print) */}
           <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-6">
               <div>
@@ -17227,6 +17346,136 @@ function AppInner() {
                           </div>
                       )}
                   </div>
+              </div>
+          )}
+      </div>
+          )} {/* end catalogPageTab === 'catalog' */}
+
+          {/* ── META TRADING HUB TAB ───────────────────────────────────── */}
+          {catalogPageTab === 'meta-trading-hub' && (
+              <div className="flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 9.5rem)' }}>
+                  {/* Action Bar */}
+                  <div className="flex flex-wrap items-center gap-2 p-3 border-b border-slate-200 bg-slate-50 print:hidden flex-shrink-0">
+                      <button
+                          onClick={handleImportCatalogToMetaHub}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm"
+                      >
+                          <Download className="w-3.5 h-3.5" /> Import from Catalog
+                      </button>
+                      <div className="flex bg-slate-200 p-0.5 rounded-lg">
+                          <button
+                              onClick={() => setMetaHubEditorMode('code')}
+                              className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors ${metaHubEditorMode === 'code' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                              <Edit3 className="w-3 h-3" /> Code
+                          </button>
+                          <button
+                              onClick={() => setMetaHubEditorMode('preview')}
+                              className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors ${metaHubEditorMode === 'preview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                              <Globe2 className="w-3 h-3" /> Preview
+                          </button>
+                      </div>
+                      <div className="flex-1" />
+                      <button
+                          onClick={handleDownloadMetaHub}
+                          disabled={!metaHubHtml.trim()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                          <Download className="w-3.5 h-3.5" /> Download HTML
+                      </button>
+                      <button
+                          onClick={handlePublishMetaHub}
+                          disabled={!metaHubHtml.trim() || !user}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                          <Sparkles className="w-3.5 h-3.5" /> Publish Link
+                      </button>
+                  </div>
+
+                  {/* HTML Editor / Live Preview */}
+                  <div className="flex flex-1 overflow-hidden">
+                      {metaHubEditorMode === 'code' ? (
+                          <textarea
+                              className="flex-1 w-full font-mono text-xs text-green-300 bg-slate-900 p-4 resize-none outline-none border-0"
+                              value={metaHubHtml}
+                              onChange={(e) => setMetaHubHtml(e.target.value)}
+                              placeholder={'Click "Import from Catalog" to load the catalog HTML, then freely edit it here.\n\nOr paste / write any HTML you want — it will be published as a standalone page at your own link.'}
+                              spellCheck={false}
+                          />
+                      ) : (
+                          metaHubHtml.trim() ? (
+                              <iframe
+                                  className="flex-1 w-full border-0"
+                                  srcDoc={metaHubHtml}
+                                  title="Meta Trading Hub Preview"
+                                  sandbox="allow-scripts allow-same-origin"
+                              />
+                          ) : (
+                              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50 gap-3">
+                                  <Globe2 className="w-12 h-12 opacity-30" />
+                                  <p className="text-sm font-medium">No content yet</p>
+                                  <p className="text-xs">Click <b>Import from Catalog</b> to load the catalog page, then switch to Preview.</p>
+                              </div>
+                          )
+                      )}
+                  </div>
+
+                  {/* Published link info bar */}
+                  {metaHubLinkInfo && (
+                      <div className="flex-shrink-0 border-t border-slate-200 bg-white p-3">
+                          {metaHubLinkInfo.uploading ? (
+                              <div className="flex items-center gap-2 text-sm text-slate-500">
+                                  <div className="w-4 h-4 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" />
+                                  Uploading to cloud...
+                              </div>
+                          ) : metaHubLinkInfo.error ? (
+                              <p className="text-xs text-red-600">{metaHubLinkInfo.error}</p>
+                          ) : metaHubLinkInfo.url ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                  <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                      {metaHubLinkInfo.shortUrl && (
+                                          <div className="flex items-center gap-2">
+                                              <span className="text-[10px] font-semibold text-violet-700 uppercase whitespace-nowrap">Short Link</span>
+                                              <input
+                                                  type="text"
+                                                  readOnly
+                                                  value={metaHubLinkInfo.shortUrl}
+                                                  onFocus={(e) => e.currentTarget.select()}
+                                                  className="flex-1 text-xs font-mono border border-violet-200 rounded px-2 py-1 bg-violet-50 outline-none truncate"
+                                              />
+                                              <button
+                                                  onClick={async () => { try { await navigator.clipboard.writeText(metaHubLinkInfo.shortUrl!); alert('Copied!'); } catch { window.prompt('Copy:', metaHubLinkInfo.shortUrl); } }}
+                                                  className="px-2 py-1 text-xs bg-violet-600 text-white rounded hover:bg-violet-700"
+                                              >Copy</button>
+                                          </div>
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Direct URL</span>
+                                          <input
+                                              type="text"
+                                              readOnly
+                                              value={metaHubLinkInfo.url}
+                                              onFocus={(e) => e.currentTarget.select()}
+                                              className="flex-1 text-xs font-mono border border-slate-200 rounded px-2 py-1 bg-slate-50 outline-none truncate"
+                                          />
+                                          <button
+                                              onClick={async () => { try { await navigator.clipboard.writeText(metaHubLinkInfo.url); alert('Copied!'); } catch { window.prompt('Copy:', metaHubLinkInfo.url); } }}
+                                              className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-700"
+                                          >Copy</button>
+                                      </div>
+                                  </div>
+                                  {metaHubLinkInfo.qr && (
+                                      <img src={metaHubLinkInfo.qr} alt="QR" className="w-14 h-14 rounded border border-slate-200 flex-shrink-0" />
+                                  )}
+                                  <button
+                                      onClick={() => setMetaHubLinkInfo(null)}
+                                      className="p-1 text-slate-400 hover:text-slate-600 flex-shrink-0"
+                                  ><X className="w-4 h-4" /></button>
+                              </div>
+                          ) : null}
+                      </div>
+                  )}
               </div>
           )}
       </div>
