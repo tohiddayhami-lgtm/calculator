@@ -2437,6 +2437,23 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyShowProducts: true,
     storyShowQr: true,
     storyProductIds: [],
+    storyFontFamily: 'inter',
+    storyHeroAlign: 'left',
+    storyTitleBold: true,
+    storySubtitleBold: false,
+    storyCtaTitleBold: true,
+    storyCtaTextBold: false,
+    storyExtraTextBold: false,
+    storyCtaBgColor: '#0f172a',
+    storyCtaBgOpacityPct: 100,
+    storyShowExtraText: false,
+    storyExtraText: '',
+    storyExtraTextAlign: 'center',
+    storyExtraTextOffsetPct: 0,
+    storyExtraTextFontSizePx: 13,
+    storyExtraTextColor: '#ffffff',
+    storyExtraBoxColor: '#0f172a',
+    storyExtraBoxOpacityPct: 70,
     storyEyebrowOffsetPct: 0,
     storyHeroOffsetPct: 0,
     storyProductsOffsetPct: 0,
@@ -15683,6 +15700,29 @@ ${html}
         if (!Number.isFinite(n)) return fallback;
         return Math.min(max, Math.max(min, n));
     };
+    const storyHexToRgba = (hex: string | undefined, opacityPct: number, fallback: string) => {
+        const raw = (hex || fallback || '#0f172a').trim();
+        const match = raw.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+        if (!match) return raw;
+        const alpha = storyNumberSetting(opacityPct, 100, 0, 100) / 100;
+        return `rgba(${parseInt(match[1], 16)},${parseInt(match[2], 16)},${parseInt(match[3], 16)},${alpha})`;
+    };
+    const storyNormalizeAlign = (value: any): 'left' | 'center' | 'right' =>
+        value === 'center' || value === 'right' ? value : 'left';
+    const storyFontStackFor = (value: any) => {
+        switch (value) {
+            case 'sf':
+                return '"SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+            case 'vazir':
+                return '"Vazir", "Vazirmatn", "IRANSans", Tahoma, Arial, sans-serif';
+            case 'vazirmatn':
+                return '"Vazirmatn", "Vazir", "IRANSans", Tahoma, Arial, sans-serif';
+            case 'shabnam':
+                return '"Shabnam", "Vazirmatn", "Vazir", Tahoma, Arial, sans-serif';
+            default:
+                return 'Inter, "Vazirmatn", "Vazir", Arial, sans-serif';
+        }
+    };
     const toggleStoryProduct = (productId: number) => {
         const current = (catalogConfig.storyProductIds || []).filter((id) =>
             storySelectableProducts.some((p) => p.id === id)
@@ -15728,23 +15768,33 @@ ${html}
             const productPreview = storySelectedProducts;
             const width = 4320;
             const height = 7680;
+            const storyFontStack = storyFontStackFor(catalogConfig.storyFontFamily);
+            const storyHeroAlign = storyNormalizeAlign(catalogConfig.storyHeroAlign);
+            const storyExtraAlign = storyNormalizeAlign(catalogConfig.storyExtraTextAlign);
+            const textXFor = (align: 'left' | 'center' | 'right', left: number, w: number) =>
+                align === 'center' ? left + w / 2 : align === 'right' ? left + w : left;
             const storyEyebrowOffsetPx = storyNumberSetting(catalogConfig.storyEyebrowOffsetPct, 0, -18, 18) * height / 100;
             const storyHeroOffsetPx = storyNumberSetting(catalogConfig.storyHeroOffsetPct, 0, -18, 18) * height / 100;
             const storyProductsOffsetPx = storyNumberSetting(catalogConfig.storyProductsOffsetPct, 0, -18, 18) * height / 100;
             const storyCtaOffsetPx = storyNumberSetting(catalogConfig.storyCtaOffsetPct, 0, -18, 18) * height / 100;
             const storyFooterOffsetPx = storyNumberSetting(catalogConfig.storyFooterOffsetPct, 0, -18, 18) * height / 100;
+            const storyExtraOffsetPx = storyNumberSetting(catalogConfig.storyExtraTextOffsetPct, 0, -18, 18) * height / 100;
             const storyEyebrowColor = catalogConfig.storyEyebrowColor || (storyStyle === 'editorial' || storyStyle === 'website' ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.72)');
             const storyTitleColor = catalogConfig.storyTitleColor || '#ffffff';
             const storySubtitleColor = catalogConfig.storySubtitleColor || 'rgba(255,255,255,0.82)';
             const storyCtaTitleColor = catalogConfig.storyCtaTitleColor || '#ffffff';
             const storyCtaTextColor = catalogConfig.storyCtaTextColor || 'rgba(255,255,255,0.72)';
             const storyFooterColor = catalogConfig.storyFooterColor || (storyStyle === 'editorial' ? 'rgba(15,23,42,0.48)' : 'rgba(255,255,255,0.54)');
+            const storyExtraTextColor = catalogConfig.storyExtraTextColor || '#ffffff';
+            const storyCtaBg = storyHexToRgba(catalogConfig.storyCtaBgColor, Number(catalogConfig.storyCtaBgOpacityPct ?? 100), storyStyle === 'editorial' || storyStyle === 'website' ? (catalogConfig.primaryColor || '#0f172a') : '#0f172a');
+            const storyExtraBg = storyHexToRgba(catalogConfig.storyExtraBoxColor, Number(catalogConfig.storyExtraBoxOpacityPct ?? 70), '#0f172a');
             const storyEyebrowCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyEyebrowFontSizePx, 10, 7, 22) * 7.8);
             const storyTitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyTitleFontSizePx, 34, 18, 58) * 5.47);
             const storySubtitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storySubtitleFontSizePx, 14, 9, 28) * 5.15);
             const storyCtaTitleCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyCtaTitleFontSizePx, 14, 9, 28) * 6);
             const storyCtaTextCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyCtaTextFontSizePx, 10, 7, 22) * 4.4);
             const storyFooterCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyFooterFontSizePx, 8, 6, 18) * 5.5);
+            const storyExtraCanvasFont = Math.round(storyNumberSetting(catalogConfig.storyExtraTextFontSizePx, 13, 8, 30) * 5);
 
             const canvas = document.createElement('canvas');
             canvas.width = width;
@@ -15853,7 +15903,7 @@ ${html}
 
             ctx.textAlign = 'center';
             ctx.fillStyle = storyEyebrowColor;
-            ctx.font = `800 ${storyEyebrowCanvasFont}px Inter, Arial, sans-serif`;
+            ctx.font = `800 ${storyEyebrowCanvasFont}px ${storyFontStack}`;
             ctx.letterSpacing = '18px';
             ctx.fillText(storyEyebrow.toUpperCase(), width / 2, 520 + storyEyebrowOffsetPx);
             ctx.letterSpacing = '0px';
@@ -15909,11 +15959,14 @@ ${html}
 
             ctx.textAlign = 'left';
             ctx.fillStyle = storyTitleColor;
-            ctx.font = `${storyStyle === 'product' ? '950' : '900'} ${storyTitleCanvasFont}px Inter, Arial, sans-serif`;
-            wrapText(title, sx + 210, sy + heroH - 570 + storyHeroOffsetPx, sw - 420, Math.round(storyTitleCanvasFont * 1.1), 3);
+            const heroTextX = textXFor(storyHeroAlign, sx + 210, sw - 420);
+            ctx.textAlign = storyHeroAlign;
+            ctx.font = `${catalogConfig.storyTitleBold === false ? '600' : (storyStyle === 'product' ? '950' : '900')} ${storyTitleCanvasFont}px ${storyFontStack}`;
+            wrapText(title, heroTextX, sy + heroH - 570 + storyHeroOffsetPx, sw - 420, Math.round(storyTitleCanvasFont * 1.1), 3);
             ctx.fillStyle = storySubtitleColor;
-            ctx.font = `600 ${storySubtitleCanvasFont}px Inter, Arial, sans-serif`;
-            wrapText(subtitle, sx + 210, sy + heroH - 125 + storyHeroOffsetPx, sw - 420, Math.round(storySubtitleCanvasFont * 1.28), 2);
+            ctx.font = `${catalogConfig.storySubtitleBold ? '800' : '600'} ${storySubtitleCanvasFont}px ${storyFontStack}`;
+            wrapText(subtitle, heroTextX, sy + heroH - 125 + storyHeroOffsetPx, sw - 420, Math.round(storySubtitleCanvasFont * 1.28), 2);
+            ctx.textAlign = 'left';
 
             ctx.fillStyle = storyStyle === 'editorial' ? '#f8fafc' : '#ffffff';
             ctx.fillRect(sx, sy + heroH, sw, sh - heroH);
@@ -15929,18 +15982,37 @@ ${html}
                     const tx = sx + 250 + index * tabW;
                     fillRounded(tx, sy + heroH + 160, tabW - 22, 92, 46, index === 0 ? '#ffffff' : 'rgba(255,255,255,0)');
                     ctx.fillStyle = index === 0 ? (catalogConfig.headingColor || '#0f172a') : 'rgba(15,23,42,0.46)';
-                    ctx.font = '800 34px Inter, Arial, sans-serif';
+                    ctx.font = `800 34px ${storyFontStack}`;
                     ctx.textAlign = 'center';
                     ctx.fillText(label, tx + (tabW - 22) / 2, sy + heroH + 219);
                 });
                 ctx.textAlign = 'left';
             }
             ctx.fillStyle = catalogConfig.headingColor || '#0f172a';
-            ctx.font = '900 96px Inter, Arial, sans-serif';
+            ctx.font = `900 96px ${storyFontStack}`;
             ctx.fillText(catalogConfig.productTabLabel || 'Product List', sx + 210, sy + heroH + (storyStyle === 'website' ? 460 : 250));
             ctx.fillStyle = 'rgba(15,23,42,0.55)';
-            ctx.font = '600 46px Inter, Arial, sans-serif';
+            ctx.font = `600 46px ${storyFontStack}`;
             ctx.fillText(`${productPreview.length || storySelectableProducts.length} featured products`, sx + 210, sy + heroH + (storyStyle === 'website' ? 540 : 330));
+
+            if (catalogConfig.storyShowExtraText && (catalogConfig.storyExtraText || '').trim()) {
+                const extraY = sy + heroH + (storyStyle === 'website' ? 540 : 360) + storyExtraOffsetPx;
+                const extraX = sx + 210;
+                const extraW = sw - 420;
+                fillRounded(extraX, extraY, extraW, 300, 78, storyExtraBg);
+                ctx.fillStyle = storyExtraTextColor;
+                ctx.textAlign = storyExtraAlign;
+                ctx.font = `${catalogConfig.storyExtraTextBold ? '850' : '600'} ${storyExtraCanvasFont}px ${storyFontStack}`;
+                wrapText(
+                    catalogConfig.storyExtraText || '',
+                    textXFor(storyExtraAlign, extraX + 110, extraW - 220),
+                    extraY + 115,
+                    extraW - 220,
+                    Math.round(storyExtraCanvasFont * 1.28),
+                    3
+                );
+                ctx.textAlign = 'left';
+            }
 
             const cardY = sy + heroH + (storyStyle === 'website' ? 710 : 520) + storyProductsOffsetPx;
             const cardW = (sw - 520) / 3;
@@ -15967,23 +16039,23 @@ ${html}
                 }
                 ctx.restore();
                 ctx.fillStyle = '#0f172a';
-                ctx.font = '800 54px Inter, Arial, sans-serif';
+                ctx.font = `800 54px ${storyFontStack}`;
                 wrapText(p.catalogName || p.name || 'Product', x + 54, cardY + 710, cardW - 108, 68, 2);
                 if (p.group) {
                     fillRounded(x + 54, cardY + 880, Math.min(430, 110 + ctx.measureText(p.group).width), 86, 43, catalogConfig.primaryColor || '#0f172a');
                     ctx.fillStyle = '#ffffff';
-                    ctx.font = '800 34px Inter, Arial, sans-serif';
+                    ctx.font = `800 34px ${storyFontStack}`;
                     ctx.fillText(p.group, x + 94, cardY + 935);
                 }
             });
 
             const ctaY = sy + sh - 980 + storyCtaOffsetPx;
-            fillRounded(sx + 210, ctaY, sw - 420, 610, 96, storyStyle === 'editorial' || storyStyle === 'website' ? (catalogConfig.primaryColor || '#0f172a') : '#0f172a');
+            fillRounded(sx + 210, ctaY, sw - 420, 610, 96, storyCtaBg);
             ctx.fillStyle = storyCtaTitleColor;
-            ctx.font = `900 ${storyCtaTitleCanvasFont}px Inter, Arial, sans-serif`;
+            ctx.font = `${catalogConfig.storyCtaTitleBold === false ? '650' : '900'} ${storyCtaTitleCanvasFont}px ${storyFontStack}`;
             ctx.fillText(storyCtaTitle, sx + 320, ctaY + 150);
             ctx.fillStyle = storyCtaTextColor;
-            ctx.font = `600 ${storyCtaTextCanvasFont}px Inter, Arial, sans-serif`;
+            ctx.font = `${catalogConfig.storyCtaTextBold ? '800' : '600'} ${storyCtaTextCanvasFont}px ${storyFontStack}`;
             wrapText(storyCtaText, sx + 320, ctaY + 250, sw - 980, Math.round(storyCtaTextCanvasFont * 1.32), 2);
             if (storyShowQr && qrImg) {
                 ctx.fillStyle = '#ffffff';
@@ -15995,13 +16067,13 @@ ${html}
 
             ctx.textAlign = 'center';
             ctx.fillStyle = storyTitleColor;
-            ctx.font = `900 ${Math.round(storyTitleCanvasFont * 0.68)}px Inter, Arial, sans-serif`;
+            ctx.font = `${catalogConfig.storyTitleBold === false ? '600' : '900'} ${Math.round(storyTitleCanvasFont * 0.68)}px ${storyFontStack}`;
             ctx.fillText(title, width / 2, 6740 + storyFooterOffsetPx);
             ctx.fillStyle = storySubtitleColor;
-            ctx.font = `600 ${Math.round(storySubtitleCanvasFont * 0.86)}px Inter, Arial, sans-serif`;
+            ctx.font = `${catalogConfig.storySubtitleBold ? '800' : '600'} ${Math.round(storySubtitleCanvasFont * 0.86)}px ${storyFontStack}`;
             wrapText(subtitle, width / 2, 6860 + storyFooterOffsetPx, 3220, Math.round(storySubtitleCanvasFont * 1.14), 2);
             ctx.fillStyle = storyFooterColor;
-            ctx.font = `700 ${storyFooterCanvasFont}px Inter, Arial, sans-serif`;
+            ctx.font = `700 ${storyFooterCanvasFont}px ${storyFontStack}`;
             ctx.fillText(storyFooterText, width / 2, 7420 + storyFooterOffsetPx);
 
             const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -16046,12 +16118,21 @@ ${html}
     const storyEyebrowPreviewColor = catalogConfig.storyEyebrowColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#475569' : 'rgba(255,255,255,.72)');
     const storyTitlePreviewColor = catalogConfig.storyTitleColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#0f172a' : '#ffffff');
     const storySubtitlePreviewColor = catalogConfig.storySubtitleColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#475569' : 'rgba(255,255,255,.76)');
-    const storyCtaTitlePreviewColor = catalogConfig.storyCtaTitleColor || (storyPreviewStyle === 'editorial' ? '#ffffff' : storyPreviewStyle === 'website' ? '#ffffff' : '#0f172a');
-    const storyCtaTextPreviewColor = catalogConfig.storyCtaTextColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? 'rgba(255,255,255,.62)' : '#64748b');
+    const storyCtaTitlePreviewColor = catalogConfig.storyCtaTitleColor || '#ffffff';
+    const storyCtaTextPreviewColor = catalogConfig.storyCtaTextColor || 'rgba(255,255,255,.72)';
     const storyFooterPreviewColor = catalogConfig.storyFooterColor || (storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? '#64748b' : 'rgba(255,255,255,.45)');
+    const storyPreviewFontFamily = storyFontStackFor(catalogConfig.storyFontFamily);
+    const storyHeroTextAlign = storyNormalizeAlign(catalogConfig.storyHeroAlign);
+    const storyExtraTextAlign = storyNormalizeAlign(catalogConfig.storyExtraTextAlign);
+    const storyCtaPreviewBg = storyHexToRgba(catalogConfig.storyCtaBgColor, Number(catalogConfig.storyCtaBgOpacityPct ?? 100), storyPreviewStyle === 'editorial' || storyPreviewStyle === 'website' ? (catalogConfig.primaryColor || '#0f172a') : '#ffffff');
+    const storyExtraPreviewBg = storyHexToRgba(catalogConfig.storyExtraBoxColor, Number(catalogConfig.storyExtraBoxOpacityPct ?? 70), '#0f172a');
+    const storyExtraFontSize = storyNumberSetting(catalogConfig.storyExtraTextFontSizePx, 13, 8, 30);
+    const storyCtaOpacity = storyNumberSetting(catalogConfig.storyCtaBgOpacityPct, 100, 0, 100);
+    const storyExtraOpacity = storyNumberSetting(catalogConfig.storyExtraBoxOpacityPct, 70, 0, 100);
     const storyLayoutControls: Array<{ key: keyof CatalogConfig; label: string; value: number }> = [
         { key: 'storyEyebrowOffsetPct', label: 'Top label', value: storyEyebrowOffset },
         { key: 'storyHeroOffsetPct', label: 'Title box', value: storyHeroOffset },
+        { key: 'storyExtraTextOffsetPct', label: 'Extra text', value: storyNumberSetting(catalogConfig.storyExtraTextOffsetPct, 0, -18, 18) },
         { key: 'storyProductsOffsetPct', label: 'Products', value: storyProductsOffset },
         { key: 'storyCtaOffsetPct', label: 'CTA box', value: storyCtaOffset },
         { key: 'storyFooterOffsetPct', label: 'Footer', value: storyFooterOffset },
@@ -16062,6 +16143,7 @@ ${html}
         { sizeKey: 'storySubtitleFontSizePx', colorKey: 'storySubtitleColor', label: 'Subtitle', size: storySubtitleFontSize, color: catalogConfig.storySubtitleColor || '#ffffff', min: 9, max: 28 },
         { sizeKey: 'storyCtaTitleFontSizePx', colorKey: 'storyCtaTitleColor', label: 'CTA title', size: storyCtaTitleFontSize, color: catalogConfig.storyCtaTitleColor || '#ffffff', min: 9, max: 28 },
         { sizeKey: 'storyCtaTextFontSizePx', colorKey: 'storyCtaTextColor', label: 'CTA text', size: storyCtaTextFontSize, color: catalogConfig.storyCtaTextColor || '#ffffff', min: 7, max: 22 },
+        { sizeKey: 'storyExtraTextFontSizePx', colorKey: 'storyExtraTextColor', label: 'Extra text', size: storyExtraFontSize, color: catalogConfig.storyExtraTextColor || '#ffffff', min: 8, max: 30 },
         { sizeKey: 'storyFooterFontSizePx', colorKey: 'storyFooterColor', label: 'Footer', size: storyFooterFontSize, color: catalogConfig.storyFooterColor || '#ffffff', min: 6, max: 18 },
     ];
     const storyStyleOptions: Array<{ id: NonNullable<CatalogConfig['storyPresentationStyle']>; title: string; description: string }> = [
@@ -16069,6 +16151,13 @@ ${html}
         { id: 'editorial', title: 'Editorial Clean', description: 'Bright premium magazine style' },
         { id: 'product', title: 'Product Focus', description: 'Bolder hero and stronger product cards' },
         { id: 'website', title: 'Website Preview', description: 'Keeps the Trading Hub website/tab feeling' },
+    ];
+    const storyFontOptions: Array<{ id: NonNullable<CatalogConfig['storyFontFamily']>; label: string }> = [
+        { id: 'inter', label: 'Inter / Minimal' },
+        { id: 'sf', label: 'Apple SF' },
+        { id: 'vazir', label: 'Vazir فارسی' },
+        { id: 'vazirmatn', label: 'Vazirmatn فارسی' },
+        { id: 'shabnam', label: 'Shabnam فارسی' },
     ];
 
     return (
@@ -18838,6 +18927,163 @@ ${html}
                       </div>
 
                       <div className="space-y-3 border-t border-slate-100 pt-4">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Font & Alignment</label>
+                          <select
+                              value={catalogConfig.storyFontFamily || 'inter'}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyFontFamily: e.target.value as CatalogConfig['storyFontFamily'] })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900 bg-white"
+                          >
+                              {storyFontOptions.map((font) => (
+                                  <option key={font.id} value={font.id}>{font.label}</option>
+                              ))}
+                          </select>
+                          <div className="grid grid-cols-3 gap-1">
+                              {[
+                                  { id: 'left', icon: AlignLeft, label: 'Left' },
+                                  { id: 'center', icon: AlignCenter, label: 'Center' },
+                                  { id: 'right', icon: AlignRight, label: 'Right' },
+                              ].map(({ id, icon: Icon, label }) => (
+                                  <button
+                                      key={id}
+                                      type="button"
+                                      title={`Title ${label}`}
+                                      onClick={() => setCatalogConfig({ ...catalogConfig, storyHeroAlign: id as CatalogConfig['storyHeroAlign'] })}
+                                      className={`flex items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[10px] font-bold ${storyHeroTextAlign === id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                                  >
+                                      <Icon className="w-3.5 h-3.5" />
+                                      {label}
+                                  </button>
+                              ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({ ...catalogConfig, storyTitleBold: !(catalogConfig.storyTitleBold !== false) })}
+                                  className={`rounded-lg border px-2 py-2 text-[10px] font-black ${catalogConfig.storyTitleBold !== false ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                              >
+                                  Title Bold
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({ ...catalogConfig, storySubtitleBold: !(catalogConfig.storySubtitleBold || false) })}
+                                  className={`rounded-lg border px-2 py-2 text-[10px] font-black ${catalogConfig.storySubtitleBold ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                              >
+                                  Subtitle Bold
+                              </button>
+                          </div>
+                      </div>
+
+                      <div className="space-y-3 border-t border-slate-100 pt-4">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">CTA Box</label>
+                          <div className="grid grid-cols-2 gap-2">
+                              <label className="space-y-1">
+                                  <span className="text-[10px] font-semibold text-slate-500">Box color</span>
+                                  <input
+                                      type="color"
+                                      value={catalogConfig.storyCtaBgColor || '#0f172a'}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, storyCtaBgColor: e.target.value })}
+                                      className="w-full h-8 rounded border-0 p-0 cursor-pointer"
+                                  />
+                              </label>
+                              <label className="space-y-1">
+                                  <span className="text-[10px] font-semibold text-slate-500">Transparency {100 - storyCtaOpacity}%</span>
+                                  <input
+                                      type="range"
+                                      min={0}
+                                      max={100}
+                                      value={storyCtaOpacity}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, storyCtaBgOpacityPct: Number(e.target.value) })}
+                                      className="w-full accent-slate-900"
+                                  />
+                              </label>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({ ...catalogConfig, storyCtaTitleBold: !(catalogConfig.storyCtaTitleBold !== false) })}
+                                  className={`rounded-lg border px-2 py-2 text-[10px] font-black ${catalogConfig.storyCtaTitleBold !== false ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                              >
+                                  CTA Title Bold
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={() => setCatalogConfig({ ...catalogConfig, storyCtaTextBold: !(catalogConfig.storyCtaTextBold || false) })}
+                                  className={`rounded-lg border px-2 py-2 text-[10px] font-black ${catalogConfig.storyCtaTextBold ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                              >
+                                  CTA Text Bold
+                              </button>
+                          </div>
+                      </div>
+
+                      <div className="space-y-3 border-t border-slate-100 pt-4">
+                          <label className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer">
+                              <input
+                                  type="checkbox"
+                                  checked={catalogConfig.storyShowExtraText || false}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, storyShowExtraText: e.target.checked })}
+                                  className="rounded text-slate-900 focus:ring-slate-900"
+                              />
+                              Extra Text Box
+                          </label>
+                          {catalogConfig.storyShowExtraText && (
+                              <div className="space-y-2">
+                                  <textarea
+                                      rows={3}
+                                      value={catalogConfig.storyExtraText || ''}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, storyExtraText: e.target.value })}
+                                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-900 resize-none"
+                                      placeholder="Add an extra note, campaign line, discount, shipping promise..."
+                                  />
+                                  <div className="grid grid-cols-3 gap-1">
+                                      {[
+                                          { id: 'left', icon: AlignLeft },
+                                          { id: 'center', icon: AlignCenter },
+                                          { id: 'right', icon: AlignRight },
+                                      ].map(({ id, icon: Icon }) => (
+                                          <button
+                                              key={id}
+                                              type="button"
+                                              onClick={() => setCatalogConfig({ ...catalogConfig, storyExtraTextAlign: id as CatalogConfig['storyExtraTextAlign'] })}
+                                              className={`flex items-center justify-center rounded-lg border px-2 py-2 ${storyExtraTextAlign === id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                                          >
+                                              <Icon className="w-3.5 h-3.5" />
+                                          </button>
+                                      ))}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                      <label className="space-y-1">
+                                          <span className="text-[10px] font-semibold text-slate-500">Box color</span>
+                                          <input
+                                              type="color"
+                                              value={catalogConfig.storyExtraBoxColor || '#0f172a'}
+                                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyExtraBoxColor: e.target.value })}
+                                              className="w-full h-8 rounded border-0 p-0 cursor-pointer"
+                                          />
+                                      </label>
+                                      <label className="space-y-1">
+                                          <span className="text-[10px] font-semibold text-slate-500">Transparency {100 - storyExtraOpacity}%</span>
+                                          <input
+                                              type="range"
+                                              min={0}
+                                              max={100}
+                                              value={storyExtraOpacity}
+                                              onChange={(e) => setCatalogConfig({ ...catalogConfig, storyExtraBoxOpacityPct: Number(e.target.value) })}
+                                              className="w-full accent-slate-900"
+                                          />
+                                      </label>
+                                  </div>
+                                  <button
+                                      type="button"
+                                      onClick={() => setCatalogConfig({ ...catalogConfig, storyExtraTextBold: !(catalogConfig.storyExtraTextBold || false) })}
+                                      className={`w-full rounded-lg border px-2 py-2 text-[10px] font-black ${catalogConfig.storyExtraTextBold ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                                  >
+                                      Extra Text Bold
+                                  </button>
+                              </div>
+                          )}
+                      </div>
+
+                      <div className="space-y-3 border-t border-slate-100 pt-4">
                           <div className="flex items-center justify-between gap-2">
                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Move Boxes Up / Down</label>
                               <button
@@ -18846,6 +19092,7 @@ ${html}
                                       ...catalogConfig,
                                       storyEyebrowOffsetPct: 0,
                                       storyHeroOffsetPct: 0,
+                                      storyExtraTextOffsetPct: 0,
                                       storyProductsOffsetPct: 0,
                                       storyCtaOffsetPct: 0,
                                       storyFooterOffsetPct: 0,
@@ -18888,12 +19135,14 @@ ${html}
                                       storySubtitleFontSizePx: 14,
                                       storyCtaTitleFontSizePx: 14,
                                       storyCtaTextFontSizePx: 10,
+                                      storyExtraTextFontSizePx: 13,
                                       storyFooterFontSizePx: 8,
                                       storyEyebrowColor: '',
                                       storyTitleColor: '',
                                       storySubtitleColor: '',
                                       storyCtaTitleColor: '',
                                       storyCtaTextColor: '',
+                                      storyExtraTextColor: '#ffffff',
                                       storyFooterColor: '',
                                   })}
                                   className="text-[10px] font-bold text-slate-400 hover:text-slate-900"
@@ -19014,6 +19263,8 @@ ${html}
                                   storySubtitle: '',
                                   storyCtaTitle: 'Open the full Trading Hub',
                                   storyCtaText: '',
+                                  storyShowExtraText: false,
+                                  storyExtraText: '',
                                   storyFooterText: 'Instagram Story 9:16 • 4320 × 7680 PNG',
                                   storyShowProducts: true,
                                   storyShowQr: true,
@@ -19055,6 +19306,7 @@ ${html}
                                       : `linear-gradient(160deg, ${catalogConfig.primaryColor || '#0f172a'}, #020617)`,
                                   backgroundSize: 'cover',
                                   backgroundPosition: 'center',
+                                  fontFamily: storyPreviewFontFamily,
                               }}
                           >
                               <div className="absolute inset-x-0 p-7" style={{ top: `${Math.max(0, 4 + storyEyebrowOffset)}%` }}>
@@ -19078,7 +19330,12 @@ ${html}
                                       suppressContentEditableWarning
                                       onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyTitle: e.currentTarget.textContent || '' })}
                                       className="outline-none font-black leading-[0.95]"
-                                      style={{ color: storyTitlePreviewColor, fontSize: storyTitleFontSize }}
+                                      style={{
+                                          color: storyTitlePreviewColor,
+                                          fontSize: storyTitleFontSize,
+                                          textAlign: storyHeroTextAlign,
+                                          fontWeight: catalogConfig.storyTitleBold === false ? 600 : 900,
+                                      }}
                                   >
                                       {storyPreviewTitle}
                                   </div>
@@ -19087,7 +19344,12 @@ ${html}
                                       suppressContentEditableWarning
                                       onBlur={(e) => setCatalogConfig({ ...catalogConfig, storySubtitle: e.currentTarget.textContent || '' })}
                                       className="outline-none mt-3 leading-relaxed"
-                                      style={{ color: storySubtitlePreviewColor, fontSize: storySubtitleFontSize }}
+                                      style={{
+                                          color: storySubtitlePreviewColor,
+                                          fontSize: storySubtitleFontSize,
+                                          textAlign: storyHeroTextAlign,
+                                          fontWeight: catalogConfig.storySubtitleBold ? 800 : 500,
+                                      }}
                                   >
                                       {storyPreviewSubtitle}
                                   </div>
@@ -19109,6 +19371,31 @@ ${html}
                                   </div>
                               )}
 
+                              {catalogConfig.storyShowExtraText && (
+                                  <div
+                                      className="absolute inset-x-5 rounded-3xl p-4 shadow-xl border border-white/15 backdrop-blur-md"
+                                      style={{
+                                          top: `${Math.max(38, 49 + storyNumberSetting(catalogConfig.storyExtraTextOffsetPct, 0, -18, 18))}%`,
+                                          backgroundColor: storyExtraPreviewBg,
+                                      }}
+                                  >
+                                      <div
+                                          contentEditable
+                                          suppressContentEditableWarning
+                                          onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyExtraText: e.currentTarget.textContent || '' })}
+                                          className="outline-none leading-relaxed"
+                                          style={{
+                                              color: catalogConfig.storyExtraTextColor || '#ffffff',
+                                              fontSize: storyExtraFontSize,
+                                              textAlign: storyExtraTextAlign,
+                                              fontWeight: catalogConfig.storyExtraTextBold ? 850 : 600,
+                                          }}
+                                      >
+                                          {catalogConfig.storyExtraText || 'Add extra promotional text here'}
+                                      </div>
+                                  </div>
+                              )}
+
                               {catalogConfig.storyShowProducts !== false && storyPreviewProducts.length > 0 && (
                                   <div
                                       className="absolute inset-x-5 grid grid-cols-3 gap-2"
@@ -19127,8 +19414,8 @@ ${html}
                               )}
 
                               <div
-                                  className={`absolute inset-x-5 rounded-3xl p-4 ${storyPreviewStyle === 'editorial' ? 'bg-slate-950 text-white' : 'bg-white text-slate-950'} shadow-2xl flex items-center gap-3`}
-                                  style={{ bottom: `${Math.max(2, 5 - storyCtaOffset)}%` }}
+                                  className="absolute inset-x-5 rounded-3xl p-4 shadow-2xl flex items-center gap-3"
+                                  style={{ bottom: `${Math.max(2, 5 - storyCtaOffset)}%`, backgroundColor: storyCtaPreviewBg }}
                               >
                                   <div className="flex-1 min-w-0">
                                       <div
@@ -19136,7 +19423,11 @@ ${html}
                                           suppressContentEditableWarning
                                           onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyCtaTitle: e.currentTarget.textContent || '' })}
                                           className="outline-none font-black"
-                                          style={{ color: storyCtaTitlePreviewColor, fontSize: storyCtaTitleFontSize }}
+                                          style={{
+                                              color: storyCtaTitlePreviewColor,
+                                              fontSize: storyCtaTitleFontSize,
+                                              fontWeight: catalogConfig.storyCtaTitleBold === false ? 650 : 900,
+                                          }}
                                       >
                                           {storyPreviewCtaTitle}
                                       </div>
@@ -19145,7 +19436,11 @@ ${html}
                                           suppressContentEditableWarning
                                           onBlur={(e) => setCatalogConfig({ ...catalogConfig, storyCtaText: e.currentTarget.textContent || '' })}
                                           className="outline-none mt-1 leading-snug"
-                                          style={{ color: storyCtaTextPreviewColor, fontSize: storyCtaTextFontSize }}
+                                          style={{
+                                              color: storyCtaTextPreviewColor,
+                                              fontSize: storyCtaTextFontSize,
+                                              fontWeight: catalogConfig.storyCtaTextBold ? 800 : 500,
+                                          }}
                                       >
                                           {storyPreviewCtaText}
                                       </div>
