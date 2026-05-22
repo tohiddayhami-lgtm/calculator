@@ -2482,6 +2482,11 @@ function createDefaultCatalogConfig(): CatalogConfig {
     storyCtaTitleColor: '',
     storyCtaTextColor: '',
     storyFooterColor: '',
+    catalogTermLabel: 'Incoterm',
+    catalogTermQuickLabel: 'Pricing for',
+    catalogDestinationLabel: 'Destination Port / City',
+    catalogDestinationPlaceholder: 'e.g. Hamburg, DE',
+    catalogTermDisplayNames: {},
     googleFormUrl: '',
     googleFormButtonText: 'Send Purchase Request',
     googleFormHelperText: 'Tap below to fill out the order form',
@@ -4014,6 +4019,14 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
     const cartButtonText = cc.cartButtonText || 'Request Quote';
     const cartTitle = cc.cartTitle || 'Your Inquiry Cart';
     const orderThankYouText = cc.orderThankYouText || 'Thank you! Your inquiry has been received.';
+    const termDisplayNames = (cc.catalogTermDisplayNames && typeof cc.catalogTermDisplayNames === 'object')
+        ? cc.catalogTermDisplayNames as Record<string, string>
+        : {};
+    const termLabel = (cc.catalogTermLabel || 'Incoterm').trim() || 'Incoterm';
+    const termQuickLabel = (cc.catalogTermQuickLabel || 'Pricing for').trim() || 'Pricing for';
+    const destinationLabel = (cc.catalogDestinationLabel || 'Destination Port / City').trim() || 'Destination Port / City';
+    const destinationPlaceholder = (cc.catalogDestinationPlaceholder || 'e.g. Hamburg, DE').trim() || 'e.g. Hamburg, DE';
+    const displayTerm = (term: string) => (termDisplayNames[term] || '').trim() || term;
 
     // Convert target prices using rates from app — passed via products that already have toOutput-applied targetUnitOutput? No, we need to compute here.
     // We'll add helper that uses rates inline. Pass conversion via product's already-computed scenarioPrices for sell, and the raw targetPrice we convert via simple ratio that we don't have here.
@@ -4056,7 +4069,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     : '';
                 return `
                     <div class="price-row">
-                        <span class="term-badge" style="background:${primary}">${escapeHtml(term)}</span>
+                        <span class="term-badge" style="background:${primary}" title="${escapeAttr(term)}">${escapeHtml(displayTerm(term))}</span>
                         <div class="price-values">${unitDisplay}${packDisplay}</div>
                     </div>
                 `;
@@ -4699,8 +4712,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             <div class="cart-body" id="cart-body">
                 <div class="cart-empty" id="cart-empty">No items yet. Tap "Add to Inquiry" on a product to start.</div>
                 <div class="cart-incoterm-quick" id="cart-incoterm-quick" style="display:none;">
-                    <span class="label">Pricing for</span>
-                    ${incoterms.map((t, i) => `<button type="button" data-quick-term="${escapeAttr(t)}"${i === 0 ? ' class="active"' : ''}>${escapeHtml(t)}</button>`).join('')}
+                    <span class="label">${escapeHtml(termQuickLabel)}</span>
+                    ${incoterms.map((t, i) => `<button type="button" data-quick-term="${escapeAttr(t)}"${i === 0 ? ' class="active"' : ''}>${escapeHtml(displayTerm(t))}</button>`).join('')}
                 </div>
                 <div id="cart-list"></div>
             </div>
@@ -4714,10 +4727,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     <span id="cart-sum-qty">0</span>
                 </div>
                 <div class="cart-summary-row total">
-                    <span class="label">Estimated total <span class="term-pill" id="cart-sum-term">${escapeHtml(incoterms[0] || '')}</span></span>
+                    <span class="label">Estimated total <span class="term-pill" id="cart-sum-term">${escapeHtml(displayTerm(incoterms[0] || ''))}</span></span>
                     <span class="amount" id="cart-sum-total">—</span>
                 </div>
-                <div class="cart-summary-hint" id="cart-sum-hint">Indicative price based on the Incoterm above. Final quote will be confirmed by the seller.</div>
+                <div class="cart-summary-hint" id="cart-sum-hint">Indicative price based on the ${escapeHtml(termLabel)} above. Final quote will be confirmed by the seller.</div>
             </div>
             <form class="cart-form" id="cart-form" autocomplete="on" novalidate>
                 <h3>Your Information</h3>
@@ -4731,16 +4744,16 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 </div>
                 <div class="grid2">
                     <div class="field"><label class="req" for="cf-country">Country</label><input id="cf-country" name="country" type="text" required autocomplete="country-name" /></div>
-                    <div class="field"><label class="req" for="cf-port">Destination Port / City</label>
-                        <input id="cf-port" name="destination_port" type="text" required list="cf-port-list" placeholder="e.g. Hamburg, DE" />
+                    <div class="field"><label class="req" for="cf-port">${escapeHtml(destinationLabel)}</label>
+                        <input id="cf-port" name="destination_port" type="text" required list="cf-port-list" placeholder="${escapeAttr(destinationPlaceholder)}" />
                         ${orderPorts.length ? `<datalist id="cf-port-list">${orderPorts.map(p => `<option value="${escapeAttr(p)}"></option>`).join('')}</datalist>` : ''}
                     </div>
                 </div>
                 <div class="grid2">
-                    <div class="field"><label class="req" for="cf-incoterm">Incoterm</label>
+                    <div class="field"><label class="req" for="cf-incoterm">${escapeHtml(termLabel)}</label>
                         <select id="cf-incoterm" name="incoterm" required>
                             <option value="">Select...</option>
-                            ${incoterms.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('')}
+                            ${incoterms.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(displayTerm(t))}</option>`).join('')}
                         </select>
                     </div>
                     <div class="field"><label for="cf-payment">Preferred Payment</label>
@@ -4862,7 +4875,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             var quickEl = document.getElementById('cart-incoterm-quick');
             var incotermSelect = form ? form.querySelector('[name="incoterm"]') : null;
             var INCOTERMS = ${JSON.stringify(incoterms)};
+            var TERM_LABELS = ${JSON.stringify(termDisplayNames)};
             var DEFAULT_TERM = INCOTERMS[0] || '';
+            var TERM_LABEL = ${JSON.stringify(termLabel)};
             var SELLER_CURRENCY = ${JSON.stringify(outCurr)};
             var TERM_KEY = 'cat_cart_term_v1';
             var selectedTerm = '';
@@ -4879,6 +4894,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
             }
 
             function escapeText(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+            function termName(t){ return (TERM_LABELS && TERM_LABELS[t]) ? String(TERM_LABELS[t]).trim() || t : t; }
             function stripQtyCommas(s){ return String(s == null ? '' : s).replace(/,/g, ''); }
             function formatQtyInput(n){
                 n = parseInt(stripQtyCommas(String(n)), 10);
@@ -4930,7 +4946,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 var unitLabel = (mode === 'pack' && hasPack) ? 'pack' : (it.unit || 'unit');
                 var priceHtml = lineHasPrice(it)
                     ? '<div class="line-price"><span>' + fmtMoney(total, it.currency || SELLER_CURRENCY) + '</span><span class="unit-rate">' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + ' / ' + escapeText(unitLabel) + '</span></div>'
-                    : '<div class="line-price"><span class="no-price">Price on request for ' + escapeText(selectedTerm || '—') + '</span></div>';
+                    : '<div class="line-price"><span class="no-price">Price on request for ' + escapeText(selectedTerm ? termName(selectedTerm) : '—') + '</span></div>';
                 var row = document.createElement('div');
                 row.className = 'cart-item';
                 row.setAttribute('data-key', key);
@@ -5036,7 +5052,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 summaryEl.style.display = 'block';
                 if (summaryLinesEl) summaryLinesEl.textContent = String(totalLines());
                 if (summaryQtyEl) summaryQtyEl.textContent = String(totalUnits());
-                if (summaryTermEl) summaryTermEl.textContent = selectedTerm || '—';
+                if (summaryTermEl) summaryTermEl.textContent = selectedTerm ? termName(selectedTerm) : '—';
                 var t = totalsForTerm();
                 if (summaryTotalEl) {
                     if (!selectedTerm) {
@@ -5049,13 +5065,13 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                 }
                 if (summaryHintEl) {
                     if (!selectedTerm) {
-                        summaryHintEl.textContent = 'Select an Incoterm above to see the indicative total.';
+                        summaryHintEl.textContent = 'Select a ' + TERM_LABEL + ' above to see the indicative total.';
                     } else if (!t.anyPriced) {
-                        summaryHintEl.textContent = 'No public prices were published for ' + selectedTerm + '. The seller will respond with a quote.';
+                        summaryHintEl.textContent = 'No public prices were published for ' + termName(selectedTerm) + '. The seller will respond with a quote.';
                     } else if (!t.allPriced) {
-                        summaryHintEl.textContent = '* Some items had no public price for ' + selectedTerm + ' and are excluded from the estimate. The final quote will be confirmed by the seller.';
+                        summaryHintEl.textContent = '* Some items had no public price for ' + termName(selectedTerm) + ' and are excluded from the estimate. The final quote will be confirmed by the seller.';
                     } else {
-                        summaryHintEl.textContent = 'Indicative price based on the Incoterm above. Final quote will be confirmed by the seller.';
+                        summaryHintEl.textContent = 'Indicative price based on the ' + TERM_LABEL + ' above. Final quote will be confirmed by the seller.';
                     }
                 }
             }
@@ -5202,12 +5218,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, qrDataUrl, tCombine
                     var unitLabel = (it.mode === 'pack' && it.pack) ? 'pack' : (it.unit || 'unit');
                     var priceStr = hasPrice
                         ? '  @ ' + fmtMoney(rate, it.currency || SELLER_CURRENCY) + '/' + unitLabel + ' = ' + fmtMoney(lTotal, it.currency || SELLER_CURRENCY)
-                        : '  (price on request for ' + (selectedTerm || '—') + ')';
+                        : '  (price on request for ' + (selectedTerm ? termName(selectedTerm) : '—') + ')';
                     lines.push((i+1) + '. ' + it.name + ' [' + (it.sku || '-') + ']  Qty: ' + qtyStr + priceStr);
                 });
                 lines.push('');
                 lines.push('=== TOTAL ===');
-                lines.push('Incoterm: ' + (selectedTerm || '—'));
+                lines.push(TERM_LABEL + ': ' + (selectedTerm ? termName(selectedTerm) : '—'));
                 if (anyPriced) {
                     lines.push('Estimated total: ' + fmtMoney(grand, SELLER_CURRENCY) + (allPriced ? '' : ' (partial — some items priced on request)'));
                 } else {
@@ -10385,6 +10401,11 @@ function AppInner() {
             googleFormUrl: project.data.catalogConfig.googleFormUrl || '',
             googleFormButtonText: project.data.catalogConfig.googleFormButtonText || 'Send Purchase Request',
             googleFormHelperText: project.data.catalogConfig.googleFormHelperText || 'Tap below to fill out the order form',
+            catalogTermLabel: project.data.catalogConfig.catalogTermLabel || 'Incoterm',
+            catalogTermQuickLabel: project.data.catalogConfig.catalogTermQuickLabel || 'Pricing for',
+            catalogDestinationLabel: project.data.catalogConfig.catalogDestinationLabel || 'Destination Port / City',
+            catalogDestinationPlaceholder: project.data.catalogConfig.catalogDestinationPlaceholder || 'e.g. Hamburg, DE',
+            catalogTermDisplayNames: project.data.catalogConfig.catalogTermDisplayNames || {},
             cartEnabled: project.data.catalogConfig.cartEnabled !== undefined ? project.data.catalogConfig.cartEnabled : true,
             orderEmail: project.data.catalogConfig.orderEmail || 'info@tohiddayhami.com',
             orderIncoterms: project.data.catalogConfig.orderIncoterms || ['EXW', 'FOB', 'CIF', 'DDP'],
@@ -15537,9 +15558,15 @@ function AppInner() {
                 } catch (err: any) {
                     console.error('Cloud upload failed, falling back to local download', err);
                     setShareLinkInfo({ url: '', qr: '', uploading: false, error: err?.message || String(err) });
-                    setTimeout(() => setShareLinkInfo(null), 50);
                     // continue to local download fallback below
                 }
+            } else {
+                setShareLinkInfo({
+                    url: '',
+                    qr: '',
+                    uploading: false,
+                    error: 'Online share links require a signed-in account with Firebase Storage. A local HTML file was created instead.',
+                });
             }
 
             // ---- Path B: local file (download or share-as-file) ----
@@ -18956,6 +18983,48 @@ ${html}
                               Download HTML
                           </button>
                       </div>
+                      {shareLinkInfo && (
+                          <div className={`rounded-2xl border p-3 text-xs ${shareLinkInfo.url ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                              {shareLinkInfo.uploading ? (
+                                  <div className="flex items-center gap-2 font-bold">
+                                      <div className="w-4 h-4 border-2 border-emerald-200 border-t-emerald-700 rounded-full animate-spin" />
+                                      در حال ساخت لینک آنلاین کاتالوگ...
+                                  </div>
+                              ) : shareLinkInfo.url ? (
+                                  <div className="space-y-2">
+                                      <p className="font-black">لینک آنلاین کاتالوگ آماده است.</p>
+                                      <input
+                                          type="text"
+                                          readOnly
+                                          value={shareLinkInfo.shortUrl || shareLinkInfo.url}
+                                          onFocus={(e) => e.currentTarget.select()}
+                                          className="w-full rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[11px] font-mono text-slate-700 outline-none"
+                                      />
+                                      <div className="flex gap-2">
+                                          <button
+                                              type="button"
+                                              onClick={shareLinkInfo.shortUrl ? handleCopyShareShortLink : handleCopyShareLink}
+                                              className="flex-1 rounded-lg bg-emerald-700 text-white py-1.5 font-bold hover:bg-emerald-800"
+                                          >
+                                              Copy Link
+                                          </button>
+                                          <a
+                                              href={shareLinkInfo.shortUrl || shareLinkInfo.url}
+                                              target="_blank"
+                                              rel="noopener"
+                                              className="flex-1 rounded-lg bg-white border border-emerald-200 text-emerald-800 py-1.5 font-bold text-center hover:bg-emerald-100"
+                                          >
+                                              Open
+                                          </a>
+                                      </div>
+                                  </div>
+                              ) : (
+                                  <p className="leading-relaxed">
+                                      لینک آنلاین ساخته نشد: {shareLinkInfo.error || 'برای ساخت لینک آنلاین باید وارد حساب کاربری شوید و Storage فعال باشد.'}
+                                  </p>
+                              )}
+                          </div>
+                      )}
                   </aside>
 
                   <main className="flex-1 min-w-0 bg-slate-100 p-4">

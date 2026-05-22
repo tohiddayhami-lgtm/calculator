@@ -444,6 +444,13 @@ export interface CatalogConfig {
   storyCtaTextColor?: string;
   storyFooterColor?: string;
 
+  // Catalog-facing labels for shop/non-export catalogs.
+  catalogTermLabel?: string;
+  catalogTermQuickLabel?: string;
+  catalogDestinationLabel?: string;
+  catalogDestinationPlaceholder?: string;
+  catalogTermDisplayNames?: Record<string, string>;
+
   // Google Form / Order Form CTA on HTML export & back page
   googleFormUrl?: string;
   googleFormButtonText?: string;
