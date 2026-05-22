@@ -15825,7 +15825,7 @@ ${html}
             width: rect.width,
             height: rect.height,
             imagePlaceholder: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
-            pixelRatio: targetWidth / rect.width,
+            pixelRatio: 1,
             skipAutoScale: true,
             style: {
                 margin: '0',
