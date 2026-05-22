@@ -5847,6 +5847,7 @@ function AppInner() {
   const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'preview'>('code');
   const [metaHubLinkInfo, setMetaHubLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
   const [savedMetaHubLinks, setSavedMetaHubLinks] = useState<any[]>([]);
+  const [metaHubPreviewKey, setMetaHubPreviewKey] = useState(0);
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
   const [serviceInvoiceDiscountCurrency, setServiceInvoiceDiscountCurrency] = useState('USD');
@@ -7127,6 +7128,23 @@ function AppInner() {
     })();
     return () => { cancelled = true; };
   }, [db]);
+
+  // Meta Trading Hub: load saved draft from localStorage on first mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('metaHubHtmlDraft');
+      if (saved && saved.length > 0) setMetaHubHtml(saved);
+    } catch {}
+  }, []);
+
+  // Meta Trading Hub: auto-save HTML draft to localStorage (debounced 1.5s)
+  useEffect(() => {
+    if (!metaHubHtml) return;
+    const timer = setTimeout(() => {
+      try { localStorage.setItem('metaHubHtmlDraft', metaHubHtml); } catch {}
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [metaHubHtml]);
 
   // Public form view: ?form=KEY (no app login required when accessLevel is public)
   useEffect(() => {
@@ -15200,16 +15218,20 @@ function AppInner() {
             const url = await getDownloadURL(ref);
             let shortUrl: string | undefined;
             if (db && !isDemoMode && user.uid !== DEMO_USER_ID) {
-                for (let attempt = 0; attempt < 24; attempt++) {
-                    const shortCode = generateCatalogShortCode(10);
-                    const pubRef = doc(db, 'meta_hub_links', shortCode);
-                    const existing = await getDoc(pubRef);
-                    if (!existing.exists()) {
-                        await setDoc(pubRef, { url, appId, ownerUserId: activeOwnerUid, storagePath: path, createdAt: serverTimestamp() });
-                        const base = window.location.origin + window.location.pathname;
-                        shortUrl = `${base}?mh=${shortCode}`;
-                        break;
+                try {
+                    for (let attempt = 0; attempt < 24; attempt++) {
+                        const shortCode = generateCatalogShortCode(10);
+                        const pubRef = doc(db, 'meta_hub_links', shortCode);
+                        const existing = await getDoc(pubRef);
+                        if (!existing.exists()) {
+                            await setDoc(pubRef, { url, appId, ownerUserId: activeOwnerUid, storagePath: path, createdAt: serverTimestamp() });
+                            const base = window.location.origin + window.location.pathname;
+                            shortUrl = `${base}?mh=${shortCode}`;
+                            break;
+                        }
                     }
+                } catch (linkErr) {
+                    console.warn('Meta hub short link creation failed (deploy Firestore rules):', linkErr);
                 }
             }
             let qr = '';
@@ -17370,13 +17392,18 @@ function AppInner() {
                               <Edit3 className="w-3 h-3" /> Code
                           </button>
                           <button
-                              onClick={() => setMetaHubEditorMode('preview')}
+                              onClick={() => { setMetaHubEditorMode('preview'); setMetaHubPreviewKey(k => k + 1); }}
                               className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors ${metaHubEditorMode === 'preview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                           >
                               <Globe2 className="w-3 h-3" /> Preview
                           </button>
                       </div>
                       <div className="flex-1" />
+                      {metaHubHtml.trim() && (
+                          <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3 text-emerald-500" /> Draft saved
+                          </span>
+                      )}
                       <button
                           onClick={handleDownloadMetaHub}
                           disabled={!metaHubHtml.trim()}
@@ -17406,6 +17433,7 @@ function AppInner() {
                       ) : (
                           metaHubHtml.trim() ? (
                               <iframe
+                                  key={metaHubPreviewKey}
                                   className="flex-1 w-full border-0"
                                   srcDoc={metaHubHtml}
                                   title="Meta Trading Hub Preview"
