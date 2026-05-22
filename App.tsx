@@ -6005,7 +6005,7 @@ function AppInner() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
-  const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'meta-trading-hub' | 'story-studio'>('catalog');
+  const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'catalogue-shop' | 'meta-trading-hub' | 'story-studio'>('catalog');
   const [metaHubHtml, setMetaHubHtml] = useState<string>('');
   const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'visual' | 'preview'>('code');
   const [metaHubLinkInfo, setMetaHubLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
@@ -16570,6 +16570,12 @@ ${html}
                   <LayoutTemplate className="w-4 h-4" /> Catalog
               </button>
               <button
+                  onClick={() => setCatalogPageTab('catalogue-shop')}
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'catalogue-shop' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                  <ShoppingCart className="w-4 h-4" /> Catalogue Shop
+              </button>
+              <button
                   onClick={() => setCatalogPageTab('meta-trading-hub')}
                   className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'meta-trading-hub' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
               >
@@ -18672,6 +18678,304 @@ ${html}
           )}
       </div>
           )} {/* end catalogPageTab === 'catalog' */}
+
+          {catalogPageTab === 'catalogue-shop' && (
+              <div className="flex flex-col xl:flex-row overflow-hidden bg-slate-100" style={{ height: 'calc(100vh - 9.5rem)' }}>
+                  <aside className="w-full xl:w-[28rem] bg-white border-b xl:border-b-0 xl:border-r border-slate-200 overflow-y-auto p-4 space-y-4">
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                          <h3 className="text-sm font-black text-emerald-950 flex items-center gap-2">
+                              <ShoppingCart className="w-4 h-4" />
+                              Catalogue Shop
+                          </h3>
+                          <p className="text-[11px] text-emerald-800/80 leading-relaxed mt-1">
+                              همان کاتالوگ اصلی است، اما برای فروشگاه و خدمات: نام ترم‌ها، MOQ، متن‌های Cart و اطلاعات کارت محصول را بدون دست‌زدن به محاسبات صادراتی ویرایش کن.
+                          </p>
+                          <button
+                              type="button"
+                              onClick={applyServiceRetailCatalogPreset}
+                              className="mt-3 w-full rounded-xl bg-emerald-700 text-white text-xs font-bold py-2 hover:bg-emerald-800"
+                          >
+                              اعمال پیش‌فرض فروشگاهی / خدماتی
+                          </button>
+                      </div>
+
+                      <div className="space-y-3 border border-slate-200 rounded-2xl p-3">
+                          <div className="flex items-center justify-between gap-2">
+                              <h4 className="text-xs font-black text-slate-800">متن‌های اصلی کاتالوگ</h4>
+                              <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600">
+                                  <input
+                                      type="checkbox"
+                                      checked={catalogConfig.showPrices !== false}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, showPrices: e.target.checked })}
+                                      className="rounded text-emerald-600 focus:ring-emerald-500"
+                                  />
+                                  Prices
+                              </label>
+                          </div>
+                          <input
+                              type="text"
+                              value={catalogConfig.title || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, title: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                              placeholder="Catalogue title"
+                          />
+                          <textarea
+                              rows={2}
+                              value={catalogConfig.subtitle || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, subtitle: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500 resize-none"
+                              placeholder="Subtitle / توضیح کوتاه"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                              <input
+                                  type="text"
+                                  value={catalogConfig.productTabLabel || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, productTabLabel: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Product List label"
+                              />
+                              <input
+                                  type="text"
+                                  value={catalogConfig.footerText || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, footerText: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Footer text"
+                              />
+                          </div>
+                      </div>
+
+                      <div className="space-y-3 border border-slate-200 rounded-2xl p-3">
+                          <h4 className="text-xs font-black text-slate-800">نمایش قیمت، ترم‌ها و MOQ</h4>
+                          <div className="grid grid-cols-2 gap-2">
+                              <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs font-bold text-slate-700">
+                                  <input
+                                      type="checkbox"
+                                      checked={catalogConfig.showMOQ !== false}
+                                      onChange={(e) => setCatalogConfig({ ...catalogConfig, showMOQ: e.target.checked })}
+                                      className="rounded text-emerald-600 focus:ring-emerald-500"
+                                  />
+                                  نمایش MOQ
+                              </label>
+                              <select
+                                  value={catalogConfig.priceBasis || 'both'}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, priceBasis: e.target.value as CatalogConfig['priceBasis'] })}
+                                  className="text-xs border border-slate-200 rounded-lg px-2 py-2 bg-white outline-none focus:border-emerald-500"
+                              >
+                                  <option value="unit">قیمت واحد</option>
+                                  <option value="pack">قیمت بسته</option>
+                                  <option value="both">هر دو</option>
+                              </select>
+                          </div>
+                          {catalogConfig.showMOQ !== false && (
+                              <input
+                                  type="text"
+                                  value={catalogConfig.moqLabel || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, moqLabel: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="MOQ label, e.g. حداقل سفارش"
+                              />
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                              <input
+                                  type="text"
+                                  value={catalogConfig.catalogTermLabel || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogTermLabel: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Incoterm label → روش تحویل"
+                              />
+                              <input
+                                  type="text"
+                                  value={catalogConfig.catalogTermQuickLabel || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogTermQuickLabel: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Pricing for → قیمت برای"
+                              />
+                          </div>
+                          <div className="space-y-1.5">
+                              <p className="text-[10px] font-bold text-slate-500">نام نمایشی سناریوها در کاتالوگ</p>
+                              {SCENARIO_TERMS.map((term) => (
+                                  <div key={`shop-term-${term}`} className="grid grid-cols-[3rem,1fr,auto] gap-2 items-center">
+                                      <span className="text-[10px] font-black text-slate-500">{term}</span>
+                                      <input
+                                          type="text"
+                                          value={catalogConfig.catalogTermDisplayNames?.[term] || ''}
+                                          onChange={(e) => setCatalogConfig({
+                                              ...catalogConfig,
+                                              catalogTermDisplayNames: {
+                                                  ...(catalogConfig.catalogTermDisplayNames || {}),
+                                                  [term]: e.target.value,
+                                              },
+                                          })}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-emerald-500"
+                                          placeholder={term === 'FOB' ? 'مثلاً درب محل مشتری' : `Display name for ${term}`}
+                                      />
+                                      <button
+                                          type="button"
+                                          onClick={() => toggleCatalogTerm(term)}
+                                          className={`text-[10px] font-black rounded-lg px-2 py-1 border ${catalogConfig.priceTerms?.includes(term) ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-400'}`}
+                                      >
+                                          Price
+                                      </button>
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+
+                      <div className="space-y-3 border border-slate-200 rounded-2xl p-3">
+                          <h4 className="text-xs font-black text-slate-800">فرم سفارش / Cart</h4>
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs font-bold text-slate-700">
+                              <input
+                                  type="checkbox"
+                                  checked={catalogConfig.cartEnabled !== false}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, cartEnabled: e.target.checked })}
+                                  className="rounded text-emerald-600 focus:ring-emerald-500"
+                              />
+                              فعال بودن سبد سفارش
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                              <input
+                                  type="text"
+                                  value={catalogConfig.cartButtonText || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, cartButtonText: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Button text"
+                              />
+                              <input
+                                  type="text"
+                                  value={catalogConfig.cartTitle || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, cartTitle: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Cart title"
+                              />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                              <input
+                                  type="text"
+                                  value={catalogConfig.catalogDestinationLabel || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogDestinationLabel: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Destination label"
+                              />
+                              <input
+                                  type="text"
+                                  value={catalogConfig.catalogDestinationPlaceholder || ''}
+                                  onChange={(e) => setCatalogConfig({ ...catalogConfig, catalogDestinationPlaceholder: e.target.value })}
+                                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500"
+                                  placeholder="Destination placeholder"
+                              />
+                          </div>
+                          <input
+                              type="text"
+                              value={(catalogConfig.orderIncoterms || []).join(', ')}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, orderIncoterms: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500 font-mono"
+                              placeholder="EXW, FOB, DDP"
+                          />
+                          <textarea
+                              rows={2}
+                              value={catalogConfig.orderThankYouText || ''}
+                              onChange={(e) => setCatalogConfig({ ...catalogConfig, orderThankYouText: e.target.value })}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500 resize-none"
+                              placeholder="Thank-you message"
+                          />
+                      </div>
+
+                      <div className="space-y-3 border border-slate-200 rounded-2xl p-3">
+                          <div className="flex items-center justify-between gap-2">
+                              <h4 className="text-xs font-black text-slate-800">ویرایش کارت محصولات</h4>
+                              <button
+                                  type="button"
+                                  onClick={() => setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: config.outputCurrency || 'USD', itemsPerPack: 1, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: 'unit', sku: formatSku(nextSkuNumber(products)), gallery: [], galleryVideos: [] }])}
+                                  className="text-[10px] font-bold text-emerald-700 hover:underline"
+                              >
+                                  + Add
+                              </button>
+                          </div>
+                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                              {products.map((p) => (
+                                  <div key={`shop-product-${p.id}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2 space-y-1.5">
+                                      <div className="flex items-center gap-2">
+                                          <input
+                                              type="checkbox"
+                                              checked={p.active !== false}
+                                              onChange={() => toggleProductActive(p.id)}
+                                              className="rounded text-emerald-600 focus:ring-emerald-500"
+                                          />
+                                          <input
+                                              type="text"
+                                              value={p.catalogName || p.name || ''}
+                                              onChange={(e) => updateProductPatch(p.id, { catalogName: e.target.value, name: p.name || e.target.value })}
+                                              className="flex-1 text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white"
+                                              placeholder="Catalog display name"
+                                          />
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-1.5">
+                                          <input
+                                              type="text"
+                                              value={p.group || ''}
+                                              onChange={(e) => updateProduct(p.id, 'group', e.target.value)}
+                                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white"
+                                              placeholder="Category"
+                                          />
+                                          <input
+                                              type="text"
+                                              value={p.catalogMOQ || ''}
+                                              onChange={(e) => updateProduct(p.id, 'catalogMOQ', e.target.value)}
+                                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white"
+                                              placeholder="MOQ text or empty"
+                                          />
+                                      </div>
+                                      <textarea
+                                          rows={2}
+                                          value={p.catalogDescription || ''}
+                                          onChange={(e) => updateProduct(p.id, 'catalogDescription', e.target.value)}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 resize-none bg-white"
+                                          placeholder="Description shown on card"
+                                      />
+                                  </div>
+                              ))}
+                              {products.length === 0 && (
+                                  <p className="text-xs text-slate-400 text-center border border-dashed border-slate-200 rounded-xl p-4">No products yet.</p>
+                              )}
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                          <button
+                              type="button"
+                              onClick={handleExportCatalogHtml}
+                              className="rounded-xl bg-emerald-600 text-white text-xs font-bold py-2.5 hover:bg-emerald-700"
+                          >
+                              Share Link
+                          </button>
+                          <button
+                              type="button"
+                              onClick={handleDownloadCatalogHtmlFile}
+                              className="rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-bold py-2.5 hover:bg-slate-50"
+                          >
+                              Download HTML
+                          </button>
+                      </div>
+                  </aside>
+
+                  <main className="flex-1 min-w-0 bg-slate-100 p-4">
+                      <div className="h-full rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+                          <iframe
+                              key={`catalogue-shop-${JSON.stringify({
+                                  title: catalogConfig.title,
+                                  showMOQ: catalogConfig.showMOQ,
+                                  terms: catalogConfig.catalogTermDisplayNames,
+                                  products: products.map(p => [p.id, p.name, p.catalogName, p.catalogMOQ, p.catalogDescription, p.active]),
+                              })}`}
+                              title="Catalogue Shop Preview"
+                              srcDoc={buildMetaHubHtmlFromCatalogConfig()}
+                              className="w-full h-full border-0 bg-white"
+                              sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+                          />
+                      </div>
+                  </main>
+              </div>
+          )}
 
           {/* ── META TRADING HUB TAB ───────────────────────────────────── */}
           {catalogPageTab === 'meta-trading-hub' && (
