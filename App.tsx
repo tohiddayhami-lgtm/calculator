@@ -19463,7 +19463,7 @@ ${html}
                                   Reset QR colors
                               </button>
                               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center gap-3">
-                                  <div className="w-20 h-20 rounded-xl border bg-white p-1.5 shrink-0" style={{ backgroundColor: storyQrBgColor, borderColor: storyQrColor }}>
+                                  <div className="w-20 h-20 rounded-xl border bg-white p-1.5 shrink-0" style={{ backgroundColor: storyQrBgColor, borderColor: storyQrBgColor }}>
                                       {storyQrPreviewDataUrl ? (
                                           <img src={storyQrPreviewDataUrl} alt="Story QR preview" className="w-full h-full object-contain block" />
                                       ) : (
@@ -19732,7 +19732,7 @@ ${html}
                                   {catalogConfig.storyShowQr !== false && (
                                       <div
                                           className="w-16 h-16 rounded-xl p-1.5 flex items-center justify-center shrink-0 border shadow-sm"
-                                          style={{ backgroundColor: storyQrBgColor, borderColor: storyQrColor }}
+                                          style={{ backgroundColor: storyQrBgColor, borderColor: storyQrBgColor }}
                                           title="Story QR preview"
                                       >
                                           {storyQrPreviewDataUrl ? (
