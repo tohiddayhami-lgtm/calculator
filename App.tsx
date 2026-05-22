@@ -15808,6 +15808,33 @@ ${html}
             try { await document.fonts.ready; } catch {}
         }
 
+        const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+        const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('Could not read image data.'));
+            reader.readAsDataURL(blob);
+        });
+        const imageSourceToDataUrl = async (src: string) => {
+            const trimmed = src.trim();
+            if (!trimmed || trimmed.startsWith('data:')) return trimmed;
+            if (trimmed.startsWith('blob:')) {
+                try {
+                    const response = await fetch(trimmed);
+                    return response.ok ? await blobToDataUrl(await response.blob()) : null;
+                } catch {
+                    return null;
+                }
+            }
+            if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+            try {
+                const response = await fetch(trimmed, { mode: 'cors' });
+                return response.ok ? await blobToDataUrl(await response.blob()) : null;
+            } catch {
+                return null;
+            }
+        };
+
         const images = Array.from(element.querySelectorAll('img'));
         await Promise.all(images.map((img) => {
             if (img.complete && img.naturalWidth > 0) return Promise.resolve();
@@ -15833,6 +15860,20 @@ ${html}
             target.setAttribute('style', inlineStyles.join(''));
             target.removeAttribute('contenteditable');
         });
+
+        await Promise.all(sourceElements.map(async (source, index) => {
+            const target = cloneElements[index];
+            if (!target) return;
+            if (source instanceof HTMLImageElement && target instanceof HTMLImageElement) {
+                target.src = await imageSourceToDataUrl(source.currentSrc || source.src) || transparentPixel;
+            }
+            const bg = window.getComputedStyle(source).backgroundImage;
+            const urlMatch = bg.match(/url\(["']?(.+?)["']?\)/);
+            if (urlMatch?.[1]) {
+                const dataUrl = await imageSourceToDataUrl(urlMatch[1]);
+                target.style.backgroundImage = dataUrl ? bg.replace(urlMatch[1], dataUrl) : 'none';
+            }
+        }));
 
         clone.style.width = `${rect.width}px`;
         clone.style.height = `${rect.height}px`;
@@ -15884,9 +15925,13 @@ ${html}
                 const safeTitle = (catalogConfig.title || 'trading-hub')
                     .replace(/[^a-z0-9-_]+/gi, '-')
                     .replace(/^-+|-+$/g, '') || 'trading-hub';
-                const blob = await renderStoryPreviewElementToPng(storyPreviewRef.current);
-                downloadStoryBlob(blob, `${safeTitle}-instagram-story-8k.png`);
-                return;
+                try {
+                    const blob = await renderStoryPreviewElementToPng(storyPreviewRef.current);
+                    downloadStoryBlob(blob, `${safeTitle}-instagram-story-8k.png`);
+                    return;
+                } catch (previewErr) {
+                    console.warn('Live story preview export failed; falling back to canvas renderer.', previewErr);
+                }
             }
 
             const htmlForStory = metaHubEditorMode === 'visual' ? saveVisualMetaHubEdits() : metaHubHtml;
