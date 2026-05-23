@@ -222,6 +222,8 @@ export interface ServiceInvoiceLine {
   description: string;
   detailNotes?: string;
   detailsOpen?: boolean;
+  /** When true, shown as Included and excluded from service invoice totals. */
+  included?: boolean;
   qty: number;
   unitPrice: number;
   currency: string;
@@ -699,6 +701,7 @@ export interface ArchivedServiceLineSnapshot {
   lineId: string;
   description: string;
   detailNotes?: string;
+  included?: boolean;
   qty: number;
   unitPrice: number;
   currency: string;

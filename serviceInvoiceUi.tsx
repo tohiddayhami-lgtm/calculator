@@ -22,6 +22,7 @@ import {
   roundServiceLineAmount,
   savedServiceFromLine,
   serviceLineHasDetailNotes,
+  serviceLineIsIncluded,
   serviceLineInvoiceDescription,
   formatServiceInvoiceMoney,
   formatServiceInvoiceQty,
@@ -476,6 +477,7 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
               {lines.map((line, idx) => {
                 const notesOpen = !!line.detailsOpen;
                 const hasNotes = serviceLineHasDetailNotes(line);
+                const included = serviceLineIsIncluded(line);
                 return (
                 <div key={line.id} className="text-[10px] border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                   <div className="flex justify-between gap-1 mb-1">
@@ -527,34 +529,51 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                       placeholder="جزئیات، محدوده کار، شرایط، یادداشت برای مشتری…"
                     />
                   ) : null}
+                  <label className="flex items-center gap-1.5 mb-1 text-[10px] font-semibold text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={included}
+                      onChange={(e) => updateLine(line.id, { included: e.target.checked })}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Included in another service
+                  </label>
                   <div className="grid grid-cols-3 gap-1">
-                    <ServiceInvoiceAmountInput
-                      value={line.qty}
-                      onChange={(qty) => updateLine(line.id, { qty })}
-                      maxDecimalPlaces={serviceInvoiceDecimalPlaces}
-                      className="text-xs border border-slate-200 rounded px-1 py-0.5 w-full"
-                      placeholder="Qty"
-                      title="تعداد"
-                    />
-                    <ServiceInvoiceAmountInput
-                      value={line.unitPrice}
-                      onChange={(unitPrice) => updateLine(line.id, { unitPrice })}
-                      maxDecimalPlaces={serviceInvoiceDecimalPlaces}
-                      className="text-xs border border-slate-200 rounded px-1 py-0.5 w-full"
-                      placeholder="قیمت"
-                      title="Unit price"
-                    />
-                    <select
-                      value={line.currency}
-                      onChange={(e) => updateLine(line.id, { currency: e.target.value })}
-                      className="text-xs border border-slate-200 rounded px-1 py-0.5"
-                    >
-                      {SERVICE_INVOICE_CURRENCIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
+                    {included ? (
+                      <div className="col-span-3 text-center text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1">
+                        Included
+                      </div>
+                    ) : (
+                      <>
+                        <ServiceInvoiceAmountInput
+                          value={line.qty}
+                          onChange={(qty) => updateLine(line.id, { qty })}
+                          maxDecimalPlaces={serviceInvoiceDecimalPlaces}
+                          className="text-xs border border-slate-200 rounded px-1 py-0.5 w-full"
+                          placeholder="Qty"
+                          title="تعداد"
+                        />
+                        <ServiceInvoiceAmountInput
+                          value={line.unitPrice}
+                          onChange={(unitPrice) => updateLine(line.id, { unitPrice })}
+                          maxDecimalPlaces={serviceInvoiceDecimalPlaces}
+                          className="text-xs border border-slate-200 rounded px-1 py-0.5 w-full"
+                          placeholder="قیمت"
+                          title="Unit price"
+                        />
+                        <select
+                          value={line.currency}
+                          onChange={(e) => updateLine(line.id, { currency: e.target.value })}
+                          className="text-xs border border-slate-200 rounded px-1 py-0.5"
+                        >
+                          {SERVICE_INVOICE_CURRENCIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                   </div>
                 </div>
                 );
@@ -957,23 +976,28 @@ export function ServiceInvoicePanel(props: ServiceInvoicePanelProps) {
                   </td>
                 </tr>
               ) : (
-                lines.map((line, i) => (
-                  <tr key={line.id}>
-                    <td className="center">{i + 1}</td>
-                    <td className="item-cell">
-                      <div className="name" style={{ whiteSpace: 'pre-line' }}>
-                        {serviceLineInvoiceDescription(normalizeServiceLine(line)) || '—'}
-                      </div>
-                    </td>
-                    <td className="center">
-                      {formatServiceInvoiceQty(line.qty, serviceInvoiceDecimalPlaces)}
-                    </td>
-                    <td className="num">{fmtMoney(line.unitPrice, line.currency)}</td>
-                    <td className="num line-total">
-                      {fmtMoney(serviceLineTotal(line, serviceInvoiceDecimalPlaces), line.currency)}
-                    </td>
-                  </tr>
-                ))
+                lines.map((line, i) => {
+                  const included = serviceLineIsIncluded(line);
+                  return (
+                    <tr key={line.id}>
+                      <td className="center">{i + 1}</td>
+                      <td className="item-cell">
+                        <div className="name" style={{ whiteSpace: 'pre-line' }}>
+                          {serviceLineInvoiceDescription(normalizeServiceLine(line)) || '—'}
+                        </div>
+                      </td>
+                      <td className="center">
+                        {included ? 'Included' : formatServiceInvoiceQty(line.qty, serviceInvoiceDecimalPlaces)}
+                      </td>
+                      <td className="num">{included ? 'Included' : fmtMoney(line.unitPrice, line.currency)}</td>
+                      <td className="num line-total">
+                        {included
+                          ? 'Included'
+                          : fmtMoney(serviceLineTotal(line, serviceInvoiceDecimalPlaces), line.currency)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
             {adjustments.length > 0 && (

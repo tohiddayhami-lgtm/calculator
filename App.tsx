@@ -9473,6 +9473,7 @@ function AppInner() {
           description: line.description,
           detailNotes: line.detailNotes ?? '',
           detailsOpen: !!String(line.detailNotes ?? '').trim(),
+          included: line.included === true,
           qty: line.qty,
           unitPrice: line.unitPrice,
           currency: line.currency,

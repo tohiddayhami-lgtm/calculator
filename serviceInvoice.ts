@@ -6,6 +6,8 @@ export interface ServiceInvoiceLine {
   detailNotes?: string;
   /** Sidebar UI: expanded notes editor. */
   detailsOpen?: boolean;
+  /** When true, the line is covered by another service and does not affect totals. */
+  included?: boolean;
   qty: number;
   unitPrice: number;
   currency: string;
@@ -115,6 +117,7 @@ export function normalizeServiceLine(
       description: trimText ? rawDesc.trim() : rawDesc,
       detailNotes: trimText ? rawNotes.trim() : rawNotes,
       detailsOpen: !!line.detailsOpen,
+      included: line.included === true,
     };
   }
   const split = splitLegacyServiceDescription(rawDesc);
@@ -123,6 +126,7 @@ export function normalizeServiceLine(
     description: split.title,
     detailNotes: split.detailNotes,
     detailsOpen: !!line.detailsOpen || !!split.detailNotes,
+    included: line.included === true,
   };
 }
 
@@ -137,6 +141,10 @@ export function serviceLineInvoiceDescription(line: ServiceInvoiceLine): string 
 
 export function serviceLineHasDetailNotes(line: ServiceInvoiceLine): boolean {
   return !!String(normalizeServiceLine(line).detailNotes ?? '').trim();
+}
+
+export function serviceLineIsIncluded(line: ServiceInvoiceLine): boolean {
+  return normalizeServiceLine(line).included === true;
 }
 
 export function createEmptyServiceLine(defaultCurrency = 'USD'): ServiceInvoiceLine {
@@ -155,6 +163,7 @@ export function serviceLineTotal(
   line: ServiceInvoiceLine,
   decimalPlaces: ServiceInvoiceDecimalPlaces = DEFAULT_SERVICE_INVOICE_DECIMAL_PLACES,
 ): number {
+  if (serviceLineIsIncluded(line)) return 0;
   const q = roundServiceLineAmount(Number(line.qty) || 0, decimalPlaces);
   const p = roundServiceLineAmount(Number(line.unitPrice) || 0, decimalPlaces);
   return roundServiceLineAmount(q * p, decimalPlaces);
@@ -166,6 +175,7 @@ export function totalsByCurrency(
 ): Record<string, number> {
   const out: Record<string, number> = {};
   for (const line of lines) {
+    if (serviceLineIsIncluded(line)) continue;
     const ccy = (line.currency || 'USD').trim().toUpperCase() || 'USD';
     out[ccy] = roundServiceLineAmount(
       (out[ccy] || 0) + serviceLineTotal(line, decimalPlaces),
@@ -200,6 +210,7 @@ export function parseServiceInvoiceLines(raw: unknown): ServiceInvoiceLine[] {
         description: legacyDesc,
         detailNotes: explicitNotes,
         detailsOpen: r.detailsOpen === true,
+        included: r.included === true,
         qty,
         unitPrice,
         currency,

@@ -94,14 +94,23 @@ export function ArchiveSelectedItemsTable({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isServices
-              ? (selected.serviceLines || []).map((it) => (
-                  <tr key={it.lineId}>
-                    <td className="px-3 py-1.5 whitespace-pre-line">{serviceLineDescriptionDisplay(it)}</td>
-                    <td className="px-3 py-1.5 text-right">{formatNumber(it.qty)}</td>
-                    <td className="px-3 py-1.5 text-right">{money(it.unitPrice, it.currency)}</td>
-                    <td className="px-3 py-1.5 text-right font-medium">{money(it.lineTotal, it.currency)}</td>
-                  </tr>
-                ))
+              ? (selected.serviceLines || []).map((it) => {
+                  const included = it.included === true;
+                  return (
+                    <tr key={it.lineId}>
+                      <td className="px-3 py-1.5 whitespace-pre-line">{serviceLineDescriptionDisplay(it)}</td>
+                      <td className="px-3 py-1.5 text-right">
+                        {included ? 'Included' : formatNumber(it.qty)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        {included ? 'Included' : money(it.unitPrice, it.currency)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-medium">
+                        {included ? 'Included' : money(it.lineTotal, it.currency)}
+                      </td>
+                    </tr>
+                  );
+                })
               : selected.items.map((it) => {
                   const unit = it.unitPrices[selected.selectedTerm] || 0;
                   const gross = unit * it.qty;

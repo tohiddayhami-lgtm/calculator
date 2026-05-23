@@ -1,6 +1,7 @@
 import { computeServiceInvoiceByCurrency, normalizeInvoiceVatMode } from './invoiceAdjustments';
 import {
   normalizeServiceLine,
+  serviceLineIsIncluded,
   serviceLineTotal,
   type ServiceInvoiceDecimalPlaces,
   type ServiceInvoiceLine,
@@ -139,6 +140,7 @@ export function buildServiceArchiveSnapshot(
       lineId: line.id,
       description: n.description,
       detailNotes: n.detailNotes,
+      included: serviceLineIsIncluded(line),
       qty: line.qty,
       unitPrice: line.unitPrice,
       currency: (line.currency || primaryCurrency).trim().toUpperCase() || primaryCurrency,
