@@ -11138,8 +11138,6 @@ function AppInner() {
                       ...nextProduct,
                       scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, percent),
                       scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, bulkExportProfitType),
-                      scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
-                      scenarioManualUnitSellCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitSellCurrencies, term, undefined),
                       scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, undefined),
                       scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, undefined),
                   };
@@ -11161,8 +11159,6 @@ function AppInner() {
                   ...nextProduct,
                   scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, amount),
                   scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, bulkExportFixedCurrency || config.outputCurrency),
-                  scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
-                  scenarioManualUnitSellCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitSellCurrencies, term, undefined),
                   scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, undefined),
                   scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, undefined),
               };
@@ -11468,34 +11464,39 @@ function AppInner() {
             }
         }
 
-        const termUnitCosts: Record<string, number> = {
+        const calculatedTermUnitCosts: Record<string, number> = {
             EXW: baseCost_EXW,
             FCA: baseCost_EXW + uInland,
             FOB: baseCost_FOB,
             CIF: baseCost_CIF,
             DDP: baseCost_DDP,
         };
+        const termUnitCosts = SCENARIO_TERMS.reduce<Record<string, number>>((acc, term) => {
+            const directQuote = p.scenarioManualUnitSellPrices?.[term];
+            const directCurrency = p.scenarioManualUnitSellCurrencies?.[term] || config.outputCurrency;
+            acc[term] = directQuote !== undefined && directQuote > 0
+                ? convert(directQuote, directCurrency)
+                : calculatedTermUnitCosts[term];
+            return acc;
+        }, {});
         const applyScenarioPricing = (term: string, autoSell: number) => {
-            const manual = p.scenarioManualUnitSellPrices?.[term];
-            if (manual !== undefined && manual > 0) {
-                const manualCurrency = p.scenarioManualUnitSellCurrencies?.[term] || config.outputCurrency;
-                return convert(manual, manualCurrency);
-            }
+            const directQuote = p.scenarioManualUnitSellPrices?.[term];
+            const baseCost = termUnitCosts[term] || 0;
             const fixedProfit = p.scenarioManualUnitProfitAdds?.[term];
             if (fixedProfit !== undefined && fixedProfit > 0) {
                 const fixedCurrency = p.scenarioManualUnitProfitCurrencies?.[term] || config.outputCurrency;
-                return (termUnitCosts[term] || 0) + convert(fixedProfit, fixedCurrency);
+                return baseCost + convert(fixedProfit, fixedCurrency);
             }
             const percent = p.scenarioProfitPercents?.[term];
             if (percent !== undefined && percent >= 0) {
                 const type = p.scenarioProfitTypes?.[term] || config.profitType;
-                const cost = termUnitCosts[term] || 0;
                 if (type === 'margin') {
                     const factor = 1 - percent / 100;
-                    return factor > 0 ? cost / factor : cost;
+                    return factor > 0 ? baseCost / factor : baseCost;
                 }
-                return cost * (1 + percent / 100);
+                return baseCost * (1 + percent / 100);
             }
+            if (directQuote !== undefined && directQuote > 0) return baseCost;
             return autoSell;
         };
 
@@ -11544,6 +11545,7 @@ function AppInner() {
             packPrice,
             scenarioPrices: { EXW: exwSell, FCA: fcaSell, FOB: fobSell, CIF: cifSell, DDP: ddpSell },
             scenarioPackPrices,
+            scenarioUnitCosts: termUnitCosts,
             manualSellPriceOutput,
             manualProfitPercentMarkup,
             manualProfitPercentMargin,
@@ -11570,12 +11572,18 @@ function AppInner() {
     const terms = ['EXW', 'FCA', 'FOB', 'CIF', 'DDP'];
     
     // We used accumulated Sells from products to respect individual product margins
+    const scenarioCostTotal = (term: string) =>
+        processedProducts.reduce((sum, p) => {
+            if (!p.isActive) return sum;
+            return sum + ((p.scenarioUnitCosts?.[term] || 0) * (p.qty || 0));
+        }, 0);
+
     const scenarioData: Record<string, {cost: number, sell: number}> = {
-        EXW: { cost: costs.exw, sell: accSell_EXW },
-        FCA: { cost: costs.exw + costInland, sell: accSell_FCA },
-        FOB: { cost: costs.exw + costs.fob_inc, sell: accSell_FOB },
-        CIF: { cost: costs.exw + costs.fob_inc + costs.cif_inc, sell: accSell_CIF }, // FIXED: Added costs.cif_inc
-        DDP: { cost: costs.exw + costs.fob_inc + costs.cif_inc + costs.ddp_inc, sell: accSell_DDP }
+        EXW: { cost: scenarioCostTotal('EXW'), sell: accSell_EXW },
+        FCA: { cost: scenarioCostTotal('FCA'), sell: accSell_FCA },
+        FOB: { cost: scenarioCostTotal('FOB'), sell: accSell_FOB },
+        CIF: { cost: scenarioCostTotal('CIF'), sell: accSell_CIF },
+        DDP: { cost: scenarioCostTotal('DDP'), sell: accSell_DDP }
     };
 
     let previousUnitSell = 0;
@@ -11635,7 +11643,7 @@ function AppInner() {
     const productScenarioBreakdown = processedProducts
         .filter((p) => p.isActive)
         .map((p) => {
-            const costsByTerm = allocatedUnitCostsAtTerms(p.unitCostOutput);
+            const costsByTerm = p.scenarioUnitCosts || allocatedUnitCostsAtTerms(p.unitCostOutput);
             let prevUnitSell = 0;
             const rows: ScenarioTermRow[] = terms.map((term, index) => {
                 const unitCost = costsByTerm[term] ?? 0;
@@ -13215,10 +13223,6 @@ function AppInner() {
                               onChange={(val) => {
                                 updateProductScenarioMap(p.id, 'scenarioManualUnitSellPrices', s.term, val && val > 0 ? val : undefined);
                                 updateProductScenarioMap(p.id, 'scenarioManualUnitSellCurrencies', s.term, val && val > 0 ? (p.scenarioManualUnitSellCurrencies?.[s.term] || config.outputCurrency) : undefined);
-                                updateProductScenarioMap(p.id, 'scenarioProfitPercents', s.term, undefined);
-                                updateProductScenarioMap(p.id, 'scenarioProfitTypes', s.term, undefined);
-                                updateProductScenarioMap(p.id, 'scenarioManualUnitProfitAdds', s.term, undefined);
-                                updateProductScenarioMap(p.id, 'scenarioManualUnitProfitCurrencies', s.term, undefined);
                               }}
                               className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-right font-black text-slate-800"
                               placeholder={formatNumber((computed.scenarioPrices as Record<string, number> | undefined)?.[s.term] || 0)}
@@ -14695,6 +14699,17 @@ function AppInner() {
                                           const manualUnitSellOutput = manualUnitSell !== undefined && manualUnitSell > 0 ? convert(manualUnitSell, manualUnitSellCurrency) : undefined;
                                           const targetDiff = targetInOutput && row.unitSell > 0 ? ((row.unitSell - targetInOutput) / targetInOutput) * 100 : undefined;
                                           const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
+                                          const pricingSource = manualUnitSell
+                                              ? fixedUnitProfit
+                                                  ? `direct quote + ${formatMoney(fixedUnitProfit, fixedUnitProfitCurrency)}`
+                                                  : scenarioPercent !== undefined
+                                                      ? `direct quote + ${scenarioPercent}% ${scenarioType}`
+                                                      : `direct quote: ${formatMoney(manualUnitSell, manualUnitSellCurrency)}`
+                                              : fixedUnitProfit
+                                                  ? `fixed profit: ${formatMoney(fixedUnitProfit, fixedUnitProfitCurrency)}`
+                                                  : scenarioPercent !== undefined
+                                                      ? `${scenarioPercent}% ${scenarioType}`
+                                                      : 'default pricing';
                                           return (
                                               <tr key={`export-profit-${block.id}-${row.term}`} className="hover:bg-slate-50/80">
                                                   <td className="px-3 py-2">
@@ -14709,8 +14724,6 @@ function AppInner() {
                                                               updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, val !== undefined && val >= 0 ? val : undefined);
                                                               updateProductScenarioMap(block.id, 'scenarioManualUnitProfitAdds', row.term, undefined);
                                                               updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, undefined);
-                                                              updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, undefined);
-                                                              updateProductScenarioMap(block.id, 'scenarioManualUnitSellCurrencies', row.term, undefined);
                                                           }}
                                                           className="w-16 border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700"
                                                           placeholder={config.profitPercent.toString()}
@@ -14736,8 +14749,6 @@ function AppInner() {
                                                                   updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, fixedUnitProfitCurrency);
                                                                   updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, undefined);
                                                                   updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, undefined);
-                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, undefined);
-                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitSellCurrencies', row.term, undefined);
                                                               }}
                                                               className="w-20 border border-emerald-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-emerald-800 bg-emerald-50/40"
                                                               placeholder="-"
@@ -14778,10 +14789,6 @@ function AppInner() {
                                                               onChange={(val) => {
                                                                   updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, val !== undefined && val > 0 ? val : undefined);
                                                                   updateProductScenarioMap(block.id, 'scenarioManualUnitSellCurrencies', row.term, val !== undefined && val > 0 ? manualUnitSellCurrency : undefined);
-                                                                  updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, undefined);
-                                                                  updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, undefined);
-                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitProfitAdds', row.term, undefined);
-                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, undefined);
                                                               }}
                                                               className="w-24 border border-blue-200 rounded px-1.5 py-1 text-xs text-right font-bold text-blue-700 bg-white"
                                                               placeholder={formatNumber(row.unitSell)}
@@ -14803,13 +14810,7 @@ function AppInner() {
                                                   <td className="px-3 py-2 text-right bg-emerald-50/25">
                                                       <div className="font-mono text-xs font-bold text-emerald-800">{formatMoney(row.unitSell, config.outputCurrency)}</div>
                                                       <div className="mt-0.5 text-[10px] text-emerald-600">
-                                                          {manualUnitSell
-                                                              ? `direct quote: ${formatMoney(manualUnitSell, manualUnitSellCurrency)}`
-                                                              : fixedUnitProfit
-                                                                  ? `fixed profit: ${formatMoney(fixedUnitProfit, fixedUnitProfitCurrency)}`
-                                                                  : scenarioPercent !== undefined
-                                                                      ? `${scenarioPercent}% ${scenarioType}`
-                                                                      : 'default pricing'}
+                                                          {pricingSource}
                                                       </div>
                                                   </td>
                                                   <td className="px-3 py-2 text-right font-semibold text-emerald-600 font-mono text-xs">{formatMoney(row.unitProfit, config.outputCurrency)}</td>

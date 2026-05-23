@@ -119,6 +119,8 @@ export interface Product {
   manualSellPriceOutput?: number;
   manualProfitPercentMarkup?: number;
   manualProfitPercentMargin?: number;
+  /** Computed unit cost by Incoterm, including direct quoted price overrides. */
+  scenarioUnitCosts?: { [key: string]: number };
   unitCostBeforePackagingOutput?: number;
   packagingUnitExtraOutput?: number;
 }
