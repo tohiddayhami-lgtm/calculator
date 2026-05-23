@@ -1,0 +1,169 @@
+{
+  "formatName": "CloudExport Product Input for AI",
+  "version": 1,
+  "instructionsForAI": [
+    "Return valid JSON only.",
+    "Keep the top-level key named products.",
+    "Use unique numeric id values.",
+    "Use numbers without commas.",
+    "Use ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.",
+    "Use Incoterm keys exactly as EXW, FCA, FOB, CIF, DDP.",
+    "If a supplier/customer already gave a direct term price, put it in scenarioManualUnitSellPrices and its currency in scenarioManualUnitSellCurrencies.",
+    "If profit should be added on top of a direct quoted price, put the percent in scenarioProfitPercents and set scenarioProfitTypes to markup or margin.",
+    "If no direct term price exists, leave scenarioManualUnitSellPrices empty and use unitPrice plus logistics/profit rules."
+  ],
+  "products": [
+    {
+      "id": 1001,
+      "name": "Premium Saffron Negin",
+      "qty": 500,
+      "unitPrice": 3.2,
+      "currency": "USD",
+      "priceInputMode": "unit",
+      "measurementUnit": "kg",
+      "itemsPerPack": 1,
+      "packPrice": 0,
+      "active": true,
+      "sku": "PRD-1001",
+      "hsCode": "091020",
+      "group": "Food / Spices",
+      "catalogName": "Premium Negin Saffron",
+      "catalogMOQ": "100 kg",
+      "catalogDescription": "Export-grade saffron packed for wholesale buyers.",
+      "targetPrice": 5,
+      "targetPriceCurrency": "USD",
+      "scenarioManualUnitSellPrices": {
+        "FOB": 4.2,
+        "DDP": 5.1
+      },
+      "scenarioManualUnitSellCurrencies": {
+        "FOB": "USD",
+        "DDP": "USD"
+      },
+      "scenarioProfitPercents": {
+        "FOB": 20,
+        "DDP": 20
+      },
+      "scenarioProfitTypes": {
+        "FOB": "markup",
+        "DDP": "markup"
+      },
+      "scenarioManualUnitProfitAdds": {},
+      "scenarioManualUnitProfitCurrencies": {},
+      "scenarioTargetPrices": {},
+      "scenarioTargetCurrencies": {},
+      "packagingEnabled": true,
+      "packagingMode": "standard",
+      "packagingStandardPerUnit": 0.15,
+      "packagingLuxuryPerUnit": 0.35,
+      "logisticsDetails": {
+        "qtyPerBox": 10,
+        "qtyPerPallet": 500,
+        "qty20ft": 9000,
+        "qty40ft": 19000
+      },
+      "packingQtyCartons": 50,
+      "packingCartonNetWeightKg": 10,
+      "packingCartonGrossWeightKg": 10.8,
+      "packingCartonLengthCm": 40,
+      "packingCartonWidthCm": 30,
+      "packingCartonHeightCm": 25,
+      "packingPalletCount": 1,
+      "packingPackageNumbers": "CTN-001-050",
+      "gallery": [],
+      "galleryVideos": []
+    },
+    {
+      "id": 1002,
+      "name": "Industrial Dates Paste",
+      "qty": 12,
+      "unitPrice": 890,
+      "currency": "USD",
+      "priceInputMode": "unit",
+      "measurementUnit": "MT",
+      "itemsPerPack": 1,
+      "packPrice": 0,
+      "active": true,
+      "sku": "PRD-1002",
+      "hsCode": "200799",
+      "group": "Food Ingredients",
+      "catalogMOQ": "1 container",
+      "catalogDescription": "Dates paste for confectionery and bakery production.",
+      "scenarioManualUnitSellPrices": {
+        "EXW": 950,
+        "FOB": 1030,
+        "CIF": 1180
+      },
+      "scenarioManualUnitSellCurrencies": {
+        "EXW": "USD",
+        "FOB": "USD",
+        "CIF": "USD"
+      },
+      "scenarioProfitPercents": {
+        "EXW": 15,
+        "FOB": 18,
+        "CIF": 20
+      },
+      "scenarioProfitTypes": {
+        "EXW": "markup",
+        "FOB": "markup",
+        "CIF": "markup"
+      },
+      "scenarioManualUnitProfitAdds": {},
+      "scenarioManualUnitProfitCurrencies": {},
+      "scenarioTargetPrices": {
+        "FOB": 1250
+      },
+      "scenarioTargetCurrencies": {
+        "FOB": "USD"
+      },
+      "packagingEnabled": false,
+      "packagingMode": "standard",
+      "logisticsDetails": {
+        "qtyPerBox": 1,
+        "qtyPerPallet": 1,
+        "qty20ft": 20,
+        "qty40ft": 25
+      },
+      "packingQtyCartons": 12,
+      "packingCartonNetWeightKg": 1000,
+      "packingCartonGrossWeightKg": 1020,
+      "gallery": [],
+      "galleryVideos": []
+    },
+    {
+      "id": 1003,
+      "name": "Custom Consulting Service",
+      "qty": 40,
+      "unitPrice": 25,
+      "currency": "OMR",
+      "priceInputMode": "unit",
+      "measurementUnit": "hour",
+      "itemsPerPack": 1,
+      "packPrice": 0,
+      "active": true,
+      "sku": "SRV-1003",
+      "group": "Services",
+      "catalogDescription": "Project consulting and export documentation support.",
+      "scenarioManualUnitSellPrices": {
+        "EXW": 30
+      },
+      "scenarioManualUnitSellCurrencies": {
+        "EXW": "OMR"
+      },
+      "scenarioProfitPercents": {
+        "EXW": 20
+      },
+      "scenarioProfitTypes": {
+        "EXW": "markup"
+      },
+      "scenarioManualUnitProfitAdds": {},
+      "scenarioManualUnitProfitCurrencies": {},
+      "scenarioTargetPrices": {},
+      "scenarioTargetCurrencies": {},
+      "packagingEnabled": false,
+      "gallery": [],
+      "galleryVideos": []
+    }
+  ]
+}
