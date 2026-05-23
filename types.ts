@@ -75,7 +75,9 @@ export interface Product {
   /** Scenario pricing controls, keyed by Incoterm (EXW/FCA/FOB/CIF/DDP). */
   scenarioProfitPercents?: { [term: string]: number };
   scenarioProfitTypes?: { [term: string]: 'markup' | 'margin' };
+  /** Direct quoted selling price by term. Amount is stored in its own currency. */
   scenarioManualUnitSellPrices?: { [term: string]: number };
+  scenarioManualUnitSellCurrencies?: { [term: string]: string };
   /** Fixed per-unit profit amount by term; amount is stored in its own currency and converted at calculation time. */
   scenarioManualUnitProfitAdds?: { [term: string]: number };
   scenarioManualUnitProfitCurrencies?: { [term: string]: string };

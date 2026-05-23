@@ -11063,6 +11063,7 @@ function AppInner() {
               gallery: [],
               galleryVideos: [],
               scenarioManualUnitSellPrices: {},
+              scenarioManualUnitSellCurrencies: {},
           },
       ]);
   };
@@ -11138,6 +11139,7 @@ function AppInner() {
                       scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, percent),
                       scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, bulkExportProfitType),
                       scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
+                      scenarioManualUnitSellCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitSellCurrencies, term, undefined),
                       scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, undefined),
                       scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, undefined),
                   };
@@ -11160,6 +11162,7 @@ function AppInner() {
                   scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, amount),
                   scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, bulkExportFixedCurrency || config.outputCurrency),
                   scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
+                  scenarioManualUnitSellCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitSellCurrencies, term, undefined),
                   scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, undefined),
                   scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, undefined),
               };
@@ -11180,6 +11183,7 @@ function AppInner() {
                   scenarioProfitPercents: setScenarioMapValue(nextProduct.scenarioProfitPercents, term, undefined),
                   scenarioProfitTypes: setScenarioMapValue(nextProduct.scenarioProfitTypes, term, undefined),
                   scenarioManualUnitSellPrices: setScenarioMapValue(nextProduct.scenarioManualUnitSellPrices, term, undefined),
+                  scenarioManualUnitSellCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitSellCurrencies, term, undefined),
                   scenarioManualUnitProfitAdds: setScenarioMapValue(nextProduct.scenarioManualUnitProfitAdds, term, undefined),
                   scenarioManualUnitProfitCurrencies: setScenarioMapValue(nextProduct.scenarioManualUnitProfitCurrencies, term, undefined),
               };
@@ -11473,7 +11477,10 @@ function AppInner() {
         };
         const applyScenarioPricing = (term: string, autoSell: number) => {
             const manual = p.scenarioManualUnitSellPrices?.[term];
-            if (manual !== undefined && manual > 0) return manual;
+            if (manual !== undefined && manual > 0) {
+                const manualCurrency = p.scenarioManualUnitSellCurrencies?.[term] || config.outputCurrency;
+                return convert(manual, manualCurrency);
+            }
             const fixedProfit = p.scenarioManualUnitProfitAdds?.[term];
             if (fixedProfit !== undefined && fixedProfit > 0) {
                 const fixedCurrency = p.scenarioManualUnitProfitCurrencies?.[term] || config.outputCurrency;
@@ -13205,10 +13212,24 @@ function AppInner() {
                             <FormattedNumberInput
                               optional
                               value={p.scenarioManualUnitSellPrices?.[s.term] ?? undefined}
-                              onChange={(val) => updateProductScenarioMap(p.id, 'scenarioManualUnitSellPrices', s.term, val && val > 0 ? val : undefined)}
+                              onChange={(val) => {
+                                updateProductScenarioMap(p.id, 'scenarioManualUnitSellPrices', s.term, val && val > 0 ? val : undefined);
+                                updateProductScenarioMap(p.id, 'scenarioManualUnitSellCurrencies', s.term, val && val > 0 ? (p.scenarioManualUnitSellCurrencies?.[s.term] || config.outputCurrency) : undefined);
+                                updateProductScenarioMap(p.id, 'scenarioProfitPercents', s.term, undefined);
+                                updateProductScenarioMap(p.id, 'scenarioProfitTypes', s.term, undefined);
+                                updateProductScenarioMap(p.id, 'scenarioManualUnitProfitAdds', s.term, undefined);
+                                updateProductScenarioMap(p.id, 'scenarioManualUnitProfitCurrencies', s.term, undefined);
+                              }}
                               className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-right font-black text-slate-800"
                               placeholder={formatNumber((computed.scenarioPrices as Record<string, number> | undefined)?.[s.term] || 0)}
                             />
+                            <select
+                              value={p.scenarioManualUnitSellCurrencies?.[s.term] || config.outputCurrency}
+                              onChange={(e) => updateProductScenarioMap(p.id, 'scenarioManualUnitSellCurrencies', s.term, e.target.value)}
+                              className="w-20 border border-slate-200 rounded-lg px-1 py-1 text-[10px] text-slate-600 bg-white"
+                            >
+                              {Object.keys(rates).map(c => <option key={`direct-quick-${p.id}-${s.term}-${c}`} value={c}>{c}</option>)}
+                            </select>
                             <span className="text-[9px] text-slate-400">{s.hint}</span>
                           </div>
                         </td>
@@ -14504,7 +14525,7 @@ function AppInner() {
                       Export profit calculator
                   </h2>
                   <p className="text-[10px] text-emerald-800/75 mt-1 leading-snug">
-                      Set per-term selling rules for the currently displayed Incoterms.
+                      Set per-term selling rules, or type a direct quoted EXW/FOB/CIF/DDP price without entering logistics.
                   </p>
               </div>
 
@@ -14653,7 +14674,7 @@ function AppInner() {
                                           <th className="px-3 py-2 text-right">Formula</th>
                                           <th className="px-3 py-2 text-right">Fixed unit profit</th>
                                           <th className="px-3 py-2 text-right">Target price</th>
-                                          <th className="px-3 py-2 text-right">Manual unit sell</th>
+                                          <th className="px-3 py-2 text-right">Direct quoted unit price</th>
                                           <th className="px-3 py-2 text-right bg-emerald-50">Calculated unit sell</th>
                                           <th className="px-3 py-2 text-right text-emerald-700">Unit profit</th>
                                           <th className="px-3 py-2 text-right text-slate-500">Line profit</th>
@@ -14665,11 +14686,13 @@ function AppInner() {
                                           const scenarioType = scenarioProduct?.scenarioProfitTypes?.[row.term] || config.profitType;
                                           const scenarioPercent = scenarioProduct?.scenarioProfitPercents?.[row.term];
                                           const manualUnitSell = scenarioProduct?.scenarioManualUnitSellPrices?.[row.term];
+                                          const manualUnitSellCurrency = scenarioProduct?.scenarioManualUnitSellCurrencies?.[row.term] || config.outputCurrency;
                                           const fixedUnitProfit = scenarioProduct?.scenarioManualUnitProfitAdds?.[row.term];
                                           const fixedUnitProfitCurrency = scenarioProduct?.scenarioManualUnitProfitCurrencies?.[row.term] || config.outputCurrency;
                                           const targetPrice = scenarioProduct?.scenarioTargetPrices?.[row.term] ?? (scenarioProduct?.targetPrice && row.term === 'EXW' ? scenarioProduct.targetPrice : undefined);
                                           const targetCurrency = scenarioProduct?.scenarioTargetCurrencies?.[row.term] || scenarioProduct?.targetPriceCurrency || config.outputCurrency;
                                           const targetInOutput = targetPrice !== undefined && targetPrice > 0 ? toOutput(toBase(targetPrice, targetCurrency)) : undefined;
+                                          const manualUnitSellOutput = manualUnitSell !== undefined && manualUnitSell > 0 ? convert(manualUnitSell, manualUnitSellCurrency) : undefined;
                                           const targetDiff = targetInOutput && row.unitSell > 0 ? ((row.unitSell - targetInOutput) / targetInOutput) * 100 : undefined;
                                           const termBadge: Record<string, string> = { EXW: 'bg-slate-100 text-slate-700', FCA: 'bg-blue-50 text-blue-700', FOB: 'bg-indigo-50 text-indigo-700', CIF: 'bg-violet-50 text-violet-700', DDP: 'bg-emerald-50 text-emerald-700' };
                                           return (
@@ -14687,6 +14710,7 @@ function AppInner() {
                                                               updateProductScenarioMap(block.id, 'scenarioManualUnitProfitAdds', row.term, undefined);
                                                               updateProductScenarioMap(block.id, 'scenarioManualUnitProfitCurrencies', row.term, undefined);
                                                               updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, undefined);
+                                                              updateProductScenarioMap(block.id, 'scenarioManualUnitSellCurrencies', row.term, undefined);
                                                           }}
                                                           className="w-16 border border-slate-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-slate-700"
                                                           placeholder={config.profitPercent.toString()}
@@ -14713,6 +14737,7 @@ function AppInner() {
                                                                   updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, undefined);
                                                                   updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, undefined);
                                                                   updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitSellCurrencies', row.term, undefined);
                                                               }}
                                                               className="w-20 border border-emerald-200 rounded px-1.5 py-1 text-xs text-right font-semibold text-emerald-800 bg-emerald-50/40"
                                                               placeholder="-"
@@ -14752,6 +14777,7 @@ function AppInner() {
                                                               value={manualUnitSell}
                                                               onChange={(val) => {
                                                                   updateProductScenarioMap(block.id, 'scenarioManualUnitSellPrices', row.term, val !== undefined && val > 0 ? val : undefined);
+                                                                  updateProductScenarioMap(block.id, 'scenarioManualUnitSellCurrencies', row.term, val !== undefined && val > 0 ? manualUnitSellCurrency : undefined);
                                                                   updateProductScenarioMap(block.id, 'scenarioProfitPercents', row.term, undefined);
                                                                   updateProductScenarioMap(block.id, 'scenarioProfitTypes', row.term, undefined);
                                                                   updateProductScenarioMap(block.id, 'scenarioManualUnitProfitAdds', row.term, undefined);
@@ -14760,14 +14786,25 @@ function AppInner() {
                                                               className="w-24 border border-blue-200 rounded px-1.5 py-1 text-xs text-right font-bold text-blue-700 bg-white"
                                                               placeholder={formatNumber(row.unitSell)}
                                                           />
-                                                          <span className="self-center text-[10px] text-blue-500 font-bold">{config.outputCurrency}</span>
+                                                          <select
+                                                              value={manualUnitSellCurrency}
+                                                              onChange={(e) => updateProductScenarioMap(block.id, 'scenarioManualUnitSellCurrencies', row.term, e.target.value)}
+                                                              className="w-16 border border-blue-100 rounded px-1 py-1 text-[10px] text-blue-700 bg-white"
+                                                          >
+                                                              {Object.keys(rates).map(c => <option key={`manual-sell-${block.id}-${row.term}-${c}`} value={c}>{c}</option>)}
+                                                          </select>
                                                       </div>
+                                                      {manualUnitSellOutput !== undefined && manualUnitSellCurrency !== config.outputCurrency ? (
+                                                          <div className="mt-0.5 text-[10px] text-blue-500">
+                                                              = {formatMoney(manualUnitSellOutput, config.outputCurrency)}
+                                                          </div>
+                                                      ) : null}
                                                   </td>
                                                   <td className="px-3 py-2 text-right bg-emerald-50/25">
                                                       <div className="font-mono text-xs font-bold text-emerald-800">{formatMoney(row.unitSell, config.outputCurrency)}</div>
                                                       <div className="mt-0.5 text-[10px] text-emerald-600">
                                                           {manualUnitSell
-                                                              ? 'manual sell'
+                                                              ? `direct quote: ${formatMoney(manualUnitSell, manualUnitSellCurrency)}`
                                                               : fixedUnitProfit
                                                                   ? `fixed profit: ${formatMoney(fixedUnitProfit, fixedUnitProfitCurrency)}`
                                                                   : scenarioPercent !== undefined
