@@ -11684,6 +11684,13 @@ function AppInner() {
     const selectedTerm = profitLossReportTerm;
     const activeProducts = calculations.processedProducts.filter((p) => p.isActive && p.qty > 0);
     const productCost = activeProducts.reduce((sum, p) => sum + (p.lineCost || 0), 0);
+    const productUnitLabel = (p: { measurementUnit?: string }) =>
+      String(p.measurementUnit || catalogConfig.baseUnit || 'unit').trim() || 'unit';
+    const shipmentUnitLabels = Array.from(new Set(activeProducts.map(productUnitLabel)));
+    const shipmentUnitLabel = shipmentUnitLabels.length === 1 ? shipmentUnitLabels[0] : 'unit';
+    const qtyWithUnit = (qty: number, p: { measurementUnit?: string }) =>
+      `${(qty || 0).toLocaleString()} ${productUnitLabel(p)}`;
+    const perUnitLabel = (amount: number, unit = shipmentUnitLabel) => `${fmt(amount)} / ${unit}`;
     const exwExtrasTotal = (logistics.exwExtras || []).reduce((sum, item) => sum + convert(item.val, item.curr), 0);
     const inland = convert(logistics.inland.val, logistics.inland.curr);
     const port = convert(logistics.port.val, logistics.port.curr);
@@ -11718,6 +11725,10 @@ function AppInner() {
       : 0;
     const fmt = (value: number) => formatMoney(value || 0, config.outputCurrency);
     const pct = (value: number) => `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`;
+    const shippingLogisticsTotalForTerm = (row: { totalCost?: number } | undefined) =>
+      Math.max(0, (row?.totalCost || 0) - productCost);
+    const shippingLogisticsUnitForTerm = (row: { totalCost?: number } | undefined) =>
+      calculations.totalQty > 0 ? shippingLogisticsTotalForTerm(row) / calculations.totalQty : 0;
     const title = projectName.trim() || 'Export Shipment';
     const costRows = [
       ['Product purchase cost', 'Active product line costs', productCost],
@@ -11741,6 +11752,8 @@ function AppInner() {
       const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
       const unitCost = termRow?.unitCost ?? p.unitCostOutput ?? 0;
       const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+      const unitLabel = productUnitLabel(p);
+      const shippingLogisticsUnit = Math.max(0, unitCost - (p.unitCostOutput || 0));
       const lineCost = termRow?.lineCost ?? unitCost * (p.qty || 0);
       const lineSell = termRow?.lineSell ?? unitSell * (p.qty || 0);
       const lineProfit = termRow?.lineProfit ?? lineSell - lineCost;
@@ -11757,13 +11770,14 @@ function AppInner() {
             <strong>${escapeHtml(p.name || 'Item')}</strong>
             <span>${escapeHtml([p.sku ? `SKU ${p.sku}` : '', p.hsCode ? `HS ${p.hsCode}` : '', supplier ? getSupplierDisplayName(supplier) : ''].filter(Boolean).join(' · '))}</span>
           </td>
-          <td class="num">${escapeHtml((p.qty || 0).toLocaleString())}</td>
-          <td class="num">${escapeHtml(fmt(unitCost))}</td>
+          <td class="num">${escapeHtml(qtyWithUnit(p.qty || 0, p))}</td>
+          <td class="num">${escapeHtml(perUnitLabel(shippingLogisticsUnit, unitLabel))}</td>
+          <td class="num">${escapeHtml(perUnitLabel(unitCost, unitLabel))}</td>
           <td class="num">${escapeHtml(fmt(lineCost))}</td>
-          <td class="num">${escapeHtml(fmt(unitSell))}</td>
+          <td class="num">${escapeHtml(perUnitLabel(unitSell, unitLabel))}</td>
           <td class="num profit">${escapeHtml(fmt(lineProfit))}<small>${escapeHtml(pct(lineMargin))}</small></td>
           <td class="num">${escapeHtml(fmt(buyerLineRevenue))}</td>
-          <td class="num profit">${escapeHtml(fmt(buyerUnitProfit))}<small>${escapeHtml(fmt(buyerLineProfit))} line</small></td>
+          <td class="num profit">${escapeHtml(perUnitLabel(buyerUnitProfit, unitLabel))}<small>${escapeHtml(fmt(buyerLineProfit))} line</small></td>
         </tr>
       `;
     }).join('');
@@ -11771,6 +11785,7 @@ function AppInner() {
       const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
       const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
       const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+      const unitLabel = productUnitLabel(p);
       const q = p.qty || 0;
       const packSize = p.itemsPerPack || 0;
       const sellerPackPrice = unitSell * (packSize || 1);
@@ -11787,14 +11802,14 @@ function AppInner() {
         <div class="buyer-card">
           <div class="buyer-card-title">
             <strong>${index + 1}. ${escapeHtml(p.name || 'Item')}</strong>
-            <span>${escapeHtml([p.sku ? `SKU ${p.sku}` : '', `Qty ${q.toLocaleString()}`, packSize ? `${packSize} / pack` : 'No pack size'].filter(Boolean).join(' · '))}</span>
+            <span>${escapeHtml([p.sku ? `SKU ${p.sku}` : '', `Qty ${qtyWithUnit(q, p)}`, packSize ? `${packSize} ${unitLabel} / pack` : 'No pack size'].filter(Boolean).join(' · '))}</span>
           </div>
           <div class="buyer-metrics">
-            <div><span>Your unit sell</span><strong>${escapeHtml(fmt(unitSell))}</strong></div>
+            <div><span>Your sell / ${escapeHtml(unitLabel)}</span><strong>${escapeHtml(fmt(unitSell))}</strong></div>
             <div><span>Your pack price</span><strong>${escapeHtml(fmt(sellerPackPrice))}</strong></div>
-            <div><span>Buyer unit sell</span><strong>${escapeHtml(fmt(buyerUnitResale))}</strong></div>
+            <div><span>Buyer sell / ${escapeHtml(unitLabel)}</span><strong>${escapeHtml(fmt(buyerUnitResale))}</strong></div>
             <div><span>Buyer pack price</span><strong>${escapeHtml(fmt(buyerPackPrice))}</strong></div>
-            <div class="profit"><span>Buyer unit profit</span><strong>${escapeHtml(fmt(buyerUnitProfit))}</strong></div>
+            <div class="profit"><span>Buyer profit / ${escapeHtml(unitLabel)}</span><strong>${escapeHtml(fmt(buyerUnitProfit))}</strong></div>
             <div class="profit"><span>Buyer line profit</span><strong>${escapeHtml(fmt(buyerLineProfit))}</strong><em>${escapeHtml(pct(buyerPct))}</em></div>
           </div>
         </div>
@@ -11807,6 +11822,7 @@ function AppInner() {
       <tr>
         <td><span class="term">${escapeHtml(row.term)}</span></td>
         <td class="num">${escapeHtml(fmt(row.totalCost))}</td>
+        <td class="num">${escapeHtml(fmt(shippingLogisticsUnitForTerm(row)))}</td>
         <td class="num">${escapeHtml(fmt(row.totalSell))}</td>
         <td class="num profit">${escapeHtml(fmt(row.totalProfit))}</td>
         <td class="num">${escapeHtml(pct(row.markupPercent))}</td>
@@ -11964,7 +11980,7 @@ function AppInner() {
     </section>` : ''}
     ${profitLossPrintSections.incoterms ? `<section class="section">
       <h2>${profitLossReportIncludeAllTerms ? 'P&amp;L by Incoterm' : `P&amp;L for ${escapeHtml(selectedTerm)}`}</h2>
-      <table class="pl-table"><thead><tr><th>Term</th><th class="num">Cost</th><th class="num">Sell</th><th class="num">Profit</th><th class="num">Markup</th><th class="num">Margin</th></tr></thead><tbody>${termRows}</tbody></table>
+      <table class="pl-table"><thead><tr><th>Term</th><th class="num">Cost</th><th class="num">Shipping &amp; logistics / ${escapeHtml(shipmentUnitLabel)}</th><th class="num">Sell</th><th class="num">Profit</th><th class="num">Markup</th><th class="num">Margin</th></tr></thead><tbody>${termRows}</tbody></table>
     </section>` : ''}
   </div>` : ''}
 
@@ -11987,8 +12003,8 @@ function AppInner() {
 
   ${profitLossPrintSections.productProfitability ? `<section class="section">
     <h2>Product line profitability</h2>
-    <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">${escapeHtml(selectedTerm)} unit sell</th><th class="num">${escapeHtml(selectedTerm)} profit</th><th class="num">Buyer resale</th><th class="num">Buyer unit profit</th></tr></thead><tbody>
-      ${productRows || '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
+    <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty / Unit</th><th class="num">Shipping &amp; logistics / unit</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">${escapeHtml(selectedTerm)} unit sell</th><th class="num">${escapeHtml(selectedTerm)} profit</th><th class="num">Buyer resale</th><th class="num">Buyer unit profit</th></tr></thead><tbody>
+      ${productRows || '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
     </tbody></table>
   </section>` : ''}
 
@@ -15118,6 +15134,15 @@ function AppInner() {
       {(() => {
         const activeProducts = calculations.processedProducts.filter((p) => p.isActive && p.qty > 0);
         const totalCartons = activeProducts.reduce((s, p) => s + (p.totalPacks || 0), 0);
+        const productCost = activeProducts.reduce((sum, p) => sum + (p.lineCost || 0), 0);
+        const productUnitLabel = (p: { measurementUnit?: string }) =>
+          String(p.measurementUnit || catalogConfig.baseUnit || 'unit').trim() || 'unit';
+        const shipmentUnitLabels = Array.from(new Set(activeProducts.map(productUnitLabel)));
+        const shipmentUnitLabel = shipmentUnitLabels.length === 1 ? shipmentUnitLabels[0] : 'unit';
+        const shippingLogisticsTotalForTerm = (row: { totalCost?: number } | undefined) =>
+          Math.max(0, (row?.totalCost || 0) - productCost);
+        const shippingLogisticsUnitForTerm = (row: { totalCost?: number } | undefined) =>
+          calculations.totalQty > 0 ? shippingLogisticsTotalForTerm(row) / calculations.totalQty : 0;
         const selectedReportRow = profitLossReportTerm
           ? calculations.breakdown.find((b) => b.term === profitLossReportTerm)
           : undefined;
@@ -15207,7 +15232,14 @@ function AppInner() {
 
         const incotermsBreakdown = (['EXW', 'FCA', 'FOB', 'CIF', 'DDP'] as const).map((term) => {
           const row = calculations.breakdown.find((b) => b.term === term);
-          return { term, cost: row?.totalCost || 0, sell: row?.totalSell || 0, profit: row?.totalProfit || 0, margin: row?.profitMargin || 0 };
+          return {
+            term,
+            cost: row?.totalCost || 0,
+            shippingLogisticsUnit: shippingLogisticsUnitForTerm(row),
+            sell: row?.totalSell || 0,
+            profit: row?.totalProfit || 0,
+            margin: row?.profitMargin || 0,
+          };
         });
         const printSectionOptions: Array<{ key: ProfitLossPrintSectionKey; label: string }> = [
           { key: 'costStructure', label: 'Cost structure' },
@@ -15343,11 +15375,13 @@ function AppInner() {
               <div>
                 <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Cost → Sell → Profit by Incoterm</h3>
                 <div className="grid grid-cols-5 gap-2">
-                  {incotermsBreakdown.map(({ term, cost, sell, profit, margin: m }) => (
+                  {incotermsBreakdown.map(({ term, cost, shippingLogisticsUnit, sell, profit, margin: m }) => (
                     <div key={term} className={`rounded-xl border p-3 text-center ${profitLossReportTerm === term ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-300' : 'border-slate-200 bg-slate-50'}`}>
                       <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-full mb-2 ${profitLossReportTerm === term ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{term}</span>
                       <div className="text-xs text-slate-500 mb-0.5">Cost</div>
                       <div className="text-sm font-black text-slate-800">{formatMoney(cost, config.outputCurrency)}</div>
+                      <div className="text-[10px] text-slate-400 mt-1.5 mb-0.5">Shipping &amp; logistics / {shipmentUnitLabel}</div>
+                      <div className="text-xs font-black text-cyan-700">{formatMoney(shippingLogisticsUnit, config.outputCurrency)}</div>
                       <div className="text-[10px] text-slate-400 mt-1.5 mb-0.5">Sell</div>
                       <div className="text-sm font-black text-blue-700">{sell > 0 ? formatMoney(sell, config.outputCurrency) : '—'}</div>
                       <div className={`text-[10px] font-bold mt-1.5 ${m >= 15 ? 'text-emerald-600' : m > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{sell > 0 ? `${m.toFixed(1)}% margin` : '—'}</div>
@@ -15582,14 +15616,15 @@ function AppInner() {
                 <div className="rounded-2xl border border-slate-200 overflow-hidden">
                   <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
                     <h3 className="font-black text-slate-900">Per-product buyer simulation — {profitLossReportTerm}</h3>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Unit cost → your unit sell → buyer resale unit price → buyer unit profit</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Unit cost includes shipping/logistics share and shows each product unit.</p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs min-w-[600px]">
                       <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                         <tr>
                           <th className="px-3 py-2 text-left font-bold">Product</th>
-                          <th className="px-3 py-2 text-center font-bold">Qty</th>
+                          <th className="px-3 py-2 text-center font-bold">Qty / Unit</th>
+                          <th className="px-3 py-2 text-right font-bold">Shipping / Unit</th>
                           <th className="px-3 py-2 text-right font-bold">Unit Cost</th>
                           <th className="px-3 py-2 text-right font-bold">Your Unit Sell</th>
                           <th className="px-3 py-2 text-right font-bold bg-blue-50">Buyer Buys At</th>
@@ -15603,6 +15638,8 @@ function AppInner() {
                           const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
                           const unitCost = termRow?.unitCost ?? (p as any).baseCostEXW ?? 0;
                           const unitSell = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
+                          const unitLabel = productUnitLabel(p);
+                          const shippingUnit = Math.max(0, unitCost - (p.unitCostOutput || 0));
                           const buyerResaleUnit = calcBuyerResale(unitSell);
                           const buyerUnitProfit = buyerResaleUnit - unitSell;
                           const buyerUnitMargin = buyerResaleUnit > 0 ? (buyerUnitProfit / buyerResaleUnit) * 100 : 0;
@@ -15612,13 +15649,16 @@ function AppInner() {
                                 <div className="font-semibold text-slate-800 truncate max-w-[160px]">{p.name || '—'}</div>
                                 {p.sku ? <div className="text-[10px] text-slate-400 font-mono">{p.sku}</div> : null}
                               </td>
-                              <td className="px-3 py-2.5 text-center text-slate-600 font-mono">{(p.qty || 0).toLocaleString()}</td>
-                              <td className="px-3 py-2.5 text-right font-mono text-slate-500">{formatMoney(unitCost, config.outputCurrency)}</td>
-                              <td className="px-3 py-2.5 text-right font-bold text-slate-800">{unitSell > 0 ? formatMoney(unitSell, config.outputCurrency) : '—'}</td>
-                              <td className="px-3 py-2.5 text-right font-bold text-blue-700 bg-blue-50/40">{unitSell > 0 ? formatMoney(unitSell, config.outputCurrency) : '—'}</td>
-                              <td className="px-3 py-2.5 text-right font-black text-emerald-700 bg-emerald-50/40">{buyerResaleUnit > 0 ? formatMoney(buyerResaleUnit, config.outputCurrency) : '—'}</td>
+                              <td className="px-3 py-2.5 text-center text-slate-600 font-mono">
+                                {(p.qty || 0).toLocaleString()} <span className="text-slate-400">{unitLabel}</span>
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono text-cyan-700">{formatMoney(shippingUnit, config.outputCurrency)} <span className="text-[10px] text-slate-400">/{unitLabel}</span></td>
+                              <td className="px-3 py-2.5 text-right font-mono text-slate-500">{formatMoney(unitCost, config.outputCurrency)} <span className="text-[10px] text-slate-400">/{unitLabel}</span></td>
+                              <td className="px-3 py-2.5 text-right font-bold text-slate-800">{unitSell > 0 ? formatMoney(unitSell, config.outputCurrency) : '—'} <span className="text-[10px] text-slate-400">/{unitLabel}</span></td>
+                              <td className="px-3 py-2.5 text-right font-bold text-blue-700 bg-blue-50/40">{unitSell > 0 ? formatMoney(unitSell, config.outputCurrency) : '—'} <span className="text-[10px] text-blue-400">/{unitLabel}</span></td>
+                              <td className="px-3 py-2.5 text-right font-black text-emerald-700 bg-emerald-50/40">{buyerResaleUnit > 0 ? formatMoney(buyerResaleUnit, config.outputCurrency) : '—'} <span className="text-[10px] text-emerald-500">/{unitLabel}</span></td>
                               <td className="px-3 py-2.5 text-right bg-emerald-50/40">
-                                <div className={`font-black ${buyerUnitProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(buyerUnitProfit, config.outputCurrency)}</div>
+                                <div className={`font-black ${buyerUnitProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(buyerUnitProfit, config.outputCurrency)} <span className="text-[10px] text-emerald-500">/{unitLabel}</span></div>
                                 <div className="text-[10px] text-emerald-600/70">{buyerUnitMargin.toFixed(1)}% margin</div>
                               </td>
                             </tr>
