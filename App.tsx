@@ -2746,6 +2746,40 @@ const DB_VERSION = 1;
 const SESSION_WORKSPACE_DRAFT_KEY = 'cep_workspace_draft_v4';
 const SCENARIO_TERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'DDP'] as const;
 type ScenarioTerm = typeof SCENARIO_TERMS[number];
+type ProfitLossPrintSectionKey =
+  | 'costStructure'
+  | 'incoterms'
+  | 'productProfitability'
+  | 'buyerSimulation'
+  | 'volumeTiers'
+  | 'extraCostLines'
+  | 'packaging'
+  | 'signatures';
+const DEFAULT_PROFIT_LOSS_PRINT_SECTIONS: Record<ProfitLossPrintSectionKey, boolean> = {
+  costStructure: true,
+  incoterms: true,
+  productProfitability: true,
+  buyerSimulation: true,
+  volumeTiers: true,
+  extraCostLines: false,
+  packaging: false,
+  signatures: true,
+};
+
+function normalizeProfitLossPrintSections(raw: unknown): Record<ProfitLossPrintSectionKey, boolean> {
+  const input = raw && typeof raw === 'object' ? (raw as Partial<Record<ProfitLossPrintSectionKey, unknown>>) : {};
+  return {
+    ...DEFAULT_PROFIT_LOSS_PRINT_SECTIONS,
+    costStructure: input.costStructure !== false,
+    incoterms: input.incoterms !== false,
+    productProfitability: input.productProfitability !== false,
+    buyerSimulation: input.buyerSimulation !== false,
+    volumeTiers: input.volumeTiers !== false,
+    extraCostLines: input.extraCostLines === true,
+    packaging: input.packaging === true,
+    signatures: input.signatures !== false,
+  };
+}
 
 // --- UTILITY FUNCTIONS ---
 const normalizeDigits = (str: string | number): string => {
@@ -6575,6 +6609,10 @@ function AppInner() {
   const [loadUnitType, setLoadUnitType] = useState<'container' | 'pallet'>('container');
   const [palletTypeLabel, setPalletTypeLabel] = useState('پالت استاندارد اروپا');
   const [profitLossReportTerm, setProfitLossReportTerm] = useState<'' | 'EXW' | 'FCA' | 'FOB' | 'CIF' | 'DDP'>('');
+  const [profitLossReportIncludeAllTerms, setProfitLossReportIncludeAllTerms] = useState(false);
+  const [profitLossPrintSections, setProfitLossPrintSections] = useState<Record<ProfitLossPrintSectionKey, boolean>>(
+    () => ({ ...DEFAULT_PROFIT_LOSS_PRINT_SECTIONS }),
+  );
   const [buyerProfitPercent, setBuyerProfitPercent] = useState<number>(20);
   const [buyerProfitType, setBuyerProfitType] = useState<'markup' | 'margin'>('markup');
   const [buyerManualResaleValue, setBuyerManualResaleValue] = useState<number | undefined>(undefined);
@@ -10229,7 +10267,9 @@ function AppInner() {
         invoiceLayout,
         invoiceWelteTrade,
         volumeTiers,
-        containerCapacity, containerType, loadUnitType, palletTypeLabel, profitLossReportTerm, buyerProfitPercent, buyerProfitType, buyerManualResaleValue, buyerManualResaleCurrency,
+        containerCapacity, containerType, loadUnitType, palletTypeLabel,
+        profitLossReportTerm, profitLossReportIncludeAllTerms, profitLossPrintSections,
+        buyerProfitPercent, buyerProfitType, buyerManualResaleValue, buyerManualResaleCurrency,
         invoiceIssueDateMs,
         invoiceDueDateMs,
         editingArchiveInvoiceId,
@@ -10460,6 +10500,8 @@ function AppInner() {
     setLoadUnitType((project.data as any).loadUnitType === 'pallet' ? 'pallet' : 'container');
     setPalletTypeLabel(String((project.data as any).palletTypeLabel || 'پالت استاندارد اروپا'));
     setProfitLossReportTerm((['EXW', 'FCA', 'FOB', 'CIF', 'DDP'].includes((project.data as any).profitLossReportTerm) ? (project.data as any).profitLossReportTerm : '') as any);
+    setProfitLossReportIncludeAllTerms((project.data as any).profitLossReportIncludeAllTerms === true);
+    setProfitLossPrintSections(normalizeProfitLossPrintSections((project.data as any).profitLossPrintSections));
     setBuyerProfitPercent(Number((project.data as any).buyerProfitPercent ?? 20));
     setBuyerProfitType((project.data as any).buyerProfitType === 'margin' ? 'margin' : 'markup');
     setBuyerManualResaleValue((project.data as any).buyerManualResaleValue !== undefined ? Number((project.data as any).buyerManualResaleValue) : undefined);
@@ -11758,7 +11800,10 @@ function AppInner() {
         </div>
       `;
     }).join('');
-    const termRows = calculations.breakdown.map((row) => `
+    const printedBreakdownRows = calculations.breakdown.filter((row) =>
+      profitLossReportIncludeAllTerms || row.term === selectedTerm
+    );
+    const termRows = printedBreakdownRows.map((row) => `
       <tr>
         <td><span class="term">${escapeHtml(row.term)}</span></td>
         <td class="num">${escapeHtml(fmt(row.totalCost))}</td>
@@ -11768,6 +11813,54 @@ function AppInner() {
         <td class="num">${escapeHtml(pct(row.profitMargin))}</td>
       </tr>
     `).join('');
+    const totalCartons = activeProducts.reduce((sum, p) => sum + (p.totalPacks || 0), 0);
+    const tierUnitSell = (baseUnitSell: number, tier: typeof volumeTiers[0]) =>
+      Math.max(0, baseUnitSell * (1 + (tier.adjustment || 0) / 100));
+    const tierRepCartons = (tier: typeof volumeTiers[0]) =>
+      tier.maxCartons != null ? Math.min(tier.maxCartons, Math.max(1, totalCartons)) : Math.max(1, totalCartons);
+    const tierScale = (tier: typeof volumeTiers[0]) =>
+      totalCartons > 0 ? tierRepCartons(tier) / totalCartons : 1;
+    const tierShipmentRevenue = (tier: typeof volumeTiers[0]) => {
+      const scale = tierScale(tier);
+      return activeProducts.reduce((sum, p) => {
+        const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
+        const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+        const base = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+        return sum + tierUnitSell(base, tier) * (p.qty || 0) * scale;
+      }, 0);
+    };
+    const tierShipmentCost = (tier: typeof volumeTiers[0]) =>
+      (selectedTermRow?.totalCost || 0) * tierScale(tier);
+    const tierBuyerResale = (tier: typeof volumeTiers[0]) => {
+      const scale = tierScale(tier);
+      return activeProducts.reduce((sum, p) => {
+        const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
+        const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+        const base = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
+        return sum + buyerUnitResaleForProduct(tierUnitSell(base, tier)) * (p.qty || 0) * scale;
+      }, 0);
+    };
+    const volumeTierRows = volumeTiers.map((tier, index) => {
+      const scale = tierScale(tier);
+      const revenue = tierShipmentRevenue(tier);
+      const cost = tierShipmentCost(tier);
+      const buyerRevenue = tierBuyerResale(tier);
+      const profit = revenue - cost;
+      const buyerProfit = buyerRevenue - revenue;
+      const unitSellAverage = calculations.totalQty > 0 ? revenue / (calculations.totalQty * scale) : 0;
+      return `
+        <tr>
+          <td><span class="term">T${index + 1}</span><span>${escapeHtml(`${tier.minCartons}-${tier.maxCartons ?? '∞'} cartons`)}</span></td>
+          <td class="num">${escapeHtml(`${tierRepCartons(tier).toLocaleString()} ctn`)}</td>
+          <td class="num">${escapeHtml(`${(tier.adjustment || 0) > 0 ? '+' : ''}${tier.adjustment || 0}%`)}</td>
+          <td class="num">${escapeHtml(fmt(revenue))}</td>
+          <td class="num profit">${escapeHtml(fmt(profit))}</td>
+          <td class="num">${unitSellAverage > 0 ? escapeHtml(fmt(unitSellAverage)) : '-'}</td>
+          <td class="num">${escapeHtml(fmt(buyerRevenue))}</td>
+          <td class="num profit">${escapeHtml(fmt(buyerProfit))}</td>
+        </tr>
+      `;
+    }).join('');
     const costTableRows = costRows.map(([label, note, amount]) => `
       <tr>
         <td><strong>${escapeHtml(String(label))}</strong><span>${escapeHtml(String(note))}</span></td>
@@ -11861,28 +11954,45 @@ function AppInner() {
     <div class="kpi"><span class="label">Buyer resale</span><div class="value">${escapeHtml(fmt(buyerResaleRevenue))}</div><div class="hint">${escapeHtml(pct(buyerAutoPercent))} ${escapeHtml(buyerProfitType)} for buyer</div></div>
   </div>
 
-  <div class="financial-grid">
-    <section class="section">
+  ${(profitLossPrintSections.costStructure || profitLossPrintSections.incoterms) ? `<div class="financial-grid">
+    ${profitLossPrintSections.costStructure ? `<section class="section">
       <h2>Cost structure</h2>
       <table><tbody>
         ${costTableRows}
         <tr class="total-row"><td>Total DDP landed cost<span>Product + all logistics + duty</span></td><td class="num">${escapeHtml(fmt(calculations.costs.exw + calculations.costs.fob_inc + calculations.costs.cif_inc + calculations.costs.ddp_inc))}</td></tr>
       </tbody></table>
-    </section>
-    <section class="section">
-      <h2>P&amp;L by Incoterm</h2>
+    </section>` : ''}
+    ${profitLossPrintSections.incoterms ? `<section class="section">
+      <h2>${profitLossReportIncludeAllTerms ? 'P&amp;L by Incoterm' : `P&amp;L for ${escapeHtml(selectedTerm)}`}</h2>
       <table class="pl-table"><thead><tr><th>Term</th><th class="num">Cost</th><th class="num">Sell</th><th class="num">Profit</th><th class="num">Markup</th><th class="num">Margin</th></tr></thead><tbody>${termRows}</tbody></table>
-    </section>
-  </div>
+    </section>` : ''}
+  </div>` : ''}
 
-  <section class="section">
+  ${profitLossPrintSections.volumeTiers && volumeTiers.length > 0 ? `<section class="section">
+    <h2>Volume pricing tiers — ${escapeHtml(selectedTerm)}</h2>
+    <table class="pl-table"><thead><tr><th>Tier</th><th class="num">Cartons</th><th class="num">Adj.</th><th class="num">Revenue</th><th class="num">Profit</th><th class="num">Avg unit sell</th><th class="num">Buyer resale</th><th class="num">Buyer profit</th></tr></thead><tbody>
+      <tr class="total-row">
+        <td>Base<span>No tier adjustment</span></td>
+        <td class="num">${escapeHtml(totalCartons > 0 ? `${totalCartons.toLocaleString()} ctn` : `${calculations.totalQty.toLocaleString()} units`)}</td>
+        <td class="num">0%</td>
+        <td class="num">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</td>
+        <td class="num">${escapeHtml(fmt(selectedTermRow?.totalProfit || 0))}</td>
+        <td class="num">${calculations.totalQty > 0 ? escapeHtml(fmt((selectedTermRow?.totalSell || 0) / calculations.totalQty)) : '-'}</td>
+        <td class="num">${escapeHtml(fmt(buyerResaleRevenue))}</td>
+        <td class="num">${escapeHtml(fmt(buyerGrossProfit))}</td>
+      </tr>
+      ${volumeTierRows}
+    </tbody></table>
+  </section>` : ''}
+
+  ${profitLossPrintSections.productProfitability ? `<section class="section">
     <h2>Product line profitability</h2>
     <table><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line cost</th><th class="num">${escapeHtml(selectedTerm)} unit sell</th><th class="num">${escapeHtml(selectedTerm)} profit</th><th class="num">Buyer resale</th><th class="num">Buyer unit profit</th></tr></thead><tbody>
       ${productRows || '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</td></tr>'}
     </tbody></table>
-  </section>
+  </section>` : ''}
 
-  <section class="section">
+  ${profitLossPrintSections.buyerSimulation ? `<section class="section">
     <h2>Buyer profit simulation</h2>
     <table><tbody>
       <tr><td><strong>Buyer purchase value</strong><span>Your selling value at selected Incoterm: ${escapeHtml(selectedTerm)}</span></td><td class="num">${escapeHtml(fmt(selectedTermRow?.totalSell || 0))}</td></tr>
@@ -11897,17 +12007,17 @@ function AppInner() {
     <div class="buyer-cards">
       ${buyerAnalysisRows || '<div style="text-align:center;color:#94a3b8;padding:18px">No active products in this shipment.</div>'}
     </div>
-  </section>
+  </section>` : ''}
 
-  ${(extraOriginRows || extraDestinationRows) ? `<div class="grid2">
+  ${profitLossPrintSections.extraCostLines && (extraOriginRows || extraDestinationRows) ? `<div class="grid2">
     <section class="section"><h2>Origin extra cost lines</h2><table><thead><tr><th>Line</th><th>Input</th><th class="num">Output</th></tr></thead><tbody>${extraOriginRows || '<tr><td colspan="3" style="color:#94a3b8">No origin extras.</td></tr>'}</tbody></table></section>
     <section class="section"><h2>Destination extra cost lines</h2><table><thead><tr><th>Line</th><th>Input</th><th class="num">Output</th></tr></thead><tbody>${extraDestinationRows || '<tr><td colspan="3" style="color:#94a3b8">No destination extras.</td></tr>'}</tbody></table></section>
   </div>` : ''}
 
-  ${packagingRows ? `<section class="section"><h2>Packaging included in unit cost</h2><table><thead><tr><th>Product</th><th>Mode</th><th class="num">Packaging / unit</th><th class="num">Base unit cost</th><th class="num">Final unit cost</th></tr></thead><tbody>${packagingRows}</tbody></table></section>` : ''}
+  ${profitLossPrintSections.packaging && packagingRows ? `<section class="section"><h2>Packaging included in unit cost</h2><table><thead><tr><th>Product</th><th>Mode</th><th class="num">Packaging / unit</th><th class="num">Base unit cost</th><th class="num">Final unit cost</th></tr></thead><tbody>${packagingRows}</tbody></table></section>` : ''}
 
   <div class="note"><strong>Commercial note:</strong> This statement is a gross shipment P&amp;L based on the current calculator data. Banking fees, tax effects, credit risk, after-sales claims and realized exchange-rate differences should be reviewed separately if applicable.</div>
-  <div class="signatures"><div class="sig">Prepared by / Commercial analyst</div><div class="sig">Reviewed by / Management</div></div>
+  ${profitLossPrintSections.signatures ? '<div class="signatures"><div class="sig">Prepared by / Commercial analyst</div><div class="sig">Reviewed by / Management</div></div>' : ''}
   <div class="footer">Generated by Tohid Dayhami Export⁺ — ${escapeHtml(new Date().toLocaleString())}</div>
 </div></div><script>setTimeout(function(){window.focus();window.print();},300);</script></body></html>`;
     const w = window.open('', '_blank');
@@ -12083,6 +12193,8 @@ function AppInner() {
             loadUnitType,
             palletTypeLabel,
             profitLossReportTerm,
+            profitLossReportIncludeAllTerms,
+            profitLossPrintSections,
             buyerProfitPercent,
             buyerProfitType,
             buyerManualResaleValue,
@@ -12173,6 +12285,8 @@ function AppInner() {
     loadUnitType,
     palletTypeLabel,
     profitLossReportTerm,
+    profitLossReportIncludeAllTerms,
+    profitLossPrintSections,
     buyerProfitPercent,
     buyerProfitType,
     buyerManualResaleValue,
@@ -12449,6 +12563,8 @@ function AppInner() {
     setLoadUnitType('container');
     setPalletTypeLabel('پالت استاندارد اروپا');
     setProfitLossReportTerm('');
+    setProfitLossReportIncludeAllTerms(false);
+    setProfitLossPrintSections({ ...DEFAULT_PROFIT_LOSS_PRINT_SECTIONS });
     setBuyerProfitPercent(20);
     setBuyerProfitType('markup');
     setBuyerManualResaleValue(undefined);
@@ -15093,6 +15209,16 @@ function AppInner() {
           const row = calculations.breakdown.find((b) => b.term === term);
           return { term, cost: row?.totalCost || 0, sell: row?.totalSell || 0, profit: row?.totalProfit || 0, margin: row?.profitMargin || 0 };
         });
+        const printSectionOptions: Array<{ key: ProfitLossPrintSectionKey; label: string }> = [
+          { key: 'costStructure', label: 'Cost structure' },
+          { key: 'incoterms', label: 'Incoterm table' },
+          { key: 'volumeTiers', label: 'Volume tiers' },
+          { key: 'productProfitability', label: 'Product table' },
+          { key: 'buyerSimulation', label: 'Buyer simulation' },
+          { key: 'extraCostLines', label: 'Extra cost details' },
+          { key: 'packaging', label: 'Packaging details' },
+          { key: 'signatures', label: 'Signatures' },
+        ];
 
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -15148,6 +15274,48 @@ function AppInner() {
                   <p className="text-[10px] uppercase tracking-wider text-blue-200 font-bold">Buyer resale revenue</p>
                   <p className="text-xl font-black text-white mt-1">{profitLossReportTerm ? formatMoney(buyerResaleRevenue, config.outputCurrency) : '—'}</p>
                   <p className="text-[10px] text-blue-200/70 mt-0.5">{buyerAutoPercent.toFixed(1)}% {buyerProfitType}</p>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-2xl bg-white/10 border border-white/15 p-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-blue-200 font-black">Print / PDF content</p>
+                    <p className="text-[10px] text-blue-100/70 mt-0.5">
+                      موارد اضافی را قبل از چاپ گزارش حذف کنید.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-[10px] font-black text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={profitLossReportIncludeAllTerms}
+                      onChange={(e) => setProfitLossReportIncludeAllTerms(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Print all Incoterms
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {printSectionOptions.map(({ key, label }) => (
+                    <label
+                      key={key}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold cursor-pointer ${
+                        profitLossPrintSections[key]
+                          ? 'bg-white text-slate-900 border-white'
+                          : 'bg-white/5 text-blue-100/60 border-white/15'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={profitLossPrintSections[key]}
+                        onChange={(e) =>
+                          setProfitLossPrintSections((prev) => ({ ...prev, [key]: e.target.checked }))
+                        }
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {label}
+                    </label>
+                  ))}
                 </div>
               </div>
 
@@ -15466,7 +15634,9 @@ function AppInner() {
               <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="font-black text-blue-900 flex items-center gap-2"><FileText className="w-4 h-4" /> Printable A4 Report includes</p>
-                  <p className="text-xs text-blue-700 mt-1">Executive P&amp;L summary · Cost waterfall EXW→DDP · Per-product profit table · Buyer simulation · Volume pricing table · Signature block</p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    Executive summary + the sections selected in Print / PDF content above.
+                  </p>
                 </div>
                 <button
                   type="button"
