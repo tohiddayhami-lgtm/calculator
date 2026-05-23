@@ -3091,6 +3091,72 @@ const ensureSkus = <T extends { sku?: string }>(products: T[]): T[] => {
     });
 };
 
+const AI_PRODUCT_INPUT_SAMPLE = {
+  formatName: 'CloudExport Product Input for AI',
+  version: 1,
+  instructionsForAI: [
+    'Return valid JSON only. Do not wrap it in markdown.',
+    'Keep the top-level key named products.',
+    'Every product must include both EXW and FOB direct quoted unit prices when those two contractual terms are requested.',
+    'Put EXW and FOB prices in scenarioManualUnitSellPrices.EXW and scenarioManualUnitSellPrices.FOB.',
+    'Put their currencies in scenarioManualUnitSellCurrencies.EXW and scenarioManualUnitSellCurrencies.FOB.',
+    'If profit should be added on top of the quoted EXW/FOB prices, put the percent in scenarioProfitPercents and set scenarioProfitTypes to markup or margin.',
+    'Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.',
+  ],
+  products: [
+    {
+      id: 1001,
+      name: 'Sample Export Product',
+      qty: 1000,
+      unitPrice: 2.5,
+      currency: 'USD',
+      priceInputMode: 'unit',
+      measurementUnit: 'kg',
+      itemsPerPack: 1,
+      packPrice: 0,
+      active: true,
+      sku: 'PRD-1001',
+      hsCode: '000000',
+      group: 'Sample Category',
+      catalogMOQ: '1000 kg',
+      catalogDescription: 'Short product description for catalog and quotation.',
+      scenarioManualUnitSellPrices: {
+        EXW: 3.1,
+        FOB: 3.45,
+      },
+      scenarioManualUnitSellCurrencies: {
+        EXW: 'USD',
+        FOB: 'USD',
+      },
+      scenarioProfitPercents: {
+        EXW: 20,
+        FOB: 20,
+      },
+      scenarioProfitTypes: {
+        EXW: 'markup',
+        FOB: 'markup',
+      },
+      scenarioManualUnitProfitAdds: {},
+      scenarioManualUnitProfitCurrencies: {},
+      scenarioTargetPrices: {},
+      scenarioTargetCurrencies: {},
+      packagingEnabled: false,
+      packagingMode: 'standard',
+      logisticsDetails: {
+        qtyPerBox: 10,
+        qtyPerPallet: 500,
+        qty20ft: 9000,
+        qty40ft: 19000,
+      },
+      packingQtyCartons: 100,
+      packingCartonNetWeightKg: 10,
+      packingCartonGrossWeightKg: 10.8,
+      gallery: [],
+      galleryVideos: [],
+    },
+  ],
+};
+
 // --- HTML CATALOG EXPORT ---
 const escapeHtml = (s: any): string => {
     if (s === null || s === undefined) return '';
@@ -6432,6 +6498,7 @@ function AppInner() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [editingCatalogDetailsId, setEditingCatalogDetailsId] = useState<number | null>(null);
   const catalogVideoUrlInputRef = useRef<HTMLInputElement | null>(null);
+  const productJsonInputRef = useRef<HTMLInputElement | null>(null);
   const [editingSection, setEditingSection] = useState<CatalogSection | null>(null); 
   
   // -- STATE: PROJECT IMPORT/EXPORT --
@@ -10787,6 +10854,181 @@ function AppInner() {
       setShowImportProductsModal(false);
   };
 
+  const downloadAiProductJsonSample = () => {
+      const blob = new Blob([JSON.stringify(AI_PRODUCT_INPUT_SAMPLE, null, 2)], {
+          type: 'application/json;charset=utf-8',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ai-product-input-sample-exw-fob.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+  };
+
+  const normalizeImportedTermNumbers = (
+      raw: unknown,
+      options: { allowZero?: boolean } = {},
+  ): Record<string, number> | undefined => {
+      if (!raw || typeof raw !== 'object') return undefined;
+      const out: Record<string, number> = {};
+      for (const term of SCENARIO_TERMS) {
+          const value = Number((raw as Record<string, unknown>)[term]);
+          if (Number.isFinite(value) && (options.allowZero ? value >= 0 : value > 0)) {
+              out[term] = value;
+          }
+      }
+      return Object.keys(out).length ? out : undefined;
+  };
+
+  const normalizeImportedTermCurrencies = (
+      raw: unknown,
+      terms: Record<string, number> | undefined,
+  ): Record<string, string> | undefined => {
+      if (!terms) return undefined;
+      const out: Record<string, string> = {};
+      for (const term of Object.keys(terms)) {
+          const c = String((raw as Record<string, unknown> | undefined)?.[term] || config.outputCurrency || 'USD')
+              .trim()
+              .toUpperCase();
+          out[term] = rates[c] ? c : (config.outputCurrency || 'USD');
+      }
+      return Object.keys(out).length ? out : undefined;
+  };
+
+  const normalizeImportedProfitTypes = (raw: unknown): Record<string, 'markup' | 'margin'> | undefined => {
+      if (!raw || typeof raw !== 'object') return undefined;
+      const out: Record<string, 'markup' | 'margin'> = {};
+      for (const term of SCENARIO_TERMS) {
+          const value = (raw as Record<string, unknown>)[term];
+          if (value === 'markup' || value === 'margin') out[term] = value;
+      }
+      return Object.keys(out).length ? out : undefined;
+  };
+
+  const handleImportProductsJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const parsed = JSON.parse(String(event.target?.result || ''));
+              const rawProducts = Array.isArray(parsed)
+                  ? parsed
+                  : Array.isArray(parsed?.products)
+                      ? parsed.products
+                      : Array.isArray(parsed?.data?.products)
+                          ? parsed.data.products
+                          : null;
+
+              if (!rawProducts || rawProducts.length === 0) {
+                  throw new Error('JSON must contain a products array.');
+              }
+
+              let skuNum = nextSkuNumber(products);
+              const importedProducts: Product[] = rawProducts
+                  .filter((row: unknown): row is Record<string, unknown> => !!row && typeof row === 'object')
+                  .map((row: Record<string, unknown>, idx: number) => {
+                      const directPrices = normalizeImportedTermNumbers(row.scenarioManualUnitSellPrices);
+                      const directCurrencies = normalizeImportedTermCurrencies(
+                          row.scenarioManualUnitSellCurrencies,
+                          directPrices,
+                      );
+                      const profitPercents = normalizeImportedTermNumbers(row.scenarioProfitPercents, { allowZero: true });
+                      const profitTypes = normalizeImportedProfitTypes(row.scenarioProfitTypes);
+                      const fixedProfits = normalizeImportedTermNumbers(row.scenarioManualUnitProfitAdds);
+                      const fixedProfitCurrencies = normalizeImportedTermCurrencies(
+                          row.scenarioManualUnitProfitCurrencies,
+                          fixedProfits,
+                      );
+                      const targetPrices = normalizeImportedTermNumbers(row.scenarioTargetPrices);
+                      const targetCurrencies = normalizeImportedTermCurrencies(row.scenarioTargetCurrencies, targetPrices);
+                      const sku = String(row.sku || '').trim() || formatSku(skuNum++);
+                      return {
+                          id: Date.now() + idx + Math.floor(Math.random() * 100000),
+                          name: String(row.name || row.catalogName || `Imported product ${idx + 1}`).trim(),
+                          qty: Math.max(0, Number(row.qty) || 0),
+                          unitPrice: Math.max(0, Number(row.unitPrice) || 0),
+                          currency: rates[String(row.currency || '').trim().toUpperCase()]
+                              ? String(row.currency).trim().toUpperCase()
+                              : (config.outputCurrency || 'USD'),
+                          priceInputMode: row.priceInputMode === 'pack' ? 'pack' : 'unit',
+                          measurementUnit: String(row.measurementUnit || '').trim(),
+                          itemsPerPack: Math.max(0, Number(row.itemsPerPack) || 0),
+                          packPrice: Math.max(0, Number(row.packPrice) || 0),
+                          active: row.active !== false,
+                          sku,
+                          hsCode: row.hsCode ? String(row.hsCode) : undefined,
+                          group: row.group ? String(row.group) : '',
+                          catalogName: row.catalogName ? String(row.catalogName) : undefined,
+                          catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
+                          catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
+                          targetPrice: Number(row.targetPrice) > 0 ? Number(row.targetPrice) : undefined,
+                          targetPriceCurrency: row.targetPriceCurrency
+                              ? String(row.targetPriceCurrency).trim().toUpperCase()
+                              : undefined,
+                          scenarioManualUnitSellPrices: directPrices,
+                          scenarioManualUnitSellCurrencies: directCurrencies,
+                          scenarioProfitPercents: profitPercents,
+                          scenarioProfitTypes: profitTypes,
+                          scenarioManualUnitProfitAdds: fixedProfits,
+                          scenarioManualUnitProfitCurrencies: fixedProfitCurrencies,
+                          scenarioTargetPrices: targetPrices,
+                          scenarioTargetCurrencies: targetCurrencies,
+                          packagingEnabled: row.packagingEnabled === true,
+                          packagingMode: row.packagingMode === 'luxury' ? 'luxury' : 'standard',
+                          packagingStandardPerUnit: Number(row.packagingStandardPerUnit) > 0
+                              ? Number(row.packagingStandardPerUnit)
+                              : undefined,
+                          packagingLuxuryPerUnit: Number(row.packagingLuxuryPerUnit) > 0
+                              ? Number(row.packagingLuxuryPerUnit)
+                              : undefined,
+                          logisticsDetails: row.logisticsDetails && typeof row.logisticsDetails === 'object'
+                              ? row.logisticsDetails as Product['logisticsDetails']
+                              : undefined,
+                          packingQtyCartons: Number(row.packingQtyCartons) || undefined,
+                          packingCartonNetWeightKg: Number(row.packingCartonNetWeightKg) || undefined,
+                          packingCartonGrossWeightKg: Number(row.packingCartonGrossWeightKg) || undefined,
+                          packingCartonLengthCm: Number(row.packingCartonLengthCm) || undefined,
+                          packingCartonWidthCm: Number(row.packingCartonWidthCm) || undefined,
+                          packingCartonHeightCm: Number(row.packingCartonHeightCm) || undefined,
+                          packingPalletCount: Number(row.packingPalletCount) || undefined,
+                          packingPackageNumbers: row.packingPackageNumbers ? String(row.packingPackageNumbers) : undefined,
+                          gallery: Array.isArray(row.gallery) ? row.gallery.map(String) : [],
+                          galleryVideos: Array.isArray(row.galleryVideos) ? row.galleryVideos.map(String) : [],
+                      };
+                  });
+
+              if (!importedProducts.length) {
+                  throw new Error('No valid product rows found.');
+              }
+
+              const directTerms = new Set<string>();
+              importedProducts.forEach((p) => {
+                  Object.keys(p.scenarioManualUnitSellPrices || {}).forEach((term) => directTerms.add(term));
+              });
+              setProducts((prev) => [...prev, ...importedProducts]);
+              if (directTerms.size > 0) {
+                  setVisibleScenarioTerms((prev) =>
+                      Array.from(new Set([...prev, ...Array.from(directTerms)])).sort(
+                          (a, b) => SCENARIO_TERMS.indexOf(a as ScenarioTerm) - SCENARIO_TERMS.indexOf(b as ScenarioTerm),
+                      ),
+                  );
+              }
+              alert(`${importedProducts.length} products imported from JSON.`);
+          } catch (err: any) {
+              console.error('Product JSON import failed', err);
+              alert(`Product JSON import failed: ${err?.message || 'Invalid JSON'}`);
+          } finally {
+              e.target.value = '';
+          }
+      };
+      reader.readAsText(file);
+  };
+
   // --- IMAGE & FILE HANDLERS ---
   const handleCatalogCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -13973,6 +14215,29 @@ function AppInner() {
                 Products
               </h2>
               <div className="flex flex-wrap gap-2">
+                <input
+                  ref={productJsonInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={handleImportProductsJson}
+                />
+                <button
+                  type="button"
+                  onClick={downloadAiProductJsonSample}
+                  className="text-sm bg-white border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg font-medium hover:bg-blue-50 flex items-center gap-2 shadow-sm"
+                  title="Download sample JSON for AI product input"
+                >
+                  <Download className="w-4 h-4" /> AI JSON Sample
+                </button>
+                <button
+                  type="button"
+                  onClick={() => productJsonInputRef.current?.click()}
+                  className="text-sm bg-white border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg font-medium hover:bg-emerald-50 flex items-center gap-2 shadow-sm"
+                  title="Import products from AI JSON"
+                >
+                  <FileUp className="w-4 h-4" /> Import AI JSON
+                </button>
                 <button onClick={() => setShowProductColumnSettings((open) => !open)} className={`text-sm border px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 shadow-sm ${showProductColumnSettings ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
                   <Settings className="w-4 h-4" /> Columns
                 </button>
