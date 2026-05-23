@@ -2496,7 +2496,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     googleFormHelperText: 'Tap below to fill out the order form',
     cartEnabled: true,
     orderEmail: 'info@tohiddayhami.com',
-    orderIncoterms: ['EXW', 'FOB', 'CIF', 'DDP'],
+    orderIncoterms: ['FOB'],
     orderPorts: [
       'Bandar Abbas (BND)',
       'Jebel Ali (JEA)',
@@ -4110,7 +4110,10 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const baseUnit = cc.baseUnit || tCombined('pcs') || 'pcs';
     const showPrices = cc.showPrices !== false;
     const priceBasis = cc.priceBasis || 'unit';
-    const priceTerms: string[] = cc.priceTerms || ['FOB'];
+    const scenarioTermSet = new Set<string>(['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
+    const priceTerms: string[] = (cc.priceTerms && cc.priceTerms.length ? cc.priceTerms : ['FOB'])
+        .map((t: string) => String(t).trim().toUpperCase())
+        .filter((t: string) => scenarioTermSet.has(t));
     const showMOQ = cc.showMOQ !== false;
     const moqLabel = cc.moqLabel || tCombined('moq') || 'MOQ';
     const showTargetPrice = cc.showTargetPrice;
@@ -4123,7 +4126,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
 
     const cartEnabled = cc.cartEnabled !== false;
     const orderEmail = (cc.orderEmail || '').trim();
-    const incoterms: string[] = (cc.orderIncoterms && cc.orderIncoterms.length) ? cc.orderIncoterms : ['EXW', 'FOB', 'CIF', 'DDP'];
+    // Inquiry/cart terms must mirror the catalog's visible price terms exactly.
+    // Showing a term that is not priced in the catalog can make customers request the wrong contract basis.
+    const incoterms: string[] = priceTerms.length ? priceTerms : ['FOB'];
     const orderPorts: string[] = cc.orderPorts || [];
     const cartButtonText = cc.cartButtonText || 'Request Quote';
     const cartTitle = cc.cartTitle || 'Your Inquiry Cart';
@@ -11533,12 +11538,13 @@ function AppInner() {
       const current = catalogConfig.priceTerms;
       let newTerms = [];
       if (current.includes(term)) {
+           if (current.length <= 1) return;
            newTerms = current.filter(t => t !== term);
       } else {
            const order = ['EXW', 'FCA', 'FOB', 'CIF', 'DDP'];
            newTerms = [...current, term].sort((a,b) => order.indexOf(a) - order.indexOf(b));
       }
-      setCatalogConfig({ ...catalogConfig, priceTerms: newTerms });
+      setCatalogConfig({ ...catalogConfig, priceTerms: newTerms, orderIncoterms: newTerms });
   };
 
   const addSocial = () => {
@@ -18169,14 +18175,17 @@ ${html}
                                               />
                                           </div>
                                           <div className="space-y-1">
-                                              <label className="text-[10px] text-slate-500 font-semibold">Available Incoterms (comma-separated)</label>
+                                              <label className="text-[10px] text-slate-500 font-semibold">Inquiry Incoterms</label>
                                               <input
                                                   type="text"
-                                                  value={(catalogConfig.orderIncoterms || []).join(', ')}
-                                                  onChange={(e) => setCatalogConfig({...catalogConfig, orderIncoterms: e.target.value.split(',').map(x => x.trim()).filter(Boolean)})}
-                                                  className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 focus:border-emerald-500 outline-none bg-white font-mono"
-                                                  placeholder="EXW, FOB, CIF, DDP"
+                                                  readOnly
+                                                  value={(catalogConfig.priceTerms?.length ? catalogConfig.priceTerms : ['FOB']).join(', ')}
+                                                  className="w-full text-xs border border-emerald-100 rounded px-2 py-1.5 outline-none bg-emerald-50/50 text-emerald-800 font-mono"
+                                                  title="Inquiry terms follow Price Display terms."
                                               />
+                                              <p className="text-[9px] text-emerald-700">
+                                                  مشتری فقط همین ترم‌های انتخاب‌شده در Price Display را می‌بیند.
+                                              </p>
                                           </div>
                                           <div className="space-y-1">
                                               <label className="text-[10px] text-slate-500 font-semibold">Suggested ports (comma-separated, optional)</label>
@@ -19883,11 +19892,14 @@ ${html}
                           </div>
                           <input
                               type="text"
-                              value={(catalogConfig.orderIncoterms || []).join(', ')}
-                              onChange={(e) => setCatalogConfig({ ...catalogConfig, orderIncoterms: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })}
-                              className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-emerald-500 font-mono"
-                              placeholder="EXW, FOB, DDP"
+                              readOnly
+                              value={(catalogConfig.priceTerms?.length ? catalogConfig.priceTerms : ['FOB']).join(', ')}
+                              className="w-full text-xs border border-emerald-100 rounded-lg px-3 py-2 outline-none bg-emerald-50/50 text-emerald-800 font-mono"
+                              title="Inquiry terms follow selected catalog price terms."
                           />
+                          <p className="text-[10px] text-emerald-700 leading-snug">
+                              Inquiry card فقط ترم‌های انتخاب‌شده در Price Display را نمایش می‌دهد.
+                          </p>
                           <textarea
                               rows={2}
                               value={catalogConfig.orderThankYouText || ''}
