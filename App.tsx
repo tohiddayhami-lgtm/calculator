@@ -5907,6 +5907,19 @@ ${topbarHtml}
 
 ${cartHtml}
 
+<!-- Product Detail Modal -->
+<div class="pd-overlay pd-hidden" id="pd-overlay" role="dialog" aria-modal="true" aria-label="Product detail">
+  <div class="pd-modal">
+    <button class="pd-close" id="pd-close" aria-label="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="pd-body">
+      <div class="pd-gallery" id="pd-gallery"></div>
+      <div class="pd-info" id="pd-info"></div>
+    </div>
+  </div>
+</div>
+
 ${firebaseInquiryScript}
 <script>${js}</script>
 <script>
@@ -5976,19 +5989,6 @@ ${firebaseInquiryScript}
     }
 })();
 </script>
-
-<!-- Product Detail Modal -->
-<div class="pd-overlay pd-hidden" id="pd-overlay" role="dialog" aria-modal="true" aria-label="Product detail">
-  <div class="pd-modal">
-    <button class="pd-close" id="pd-close" aria-label="Close">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-    <div class="pd-body">
-      <div class="pd-gallery" id="pd-gallery"></div>
-      <div class="pd-info" id="pd-info"></div>
-    </div>
-  </div>
-</div>
 </body>
 </html>`;
 };
