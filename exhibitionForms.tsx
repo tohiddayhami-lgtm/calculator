@@ -922,109 +922,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 <ExternalLink className="w-3.5 h-3.5" /> باز کردن
               </a>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
-              <div className="flex items-start justify-between gap-3 mb-4">
-                <div>
-                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                    <LayoutGrid className="w-4 h-4 text-amber-500" />
-                    ستون‌ها، مرزبندی و پاویون‌ها
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                    برای مشخص کردن مرز بین پاویون‌ها، ستون‌های وسط سالن یا محدوده‌هایی مثل Iran Pavilion و Turkey Pavilion استفاده کن.
-                  </p>
-                </div>
-              </div>
-              <div className="grid sm:grid-cols-3 gap-2 mb-4">
-                {TOP_VIEW_STRUCTURE_KIND_OPTIONS.map(option => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => addTopViewStructure(option.value)}
-                    className="text-xs rounded-lg border border-slate-200 px-3 py-2 text-right hover:bg-amber-50 hover:border-amber-200"
-                  >
-                    + {option.label}
-                  </button>
-                ))}
-              </div>
-              {(editing.topViewStructures ?? []).length === 0 ? (
-                <p className="text-sm text-slate-400 border border-dashed border-slate-200 rounded-xl p-5 text-center">
-                  هنوز ستون، خط مرزی یا پاویون تعریف نشده.
-                </p>
-              ) : (
-                <div className="space-y-3 max-h-[34rem] overflow-y-auto pr-1">
-                  {(editing.topViewStructures ?? []).map(structure => {
-                    const kindPreset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === structure.kind) || TOP_VIEW_STRUCTURE_KIND_OPTIONS[0];
-                    return (
-                      <div key={structure.id} className="border border-slate-200 rounded-xl p-3 bg-amber-50/40 space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <select
-                            value={structure.kind}
-                            onChange={e => updateTopViewStructure(structure.id, { kind: e.target.value as ExhibitionTopViewStructure['kind'] })}
-                            className={inputCls}
-                          >
-                            {TOP_VIEW_STRUCTURE_KIND_OPTIONS.map(option => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
-                          <select
-                            value={structure.categoryId}
-                            onChange={e => updateTopViewStructure(structure.id, { categoryId: e.target.value })}
-                            className={inputCls}
-                          >
-                            {editing.categories.map(category => (
-                              <option key={category.id} value={category.id}>{category.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <input
-                          value={structure.title}
-                          onChange={e => updateTopViewStructure(structure.id, { title: e.target.value })}
-                          className={inputCls}
-                          dir="ltr"
-                          placeholder={kindPreset.defaultTitle}
-                        />
-                        <textarea
-                          value={structure.description}
-                          onChange={e => updateTopViewStructure(structure.id, { description: e.target.value })}
-                          className={inputCls}
-                          rows={2}
-                          dir="rtl"
-                          placeholder="مثلاً محدوده پاویون ایران، مرز غرفه‌های ترکیه، مسیر اصلی بازدیدکننده"
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className={labelCls}>X: {structure.x}%</label>
-                            <input type="range" min={0} max={100} value={structure.x} onChange={e => updateTopViewStructure(structure.id, { x: Number(e.target.value) })} className="w-full accent-amber-500" />
-                          </div>
-                          <div>
-                            <label className={labelCls}>Y: {structure.y}%</label>
-                            <input type="range" min={0} max={100} value={structure.y} onChange={e => updateTopViewStructure(structure.id, { y: Number(e.target.value) })} className="w-full accent-amber-500" />
-                          </div>
-                          <div>
-                            <label className={labelCls}>عرض: {structure.width}%</label>
-                            <input type="range" min={1} max={100} value={structure.width} onChange={e => updateTopViewStructure(structure.id, { width: Number(e.target.value) })} className="w-full accent-amber-500" />
-                          </div>
-                          <div>
-                            <label className={labelCls}>ارتفاع: {structure.height}%</label>
-                            <input type="range" min={1} max={100} value={structure.height} onChange={e => updateTopViewStructure(structure.id, { height: Number(e.target.value) })} className="w-full accent-amber-500" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
-                          <div>
-                            <label className={labelCls}>شفافیت: {structure.opacity}%</label>
-                            <input type="range" min={5} max={100} value={structure.opacity} onChange={e => updateTopViewStructure(structure.id, { opacity: Number(e.target.value) })} className="w-full accent-amber-500" />
-                          </div>
-                          <input type="color" value={structure.color} onChange={e => updateTopViewStructure(structure.id, { color: e.target.value })} className="w-11 h-10 rounded-lg border border-slate-200 bg-white" />
-                        </div>
-                        <button type="button" onClick={() => removeTopViewStructure(structure.id)} className="text-xs text-red-600 hover:underline">
-                          حذف این سازه
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         )
       ) : null}
@@ -1235,6 +1132,109 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                         </div>
                         <button type="button" onClick={() => removeTopViewMarker(marker.id)} className="text-xs text-red-600 hover:underline">
                           حذف این المان
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                    <LayoutGrid className="w-4 h-4 text-amber-500" />
+                    ستون‌ها، مرزبندی و پاویون‌ها
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    برای مشخص کردن مرز بین پاویون‌ها، ستون‌های وسط سالن یا محدوده‌هایی مثل Iran Pavilion و Turkey Pavilion استفاده کن.
+                  </p>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-2 mb-4">
+                {TOP_VIEW_STRUCTURE_KIND_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => addTopViewStructure(option.value)}
+                    className="text-xs rounded-lg border border-slate-200 px-3 py-2 text-right hover:bg-amber-50 hover:border-amber-200"
+                  >
+                    + {option.label}
+                  </button>
+                ))}
+              </div>
+              {(editing.topViewStructures ?? []).length === 0 ? (
+                <p className="text-sm text-slate-400 border border-dashed border-slate-200 rounded-xl p-5 text-center">
+                  هنوز ستون، خط مرزی یا پاویون تعریف نشده.
+                </p>
+              ) : (
+                <div className="space-y-3 max-h-[34rem] overflow-y-auto pr-1">
+                  {(editing.topViewStructures ?? []).map(structure => {
+                    const kindPreset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === structure.kind) || TOP_VIEW_STRUCTURE_KIND_OPTIONS[0];
+                    return (
+                      <div key={structure.id} className="border border-slate-200 rounded-xl p-3 bg-amber-50/40 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={structure.kind}
+                            onChange={e => updateTopViewStructure(structure.id, { kind: e.target.value as ExhibitionTopViewStructure['kind'] })}
+                            className={inputCls}
+                          >
+                            {TOP_VIEW_STRUCTURE_KIND_OPTIONS.map(option => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={structure.categoryId}
+                            onChange={e => updateTopViewStructure(structure.id, { categoryId: e.target.value })}
+                            className={inputCls}
+                          >
+                            {editing.categories.map(category => (
+                              <option key={category.id} value={category.id}>{category.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <input
+                          value={structure.title}
+                          onChange={e => updateTopViewStructure(structure.id, { title: e.target.value })}
+                          className={inputCls}
+                          dir="ltr"
+                          placeholder={kindPreset.defaultTitle}
+                        />
+                        <textarea
+                          value={structure.description}
+                          onChange={e => updateTopViewStructure(structure.id, { description: e.target.value })}
+                          className={inputCls}
+                          rows={2}
+                          dir="rtl"
+                          placeholder="مثلاً محدوده پاویون ایران، مرز غرفه‌های ترکیه، مسیر اصلی بازدیدکننده"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className={labelCls}>X: {structure.x}%</label>
+                            <input type="range" min={0} max={100} value={structure.x} onChange={e => updateTopViewStructure(structure.id, { x: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <div>
+                            <label className={labelCls}>Y: {structure.y}%</label>
+                            <input type="range" min={0} max={100} value={structure.y} onChange={e => updateTopViewStructure(structure.id, { y: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <div>
+                            <label className={labelCls}>عرض: {structure.width}%</label>
+                            <input type="range" min={1} max={100} value={structure.width} onChange={e => updateTopViewStructure(structure.id, { width: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <div>
+                            <label className={labelCls}>ارتفاع: {structure.height}%</label>
+                            <input type="range" min={1} max={100} value={structure.height} onChange={e => updateTopViewStructure(structure.id, { height: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+                          <div>
+                            <label className={labelCls}>شفافیت: {structure.opacity}%</label>
+                            <input type="range" min={5} max={100} value={structure.opacity} onChange={e => updateTopViewStructure(structure.id, { opacity: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <input type="color" value={structure.color} onChange={e => updateTopViewStructure(structure.id, { color: e.target.value })} className="w-11 h-10 rounded-lg border border-slate-200 bg-white" />
+                        </div>
+                        <button type="button" onClick={() => removeTopViewStructure(structure.id)} className="text-xs text-red-600 hover:underline">
+                          حذف این سازه
                         </button>
                       </div>
                     );
