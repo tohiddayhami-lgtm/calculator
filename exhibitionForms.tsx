@@ -45,6 +45,7 @@ import {
 export const EXHIBITION_STORAGE_KEY = 'exportcalc_exhibition_events_v1';
 
 const BACKGROUND_MAX_BYTES = 5 * 1024 * 1024;
+const COMPANY_LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const CATEGORY_COLORS = ['#8b5cf6', '#06b6d4', '#f97316', '#22c55e', '#ec4899', '#eab308', '#14b8a6', '#ef4444'];
 
 function newId(): string {
@@ -115,14 +116,22 @@ type Props = {
   events: ExhibitionEvent[];
   onSaveEvents: (events: ExhibitionEvent[]) => void;
   onPublishOnline?: (event: ExhibitionEvent) => Promise<{ url: string; shortUrl?: string; qr?: string }>;
+  onPublishTopView?: (event: ExhibitionEvent) => Promise<{ url: string; shortUrl?: string; qr?: string }>;
 };
 
-export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline }: Props) {
+export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline, onPublishTopView }: Props) {
   const [subView, setSubView] = useState<'list' | 'editor'>('list');
   const [editing, setEditing] = useState<ExhibitionEvent | null>(null);
   const [exporting, setExporting] = useState(false);
   const [storyPreviewUrl, setStoryPreviewUrl] = useState<string | null>(null);
   const [onlineLinkInfo, setOnlineLinkInfo] = useState<{
+    url: string;
+    shortUrl?: string;
+    qr?: string;
+    uploading?: boolean;
+    error?: string;
+  } | null>(null);
+  const [topViewLinkInfo, setTopViewLinkInfo] = useState<{
     url: string;
     shortUrl?: string;
     qr?: string;
@@ -137,6 +146,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     phone: '',
     city: '',
     products: '',
+    logoUrl: '',
     storeUrl: '',
     reservationStatus: 'confirmed' as ExhibitionReservationStatus,
     amountPaid: '',
@@ -149,6 +159,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     phone: string;
     city: string;
     products: string;
+    logoUrl: string;
     storeUrl: string;
     reservationStatus: ExhibitionReservationStatus;
     amountPaid: string;
@@ -220,6 +231,31 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     reader.readAsDataURL(file);
   };
 
+  const handleCompanyLogoChange = (e: React.ChangeEvent<HTMLInputElement>, target: 'form' | 'edit') => {
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('فقط فایل تصویر برای لوگوی شرکت مجاز است.');
+      return;
+    }
+    if (file.size > COMPANY_LOGO_MAX_BYTES) {
+      alert('حجم لوگوی شرکت حداکثر ۲ مگابایت باشد.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const logoUrl = String(reader.result || '');
+      if (target === 'form') {
+        setReservationForm(f => ({ ...f, logoUrl }));
+      } else {
+        setReservationEditForm(f => f && ({ ...f, logoUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const patchCategory = (id: string, patch: Partial<ExhibitionBoothCategory>) => {
     if (!editing) return;
     let reservations = editing.reservations;
@@ -287,6 +323,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: reservationForm.phone.trim(),
       city: reservationForm.city.trim(),
       products: reservationForm.products.trim(),
+      logoUrl: reservationForm.logoUrl.trim(),
       storeUrl: reservationForm.storeUrl.trim(),
       reservationStatus: reservationForm.reservationStatus,
       amountPaid: reservationForm.amountPaid.trim(),
@@ -302,6 +339,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: '',
       city: '',
       products: '',
+      logoUrl: '',
       storeUrl: '',
       amountPaid: '',
       amountRemaining: '',
@@ -337,6 +375,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: reservation.phone,
       city: reservation.city,
       products: reservation.products,
+      logoUrl: reservation.logoUrl ?? '',
       storeUrl: reservation.storeUrl ?? '',
       reservationStatus: reservation.reservationStatus,
       amountPaid: reservation.amountPaid,
@@ -364,6 +403,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         phone: reservationEditForm.phone.trim(),
         city: reservationEditForm.city.trim(),
         products: reservationEditForm.products.trim(),
+        logoUrl: reservationEditForm.logoUrl.trim(),
         storeUrl: reservationEditForm.storeUrl.trim(),
         reservationStatus: reservationEditForm.reservationStatus,
         amountPaid: reservationEditForm.amountPaid,
@@ -425,6 +465,30 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     }
   };
 
+  const handlePublishTopView = async () => {
+    if (!editing) return;
+    if (!onPublishTopView) {
+      setTopViewLinkInfo({
+        url: '',
+        uploading: false,
+        error: 'برای ساخت لینک Top View باید وارد حساب کاربری متصل به Firebase باشید.',
+      });
+      return;
+    }
+    setTopViewLinkInfo({ url: '', uploading: true });
+    try {
+      const saved = saveEvent(editing);
+      const info = await onPublishTopView(saved);
+      setTopViewLinkInfo({ ...info, uploading: false });
+    } catch (err: any) {
+      setTopViewLinkInfo({
+        url: '',
+        uploading: false,
+        error: err?.message || String(err) || 'ساخت لینک Top View انجام نشد.',
+      });
+    }
+  };
+
   const copyOnlineLink = async () => {
     const link = onlineLinkInfo?.shortUrl || onlineLinkInfo?.url;
     if (!link) return;
@@ -433,6 +497,17 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       alert('لینک کپی شد.');
     } catch {
       prompt('لینک آنلاین:', link);
+    }
+  };
+
+  const copyTopViewLink = async () => {
+    const link = topViewLinkInfo?.shortUrl || topViewLinkInfo?.url;
+    if (!link) return;
+    try {
+      await navigator.clipboard?.writeText(link);
+      alert('لینک Top View کپی شد.');
+    } catch {
+      prompt('Top View link:', link);
     }
   };
 
@@ -459,6 +534,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 phone: '',
                 city: '',
                 products: '',
+                logoUrl: '',
                 storeUrl: '',
                 reservationStatus: 'confirmed',
                 amountPaid: '',
@@ -466,6 +542,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 paymentNote: '',
               });
               setOnlineLinkInfo(null);
+              setTopViewLinkInfo(null);
               setSubView('editor');
             }}
             className="flex items-center gap-2 text-sm bg-purple-600 text-white hover:bg-purple-700 rounded-lg px-4 py-2 font-medium"
@@ -531,6 +608,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                           phone: '',
                           city: '',
                           products: '',
+                          logoUrl: '',
                           storeUrl: '',
                           reservationStatus: 'confirmed',
                           amountPaid: '',
@@ -538,6 +616,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                           paymentNote: '',
                         });
                         setOnlineLinkInfo(null);
+                        setTopViewLinkInfo(null);
                         setSubView('editor');
                       }}
                       className="text-sm text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 hover:bg-purple-50"
@@ -579,6 +658,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             if (storyPreviewUrl) URL.revokeObjectURL(storyPreviewUrl);
             setStoryPreviewUrl(null);
             setOnlineLinkInfo(null);
+            setTopViewLinkInfo(null);
           }}
           className="flex items-center gap-1 text-slate-500 hover:text-slate-900 text-sm"
         >
@@ -604,6 +684,10 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         <button type="button" onClick={handlePublishOnline} disabled={onlineLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-slate-900 text-white rounded-lg px-3 py-1.5 hover:bg-slate-800 disabled:opacity-50">
           {onlineLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
           {onlineLinkInfo?.uploading ? 'در حال ساخت...' : 'ساخت لینک آنلاین'}
+        </button>
+        <button type="button" onClick={handlePublishTopView} disabled={topViewLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 text-white rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
+          {topViewLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          {topViewLinkInfo?.uploading ? 'در حال ساخت...' : 'لینک Top View Hall'}
         </button>
         <button
           type="button"
@@ -648,6 +732,43 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 <Copy className="w-3.5 h-3.5" /> کپی
               </button>
               <a href={onlineLinkInfo.shortUrl || onlineLinkInfo.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg px-3 py-2">
+                <ExternalLink className="w-3.5 h-3.5" /> باز کردن
+              </a>
+            </div>
+          </div>
+        )
+      ) : null}
+
+      {topViewLinkInfo && !topViewLinkInfo.uploading ? (
+        topViewLinkInfo.error ? (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
+            {topViewLinkInfo.error}
+          </div>
+        ) : (
+          <div className="bg-gradient-to-r from-cyan-950 via-indigo-950 to-purple-950 text-white rounded-xl border border-cyan-300/30 p-4 flex flex-col md:flex-row md:items-center gap-4">
+            {topViewLinkInfo.qr ? (
+              <img src={topViewLinkInfo.qr} alt="Top View QR code" className="w-24 h-24 rounded-xl bg-white p-1 shrink-0" />
+            ) : null}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold mb-1">Creative Top View Hall link آماده شد</p>
+              <a
+                href={topViewLinkInfo.shortUrl || topViewLinkInfo.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-cyan-200 break-all hover:underline"
+                dir="ltr"
+              >
+                {topViewLinkInfo.shortUrl || topViewLinkInfo.url}
+              </a>
+              <p className="text-[11px] text-slate-300 mt-1">
+                این لینک جداگانه مخصوص مشتریان خارجی است: سالن‌ها از بالا، لوگوی برند روی غرفه و نوت تعاملی شرکت‌ها.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button type="button" onClick={copyTopViewLink} className="flex items-center gap-1 text-xs bg-white/10 hover:bg-white/15 rounded-lg px-3 py-2">
+                <Copy className="w-3.5 h-3.5" /> کپی
+              </button>
+              <a href={topViewLinkInfo.shortUrl || topViewLinkInfo.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg px-3 py-2">
                 <ExternalLink className="w-3.5 h-3.5" /> باز کردن
               </a>
             </div>
@@ -821,6 +942,35 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               <input placeholder="شهر / کشور" value={reservationForm.city} onChange={e => setReservationForm(f => ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" disabled={selectedCategoryFull} />
             </div>
             <textarea placeholder="محصولات / حوزه فعالیت" value={reservationForm.products} onChange={e => setReservationForm(f => ({ ...f, products: e.target.value }))} rows={2} className={inputCls + ' mb-3'} dir="rtl" disabled={selectedCategoryFull} />
+            <div className="border border-slate-200 rounded-xl p-3 mb-3 bg-slate-50/70">
+              <label className={labelCls}>لوگوی شرکت برای لینک Top View</label>
+              <div className="flex flex-col sm:flex-row gap-3 items-start">
+                <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                  {reservationForm.logoUrl ? (
+                    <img src={reservationForm.logoUrl} alt="" className="w-full h-full object-contain p-1" />
+                  ) : (
+                    <ImageIcon className="w-6 h-6 text-slate-300" />
+                  )}
+                </div>
+                <div className="flex-1 w-full space-y-2">
+                  <input
+                    placeholder="Logo URL یا بعد از آپلود خودکار پر می‌شود"
+                    value={reservationForm.logoUrl}
+                    onChange={e => setReservationForm(f => ({ ...f, logoUrl: e.target.value }))}
+                    className={inputCls}
+                    dir="ltr"
+                    disabled={selectedCategoryFull}
+                  />
+                  <input type="file" accept="image/*" className="text-xs w-full" disabled={selectedCategoryFull} onChange={e => handleCompanyLogoChange(e, 'form')} />
+                  {reservationForm.logoUrl ? (
+                    <button type="button" onClick={() => setReservationForm(f => ({ ...f, logoUrl: '' }))} className="text-xs text-red-600 hover:underline">
+                      حذف لوگو
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-2">در لینک Top View، این لوگو از بالا روی سقف غرفه نمایش داده می‌شود.</p>
+            </div>
             <input
               placeholder="لینک فروشگاه / کاتالوگ آنلاین شرکت (https://...)"
               value={reservationForm.storeUrl}
@@ -915,12 +1065,17 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                     return (
                       <div key={reservation.id} className={`border rounded-lg p-3 text-sm ${reservation.reservationStatus === 'reserved' ? 'border-orange-200 bg-orange-50/50' : 'border-emerald-200 bg-emerald-50/50'}`}>
                         <div className="flex items-start justify-between gap-2 mb-2">
-                          <div>
-                            <span className="font-mono text-xs font-bold text-slate-500">{category ? boothCode(category, reservation.boothNumber) : `#${reservation.boothNumber}`}</span>
-                            <span className="font-semibold mr-2">{reservation.companyName}</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${reservation.reservationStatus === 'reserved' ? 'bg-orange-200 text-orange-800' : 'bg-emerald-200 text-emerald-800'}`}>
-                              {reservation.reservationStatus === 'reserved' ? 'رزرو موقت' : 'قطعی'}
-                            </span>
+                          <div className="flex items-start gap-2">
+                            {reservation.logoUrl ? (
+                              <img src={reservation.logoUrl} alt="" className="w-9 h-9 rounded-lg bg-white border border-slate-200 object-contain p-1 shrink-0" />
+                            ) : null}
+                            <div>
+                              <span className="font-mono text-xs font-bold text-slate-500">{category ? boothCode(category, reservation.boothNumber) : `#${reservation.boothNumber}`}</span>
+                              <span className="font-semibold mr-2">{reservation.companyName}</span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${reservation.reservationStatus === 'reserved' ? 'bg-orange-200 text-orange-800' : 'bg-emerald-200 text-emerald-800'}`}>
+                                {reservation.reservationStatus === 'reserved' ? 'رزرو موقت' : 'قطعی'}
+                              </span>
+                            </div>
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <button type="button" onClick={() => openReservationEdit(reservation)} className="text-purple-600 p-1 hover:bg-purple-50 rounded" title="ویرایش"><Pencil className="w-4 h-4" /></button>
@@ -975,6 +1130,33 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 <input placeholder="شهر / کشور" value={reservationEditForm.city} onChange={e => setReservationEditForm(f => f && ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" />
               </div>
               <textarea placeholder="محصولات / حوزه فعالیت" value={reservationEditForm.products} onChange={e => setReservationEditForm(f => f && ({ ...f, products: e.target.value }))} rows={2} className={inputCls + ' mb-3'} dir="rtl" />
+              <div className="border border-slate-200 rounded-xl p-3 mb-3 bg-slate-50/70">
+                <label className={labelCls}>لوگوی شرکت برای لینک Top View</label>
+                <div className="flex flex-col sm:flex-row gap-3 items-start">
+                  <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                    {reservationEditForm.logoUrl ? (
+                      <img src={reservationEditForm.logoUrl} alt="" className="w-full h-full object-contain p-1" />
+                    ) : (
+                      <ImageIcon className="w-6 h-6 text-slate-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 w-full space-y-2">
+                    <input
+                      placeholder="Logo URL یا بعد از آپلود خودکار پر می‌شود"
+                      value={reservationEditForm.logoUrl}
+                      onChange={e => setReservationEditForm(f => f && ({ ...f, logoUrl: e.target.value }))}
+                      className={inputCls}
+                      dir="ltr"
+                    />
+                    <input type="file" accept="image/*" className="text-xs w-full" onChange={e => handleCompanyLogoChange(e, 'edit')} />
+                    {reservationEditForm.logoUrl ? (
+                      <button type="button" onClick={() => setReservationEditForm(f => f && ({ ...f, logoUrl: '' }))} className="text-xs text-red-600 hover:underline">
+                        حذف لوگو
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
               <input
                 placeholder="لینک فروشگاه / کاتالوگ آنلاین شرکت (https://...)"
                 value={reservationEditForm.storeUrl}

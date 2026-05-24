@@ -139,6 +139,7 @@ import { normalizeEducationCourse } from './educationNormalize';
 import { ExhibitionFormsPanel, EXHIBITION_STORAGE_KEY } from './exhibitionForms';
 import { normalizeExhibitionEvent } from './exhibitionNormalize';
 import { buildExhibitionOnlineHtml } from './exhibitionOnlineExport';
+import { buildExhibitionTopViewHtml } from './exhibitionTopViewExport';
 import {
   computeVatFromNet,
   normalizeInvoiceExtraCharges,
@@ -27982,6 +27983,70 @@ ${html}
     return { url, shortUrl, qr };
   };
 
+  const handlePublishExhibitionTopView = async (event: ExhibitionEvent): Promise<{ url: string; shortUrl?: string; qr?: string }> => {
+    if (!user || !storage) {
+      throw new Error('برای ساخت لینک Top View باید وارد حساب کاربری باشید و Firebase Storage فعال باشد.');
+    }
+    const normalized = normalizeExhibitionEvent(event);
+    const html = buildExhibitionTopViewHtml(normalized);
+    const safeTitle = (normalized.title || 'exhibition-top-view')
+      .replace(/[^a-z0-9-_]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      || 'exhibition-top-view';
+    const fileName = `${safeTitle}-top-view-hall.html`;
+    const path = `users/${activeOwnerUid}/exhibitions/${safeTitle}-top-view-${Date.now()}.html`;
+    const ref = storageRef(storage, path);
+    await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
+    const url = await getDownloadURL(ref);
+
+    let shortUrl: string | undefined;
+    if (db && !isDemoMode && user.uid !== DEMO_USER_ID) {
+      try {
+        for (let attempt = 0; attempt < 24; attempt++) {
+          const shortCode = generateCatalogShortCode(10);
+          const pubRef = doc(db, 'catalog_short_links', shortCode);
+          const existing = await getDoc(pubRef);
+          if (existing.exists()) continue;
+          const shortUrlFull = buildPublicAppUrl({ c: shortCode });
+          await setDoc(pubRef, {
+            url,
+            appId: dataAppId,
+            ownerUserId: activeOwnerUid,
+            storagePath: path,
+            catalogTitle: `${normalized.title || 'Online Exhibition'} - Top View Hall`,
+            kind: 'exhibition-top-view',
+            createdAt: serverTimestamp(),
+          });
+          shortUrl = shortUrlFull;
+          break;
+        }
+      } catch (linkErr) {
+        console.warn('Exhibition Top View short link creation failed:', linkErr);
+      }
+
+      try {
+        await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+          fullUrl: url,
+          shortUrl: shortUrl || null,
+          storagePath: path,
+          shortCode: shortUrl ? new URL(shortUrl).searchParams.get('c') : null,
+          catalogTitle: `${normalized.title || 'Online Exhibition'} - Top View Hall`,
+          fileName,
+          kind: 'exhibition-top-view',
+          createdAt: serverTimestamp(),
+        });
+      } catch (metaErr) {
+        console.warn('Exhibition Top View link metadata save failed:', metaErr);
+      }
+    }
+
+    let qr = '';
+    try {
+      qr = await QRCode.toDataURL(shortUrl || url, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+    } catch {}
+    return { url, shortUrl, qr };
+  };
+
   const renderForms = () => (
     <div className="space-y-4">
       <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
@@ -28056,6 +28121,7 @@ ${html}
           events={exhibitionEvents}
           onSaveEvents={setExhibitionEvents}
           onPublishOnline={handlePublishExhibitionOnline}
+          onPublishTopView={handlePublishExhibitionTopView}
         />
       )}
       {formsSubView === 'packinglist' && renderPackingList()}
