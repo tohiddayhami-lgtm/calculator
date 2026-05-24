@@ -3101,25 +3101,28 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'Put EXW and FOB prices in scenarioManualUnitSellPrices.EXW and scenarioManualUnitSellPrices.FOB.',
     'Put their currencies in scenarioManualUnitSellCurrencies.EXW and scenarioManualUnitSellCurrencies.FOB.',
     'If profit should be added on top of the quoted EXW/FOB prices, put the percent in scenarioProfitPercents and set scenarioProfitTypes to markup or margin.',
+    'qty means total units/pieces, not number of packs.',
+    'itemsPerPack means how many units/pieces are inside each pack/carton.',
+    'If the source says 24 packs and each pack contains 24 pcs, set qty to 576, itemsPerPack to 24, and packingQtyCartons to 24.',
     'Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.',
   ],
   products: [
     {
       id: 1001,
       name: 'Sample Export Product',
-      qty: 1000,
+      qty: 576,
       unitPrice: 2.5,
       currency: 'USD',
       priceInputMode: 'unit',
-      measurementUnit: 'kg',
-      itemsPerPack: 1,
+      measurementUnit: 'pcs',
+      itemsPerPack: 24,
       packPrice: 0,
       active: true,
       sku: 'PRD-1001',
       hsCode: '000000',
       group: 'Sample Category',
-      catalogMOQ: '1000 kg',
-      catalogDescription: 'Short product description for catalog and quotation.',
+      catalogMOQ: '24 packs',
+      catalogDescription: 'Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.',
       scenarioManualUnitSellPrices: {
         EXW: 3.1,
         FOB: 3.45,
@@ -3143,12 +3146,12 @@ const AI_PRODUCT_INPUT_SAMPLE = {
       packagingEnabled: false,
       packagingMode: 'standard',
       logisticsDetails: {
-        qtyPerBox: 10,
+        qtyPerBox: 24,
         qtyPerPallet: 500,
         qty20ft: 9000,
         qty40ft: 19000,
       },
-      packingQtyCartons: 100,
+      packingQtyCartons: 24,
       packingCartonNetWeightKg: 10,
       packingCartonGrossWeightKg: 10.8,
       gallery: [],
@@ -10929,6 +10932,26 @@ function AppInner() {
       return Object.keys(out).length ? out : undefined;
   };
 
+  const firstPositiveNumber = (...values: unknown[]): number | undefined => {
+      for (const value of values) {
+          const n = Number(value);
+          if (Number.isFinite(n) && n > 0) return n;
+      }
+      return undefined;
+  };
+
+  const numberFromText = (text: unknown, patterns: RegExp[]): number | undefined => {
+      const s = String(text || '');
+      for (const pattern of patterns) {
+          const match = s.match(pattern);
+          if (match?.[1]) {
+              const n = Number(match[1].replace(/,/g, ''));
+              if (Number.isFinite(n) && n > 0) return n;
+          }
+      }
+      return undefined;
+  };
+
   const handleImportProductsJson = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -10968,17 +10991,78 @@ function AppInner() {
                       const targetPrices = normalizeImportedTermNumbers(row.scenarioTargetPrices);
                       const targetCurrencies = normalizeImportedTermCurrencies(row.scenarioTargetCurrencies, targetPrices);
                       const sku = String(row.sku || '').trim() || formatSku(skuNum++);
+                      const logisticsDetails =
+                          row.logisticsDetails && typeof row.logisticsDetails === 'object'
+                              ? row.logisticsDetails as Record<string, unknown>
+                              : {};
+                      const descriptionText = [
+                          row.catalogDescription,
+                          row.description,
+                          row.details,
+                          row.features,
+                          row.notes,
+                          row.packagingDescription,
+                      ].filter(Boolean).join('\n');
+                      const importedItemsPerPack =
+                          firstPositiveNumber(
+                              row.itemsPerPack,
+                              row.items_per_pack,
+                              row.unitsPerPack,
+                              row.units_per_pack,
+                              row.pcsPerPack,
+                              row.pcs_per_pack,
+                              row.piecesPerPack,
+                              row.pieces_per_pack,
+                              row.qtyPerPack,
+                              row.qty_per_pack,
+                              row.qtyPerBox,
+                              row.qty_per_box,
+                              row.packSize,
+                              row.pack_size,
+                              row.itemsInPack,
+                              row.items_in_pack,
+                              logisticsDetails.qtyPerBox,
+                              logisticsDetails.unitsPerBox,
+                              logisticsDetails.pcsPerBox,
+                          ) ??
+                          numberFromText(descriptionText, [
+                              /(\d+(?:\.\d+)?)\s*(?:pcs|pieces|units|items|عدد|قطعه|دانه)\s*(?:per|\/|in each|inside each)\s*(?:pack|box|carton|بسته|پک|کارتن)/i,
+                              /(?:pack|box|carton|بسته|پک|کارتن)\s*(?:of|contains| شامل| حاوی)?\s*(\d+(?:\.\d+)?)/i,
+                              /(\d+(?:\.\d+)?)\s*(?:در|داخل)\s*(?:هر)?\s*(?:بسته|پک|کارتن)/i,
+                          ]) ??
+                          1;
+                      const importedPackCount = firstPositiveNumber(
+                          row.packCount,
+                          row.pack_count,
+                          row.totalPacks,
+                          row.total_packs,
+                          row.cartonCount,
+                          row.carton_count,
+                          row.boxCount,
+                          row.box_count,
+                          row.packingQtyCartons,
+                      );
+                      const rawQty = Math.max(0, Number(row.qty) || 0);
+                      const qtyLooksLikePackCount =
+                          importedPackCount === undefined &&
+                          importedItemsPerPack > 1 &&
+                          /\b(?:packs?|boxes|cartons?)\b|(?:بسته|پک|کارتن)/i.test(String(row.measurementUnit || row.qtyUnit || row.quantityUnit || ''));
+                      const normalizedQty = importedPackCount !== undefined
+                          ? importedPackCount * importedItemsPerPack
+                          : qtyLooksLikePackCount
+                              ? rawQty * importedItemsPerPack
+                              : rawQty;
                       return {
                           id: Date.now() + idx + Math.floor(Math.random() * 100000),
                           name: String(row.name || row.catalogName || `Imported product ${idx + 1}`).trim(),
-                          qty: Math.max(0, Number(row.qty) || 0),
+                          qty: normalizedQty,
                           unitPrice: Math.max(0, Number(row.unitPrice) || 0),
                           currency: rates[String(row.currency || '').trim().toUpperCase()]
                               ? String(row.currency).trim().toUpperCase()
                               : (config.outputCurrency || 'USD'),
                           priceInputMode: row.priceInputMode === 'pack' ? 'pack' : 'unit',
                           measurementUnit: String(row.measurementUnit || '').trim(),
-                          itemsPerPack: Math.max(0, Number(row.itemsPerPack) || 0),
+                          itemsPerPack: importedItemsPerPack,
                           packPrice: Math.max(0, Number(row.packPrice) || 0),
                           active: row.active !== false,
                           sku,
@@ -11007,10 +11091,13 @@ function AppInner() {
                           packagingLuxuryPerUnit: Number(row.packagingLuxuryPerUnit) > 0
                               ? Number(row.packagingLuxuryPerUnit)
                               : undefined,
-                          logisticsDetails: row.logisticsDetails && typeof row.logisticsDetails === 'object'
-                              ? row.logisticsDetails as Product['logisticsDetails']
-                              : undefined,
-                          packingQtyCartons: Number(row.packingQtyCartons) || undefined,
+                          logisticsDetails: {
+                              ...(row.logisticsDetails && typeof row.logisticsDetails === 'object'
+                                  ? row.logisticsDetails as Product['logisticsDetails']
+                                  : {}),
+                              qtyPerBox: Number((row.logisticsDetails as any)?.qtyPerBox) || importedItemsPerPack || undefined,
+                          },
+                          packingQtyCartons: importedPackCount || undefined,
                           packingCartonNetWeightKg: Number(row.packingCartonNetWeightKg) || undefined,
                           packingCartonGrossWeightKg: Number(row.packingCartonGrossWeightKg) || undefined,
                           packingCartonLengthCm: Number(row.packingCartonLengthCm) || undefined,
