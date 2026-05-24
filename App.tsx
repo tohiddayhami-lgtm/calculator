@@ -4778,7 +4778,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .pd-gallery .carousel:hover .nav { opacity: 1; }
         .pd-info { flex: 1; overflow-y: auto; padding: 28px 28px 28px 24px; display: flex; flex-direction: column; gap: 12px; }
         .pd-info .product-name { font-size: clamp(18px,2.4vw,24px); font-weight: 800; color: var(--heading); margin: 0; line-height: 1.2; }
-        .pd-info .description { font-size: 14px; line-height: 1.75; color: var(--text); margin: 0; }
+        .pd-info .description { font-size: 14px; line-height: 1.75; color: var(--text); margin: 0; display: block !important; -webkit-line-clamp: unset !important; overflow: visible !important; white-space: pre-line; }
         .pd-info .badges { display: flex; flex-wrap: wrap; gap: 6px; }
         .pd-info .prices { display: flex; flex-direction: column; gap: 6px; }
         .pd-info .meta-grid { display: flex; flex-direction: column; gap: 4px; }
