@@ -1499,6 +1499,15 @@ export interface ExhibitionTopViewMarker {
   url?: string;
 }
 
+export interface ExhibitionMasterLink {
+  shortCode: string;
+  shortUrl: string;
+  storagePath: string;
+  fullUrl?: string;
+  catalogLinkId?: string;
+  updatedAt: number;
+}
+
 export interface ExhibitionEvent {
   id: string;
   title: string;
@@ -1517,6 +1526,8 @@ export interface ExhibitionEvent {
   categories: ExhibitionBoothCategory[];
   reservations: ExhibitionReservation[];
   topViewMarkers?: ExhibitionTopViewMarker[];
+  onlineMasterLink?: ExhibitionMasterLink;
+  topViewMasterLink?: ExhibitionMasterLink;
   createdAt: number;
   updatedAt: number;
 }

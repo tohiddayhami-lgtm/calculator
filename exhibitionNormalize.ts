@@ -2,6 +2,7 @@ import type {
   EducationFeeCurrency,
   ExhibitionBoothCategory,
   ExhibitionEvent,
+  ExhibitionMasterLink,
   ExhibitionReservation,
   ExhibitionTopViewMarker,
 } from './types';
@@ -101,6 +102,22 @@ function normalizeTopViewMarker(raw: unknown, categoryIds: Set<string>, index: n
   };
 }
 
+function normalizeMasterLink(raw: unknown): ExhibitionMasterLink | undefined {
+  const link = raw as Partial<ExhibitionMasterLink> | null;
+  if (!link || typeof link !== 'object') return undefined;
+  if (typeof link.shortCode !== 'string' || !link.shortCode.trim()) return undefined;
+  if (typeof link.shortUrl !== 'string' || !link.shortUrl.trim()) return undefined;
+  if (typeof link.storagePath !== 'string' || !link.storagePath.trim()) return undefined;
+  return {
+    shortCode: link.shortCode,
+    shortUrl: link.shortUrl,
+    storagePath: link.storagePath,
+    fullUrl: typeof link.fullUrl === 'string' ? link.fullUrl : '',
+    catalogLinkId: typeof link.catalogLinkId === 'string' ? link.catalogLinkId : '',
+    updatedAt: typeof link.updatedAt === 'number' ? link.updatedAt : Date.now(),
+  };
+}
+
 export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEvent {
   const categories = Array.isArray(event.categories)
     ? event.categories.map(normalizeCategory).filter(Boolean) as ExhibitionBoothCategory[]
@@ -152,5 +169,7 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
           .map((marker, index) => normalizeTopViewMarker(marker, categoryIds, index))
           .filter(Boolean) as ExhibitionTopViewMarker[]
       : [],
+    onlineMasterLink: normalizeMasterLink(event.onlineMasterLink),
+    topViewMasterLink: normalizeMasterLink(event.topViewMasterLink),
   };
 }

@@ -27919,132 +27919,190 @@ ${html}
     );
   };
 
-  const handlePublishExhibitionOnline = async (event: ExhibitionEvent): Promise<{ url: string; shortUrl?: string; qr?: string }> => {
+  const publishExhibitionHtml = async (
+    event: ExhibitionEvent,
+    html: string,
+    safeTitle: string,
+    fileName: string,
+    kind: 'exhibition' | 'exhibition-top-view',
+    catalogTitle: string,
+    options?: {
+      master?: boolean;
+      existingShortCode?: string;
+      existingStoragePath?: string;
+      existingCatalogLinkId?: string;
+    },
+  ): Promise<{
+    url: string;
+    shortUrl?: string;
+    qr?: string;
+    shortCode?: string;
+    storagePath?: string;
+    catalogLinkId?: string;
+    master?: boolean;
+  }> => {
     if (!user || !storage) {
-      throw new Error('برای ساخت لینک آنلاین باید وارد حساب کاربری باشید و Firebase Storage فعال باشد.');
+      throw new Error('برای ساخت لینک باید وارد حساب کاربری باشید و Firebase Storage فعال باشد.');
     }
+    const isMaster = !!options?.master;
+    const canUseShortLinks = !!db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (isMaster && !canUseShortLinks) {
+      throw new Error('لینک مادر به دیتابیس Firebase نیاز دارد تا QR و short link ثابت بماند.');
+    }
+
+    const safeEventId = (event.id || safeTitle).replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || safeTitle;
+    const path = isMaster
+      ? options?.existingStoragePath || `users/${activeOwnerUid}/exhibitions/master-${safeEventId}-${kind}.html`
+      : `users/${activeOwnerUid}/exhibitions/${safeTitle}-${kind}-${Date.now()}.html`;
+    const ref = storageRef(storage, path);
+    await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
+    const url = await getDownloadURL(ref);
+
+    let shortUrl: string | undefined;
+    let shortCode: string | undefined;
+    let catalogLinkId: string | undefined = options?.existingCatalogLinkId;
+    if (canUseShortLinks && db) {
+      try {
+        if (isMaster) {
+          shortCode = options?.existingShortCode;
+          if (!shortCode) {
+            for (let attempt = 0; attempt < 24; attempt++) {
+              const candidate = generateCatalogShortCode(10);
+              const pubRef = doc(db, 'catalog_short_links', candidate);
+              const existing = await getDoc(pubRef);
+              if (existing.exists()) continue;
+              shortCode = candidate;
+              break;
+            }
+          }
+          if (!shortCode) throw new Error('Could not allocate a stable short link.');
+          shortUrl = buildPublicAppUrl({ c: shortCode });
+          await setDoc(doc(db, 'catalog_short_links', shortCode), {
+            url,
+            appId: dataAppId,
+            ownerUserId: activeOwnerUid,
+            storagePath: path,
+            catalogTitle,
+            kind,
+            isMasterLink: true,
+            updatedAt: serverTimestamp(),
+            ...(options?.existingShortCode ? {} : { createdAt: serverTimestamp() }),
+          }, { merge: true });
+
+          const meta = {
+            fullUrl: url,
+            shortUrl,
+            storagePath: path,
+            shortCode,
+            catalogTitle,
+            fileName,
+            kind,
+            isMasterLink: true,
+            updatedAt: serverTimestamp(),
+          };
+          if (catalogLinkId) {
+            await setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks', catalogLinkId), meta, { merge: true });
+          } else {
+            const created = await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+              ...meta,
+              createdAt: serverTimestamp(),
+            });
+            catalogLinkId = created.id;
+          }
+        } else {
+          for (let attempt = 0; attempt < 24; attempt++) {
+            const candidate = generateCatalogShortCode(10);
+            const pubRef = doc(db, 'catalog_short_links', candidate);
+            const existing = await getDoc(pubRef);
+            if (existing.exists()) continue;
+            shortCode = candidate;
+            shortUrl = buildPublicAppUrl({ c: candidate });
+            await setDoc(pubRef, {
+              url,
+              appId: dataAppId,
+              ownerUserId: activeOwnerUid,
+              storagePath: path,
+              catalogTitle,
+              kind,
+              createdAt: serverTimestamp(),
+            });
+            break;
+          }
+
+          await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+            fullUrl: url,
+            shortUrl: shortUrl || null,
+            storagePath: path,
+            shortCode: shortCode || null,
+            catalogTitle,
+            fileName,
+            kind,
+            createdAt: serverTimestamp(),
+          });
+        }
+      } catch (linkErr) {
+        console.warn('Exhibition link metadata save failed:', linkErr);
+        if (isMaster) throw linkErr;
+      }
+    }
+
+    let qr = '';
+    try {
+      qr = await QRCode.toDataURL(shortUrl || url, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+    } catch {}
+    return { url, shortUrl, qr, shortCode, storagePath: path, catalogLinkId, master: isMaster };
+  };
+
+  const handlePublishExhibitionOnline = async (
+    event: ExhibitionEvent,
+    options?: {
+      master?: boolean;
+      existingShortCode?: string;
+      existingStoragePath?: string;
+      existingCatalogLinkId?: string;
+    },
+  ) => {
     const normalized = normalizeExhibitionEvent(event);
     const html = buildExhibitionOnlineHtml(normalized);
     const safeTitle = (normalized.title || 'exhibition')
       .replace(/[^a-z0-9-_]+/gi, '-')
       .replace(/^-+|-+$/g, '')
       || 'exhibition';
-    const fileName = `${safeTitle}-exhibition.html`;
-    const path = `users/${activeOwnerUid}/exhibitions/${safeTitle}-${Date.now()}.html`;
-    const ref = storageRef(storage, path);
-    await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
-    const url = await getDownloadURL(ref);
-
-    let shortUrl: string | undefined;
-    if (db && !isDemoMode && user.uid !== DEMO_USER_ID) {
-      try {
-        for (let attempt = 0; attempt < 24; attempt++) {
-          const shortCode = generateCatalogShortCode(10);
-          const pubRef = doc(db, 'catalog_short_links', shortCode);
-          const existing = await getDoc(pubRef);
-          if (existing.exists()) continue;
-          const shortUrlFull = buildPublicAppUrl({ c: shortCode });
-          await setDoc(pubRef, {
-            url,
-            appId: dataAppId,
-            ownerUserId: activeOwnerUid,
-            storagePath: path,
-            catalogTitle: normalized.title || 'Online Exhibition',
-            kind: 'exhibition',
-            createdAt: serverTimestamp(),
-          });
-          shortUrl = shortUrlFull;
-          break;
-        }
-      } catch (linkErr) {
-        console.warn('Exhibition short link creation failed:', linkErr);
-      }
-
-      try {
-        await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
-          fullUrl: url,
-          shortUrl: shortUrl || null,
-          storagePath: path,
-          shortCode: shortUrl ? new URL(shortUrl).searchParams.get('c') : null,
-          catalogTitle: normalized.title || 'Online Exhibition',
-          fileName,
-          kind: 'exhibition',
-          createdAt: serverTimestamp(),
-        });
-      } catch (metaErr) {
-        console.warn('Exhibition link metadata save failed:', metaErr);
-      }
-    }
-
-    let qr = '';
-    try {
-      qr = await QRCode.toDataURL(shortUrl || url, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
-    } catch {}
-    return { url, shortUrl, qr };
+    return publishExhibitionHtml(
+      normalized,
+      html,
+      safeTitle,
+      `${safeTitle}-exhibition.html`,
+      'exhibition',
+      normalized.title || 'Online Exhibition',
+      options,
+    );
   };
 
-  const handlePublishExhibitionTopView = async (event: ExhibitionEvent): Promise<{ url: string; shortUrl?: string; qr?: string }> => {
-    if (!user || !storage) {
-      throw new Error('برای ساخت لینک Top View باید وارد حساب کاربری باشید و Firebase Storage فعال باشد.');
-    }
+  const handlePublishExhibitionTopView = async (
+    event: ExhibitionEvent,
+    options?: {
+      master?: boolean;
+      existingShortCode?: string;
+      existingStoragePath?: string;
+      existingCatalogLinkId?: string;
+    },
+  ) => {
     const normalized = normalizeExhibitionEvent(event);
     const html = buildExhibitionTopViewHtml(normalized);
     const safeTitle = (normalized.title || 'exhibition-top-view')
       .replace(/[^a-z0-9-_]+/gi, '-')
       .replace(/^-+|-+$/g, '')
       || 'exhibition-top-view';
-    const fileName = `${safeTitle}-top-view-hall.html`;
-    const path = `users/${activeOwnerUid}/exhibitions/${safeTitle}-top-view-${Date.now()}.html`;
-    const ref = storageRef(storage, path);
-    await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
-    const url = await getDownloadURL(ref);
-
-    let shortUrl: string | undefined;
-    if (db && !isDemoMode && user.uid !== DEMO_USER_ID) {
-      try {
-        for (let attempt = 0; attempt < 24; attempt++) {
-          const shortCode = generateCatalogShortCode(10);
-          const pubRef = doc(db, 'catalog_short_links', shortCode);
-          const existing = await getDoc(pubRef);
-          if (existing.exists()) continue;
-          const shortUrlFull = buildPublicAppUrl({ c: shortCode });
-          await setDoc(pubRef, {
-            url,
-            appId: dataAppId,
-            ownerUserId: activeOwnerUid,
-            storagePath: path,
-            catalogTitle: `${normalized.title || 'Online Exhibition'} - Top View Hall`,
-            kind: 'exhibition-top-view',
-            createdAt: serverTimestamp(),
-          });
-          shortUrl = shortUrlFull;
-          break;
-        }
-      } catch (linkErr) {
-        console.warn('Exhibition Top View short link creation failed:', linkErr);
-      }
-
-      try {
-        await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
-          fullUrl: url,
-          shortUrl: shortUrl || null,
-          storagePath: path,
-          shortCode: shortUrl ? new URL(shortUrl).searchParams.get('c') : null,
-          catalogTitle: `${normalized.title || 'Online Exhibition'} - Top View Hall`,
-          fileName,
-          kind: 'exhibition-top-view',
-          createdAt: serverTimestamp(),
-        });
-      } catch (metaErr) {
-        console.warn('Exhibition Top View link metadata save failed:', metaErr);
-      }
-    }
-
-    let qr = '';
-    try {
-      qr = await QRCode.toDataURL(shortUrl || url, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
-    } catch {}
-    return { url, shortUrl, qr };
+    return publishExhibitionHtml(
+      normalized,
+      html,
+      safeTitle,
+      `${safeTitle}-top-view-hall.html`,
+      'exhibition-top-view',
+      `${normalized.title || 'Online Exhibition'} - Top View Hall`,
+      options,
+    );
   };
 
   const renderForms = () => (

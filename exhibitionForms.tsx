@@ -126,11 +126,34 @@ function categoryStats(event: ExhibitionEvent, categoryId: string) {
   return { filled: reservations.length, confirmed, reserved: reservations.length - confirmed };
 }
 
+function topViewFloorCols(boothCount: number): number {
+  if (boothCount <= 20) return 5;
+  if (boothCount <= 48) return 8;
+  return Math.min(16, Math.max(10, Math.ceil(Math.sqrt(boothCount * 1.35))));
+}
+
 type Props = {
   events: ExhibitionEvent[];
   onSaveEvents: (events: ExhibitionEvent[]) => void;
-  onPublishOnline?: (event: ExhibitionEvent) => Promise<{ url: string; shortUrl?: string; qr?: string }>;
-  onPublishTopView?: (event: ExhibitionEvent) => Promise<{ url: string; shortUrl?: string; qr?: string }>;
+  onPublishOnline?: (event: ExhibitionEvent, options?: ExhibitionPublishOptions) => Promise<ExhibitionPublishResult>;
+  onPublishTopView?: (event: ExhibitionEvent, options?: ExhibitionPublishOptions) => Promise<ExhibitionPublishResult>;
+};
+
+type ExhibitionPublishOptions = {
+  master?: boolean;
+  existingShortCode?: string;
+  existingStoragePath?: string;
+  existingCatalogLinkId?: string;
+};
+
+type ExhibitionPublishResult = {
+  url: string;
+  shortUrl?: string;
+  qr?: string;
+  shortCode?: string;
+  storagePath?: string;
+  catalogLinkId?: string;
+  master?: boolean;
 };
 
 export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline, onPublishTopView }: Props) {
@@ -153,6 +176,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     uploading?: boolean;
     error?: string;
   } | null>(null);
+  const [onlineMasterMode, setOnlineMasterMode] = useState(false);
+  const [topViewMasterMode, setTopViewMasterMode] = useState(false);
   const [editingReservationId, setEditingReservationId] = useState<string | null>(null);
   const [reservationForm, setReservationForm] = useState({
     categoryId: '',
@@ -214,7 +239,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       editing.reservations
         .filter(r => r.categoryId === category.id)
         .forEach(r => taken.set(r.boothNumber, r));
-      const cols = category.boothCount <= 20 ? 5 : category.boothCount <= 48 ? 8 : 10;
+      const cols = topViewFloorCols(category.boothCount);
       const cells: { num: number; reservation?: ExhibitionReservation }[] = [];
       for (let n = 1; n <= category.boothCount; n++) {
         cells.push({ num: n, reservation: taken.get(n) });
@@ -508,7 +533,26 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     setOnlineLinkInfo({ url: '', uploading: true });
     try {
       const saved = saveEvent(editing);
-      const info = await onPublishOnline(saved);
+      const info = await onPublishOnline(saved, {
+        master: onlineMasterMode,
+        existingShortCode: saved.onlineMasterLink?.shortCode,
+        existingStoragePath: saved.onlineMasterLink?.storagePath,
+        existingCatalogLinkId: saved.onlineMasterLink?.catalogLinkId,
+      });
+      if (onlineMasterMode && info.shortCode && info.shortUrl && info.storagePath) {
+        const next = saveEvent({
+          ...saved,
+          onlineMasterLink: {
+            shortCode: info.shortCode,
+            shortUrl: info.shortUrl,
+            storagePath: info.storagePath,
+            fullUrl: info.url,
+            catalogLinkId: info.catalogLinkId || saved.onlineMasterLink?.catalogLinkId || '',
+            updatedAt: Date.now(),
+          },
+        });
+        setEditing(next);
+      }
       setOnlineLinkInfo({ ...info, uploading: false });
     } catch (err: any) {
       setOnlineLinkInfo({
@@ -532,7 +576,26 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     setTopViewLinkInfo({ url: '', uploading: true });
     try {
       const saved = saveEvent(editing);
-      const info = await onPublishTopView(saved);
+      const info = await onPublishTopView(saved, {
+        master: topViewMasterMode,
+        existingShortCode: saved.topViewMasterLink?.shortCode,
+        existingStoragePath: saved.topViewMasterLink?.storagePath,
+        existingCatalogLinkId: saved.topViewMasterLink?.catalogLinkId,
+      });
+      if (topViewMasterMode && info.shortCode && info.shortUrl && info.storagePath) {
+        const next = saveEvent({
+          ...saved,
+          topViewMasterLink: {
+            shortCode: info.shortCode,
+            shortUrl: info.shortUrl,
+            storagePath: info.storagePath,
+            fullUrl: info.url,
+            catalogLinkId: info.catalogLinkId || saved.topViewMasterLink?.catalogLinkId || '',
+            updatedAt: Date.now(),
+          },
+        });
+        setEditing(next);
+      }
       setTopViewLinkInfo({ ...info, uploading: false });
     } catch (err: any) {
       setTopViewLinkInfo({
@@ -739,11 +802,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         </button>
         <button type="button" onClick={handlePublishOnline} disabled={onlineLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-slate-900 text-white rounded-lg px-3 py-1.5 hover:bg-slate-800 disabled:opacity-50">
           {onlineLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-          {onlineLinkInfo?.uploading ? 'در حال ساخت...' : 'ساخت لینک آنلاین'}
+          {onlineLinkInfo?.uploading ? 'در حال ساخت...' : onlineMasterMode && editing.onlineMasterLink ? 'آپدیت لینک مادر آنلاین' : 'ساخت لینک آنلاین'}
         </button>
         <button type="button" onClick={handlePublishTopView} disabled={topViewLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 text-white rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
           {topViewLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          {topViewLinkInfo?.uploading ? 'در حال ساخت...' : 'لینک Top View Hall'}
+          {topViewLinkInfo?.uploading ? 'در حال ساخت...' : topViewMasterMode && editing.topViewMasterLink ? 'آپدیت لینک مادر Top View' : 'لینک Top View Hall'}
         </button>
         <button
           type="button"
@@ -831,6 +894,47 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
           </div>
         )
       ) : null}
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={onlineMasterMode}
+            onChange={e => setOnlineMasterMode(e.target.checked)}
+            className="mt-1 accent-slate-900"
+          />
+          <span>
+            <span className="block font-semibold text-slate-800">لینک آنلاین مادر</span>
+            <span className="block text-xs text-slate-500 leading-relaxed">
+              اگر روشن باشد، QR همین لینک برای آپدیت‌های بعدی ثابت می‌ماند.
+              {editing.onlineMasterLink?.shortUrl ? (
+                <a href={editing.onlineMasterLink.shortUrl} target="_blank" rel="noopener noreferrer" className="block text-cyan-700 break-all mt-1" dir="ltr">
+                  {editing.onlineMasterLink.shortUrl}
+                </a>
+              ) : null}
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={topViewMasterMode}
+            onChange={e => setTopViewMasterMode(e.target.checked)}
+            className="mt-1 accent-cyan-600"
+          />
+          <span>
+            <span className="block font-semibold text-slate-800">لینک مادر Top View</span>
+            <span className="block text-xs text-slate-500 leading-relaxed">
+              برای QR چاپ‌شده یا تبلیغات ثابت، همان لینک را بعداً با نقشه جدید آپدیت کن.
+              {editing.topViewMasterLink?.shortUrl ? (
+                <a href={editing.topViewMasterLink.shortUrl} target="_blank" rel="noopener noreferrer" className="block text-cyan-700 break-all mt-1" dir="ltr">
+                  {editing.topViewMasterLink.shortUrl}
+                </a>
+              ) : null}
+            </span>
+          </span>
+        </label>
+      </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-1 flex flex-wrap gap-1 w-fit">
         <button
@@ -973,6 +1077,9 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             <div className="space-y-4">
               {editing.categories.map(category => {
                 const markers = (editing.topViewMarkers ?? []).filter(marker => marker.categoryId === category.id);
+                const cols = topViewFloorCols(category.boothCount);
+                const rows = Math.ceil(category.boothCount / cols);
+                const previewCells = Array.from({ length: category.boothCount }, (_, i) => i + 1);
                 return (
                   <div key={category.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -980,11 +1087,21 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                         <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-300">Hall Preview</p>
                         <h4 className="font-bold">{category.name}</h4>
                       </div>
-                      <span className="text-xs text-slate-400">{markers.length} marker</span>
+                      <span className="text-xs text-slate-400">{category.boothCount} booth · {markers.length} marker</span>
                     </div>
-                    <div className="relative h-64 rounded-2xl border border-white/10 overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,41,59,.72))]">
+                    <div
+                      className="relative rounded-2xl border border-white/10 overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,41,59,.72))]"
+                      style={{ minHeight: Math.max(260, rows * 24 + 68) }}
+                    >
                       <div className="absolute left-4 right-4 top-1/2 h-4 -translate-y-1/2 rounded-full border border-cyan-300/20 bg-cyan-300/10" />
                       <div className="absolute top-4 bottom-4 left-1/2 w-4 -translate-x-1/2 rounded-full border border-cyan-300/20 bg-cyan-300/10" />
+                      <div className="absolute inset-5 grid gap-1.5 opacity-45" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                        {previewCells.map(num => (
+                          <span key={num} className="rounded-md border border-white/10 bg-white/10 text-[8px] text-white/45 flex items-center justify-center">
+                            {num}
+                          </span>
+                        ))}
+                      </div>
                       {markers.map(marker => {
                         const preset = TOP_VIEW_MARKER_KIND_OPTIONS.find(option => option.value === marker.kind);
                         return (
