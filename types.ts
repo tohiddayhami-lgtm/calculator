@@ -15,6 +15,7 @@ export type AppPermissionKey =
   | 'proposals'
   | 'education'
   | 'exhibition'
+  | 'metaMall'
   | 'packingList'
   | 'formArchive'
   | 'metaPort'

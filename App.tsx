@@ -136,10 +136,11 @@ import {
 } from './types';
 import { EducationFormsPanel, EDUCATION_STORAGE_KEY } from './educationForms';
 import { normalizeEducationCourse } from './educationNormalize';
-import { ExhibitionFormsPanel, EXHIBITION_STORAGE_KEY } from './exhibitionForms';
+import { ExhibitionFormsPanel, EXHIBITION_STORAGE_KEY, META_MALL_STORAGE_KEY } from './exhibitionForms';
 import { normalizeExhibitionEvent } from './exhibitionNormalize';
 import { buildExhibitionOnlineHtml } from './exhibitionOnlineExport';
 import { buildExhibitionTopViewHtml } from './exhibitionTopViewExport';
+import { buildMetaMallTopViewHtml } from './metaMallTopViewExport';
 import {
   computeVatFromNet,
   normalizeInvoiceExtraCharges,
@@ -2707,6 +2708,7 @@ const APP_PERMISSION_LABELS: Record<AppPermissionKey, string> = {
   proposals: 'پروپوزال‌ها',
   education: 'Academy',
   exhibition: 'Exhibition',
+  metaMall: 'Tohid Meta Mall',
   packingList: 'Packing List',
   formArchive: 'بایگانی فرم‌ها',
   metaPort: 'Meta Port',
@@ -2742,6 +2744,7 @@ const DEFAULT_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
   proposals: true,
   education: true,
   exhibition: true,
+  metaMall: true,
   packingList: true,
   formArchive: true,
   metaPort: true,
@@ -2767,6 +2770,7 @@ const MASTER_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
   proposals: true,
   education: true,
   exhibition: true,
+  metaMall: true,
   packingList: true,
   formArchive: true,
   metaPort: true,
@@ -2789,6 +2793,7 @@ const FORM_SECTION_PERMISSION_KEYS: AppPermissionKey[] = [
   'proposals',
   'education',
   'exhibition',
+  'metaMall',
   'packingList',
   'formArchive',
   'metaPort',
@@ -6386,7 +6391,7 @@ function AppInner() {
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
   const [isoDocuments, setIsoDocuments] = useState<IsoDocumentDef[]>([]);
   const [isoRecords, setIsoRecords] = useState<IsoExecutionRecord[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'exhibition' | 'archive' | 'metaport'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'exhibition' | 'metamall' | 'archive' | 'metaport'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
 
@@ -6528,6 +6533,17 @@ function AppInner() {
     if (typeof window === 'undefined') return [];
     try {
       const raw = localStorage.getItem(EXHIBITION_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ExhibitionEvent[];
+        return Array.isArray(parsed) ? parsed.map(event => normalizeExhibitionEvent(event)) : [];
+      }
+    } catch {}
+    return [];
+  });
+  const [metaMallEvents, setMetaMallEvents] = useState<ExhibitionEvent[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(META_MALL_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as ExhibitionEvent[];
         return Array.isArray(parsed) ? parsed.map(event => normalizeExhibitionEvent(event)) : [];
@@ -6764,6 +6780,11 @@ function AppInner() {
     if (typeof window === 'undefined') return;
     try { localStorage.setItem(EXHIBITION_STORAGE_KEY, JSON.stringify(exhibitionEvents)); } catch { /* ignore */ }
   }, [exhibitionEvents]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { localStorage.setItem(META_MALL_STORAGE_KEY, JSON.stringify(metaMallEvents)); } catch { /* ignore */ }
+  }, [metaMallEvents]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
@@ -7364,6 +7385,7 @@ function AppInner() {
       canUseFormsSection('proposals') ? 'proposals' : null,
       canUseFormsSection('education') ? 'education' : null,
       canUseFormsSection('exhibition') ? 'exhibition' : null,
+      canUseFormsSection('metaMall') ? 'metamall' : null,
       canUseFormsSection('packingList') ? 'packinglist' : null,
       canUseFormsSection('formArchive') ? 'archive' : null,
       canUseFormsSection('metaPort') ? 'metaport' : null,
@@ -28038,7 +28060,7 @@ ${html}
     html: string,
     safeTitle: string,
     fileName: string,
-    kind: 'exhibition' | 'exhibition-top-view',
+    kind: 'exhibition' | 'exhibition-top-view' | 'meta-mall' | 'meta-mall-top-view',
     catalogTitle: string,
     options?: {
       master?: boolean;
@@ -28219,6 +28241,58 @@ ${html}
     );
   };
 
+  const handlePublishMetaMallTopView = async (
+    event: ExhibitionEvent,
+    options?: {
+      master?: boolean;
+      existingShortCode?: string;
+      existingStoragePath?: string;
+      existingCatalogLinkId?: string;
+    },
+  ) => {
+    const normalized = normalizeExhibitionEvent(event);
+    const html = buildMetaMallTopViewHtml(normalized);
+    const safeTitle = (normalized.title || 'tohid-meta-mall')
+      .replace(/[^a-z0-9-_]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      || 'tohid-meta-mall';
+    return publishExhibitionHtml(
+      normalized,
+      html,
+      safeTitle,
+      `${safeTitle}-mall-top-view.html`,
+      'meta-mall-top-view',
+      `${normalized.title || 'Tohid Meta Mall'} - Shop Leasing Map`,
+      options,
+    );
+  };
+
+  const handlePublishMetaMallOnline = async (
+    event: ExhibitionEvent,
+    options?: {
+      master?: boolean;
+      existingShortCode?: string;
+      existingStoragePath?: string;
+      existingCatalogLinkId?: string;
+    },
+  ) => {
+    const normalized = normalizeExhibitionEvent(event);
+    const html = buildMetaMallTopViewHtml(normalized);
+    const safeTitle = (normalized.title || 'tohid-meta-mall')
+      .replace(/[^a-z0-9-_]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      || 'tohid-meta-mall';
+    return publishExhibitionHtml(
+      normalized,
+      html,
+      safeTitle,
+      `${safeTitle}-mall-online.html`,
+      'meta-mall',
+      `${normalized.title || 'Tohid Meta Mall'} - Online Shop Map`,
+      options,
+    );
+  };
+
   const renderForms = () => (
     <div className="space-y-4">
       <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
@@ -28276,6 +28350,15 @@ ${html}
             <div className="w-px bg-slate-200" />
           </>
         )}
+        {canUseFormsSection('metaMall') && (
+          <>
+            <button onClick={() => setFormsSubView('metamall')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'metamall' ? 'bg-amber-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <Building2 className="w-4 h-4" /> Meta Mall
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
         {canUseFormsSection('packingList') && (
           <>
             <button onClick={() => setFormsSubView('packinglist')}
@@ -28324,6 +28407,15 @@ ${html}
           onSaveEvents={setExhibitionEvents}
           onPublishOnline={handlePublishExhibitionOnline}
           onPublishTopView={handlePublishExhibitionTopView}
+        />
+      )}
+      {formsSubView === 'metamall' && canUseFormsSection('metaMall') && (
+        <ExhibitionFormsPanel
+          variant="mall"
+          events={metaMallEvents}
+          onSaveEvents={setMetaMallEvents}
+          onPublishOnline={handlePublishMetaMallOnline}
+          onPublishTopView={handlePublishMetaMallTopView}
         />
       )}
       {formsSubView === 'packinglist' && canUseFormsSection('packingList') && renderPackingList()}

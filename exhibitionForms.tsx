@@ -45,6 +45,7 @@ import {
 } from './exhibitionStoryExport';
 
 export const EXHIBITION_STORAGE_KEY = 'exportcalc_exhibition_events_v1';
+export const META_MALL_STORAGE_KEY = 'exportcalc_meta_mall_events_v1';
 
 const BACKGROUND_MAX_BYTES = 5 * 1024 * 1024;
 const COMPANY_LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -79,36 +80,40 @@ function newId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function makeCategory(index: number): ExhibitionBoothCategory {
+export type ExhibitionFormsVariant = 'exhibition' | 'mall';
+
+function makeCategory(index: number, variant: ExhibitionFormsVariant = 'exhibition'): ExhibitionBoothCategory {
+  const isMall = variant === 'mall';
   return {
     id: newId(),
-    name: index === 0 ? 'غرفه‌های عمومی' : `دسته ${index + 1}`,
-    description: '',
-    prefix: String.fromCharCode(65 + Math.min(25, index)),
-    boothCount: 30,
+    name: index === 0 ? (isMall ? 'مغازه‌های طبقه همکف' : 'غرفه‌های عمومی') : (isMall ? `زون ${index + 1}` : `دسته ${index + 1}`),
+    description: isMall && index === 0 ? 'Tohid Meta Mall - retail corridor' : '',
+    prefix: isMall ? `S${index + 1}` : String.fromCharCode(65 + Math.min(25, index)),
+    boothCount: isMall ? 40 : 30,
     color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
   };
 }
 
-export function makeBlankExhibitionEvent(): ExhibitionEvent {
+export function makeBlankExhibitionEvent(variant: ExhibitionFormsVariant = 'exhibition'): ExhibitionEvent {
   const now = Date.now();
   const today = new Date().toISOString().split('T')[0];
+  const isMall = variant === 'mall';
   return {
     id: String(now),
-    title: '',
-    subtitle: '',
-    organizerName: '',
-    location: '',
+    title: isMall ? 'Tohid Meta Mall' : '',
+    subtitle: isMall ? 'Premium retail shop rental map' : '',
+    organizerName: isMall ? 'Tohid Meta Mall Leasing' : '',
+    location: isMall ? 'Tohid Meta Mall' : '',
     startDate: today,
     endDate: today,
     boothFee: '',
-    boothFeeLabel: 'هزینه غرفه',
+    boothFeeLabel: isMall ? 'اجاره مغازه' : 'هزینه غرفه',
     boothFeeCurrency: 'OMR',
     boothFeeCurrencyLabel: 'OMR',
     storyBackgroundUrl: '',
     storyBackgroundOpacity: 35,
-    storyFootNote: 'برای انتخاب و رزرو غرفه، شماره غرفه موردنظر را اعلام کنید.',
-    categories: [makeCategory(0)],
+    storyFootNote: isMall ? 'برای انتخاب و اجاره مغازه، شماره مغازه موردنظر را اعلام کنید.' : 'برای انتخاب و رزرو غرفه، شماره غرفه موردنظر را اعلام کنید.',
+    categories: [makeCategory(0, variant)],
     reservations: [],
     topViewMarkers: [],
     topViewStructures: [],
@@ -161,6 +166,7 @@ type Props = {
   onSaveEvents: (events: ExhibitionEvent[]) => void;
   onPublishOnline?: (event: ExhibitionEvent, options?: ExhibitionPublishOptions) => Promise<ExhibitionPublishResult>;
   onPublishTopView?: (event: ExhibitionEvent, options?: ExhibitionPublishOptions) => Promise<ExhibitionPublishResult>;
+  variant?: ExhibitionFormsVariant;
 };
 
 type ExhibitionPublishOptions = {
@@ -180,7 +186,12 @@ type ExhibitionPublishResult = {
   master?: boolean;
 };
 
-export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline, onPublishTopView }: Props) {
+export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline, onPublishTopView, variant = 'exhibition' }: Props) {
+  const isMall = variant === 'mall';
+  const unitLabel = isMall ? 'مغازه' : 'غرفه';
+  const moduleTitle = isMall ? 'Tohid Meta Mall' : 'Exhibition';
+  const newItemTitle = isMall ? 'پاساژ جدید' : 'نمایشگاه جدید';
+  const topViewLinkLabel = isMall ? 'لینک Mall Top View' : 'لینک Top View Hall';
   const [subView, setSubView] = useState<'list' | 'editor'>('list');
   const [editorTab, setEditorTab] = useState<'setup' | 'topview'>('setup');
   const [editing, setEditing] = useState<ExhibitionEvent | null>(null);
@@ -340,13 +351,13 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
 
   const addCategory = () => {
     if (!editing) return;
-    upd({ categories: [...editing.categories, makeCategory(editing.categories.length)] });
+    upd({ categories: [...editing.categories, makeCategory(editing.categories.length, variant)] });
   };
 
   const removeCategory = (id: string) => {
     if (!editing) return;
     if (editing.categories.length <= 1) {
-      alert('حداقل یک دسته غرفه لازم است.');
+        alert(`حداقل یک ${isMall ? 'زون مغازه' : 'دسته غرفه'} لازم است.`);
       return;
     }
     const category = editing.categories.find(c => c.id === id);
@@ -448,7 +459,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     const categoryId = reservationForm.categoryId || editing.categories[0]?.id;
     const category = editing.categories.find(c => c.id === categoryId);
     if (!category) {
-      alert('ابتدا دسته غرفه تعریف کنید.');
+      alert(`ابتدا ${isMall ? 'زون مغازه' : 'دسته غرفه'} تعریف کنید.`);
       return;
     }
     const companyName = reservationForm.companyName.trim();
@@ -458,7 +469,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     }
     const boothNumber = nextBoothNumber(editing, category.id);
     if (boothNumber == null) {
-      alert('ظرفیت این دسته غرفه تکمیل شده است.');
+      alert(`ظرفیت این ${isMall ? 'زون مغازه' : 'دسته غرفه'} تکمیل شده است.`);
       return;
     }
     const reservation: ExhibitionReservation = {
@@ -703,14 +714,16 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
           <div>
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <Building2 className="w-5 h-5 text-purple-600" />
-              Exhibition — رزرو غرفه‌های نمایشگاهی
+              {moduleTitle} — {isMall ? 'اجاره مغازه‌ها' : 'رزرو غرفه‌های نمایشگاهی'}
             </h2>
-            <p className="text-sm text-slate-500 mt-0.5">تعریف نمایشگاه، دسته‌بندی غرفه‌ها، رزرو غرفه و خروجی استوری اینستاگرام</p>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {isMall ? 'تعریف پاساژ، طبقه/زون، اجاره مغازه و نقشه Top View پاساژ' : 'تعریف نمایشگاه، دسته‌بندی غرفه‌ها، رزرو غرفه و خروجی استوری اینستاگرام'}
+            </p>
           </div>
           <button
             type="button"
             onClick={() => {
-              const blank = makeBlankExhibitionEvent();
+              const blank = makeBlankExhibitionEvent(variant);
               setEditing(blank);
               setEditorTab('setup');
               setReservationForm({
@@ -733,14 +746,14 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             }}
             className="flex items-center gap-2 text-sm bg-purple-600 text-white hover:bg-purple-700 rounded-lg px-4 py-2 font-medium"
           >
-            <Plus className="w-4 h-4" /> نمایشگاه جدید
+            <Plus className="w-4 h-4" /> {isMall ? 'پاساژ جدید' : 'نمایشگاه جدید'}
           </button>
         </div>
 
         {events.length === 0 ? (
           <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
             <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500">هنوز نمایشگاهی تعریف نشده است.</p>
+            <p className="text-slate-500">هنوز {isMall ? 'پاساژی' : 'نمایشگاهی'} تعریف نشده است.</p>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -769,10 +782,10 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                       <span>{normalized.startDate}</span>
                       <span>·</span>
                       <span className={pct >= 100 ? 'text-red-600 font-medium' : ''}>
-                        {normalized.reservations.length} / {total} غرفه
+                        {normalized.reservations.length} / {total} {unitLabel}
                       </span>
                       <span>·</span>
-                      <span>{normalized.categories.length} دسته</span>
+                      <span>{normalized.categories.length} {isMall ? 'زون' : 'دسته'}</span>
                     </div>
                     <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden max-w-xs">
                       <div
@@ -813,7 +826,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                     <button
                       type="button"
                       onClick={() => {
-                        if (confirm('این نمایشگاه حذف شود؟')) onSaveEvents(events.filter(x => x.id !== normalized.id));
+                        if (confirm(isMall ? 'این نقشه پاساژ حذف شود؟' : 'این نمایشگاه حذف شود؟')) onSaveEvents(events.filter(x => x.id !== normalized.id));
                       }}
                       className="text-xs text-red-500 hover:text-red-700"
                     >
@@ -851,9 +864,9 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         >
           <ArrowLeft className="w-4 h-4" /> بازگشت
         </button>
-        <span className="font-semibold text-slate-800 truncate flex-1 min-w-[120px]">{editing.title || 'نمایشگاه جدید'}</span>
+        <span className="font-semibold text-slate-800 truncate flex-1 min-w-[120px]">{editing.title || newItemTitle}</span>
         <span className={`text-xs px-2 py-1 rounded-full border ${isFull ? 'bg-red-50 border-red-200 text-red-700' : 'bg-purple-50 border-purple-200 text-purple-700'}`}>
-          {filled} / {totalBooths} غرفه
+          {filled} / {totalBooths} {unitLabel}
         </span>
         <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full">
           قطعی {confirmedCount}
@@ -874,7 +887,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         </button>
         <button type="button" onClick={handlePublishTopView} disabled={topViewLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 text-white rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
           {topViewLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          {topViewLinkInfo?.uploading ? 'در حال ساخت...' : topViewMasterMode && editing.topViewMasterLink ? 'آپدیت لینک مادر Top View' : 'لینک Top View Hall'}
+          {topViewLinkInfo?.uploading ? 'در حال ساخت...' : topViewMasterMode && editing.topViewMasterLink ? `آپدیت لینک مادر ${topViewLinkLabel}` : topViewLinkLabel}
         </button>
         <button
           type="button"
@@ -900,7 +913,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               <img src={onlineLinkInfo.qr} alt="QR code" className="w-24 h-24 rounded-xl bg-white p-1 shrink-0" />
             ) : null}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold mb-1">لینک آنلاین نمایشگاه آماده شد</p>
+              <p className="text-sm font-bold mb-1">لینک آنلاین {isMall ? 'Tohid Meta Mall' : 'نمایشگاه'} آماده شد</p>
               <a
                 href={onlineLinkInfo.shortUrl || onlineLinkInfo.url}
                 target="_blank"
@@ -911,7 +924,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 {onlineLinkInfo.shortUrl || onlineLinkInfo.url}
               </a>
               <p className="text-[11px] text-slate-300 mt-1">
-                این صفحه غرفه‌های رزروشده را با لینک فروشگاه هر شرکت نمایش می‌دهد.
+                {isMall ? 'این صفحه مغازه‌های اجاره‌شده را با لینک فروشگاه هر برند نمایش می‌دهد.' : 'این صفحه غرفه‌های رزروشده را با لینک فروشگاه هر شرکت نمایش می‌دهد.'}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -937,7 +950,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               <img src={topViewLinkInfo.qr} alt="Top View QR code" className="w-24 h-24 rounded-xl bg-white p-1 shrink-0" />
             ) : null}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold mb-1">Creative Top View Hall link آماده شد</p>
+              <p className="text-sm font-bold mb-1">{isMall ? 'Mall Top View link' : 'Creative Top View Hall link'} آماده شد</p>
               <a
                 href={topViewLinkInfo.shortUrl || topViewLinkInfo.url}
                 target="_blank"
@@ -948,7 +961,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 {topViewLinkInfo.shortUrl || topViewLinkInfo.url}
               </a>
               <p className="text-[11px] text-slate-300 mt-1">
-                این لینک جداگانه مخصوص مشتریان خارجی است: سالن‌ها از بالا، لوگوی برند روی غرفه و نوت تعاملی شرکت‌ها.
+                    {isMall ? 'این لینک مخصوص معرفی مغازه‌های پاساژ است: نقشه از بالا، برند روی سقف مغازه و نوت تعاملی هر مستاجر.' : 'این لینک جداگانه مخصوص مشتریان خارجی است: سالن‌ها از بالا، لوگوی برند روی غرفه و نوت تعاملی شرکت‌ها.'}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -1014,7 +1027,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
-          اطلاعات و رزرو غرفه‌ها
+          اطلاعات و رزرو {unitLabel}‌ها
         </button>
         <button
           type="button"
@@ -1331,15 +1344,15 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
             <h3 className="font-semibold text-slate-800 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-purple-600" />
-              اطلاعات نمایشگاه
+              اطلاعات {isMall ? 'پاساژ / متامال' : 'نمایشگاه'}
             </h3>
             <div>
-              <label className={labelCls}>تایتل نمایشگاه</label>
-              <input value={editing.title} onChange={e => upd({ title: e.target.value })} className={inputCls} dir="rtl" placeholder="مثلاً نمایشگاه فرصت‌های صادراتی ۲۰۲۶" />
+              <label className={labelCls}>تایتل {isMall ? 'پاساژ' : 'نمایشگاه'}</label>
+              <input value={editing.title} onChange={e => upd({ title: e.target.value })} className={inputCls} dir="rtl" placeholder={isMall ? 'مثلاً Tohid Meta Mall - Leasing' : 'مثلاً نمایشگاه فرصت‌های صادراتی ۲۰۲۶'} />
             </div>
             <div>
               <label className={labelCls}>زیرعنوان / شعار</label>
-              <input value={editing.subtitle} onChange={e => upd({ subtitle: e.target.value })} className={inputCls} dir="rtl" placeholder="مثلاً رزرو غرفه‌های تخصصی صادرات، صنعت و فناوری" />
+              <input value={editing.subtitle} onChange={e => upd({ subtitle: e.target.value })} className={inputCls} dir="rtl" placeholder={isMall ? 'مثلاً نقشه اجاره مغازه‌های پاساژ توحید متامال' : 'مثلاً رزرو غرفه‌های تخصصی صادرات، صنعت و فناوری'} />
             </div>
             <div>
               <label className={labelCls}>برگزارکننده</label>
@@ -1362,10 +1375,10 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>عنوان مبلغ در استوری</label>
-                <input value={editing.boothFeeLabel ?? 'هزینه غرفه'} onChange={e => upd({ boothFeeLabel: e.target.value })} className={inputCls} dir="rtl" />
+                <input value={editing.boothFeeLabel ?? (isMall ? 'اجاره مغازه' : 'هزینه غرفه')} onChange={e => upd({ boothFeeLabel: e.target.value })} className={inputCls} dir="rtl" />
               </div>
               <div>
-                <label className={labelCls}>مبلغ غرفه</label>
+                <label className={labelCls}>مبلغ {unitLabel}</label>
                 <input value={formatAmountDisplay(editing.boothFee)} onChange={e => upd({ boothFee: onAmountInput(e.target.value) })} className={inputCls} dir="ltr" placeholder="1,500,000" />
               </div>
               <div>
@@ -1414,7 +1427,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                 <LayoutGrid className="w-4 h-4 text-purple-600" />
-                دسته‌بندی غرفه‌ها
+                {isMall ? 'طبقه‌ها و زون‌های مغازه‌ها' : 'دسته‌بندی غرفه‌ها'}
               </h3>
               <button type="button" onClick={addCategory} className="text-xs text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 hover:bg-purple-50 font-medium">
                 + دسته جدید
@@ -1432,7 +1445,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                     </div>
                     <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
                       <div>
-                        <label className={labelCls}>تعداد غرفه</label>
+                        <label className={labelCls}>تعداد {unitLabel}</label>
                         <input
                           type="number"
                           min={1}
@@ -1462,7 +1475,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-purple-600" />
-              ثبت رزرو غرفه
+              ثبت {isMall ? 'اجاره مغازه' : 'رزرو غرفه'}
             </h3>
             <div className="flex gap-2 mb-3">
               <button type="button" onClick={() => setReservationForm(f => ({ ...f, reservationStatus: 'confirmed' }))} className={`flex-1 text-sm py-2 rounded-lg border font-medium ${reservationForm.reservationStatus === 'confirmed' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}>
@@ -1473,7 +1486,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               </button>
             </div>
             <div className="mb-3">
-              <label className={labelCls}>دسته غرفه</label>
+              <label className={labelCls}>{isMall ? 'زون / طبقه مغازه' : 'دسته غرفه'}</label>
               <select value={selectedCategoryId} onChange={e => setReservationForm(f => ({ ...f, categoryId: e.target.value }))} className={inputCls}>
                 {editing.categories.map(c => (
                   <option key={c.id} value={c.id}>{c.name} ({categoryStats(editing, c.id).filled}/{c.boothCount})</option>
@@ -1487,7 +1500,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             ) : null}
             <div className="grid grid-cols-2 gap-2 mb-3">
               <input placeholder="نام شرکت / برند" value={reservationForm.companyName} onChange={e => setReservationForm(f => ({ ...f, companyName: e.target.value }))} className={inputCls} dir="rtl" disabled={selectedCategoryFull} />
-              <input placeholder="نام مسئول غرفه" value={reservationForm.contactName} onChange={e => setReservationForm(f => ({ ...f, contactName: e.target.value }))} className={inputCls} dir="rtl" disabled={selectedCategoryFull} />
+              <input placeholder={isMall ? 'نام مسئول مغازه' : 'نام مسئول غرفه'} value={reservationForm.contactName} onChange={e => setReservationForm(f => ({ ...f, contactName: e.target.value }))} className={inputCls} dir="rtl" disabled={selectedCategoryFull} />
               <input placeholder="شماره تماس" value={reservationForm.phone} onChange={e => setReservationForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} dir="ltr" disabled={selectedCategoryFull} />
               <input placeholder="شهر / کشور" value={reservationForm.city} onChange={e => setReservationForm(f => ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" disabled={selectedCategoryFull} />
             </div>
@@ -1519,7 +1532,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                   ) : null}
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 mt-2">در لینک Top View، این لوگو از بالا روی سقف غرفه نمایش داده می‌شود.</p>
+              <p className="text-[10px] text-slate-400 mt-2">در لینک Top View، این لوگو از بالا روی سقف {unitLabel} نمایش داده می‌شود.</p>
             </div>
             <input
               placeholder="لینک فروشگاه / کاتالوگ آنلاین شرکت (https://...)"
@@ -1536,20 +1549,20 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             </div>
             {editing.boothFee?.trim() ? (
               <button type="button" onClick={() => fillHalfPayment('form')} disabled={selectedCategoryFull} className="text-xs text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 mb-2 hover:bg-purple-50 w-full">
-                نصف هزینه غرفه: پرداخت‌شده / مانده (خودکار)
+                نصف هزینه {unitLabel}: پرداخت‌شده / مانده (خودکار)
               </button>
             ) : null}
             <input placeholder="یادداشت پرداخت" value={reservationForm.paymentNote} onChange={e => setReservationForm(f => ({ ...f, paymentNote: e.target.value }))} className={inputCls + ' mb-3'} dir="rtl" disabled={selectedCategoryFull} />
             <button type="button" onClick={handleAddReservation} disabled={selectedCategoryFull} className={`w-full flex items-center justify-center gap-2 text-sm text-white rounded-lg py-2 disabled:opacity-50 ${reservationForm.reservationStatus === 'reserved' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-purple-600 hover:bg-purple-700'}`}>
               <Plus className="w-4 h-4" />
-              {reservationForm.reservationStatus === 'reserved' ? 'رزرو موقت غرفه' : 'ثبت قطعی غرفه'}
+              {reservationForm.reservationStatus === 'reserved' ? `${isMall ? 'رزرو موقت مغازه' : 'رزرو موقت غرفه'}` : `${isMall ? 'ثبت اجاره قطعی مغازه' : 'ثبت قطعی غرفه'}`}
             </button>
           </div>
         </div>
 
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <h3 className="font-semibold text-slate-800 mb-3">نقشه غرفه‌ها</h3>
+            <h3 className="font-semibold text-slate-800 mb-3">نقشه {unitLabel}‌ها</h3>
             <div className="flex gap-3 text-xs mb-4 justify-center flex-wrap">
               <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500" /> قطعی</span>
               <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500" /> رزرو موقت</span>
@@ -1564,7 +1577,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                         <span className="w-3 h-3 rounded" style={{ backgroundColor: map.category.color }} />
                         {map.category.name}
                       </h4>
-                      <p className="text-xs text-slate-400 mt-0.5">{map.stats.filled} / {map.category.boothCount} غرفه</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{map.stats.filled} / {map.category.boothCount} {unitLabel}</p>
                     </div>
                     <span className="text-[10px] text-slate-500 bg-slate-100 rounded-full px-2 py-1">{map.category.prefix}</span>
                   </div>
@@ -1595,11 +1608,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 </div>
               ))}
             </div>
-            <p className="text-xs text-slate-400 mt-3 text-center">کلیک روی غرفه پر = ویرایش اطلاعات رزرو</p>
+            <p className="text-xs text-slate-400 mt-3 text-center">کلیک روی {unitLabel} پر = ویرایش اطلاعات {isMall ? 'اجاره' : 'رزرو'}</p>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-5 max-h-[28rem] overflow-y-auto">
-            <h3 className="font-semibold text-slate-800 mb-3">لیست رزروها ({filled})</h3>
+            <h3 className="font-semibold text-slate-800 mb-3">لیست {isMall ? 'اجاره‌ها' : 'رزروها'} ({filled})</h3>
             {editing.reservations.length === 0 ? (
               <p className="text-sm text-slate-400">هنوز رزروی ثبت نشده.</p>
             ) : (
