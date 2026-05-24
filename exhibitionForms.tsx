@@ -1168,7 +1168,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                   هنوز ستون، خط مرزی یا پاویون تعریف نشده.
                 </p>
               ) : (
-                <div className="space-y-3 max-h-[34rem] overflow-y-auto pr-1">
+                <div className="space-y-3 pr-1">
                   {(editing.topViewStructures ?? []).map(structure => {
                     const kindPreset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === structure.kind) || TOP_VIEW_STRUCTURE_KIND_OPTIONS[0];
                     return (
@@ -1243,7 +1243,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               )}
             </div>
           </div>
-          <div className="bg-slate-950 rounded-xl border border-slate-800 p-5 text-white">
+          <div className="bg-slate-950 rounded-xl border border-slate-800 p-5 text-white lg:sticky lg:top-24 self-start lg:max-h-[calc(100vh-7rem)] overflow-y-auto">
             <h3 className="font-semibold mb-3">پیش‌نمایش جایگذاری روی سالن‌ها</h3>
             <div className="space-y-4">
               {editing.categories.map(category => {
