@@ -14005,14 +14005,23 @@ function AppInner() {
           },
           item: {
             defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.item,
-            headerClassName: 'px-4 py-2 bg-slate-50 min-w-[160px]',
+            headerClassName: 'px-4 py-2 bg-slate-50 min-w-[240px]',
             renderCell: (p) => (
-              <td className="px-4 py-2">
-                <div className="flex items-center gap-1">
-                  <input type="text" placeholder="Item Name" value={p.name} onChange={(e) => updateProduct(p.id, 'name', e.target.value)} className="bg-transparent border-none p-0 focus:ring-0 font-medium text-slate-800 placeholder-slate-300 w-full" style={{ minWidth: '80px' }} />
-                  <button onClick={() => setEditingCatalogDetailsId(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-blue-600" title="Edit Catalog Details (Description, etc)">
-                    <FileText className="w-3 h-3" />
-                  </button>
+              <td className="px-4 py-2 align-top">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1">
+                    <input type="text" placeholder="Item Name" value={p.name} onChange={(e) => updateProduct(p.id, 'name', e.target.value)} className="bg-transparent border-none p-0 focus:ring-0 font-medium text-slate-800 placeholder-slate-300 w-full" style={{ minWidth: '80px' }} />
+                    <button onClick={() => setEditingCatalogDetailsId(p.id)} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-blue-600" title="Edit Catalog Details (Description, etc)">
+                      <FileText className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={p.catalogDescription || ''}
+                    onChange={(e) => updateProduct(p.id, 'catalogDescription', e.target.value)}
+                    className="w-full resize-y min-h-[42px] rounded-md border border-slate-100 bg-slate-50/70 px-2 py-1 text-[11px] leading-snug text-slate-600 placeholder:text-slate-400 outline-none focus:border-blue-300 focus:bg-white focus:ring-1 focus:ring-blue-100"
+                    placeholder="Details / ویژگی‌ها، کاربرد، گرید، مشخصات محصول..."
+                  />
                 </div>
               </td>
             ),
