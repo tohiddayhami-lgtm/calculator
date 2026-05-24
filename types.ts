@@ -1443,3 +1443,58 @@ export interface EducationCourse {
   createdAt: number;
   updatedAt: number;
 }
+
+// ---- EXHIBITION / BOOTH RESERVATIONS ----
+
+export type ExhibitionReservationStatus = 'confirmed' | 'reserved';
+
+export interface ExhibitionBoothCategory {
+  id: string;
+  /** Category / hall name shown in the UI and story export */
+  name: string;
+  /** Optional short description, e.g. "FoodTech / Pavilion A" */
+  description: string;
+  /** Prefix used for generated booth numbers, e.g. A → A-01 */
+  prefix: string;
+  boothCount: number;
+  /** Hex color for category cards and story map */
+  color: string;
+}
+
+export interface ExhibitionReservation {
+  id: string;
+  categoryId: string;
+  /** 1-based booth number inside its category */
+  boothNumber: number;
+  companyName: string;
+  contactName: string;
+  phone: string;
+  city: string;
+  products: string;
+  reservationStatus: ExhibitionReservationStatus;
+  amountPaid: string;
+  amountRemaining: string;
+  paymentNote: string;
+  reservedAt: number;
+}
+
+export interface ExhibitionEvent {
+  id: string;
+  title: string;
+  subtitle: string;
+  organizerName: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  boothFee: string;
+  boothFeeLabel?: string;
+  boothFeeCurrency: EducationFeeCurrency;
+  boothFeeCurrencyLabel?: string;
+  storyBackgroundUrl?: string;
+  storyBackgroundOpacity?: number;
+  storyFootNote?: string;
+  categories: ExhibitionBoothCategory[];
+  reservations: ExhibitionReservation[];
+  createdAt: number;
+  updatedAt: number;
+}

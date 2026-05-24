@@ -24,7 +24,7 @@ import type {
   InvoiceWelteTradeBlock, InvoiceLineOverride,
   CustomFormDef, FormSubmission, IsoDocumentDef, IsoExecutionRecord,
   ServiceInvoiceLine, SavedService,
-  ContractDef, ProposalDef, EducationCourse,
+  ContractDef, ProposalDef, EducationCourse, ExhibitionEvent,
   AppPermissionKey, ManagedUserProfile,
   WarehouseLocation, WarehouseMovement, WarehouseProductSettings,
 } from '../types';
@@ -395,6 +395,9 @@ export type AppContextValue = {
 
   // Education
   educationCourses: EducationCourse[]; setEducationCourses: React.Dispatch<React.SetStateAction<EducationCourse[]>>;
+
+  // Exhibition
+  exhibitionEvents: ExhibitionEvent[]; setExhibitionEvents: React.Dispatch<React.SetStateAction<ExhibitionEvent[]>>;
 
   // Community
   communityPosts: any[]; setCommunityPosts: React.Dispatch<React.SetStateAction<any[]>>;

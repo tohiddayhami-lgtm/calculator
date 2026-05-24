@@ -127,6 +127,7 @@ import {
   ProposalStatus,
   ProposalRtlLang,
   EducationCourse,
+  ExhibitionEvent,
   AppPermissionKey,
   ManagedUserProfile,
   WarehouseLocation,
@@ -135,6 +136,8 @@ import {
 } from './types';
 import { EducationFormsPanel, EDUCATION_STORAGE_KEY } from './educationForms';
 import { normalizeEducationCourse } from './educationNormalize';
+import { ExhibitionFormsPanel, EXHIBITION_STORAGE_KEY } from './exhibitionForms';
+import { normalizeExhibitionEvent } from './exhibitionNormalize';
 import {
   computeVatFromNet,
   normalizeInvoiceExtraCharges,
@@ -6324,7 +6327,7 @@ function AppInner() {
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
   const [isoDocuments, setIsoDocuments] = useState<IsoDocumentDef[]>([]);
   const [isoRecords, setIsoRecords] = useState<IsoExecutionRecord[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'archive' | 'metaport'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'exhibition' | 'archive' | 'metaport'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
 
@@ -6456,6 +6459,19 @@ function AppInner() {
       if (raw) {
         const parsed = JSON.parse(raw) as EducationCourse[];
         return Array.isArray(parsed) ? parsed.map(c => normalizeEducationCourse(c)) : [];
+      }
+    } catch {}
+    return [];
+  });
+
+  // -- STATE: EXHIBITION --
+  const [exhibitionEvents, setExhibitionEvents] = useState<ExhibitionEvent[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(EXHIBITION_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ExhibitionEvent[];
+        return Array.isArray(parsed) ? parsed.map(event => normalizeExhibitionEvent(event)) : [];
       }
     } catch {}
     return [];
@@ -6676,6 +6692,11 @@ function AppInner() {
     if (typeof window === 'undefined') return;
     try { localStorage.setItem(EDUCATION_STORAGE_KEY, JSON.stringify(educationCourses)); } catch { /* ignore */ }
   }, [educationCourses]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { localStorage.setItem(EXHIBITION_STORAGE_KEY, JSON.stringify(exhibitionEvents)); } catch { /* ignore */ }
+  }, [exhibitionEvents]);
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
@@ -27928,6 +27949,11 @@ ${html}
           <GraduationCap className="w-4 h-4" /> Academy
         </button>
         <div className="w-px bg-slate-200" />
+        <button onClick={() => setFormsSubView('exhibition')}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'exhibition' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+          <Building2 className="w-4 h-4" /> Exhibition
+        </button>
+        <div className="w-px bg-slate-200" />
         <button onClick={() => setFormsSubView('packinglist')}
           className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'packinglist' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
           <ClipboardList className="w-4 h-4" /> Packing List
@@ -27959,6 +27985,9 @@ ${html}
       {formsSubView === 'proposals' && renderProposals()}
       {formsSubView === 'education' && (
         <EducationFormsPanel courses={educationCourses} onSaveCourses={setEducationCourses} />
+      )}
+      {formsSubView === 'exhibition' && (
+        <ExhibitionFormsPanel events={exhibitionEvents} onSaveEvents={setExhibitionEvents} />
       )}
       {formsSubView === 'packinglist' && renderPackingList()}
       {formsSubView === 'archive' && renderFormArchive()}
@@ -28907,6 +28936,8 @@ ${html}
     proposalEditorTab, setProposalEditorTab,
     // Education
     educationCourses, setEducationCourses,
+    // Exhibition
+    exhibitionEvents, setExhibitionEvents,
     // Community
     communityPosts, setCommunityPosts,
     communityFilter, setCommunityFilter,
