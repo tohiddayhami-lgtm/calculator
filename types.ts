@@ -445,6 +445,7 @@ export interface CatalogConfig {
   showQrCode?: boolean;
   qrCodeValue?: string;
   qrCodeLabel?: string;
+  catalogMasterLink?: ExhibitionMasterLink;
 
   // Trading Hub Instagram Story export
   storyPresentationStyle?: 'phone' | 'editorial' | 'product' | 'website';

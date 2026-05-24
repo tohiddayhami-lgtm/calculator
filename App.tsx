@@ -6509,7 +6509,8 @@ function AppInner() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [shareLinkInfo, setShareLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string } | null>(null);
+  const [shareLinkInfo, setShareLinkInfo] = useState<{ url: string; qr: string; uploading: boolean; error?: string; shortUrl?: string; master?: boolean } | null>(null);
+  const [catalogMasterLinkMode, setCatalogMasterLinkMode] = useState(false);
   const [inquiries, setInquiries] = useState<any[]>([]);
   const [showInquiries, setShowInquiries] = useState(false);
   const [selectedInquiry, setSelectedInquiry] = useState<any | null>(null);
@@ -9262,7 +9263,7 @@ function AppInner() {
       }
   };
 
-  const handleDeleteSavedCatalogLink = async (link: { id: string; shortCode?: string; storagePath?: string }) => {
+  const handleDeleteSavedCatalogLink = async (link: { id: string; shortCode?: string; storagePath?: string; isMasterLink?: boolean }) => {
       if (!user || !db) return;
       if (!window.confirm('Delete this hosted catalog file and remove both the short link and the long link from your list?')) return;
       try {
@@ -9287,6 +9288,9 @@ function AppInner() {
           );
       } catch (err: any) {
           alert('Could not remove link from database: ' + (err?.message || err));
+      }
+      if (link.isMasterLink && link.shortCode && catalogConfig.catalogMasterLink?.shortCode === link.shortCode) {
+          setCatalogConfig(prev => ({ ...prev, catalogMasterLink: undefined }));
       }
   };
 
@@ -16989,40 +16993,112 @@ function AppInner() {
             if (user && storage) {
                 setShareLinkInfo({ url: '', qr: '', uploading: true });
                 try {
-                    const path = `users/${activeOwnerUid}/catalogs/${safeTitle}-${Date.now()}.html`;
+                    const useMasterLink = catalogMasterLinkMode;
+                    const canUseShortLinks = !!db && !isDemoMode && user.uid !== DEMO_USER_ID;
+                    if (useMasterLink && !canUseShortLinks) {
+                        throw new Error('Stable master links require Firebase database access so the short link and QR can stay fixed.');
+                    }
+                    const existingMaster = catalogConfig.catalogMasterLink;
+                    const path = useMasterLink
+                        ? existingMaster?.storagePath || `users/${activeOwnerUid}/catalogs/master-${safeTitle}.html`
+                        : `users/${activeOwnerUid}/catalogs/${safeTitle}-${Date.now()}.html`;
                     const ref = storageRef(storage, path);
                     await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
                     const url = await getDownloadURL(ref);
                     let shortUrl: string | undefined;
-                    if (db && user && !isDemoMode && user.uid !== DEMO_USER_ID) {
+                    let shortCode: string | undefined = useMasterLink ? existingMaster?.shortCode : undefined;
+                    let catalogLinkId: string | undefined = useMasterLink ? existingMaster?.catalogLinkId : undefined;
+                    if (canUseShortLinks && db) {
                         try {
-                            for (let attempt = 0; attempt < 24; attempt++) {
-                                const shortCode = generateCatalogShortCode(10);
-                                const pubRef = doc(db, 'catalog_short_links', shortCode);
-                                const existing = await getDoc(pubRef);
-                                if (existing.exists()) continue;
-                                const shortUrlFull = buildPublicAppUrl({ c: shortCode });
-                                await setDoc(pubRef, {
+                            if (useMasterLink) {
+                                if (!shortCode) {
+                                    for (let attempt = 0; attempt < 24; attempt++) {
+                                        const candidate = generateCatalogShortCode(10);
+                                        const pubRef = doc(db, 'catalog_short_links', candidate);
+                                        const existing = await getDoc(pubRef);
+                                        if (existing.exists()) continue;
+                                        shortCode = candidate;
+                                        break;
+                                    }
+                                }
+                                if (!shortCode) throw new Error('Could not allocate a stable catalog short link.');
+                                shortUrl = buildPublicAppUrl({ c: shortCode });
+                                await setDoc(doc(db, 'catalog_short_links', shortCode), {
                                     url,
                                     appId: dataAppId,
                                     ownerUserId: activeOwnerUid,
                                     storagePath: path,
-                                    createdAt: serverTimestamp()
-                                });
-                                await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+                                    catalogTitle: catalogConfig.title || 'Catalog',
+                                    kind: 'catalog',
+                                    isMasterLink: true,
+                                    updatedAt: serverTimestamp(),
+                                    ...(existingMaster?.shortCode ? {} : { createdAt: serverTimestamp() }),
+                                }, { merge: true });
+                                const meta = {
                                     fullUrl: url,
-                                    shortUrl: shortUrlFull,
+                                    shortUrl,
                                     shortCode,
                                     storagePath: path,
                                     catalogTitle: catalogConfig.title || 'Catalog',
                                     fileName,
-                                    createdAt: serverTimestamp()
-                                });
-                                shortUrl = shortUrlFull;
-                                break;
+                                    kind: 'catalog',
+                                    isMasterLink: true,
+                                    updatedAt: serverTimestamp(),
+                                };
+                                if (catalogLinkId) {
+                                    await setDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks', catalogLinkId), meta, { merge: true });
+                                } else {
+                                    const created = await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+                                        ...meta,
+                                        createdAt: serverTimestamp(),
+                                    });
+                                    catalogLinkId = created.id;
+                                }
+                                setCatalogConfig(prev => ({
+                                    ...prev,
+                                    catalogMasterLink: {
+                                        shortCode: shortCode!,
+                                        shortUrl: shortUrl!,
+                                        storagePath: path,
+                                        fullUrl: url,
+                                        catalogLinkId: catalogLinkId || prev.catalogMasterLink?.catalogLinkId || '',
+                                        updatedAt: Date.now(),
+                                    },
+                                }));
+                            } else {
+                                for (let attempt = 0; attempt < 24; attempt++) {
+                                    const candidate = generateCatalogShortCode(10);
+                                    const pubRef = doc(db, 'catalog_short_links', candidate);
+                                    const existing = await getDoc(pubRef);
+                                    if (existing.exists()) continue;
+                                    shortCode = candidate;
+                                    const shortUrlFull = buildPublicAppUrl({ c: candidate });
+                                    await setDoc(pubRef, {
+                                        url,
+                                        appId: dataAppId,
+                                        ownerUserId: activeOwnerUid,
+                                        storagePath: path,
+                                        catalogTitle: catalogConfig.title || 'Catalog',
+                                        kind: 'catalog',
+                                        createdAt: serverTimestamp()
+                                    });
+                                    await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+                                        fullUrl: url,
+                                        shortUrl: shortUrlFull,
+                                        shortCode: candidate,
+                                        storagePath: path,
+                                        catalogTitle: catalogConfig.title || 'Catalog',
+                                        fileName,
+                                        kind: 'catalog',
+                                        createdAt: serverTimestamp()
+                                    });
+                                    shortUrl = shortUrlFull;
+                                    break;
+                                }
                             }
                         } catch (metaErr) {
                             console.warn('Catalog link metadata / short URL save failed:', metaErr);
+                            if (useMasterLink) throw metaErr;
                         }
                     }
                     const linkForQr = shortUrl || url;
@@ -17030,7 +17106,7 @@ function AppInner() {
                     try {
                         qr = await QRCode.toDataURL(linkForQr, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
                     } catch {}
-                    setShareLinkInfo({ url, shortUrl, qr, uploading: false });
+                    setShareLinkInfo({ url, shortUrl, qr, uploading: false, master: useMasterLink });
                     return;
                 } catch (err: any) {
                     console.error('Cloud upload failed, falling back to local download', err);
@@ -19189,12 +19265,37 @@ ${html}
                       <Printer className="w-4 h-4" />
                       Print / Save as PDF
                   </button>
+                  <label className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-2 text-xs cursor-pointer">
+                      <input
+                          type="checkbox"
+                          checked={catalogMasterLinkMode}
+                          onChange={(e) => setCatalogMasterLinkMode(e.target.checked)}
+                          className="mt-0.5 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>
+                          <span className="block font-bold text-emerald-900">لینک مادر ثابت</span>
+                          <span className="block text-[10px] text-emerald-800/80 leading-snug">
+                              اگر روشن باشد، آپدیت‌های بعدی روی همین لینک کوتاه و QR قبلی انجام می‌شود.
+                              {catalogConfig.catalogMasterLink?.shortUrl ? (
+                                  <a
+                                      href={catalogConfig.catalogMasterLink.shortUrl}
+                                      target="_blank"
+                                      rel="noopener"
+                                      className="block mt-1 text-emerald-700 underline break-all"
+                                      dir="ltr"
+                                  >
+                                      {catalogConfig.catalogMasterLink.shortUrl}
+                                  </a>
+                              ) : null}
+                          </span>
+                      </span>
+                  </label>
                   <button
                       onClick={handleExportCatalogHtml}
                       className="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center justify-center gap-2"
                   >
                       <Sparkles className="w-4 h-4" />
-                      Generate Online Share Link
+                      {catalogMasterLinkMode && catalogConfig.catalogMasterLink ? 'Update Master Share Link' : 'Generate Online Share Link'}
                   </button>
                   <button
                       onClick={handleDownloadCatalogHtmlFile}
@@ -19205,6 +19306,7 @@ ${html}
                   </button>
                   <p className="text-[10px] text-slate-400 text-center leading-snug">
                       <b>Share Link</b>: uploads to your account & gives a URL anyone can open on any device.<br/>
+                      <b>Master Link</b>: keeps the same short URL and QR for future updates.<br/>
                       <b>Download</b>: saves a self-contained .html file to this device.
                   </p>
 
@@ -19220,8 +19322,15 @@ ${html}
                           <ul className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
                               {savedCatalogLinks.map((link: any) => (
                                   <li key={link.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[10px] space-y-1.5">
-                                      <div className="font-semibold text-slate-800 truncate" title={link.catalogTitle}>{link.catalogTitle || 'Catalog'}</div>
-                                      <div className="text-slate-400">{formatInquiryDate(link.createdAt)}</div>
+                                      <div className="flex items-center gap-1">
+                                          <div className="font-semibold text-slate-800 truncate flex-1" title={link.catalogTitle}>{link.catalogTitle || 'Catalog'}</div>
+                                          {link.isMasterLink ? (
+                                              <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-700">Master</span>
+                                          ) : null}
+                                      </div>
+                                      <div className="text-slate-400">
+                                          {link.isMasterLink && link.updatedAt ? `Updated ${formatInquiryDate(link.updatedAt)}` : formatInquiryDate(link.createdAt)}
+                                      </div>
                                       <div className="flex flex-wrap gap-1">
                                           {link.shortUrl ? (
                                               <button
@@ -19254,7 +19363,7 @@ ${html}
                                               Copy direct
                                           </button>
                                           <a
-                                              href={link.fullUrl}
+                                              href={link.shortUrl || link.fullUrl}
                                               target="_blank"
                                               rel="noopener"
                                               className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-medium hover:bg-blue-200 inline-block"
@@ -19910,11 +20019,15 @@ ${html}
                           ) : shareLinkInfo.url ? (
                               <>
                                   <p className="text-xs text-slate-500">
-                                      Your catalog is live online. Anyone with this link can open it on any phone or computer — no app, no download.
+                                      {shareLinkInfo.master
+                                          ? 'Master link updated. The short URL and QR stay the same, but now open the latest catalog.'
+                                          : 'Your catalog is live online. Anyone with this link can open it on any phone or computer — no app, no download.'}
                                   </p>
                                   {shareLinkInfo.shortUrl ? (
                                       <div className="space-y-1">
-                                          <label className="text-[10px] font-semibold text-emerald-700 uppercase">Short link (same catalog, easier to share)</label>
+                                          <label className="text-[10px] font-semibold text-emerald-700 uppercase">
+                                              {shareLinkInfo.master ? 'Master short link (stable)' : 'Short link (same catalog, easier to share)'}
+                                          </label>
                                           <div className="flex gap-2">
                                               <input
                                                   type="text"
@@ -19931,7 +20044,11 @@ ${html}
                                                   Copy
                                               </button>
                                           </div>
-                                          <p className="text-[10px] text-slate-400">Opens the catalog inside calculator.tohiddayhami.com without changing the browser address to the Storage file.</p>
+                                          <p className="text-[10px] text-slate-400">
+                                              {shareLinkInfo.master
+                                                  ? 'Use this link for QR codes, print, WhatsApp, or ads. Future master updates keep this same URL.'
+                                                  : 'Opens the catalog inside calculator.tohiddayhami.com without changing the browser address to the Storage file.'}
+                                          </p>
                                       </div>
                                   ) : null}
                                   {!shareLinkInfo.shortUrl && (
