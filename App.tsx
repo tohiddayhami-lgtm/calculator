@@ -4668,8 +4668,13 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .cover .collection { font-size: 11px; letter-spacing: 0.35em; text-transform: uppercase; opacity: 0.75; margin-bottom: 18px; }
 
         /* ── Category Filter Bar ── */
-        .filter-bar { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 20px 0 4px; }
+        .filter-bar-wrap { display: flex; align-items: center; gap: 6px; padding: 16px 0 2px; }
+        .filter-bar { flex: 1; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 4px 2px; scroll-behavior: smooth; }
         .filter-bar::-webkit-scrollbar { display: none; }
+        .filter-arrow { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.09); transition: background 0.18s, color 0.18s, opacity 0.2s, transform 0.2s; opacity: 1; }
+        .filter-arrow svg { display: block; }
+        .filter-arrow:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .filter-arrow.fb-hidden { opacity: 0; pointer-events: none; transform: scale(0.8); }
         .filter-pill { flex-shrink: 0; padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 2px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; transition: all 0.18s; white-space: nowrap; line-height: 1; }
         .filter-pill:hover { border-color: var(--primary); color: var(--primary); }
         .filter-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
@@ -4951,7 +4956,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .thanks-card button { padding: 12px 28px; background: var(--primary); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
 
         @media print {
-            .topbar, .nav, .card-cta, .cart-fab, .cart-overlay, .cart-drawer, .thanks-overlay, .card-overlay, .filter-bar { display: none !important; }
+            .topbar, .nav, .card-cta, .cart-fab, .cart-overlay, .cart-drawer, .thanks-overlay, .card-overlay, .filter-bar, .filter-arrow { display: none !important; }
             .card { break-inside: avoid; }
         }
     `;
@@ -5733,9 +5738,17 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const allGroups: string[] = [];
     products.forEach((p: any) => { if (p.group && !allGroups.includes(p.group)) allGroups.push(p.group); });
     const filterBarHtml = allGroups.length > 1 ? `
-        <div class="filter-bar">
-            <button class="filter-pill active" data-filter="all">All</button>
-            ${allGroups.map((g: string) => `<button class="filter-pill" data-filter="${escapeAttr(g)}">${escapeHtml(g)}</button>`).join('')}
+        <div class="filter-bar-wrap" id="filter-bar-wrap">
+            <button class="filter-arrow fb-hidden" id="fbL" aria-label="Scroll left">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div class="filter-bar" id="filter-bar">
+                <button class="filter-pill active" data-filter="all">All</button>
+                ${allGroups.map((g: string) => `<button class="filter-pill" data-filter="${escapeAttr(g)}">${escapeHtml(g)}</button>`).join('')}
+            </div>
+            <button class="filter-arrow" id="fbR" aria-label="Scroll right">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
         </div>` : '';
 
     const productsPanelHtml = `
@@ -5864,8 +5877,32 @@ ${firebaseInquiryScript}
                     var g = card.getAttribute('data-group') || '';
                     card.classList.toggle('hidden', activeFilter !== 'all' && g !== activeFilter);
                 });
+                // Scroll active pill into view
+                var activePill = document.querySelector('.filter-pill.active');
+                if (activePill) activePill.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
             });
         });
+    }
+    // Filter bar scroll arrows (RTL-aware)
+    var fb = document.getElementById('filter-bar');
+    var fbL = document.getElementById('fbL');
+    var fbR = document.getElementById('fbR');
+    if (fb && fbL && fbR) {
+        var isRtl = document.documentElement.dir === 'rtl';
+        var updateFbArrows = function() {
+            var sl = Math.abs(fb.scrollLeft);
+            var maxScroll = fb.scrollWidth - fb.clientWidth;
+            var atStart = sl < 4;
+            var atEnd = maxScroll - sl < 4;
+            // In RTL "left" arrow scrolls toward start (right side visually)
+            fbL.classList.toggle('fb-hidden', isRtl ? atEnd : atStart);
+            fbR.classList.toggle('fb-hidden', isRtl ? atStart : atEnd);
+        };
+        fbL.addEventListener('click', function() { fb.scrollBy({ left: isRtl ? 200 : -200, behavior: 'smooth' }); });
+        fbR.addEventListener('click', function() { fb.scrollBy({ left: isRtl ? -200 : 200, behavior: 'smooth' }); });
+        fb.addEventListener('scroll', updateFbArrows, { passive: true });
+        window.addEventListener('resize', updateFbArrows);
+        updateFbArrows();
     }
 })();
 </script>
