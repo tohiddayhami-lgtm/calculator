@@ -3,6 +3,7 @@ import type {
   ExhibitionBoothCategory,
   ExhibitionEvent,
   ExhibitionReservation,
+  ExhibitionTopViewMarker,
 } from './types';
 import { currencyShort } from './educationFormat';
 
@@ -58,6 +59,48 @@ function normalizeCategory(raw: unknown, index: number): ExhibitionBoothCategory
   };
 }
 
+function normalizeTopViewMarker(raw: unknown, categoryIds: Set<string>, index: number): ExhibitionTopViewMarker | null {
+  const marker = raw as Partial<ExhibitionTopViewMarker> | null;
+  if (!marker || typeof marker !== 'object') return null;
+  const categoryId =
+    typeof marker.categoryId === 'string' && categoryIds.has(marker.categoryId)
+      ? marker.categoryId
+      : Array.from(categoryIds)[0] || '';
+  if (!categoryId) return null;
+  const kind: ExhibitionTopViewMarker['kind'] =
+    marker.kind === 'conference' ||
+    marker.kind === 'exit' ||
+    marker.kind === 'guide' ||
+    marker.kind === 'ad'
+      ? marker.kind
+      : 'entrance';
+  const num = (value: unknown, fallback: number) => {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : fallback;
+  };
+  const defaultColors: Record<ExhibitionTopViewMarker['kind'], string> = {
+    entrance: '#22d3ee',
+    conference: '#a78bfa',
+    exit: '#34d399',
+    guide: '#facc15',
+    ad: '#fb7185',
+  };
+  return {
+    id: typeof marker.id === 'string' && marker.id ? marker.id : `marker_${index + 1}`,
+    kind,
+    categoryId,
+    title: typeof marker.title === 'string' ? marker.title : '',
+    description: typeof marker.description === 'string' ? marker.description : '',
+    x: num(marker.x, 50),
+    y: num(marker.y, 50),
+    color:
+      typeof marker.color === 'string' && /^#[0-9a-f]{6}$/i.test(marker.color)
+        ? marker.color
+        : defaultColors[kind],
+    url: typeof marker.url === 'string' ? marker.url : '',
+  };
+}
+
 export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEvent {
   const categories = Array.isArray(event.categories)
     ? event.categories.map(normalizeCategory).filter(Boolean) as ExhibitionBoothCategory[]
@@ -104,5 +147,10 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
     reservations: (event.reservations ?? [])
       .map(normalizeExhibitionReservation)
       .filter(r => categoryIds.has(r.categoryId)),
+    topViewMarkers: Array.isArray(event.topViewMarkers)
+      ? event.topViewMarkers
+          .map((marker, index) => normalizeTopViewMarker(marker, categoryIds, index))
+          .filter(Boolean) as ExhibitionTopViewMarker[]
+      : [],
   };
 }

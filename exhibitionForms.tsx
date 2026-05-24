@@ -23,6 +23,7 @@ import type {
   ExhibitionEvent,
   ExhibitionReservation,
   ExhibitionReservationStatus,
+  ExhibitionTopViewMarker,
 } from './types';
 import {
   EDUCATION_CURRENCY_OPTIONS,
@@ -47,6 +48,18 @@ export const EXHIBITION_STORAGE_KEY = 'exportcalc_exhibition_events_v1';
 const BACKGROUND_MAX_BYTES = 5 * 1024 * 1024;
 const COMPANY_LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const CATEGORY_COLORS = ['#8b5cf6', '#06b6d4', '#f97316', '#22c55e', '#ec4899', '#eab308', '#14b8a6', '#ef4444'];
+const TOP_VIEW_MARKER_KIND_OPTIONS: {
+  value: ExhibitionTopViewMarker['kind'];
+  label: string;
+  defaultTitle: string;
+  color: string;
+}[] = [
+  { value: 'entrance', label: 'Entrance / ورودی', defaultTitle: 'Main Entrance', color: '#22d3ee' },
+  { value: 'conference', label: 'Conference Hall / سالن کنفرانس', defaultTitle: 'Conference Hall', color: '#a78bfa' },
+  { value: 'exit', label: 'End / Exit / انتهای مسیر', defaultTitle: 'Exit / End of Exhibition', color: '#34d399' },
+  { value: 'guide', label: 'Guide Sign / راهنما', defaultTitle: 'Visitor Guide', color: '#facc15' },
+  { value: 'ad', label: 'Ad Board / تابلو تبلیغاتی', defaultTitle: 'Advertising Board', color: '#fb7185' },
+];
 
 function newId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -83,6 +96,7 @@ export function makeBlankExhibitionEvent(): ExhibitionEvent {
     storyFootNote: 'برای انتخاب و رزرو غرفه، شماره غرفه موردنظر را اعلام کنید.',
     categories: [makeCategory(0)],
     reservations: [],
+    topViewMarkers: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -121,6 +135,7 @@ type Props = {
 
 export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline, onPublishTopView }: Props) {
   const [subView, setSubView] = useState<'list' | 'editor'>('list');
+  const [editorTab, setEditorTab] = useState<'setup' | 'topview'>('setup');
   const [editing, setEditing] = useState<ExhibitionEvent | null>(null);
   const [exporting, setExporting] = useState(false);
   const [storyPreviewUrl, setStoryPreviewUrl] = useState<string | null>(null);
@@ -294,6 +309,45 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       reservations: editing.reservations.filter(r => r.categoryId !== id),
     });
     setReservationForm(f => ({ ...f, categoryId: categories[0]?.id || '' }));
+  };
+
+  const addTopViewMarker = (kind: ExhibitionTopViewMarker['kind'] = 'entrance') => {
+    if (!editing) return;
+    const preset = TOP_VIEW_MARKER_KIND_OPTIONS.find(option => option.value === kind) || TOP_VIEW_MARKER_KIND_OPTIONS[0];
+    const marker: ExhibitionTopViewMarker = {
+      id: newId(),
+      kind,
+      categoryId: editing.categories[0]?.id || '',
+      title: preset.defaultTitle,
+      description: '',
+      x: kind === 'entrance' ? 12 : kind === 'exit' ? 88 : kind === 'conference' ? 50 : 24,
+      y: kind === 'entrance' ? 50 : kind === 'exit' ? 50 : kind === 'conference' ? 12 : 24,
+      color: preset.color,
+      url: '',
+    };
+    upd({ topViewMarkers: [...(editing.topViewMarkers ?? []), marker] });
+  };
+
+  const updateTopViewMarker = (id: string, patch: Partial<ExhibitionTopViewMarker>) => {
+    if (!editing) return;
+    const nextMarkers = (editing.topViewMarkers ?? []).map(marker => {
+      if (marker.id !== id) return marker;
+      const next = { ...marker, ...patch };
+      if (patch.kind) {
+        const preset = TOP_VIEW_MARKER_KIND_OPTIONS.find(option => option.value === patch.kind);
+        if (preset) {
+          next.color = marker.color || preset.color;
+          if (!marker.title.trim()) next.title = preset.defaultTitle;
+        }
+      }
+      return next;
+    });
+    upd({ topViewMarkers: nextMarkers });
+  };
+
+  const removeTopViewMarker = (id: string) => {
+    if (!editing) return;
+    upd({ topViewMarkers: (editing.topViewMarkers ?? []).filter(marker => marker.id !== id) });
   };
 
   const handleAddReservation = () => {
@@ -527,6 +581,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             onClick={() => {
               const blank = makeBlankExhibitionEvent();
               setEditing(blank);
+              setEditorTab('setup');
               setReservationForm({
                 categoryId: blank.categories[0].id,
                 companyName: '',
@@ -601,6 +656,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                       onClick={() => {
                         const normalizedEvent = normalizeExhibitionEvent(JSON.parse(JSON.stringify(normalized)) as ExhibitionEvent);
                         setEditing(normalizedEvent);
+                        setEditorTab('setup');
                         setReservationForm({
                           categoryId: normalizedEvent.categories[0]?.id || '',
                           companyName: '',
@@ -776,6 +832,181 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         )
       ) : null}
 
+      <div className="bg-white rounded-xl border border-slate-200 p-1 flex flex-wrap gap-1 w-fit">
+        <button
+          type="button"
+          onClick={() => setEditorTab('setup')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${
+            editorTab === 'setup'
+              ? 'bg-purple-600 text-white'
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          اطلاعات و رزرو غرفه‌ها
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditorTab('topview')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${
+            editorTab === 'topview'
+              ? 'bg-cyan-600 text-white'
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <LayoutGrid className="w-4 h-4" />
+          طراحی نقشه Top View
+        </button>
+      </div>
+
+      {editorTab === 'topview' ? (
+        <div className="grid lg:grid-cols-[1fr_1.15fr] gap-4">
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-600" />
+                    المان‌های نقشه Top View
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    ورودی، سالن کنفرانس، انتهای نمایشگاه، راهنمای مسیر و تابلوهای تبلیغاتی را روی نقشه مشخص کن.
+                  </p>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2 mb-4">
+                {TOP_VIEW_MARKER_KIND_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => addTopViewMarker(option.value)}
+                    className="text-xs rounded-lg border border-slate-200 px-3 py-2 text-right hover:bg-cyan-50 hover:border-cyan-200"
+                  >
+                    + {option.label}
+                  </button>
+                ))}
+              </div>
+              {(editing.topViewMarkers ?? []).length === 0 ? (
+                <p className="text-sm text-slate-400 border border-dashed border-slate-200 rounded-xl p-5 text-center">
+                  هنوز المانی روی نقشه تعریف نشده.
+                </p>
+              ) : (
+                <div className="space-y-3 max-h-[36rem] overflow-y-auto pr-1">
+                  {(editing.topViewMarkers ?? []).map(marker => {
+                    const kindPreset = TOP_VIEW_MARKER_KIND_OPTIONS.find(option => option.value === marker.kind) || TOP_VIEW_MARKER_KIND_OPTIONS[0];
+                    return (
+                      <div key={marker.id} className="border border-slate-200 rounded-xl p-3 bg-slate-50/70 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={marker.kind}
+                            onChange={e => {
+                              const nextKind = e.target.value as ExhibitionTopViewMarker['kind'];
+                              const preset = TOP_VIEW_MARKER_KIND_OPTIONS.find(option => option.value === nextKind);
+                              updateTopViewMarker(marker.id, {
+                                kind: nextKind,
+                                title: marker.title || preset?.defaultTitle || '',
+                                color: preset?.color || marker.color,
+                              });
+                            }}
+                            className={inputCls}
+                          >
+                            {TOP_VIEW_MARKER_KIND_OPTIONS.map(option => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={marker.categoryId}
+                            onChange={e => updateTopViewMarker(marker.id, { categoryId: e.target.value })}
+                            className={inputCls}
+                          >
+                            {editing.categories.map(category => (
+                              <option key={category.id} value={category.id}>{category.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <input
+                          value={marker.title}
+                          onChange={e => updateTopViewMarker(marker.id, { title: e.target.value })}
+                          className={inputCls}
+                          dir="ltr"
+                          placeholder={kindPreset.defaultTitle}
+                        />
+                        <textarea
+                          value={marker.description}
+                          onChange={e => updateTopViewMarker(marker.id, { description: e.target.value })}
+                          className={inputCls}
+                          rows={2}
+                          dir="rtl"
+                          placeholder="توضیح کوتاه برای نمایش روی نقشه یا تابلو"
+                        />
+                        {marker.kind === 'ad' || marker.kind === 'guide' ? (
+                          <input
+                            value={marker.url || ''}
+                            onChange={e => updateTopViewMarker(marker.id, { url: e.target.value })}
+                            className={inputCls}
+                            dir="ltr"
+                            placeholder="لینک اختیاری برای تابلو / راهنما"
+                          />
+                        ) : null}
+                        <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                          <div>
+                            <label className={labelCls}>X: {marker.x}%</label>
+                            <input type="range" min={0} max={100} value={marker.x} onChange={e => updateTopViewMarker(marker.id, { x: Number(e.target.value) })} className="w-full accent-cyan-600" />
+                          </div>
+                          <div>
+                            <label className={labelCls}>Y: {marker.y}%</label>
+                            <input type="range" min={0} max={100} value={marker.y} onChange={e => updateTopViewMarker(marker.id, { y: Number(e.target.value) })} className="w-full accent-cyan-600" />
+                          </div>
+                          <input type="color" value={marker.color} onChange={e => updateTopViewMarker(marker.id, { color: e.target.value })} className="w-11 h-10 rounded-lg border border-slate-200 bg-white" />
+                        </div>
+                        <button type="button" onClick={() => removeTopViewMarker(marker.id)} className="text-xs text-red-600 hover:underline">
+                          حذف این المان
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="bg-slate-950 rounded-xl border border-slate-800 p-5 text-white">
+            <h3 className="font-semibold mb-3">پیش‌نمایش جایگذاری روی سالن‌ها</h3>
+            <div className="space-y-4">
+              {editing.categories.map(category => {
+                const markers = (editing.topViewMarkers ?? []).filter(marker => marker.categoryId === category.id);
+                return (
+                  <div key={category.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-300">Hall Preview</p>
+                        <h4 className="font-bold">{category.name}</h4>
+                      </div>
+                      <span className="text-xs text-slate-400">{markers.length} marker</span>
+                    </div>
+                    <div className="relative h-64 rounded-2xl border border-white/10 overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,41,59,.72))]">
+                      <div className="absolute left-4 right-4 top-1/2 h-4 -translate-y-1/2 rounded-full border border-cyan-300/20 bg-cyan-300/10" />
+                      <div className="absolute top-4 bottom-4 left-1/2 w-4 -translate-x-1/2 rounded-full border border-cyan-300/20 bg-cyan-300/10" />
+                      {markers.map(marker => {
+                        const preset = TOP_VIEW_MARKER_KIND_OPTIONS.find(option => option.value === marker.kind);
+                        return (
+                          <div
+                            key={marker.id}
+                            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-xl px-2.5 py-2 text-[10px] font-bold shadow-lg max-w-[140px]"
+                            style={{ left: `${marker.x}%`, top: `${marker.y}%`, backgroundColor: marker.color }}
+                            title={marker.description}
+                          >
+                            <div className="text-white leading-tight">{marker.title || preset?.defaultTitle}</div>
+                            <div className="text-white/70 text-[9px]">{preset?.label.split(' / ')[0]}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
@@ -1190,6 +1421,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
           ) : null}
         </div>
       </div>
+      )}
     </div>
   );
 });

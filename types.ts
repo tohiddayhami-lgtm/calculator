@@ -1482,6 +1482,23 @@ export interface ExhibitionReservation {
   reservedAt: number;
 }
 
+export type ExhibitionTopViewMarkerKind = 'entrance' | 'conference' | 'exit' | 'guide' | 'ad';
+
+export interface ExhibitionTopViewMarker {
+  id: string;
+  kind: ExhibitionTopViewMarkerKind;
+  /** Hall/category where this marker should be placed */
+  categoryId: string;
+  title: string;
+  description: string;
+  /** Position inside the top-view hall floor, 0-100 percent */
+  x: number;
+  y: number;
+  color: string;
+  /** Optional link for advertising boards or guide signs */
+  url?: string;
+}
+
 export interface ExhibitionEvent {
   id: string;
   title: string;
@@ -1499,6 +1516,7 @@ export interface ExhibitionEvent {
   storyFootNote?: string;
   categories: ExhibitionBoothCategory[];
   reservations: ExhibitionReservation[];
+  topViewMarkers?: ExhibitionTopViewMarker[];
   createdAt: number;
   updatedAt: number;
 }
