@@ -2429,8 +2429,46 @@ function createDefaultCatalogConfig(): CatalogConfig {
     logoStyle: 'plain',
     coverTextColor: '#ffffff',
     coverTitleFontSizePx: 56,
+    coverHeaderFontSizePx: 14,
+    coverHeaderLineHeight: 1.25,
+    coverHeaderUppercase: true,
+    coverYearFontSizePx: 12,
+    coverYearLineHeight: 1.25,
+    coverYearUppercase: false,
+    coverCollectionFontSizePx: 30,
+    coverCollectionLineHeight: 1.15,
+    coverCollectionUppercase: true,
+    coverTitleLineHeight: 1.05,
+    coverTitleUppercase: false,
+    coverSubtitleFontSizePx: 24,
+    coverSubtitleLineHeight: 1.35,
+    coverSubtitleUppercase: false,
+    coverContactTitleFontSizePx: 18,
+    coverContactTitleLineHeight: 1.25,
+    coverContactTitleUppercase: true,
+    coverContactBodyFontSizePx: 14,
+    coverContactBodyLineHeight: 1.45,
+    coverContactBodyUppercase: false,
     backCoverImage: '',
     backCoverOverlayOpacity: 60,
+    backCoverTitleFontSizePx: 36,
+    backCoverTitleLineHeight: 1.2,
+    backCoverTitleUppercase: false,
+    backCoverLabelFontSizePx: 14,
+    backCoverLabelLineHeight: 1.25,
+    backCoverLabelUppercase: true,
+    backCoverValueFontSizePx: 18,
+    backCoverValueLineHeight: 1.45,
+    backCoverValueUppercase: false,
+    backCoverSocialFontSizePx: 12,
+    backCoverSocialLineHeight: 1.3,
+    backCoverSocialUppercase: false,
+    backCoverQrLabelFontSizePx: 12,
+    backCoverQrLabelLineHeight: 1.3,
+    backCoverQrLabelUppercase: true,
+    backCoverFooterFontSizePx: 12,
+    backCoverFooterLineHeight: 1.35,
+    backCoverFooterUppercase: false,
     showQrCode: false,
     qrCodeValue: '',
     qrCodeLabel: 'Scan to visit',
@@ -4152,8 +4190,30 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const bg = cc.backgroundColor || '#ffffff';
     const cover = cc.coverColor || '#0f172a';
     const coverText = cc.coverTextColor || '#ffffff';
+    const clampCatalogNumber = (value: unknown, fallback: number, min: number, max: number) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.min(max, Math.max(min, n));
+    };
+    const catalogBool = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback;
+    const catalogTextTransform = (value: unknown, fallback: boolean) => catalogBool(value, fallback) ? 'uppercase' : 'none';
     const coverTitlePx = Math.min(120, Math.max(20, Number(cc.coverTitleFontSizePx) || 56));
     const coverTitleClampMin = Math.max(16, Math.round(coverTitlePx * 0.45));
+    const coverCollectionFontSizePx = clampCatalogNumber(cc.coverCollectionFontSizePx, 30, 10, 72);
+    const coverCollectionLineHeight = clampCatalogNumber(cc.coverCollectionLineHeight, 1.15, 0.8, 2.4);
+    const coverTitleLineHeight = clampCatalogNumber(cc.coverTitleLineHeight, 1.05, 0.8, 2.4);
+    const coverSubtitleFontSizePx = clampCatalogNumber(cc.coverSubtitleFontSizePx, 24, 10, 64);
+    const coverSubtitleLineHeight = clampCatalogNumber(cc.coverSubtitleLineHeight, 1.35, 0.8, 2.4);
+    const backCoverTitleFontSizePx = clampCatalogNumber(cc.backCoverTitleFontSizePx, 36, 12, 90);
+    const backCoverTitleLineHeight = clampCatalogNumber(cc.backCoverTitleLineHeight, 1.2, 0.8, 2.4);
+    const backCoverLabelFontSizePx = clampCatalogNumber(cc.backCoverLabelFontSizePx, 14, 8, 36);
+    const backCoverLabelLineHeight = clampCatalogNumber(cc.backCoverLabelLineHeight, 1.25, 0.8, 2.4);
+    const backCoverValueFontSizePx = clampCatalogNumber(cc.backCoverValueFontSizePx, 18, 8, 48);
+    const backCoverValueLineHeight = clampCatalogNumber(cc.backCoverValueLineHeight, 1.45, 0.8, 2.4);
+    const backCoverQrLabelFontSizePx = clampCatalogNumber(cc.backCoverQrLabelFontSizePx, 12, 8, 32);
+    const backCoverQrLabelLineHeight = clampCatalogNumber(cc.backCoverQrLabelLineHeight, 1.3, 0.8, 2.4);
+    const backCoverFooterFontSizePx = clampCatalogNumber(cc.backCoverFooterFontSizePx, 12, 8, 32);
+    const backCoverFooterLineHeight = clampCatalogNumber(cc.backCoverFooterLineHeight, 1.35, 0.8, 2.4);
     const coverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.coverOverlayOpacity ?? 60) || 0) / 100));
     const backCoverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.backCoverOverlayOpacity ?? 60) || 0) / 100));
     const normalizeExtraAlign = (value: any, fallback: 'left' | 'center' | 'right' | 'justify') =>
@@ -4663,9 +4723,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,${(coverOverlayAlpha * 0.65).toFixed(2)}) 0%, rgba(0,0,0,${coverOverlayAlpha.toFixed(2)}) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover-inner { position: relative; z-index: 2; max-width: 740px; margin: 0 auto; }
         .logo { max-height: 72px; margin: 0 auto 22px; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.35)); }
-        .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; margin-bottom: 14px; }
-        .cover .subtitle { font-size: clamp(14px, 2.5vw, 18px); opacity: 0.9; font-weight: 300; letter-spacing: 0.04em; white-space: pre-wrap; word-break: break-word; line-height: 1.6; }
-        .cover .collection { font-size: 11px; letter-spacing: 0.35em; text-transform: uppercase; opacity: 0.75; margin-bottom: 18px; }
+        .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: ${coverTitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverTitleUppercase, false)}; margin-bottom: 14px; }
+        .cover .subtitle { font-size: clamp(${Math.max(12, Math.round(coverSubtitleFontSizePx * 0.65))}px, 2.5vw, ${coverSubtitleFontSizePx}px); opacity: 0.9; font-weight: 300; letter-spacing: 0.04em; white-space: pre-wrap; word-break: break-word; line-height: ${coverSubtitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverSubtitleUppercase, false)}; }
+        .cover .collection { font-size: ${coverCollectionFontSizePx}px; letter-spacing: 0.35em; text-transform: ${catalogTextTransform(cc.coverCollectionUppercase, true)}; line-height: ${coverCollectionLineHeight}; opacity: 0.75; margin-bottom: 18px; }
 
         /* ── Category Filter Bar ── */
         .filter-bar-wrap { display: flex; align-items: center; gap: 6px; padding: 16px 0 2px; }
@@ -4866,13 +4926,14 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         footer::before { content: ''; position: absolute; inset: 0; ${cc.backCoverImage ? `background-image: url('${escapeAttr(cc.backCoverImage)}'); background-size: cover; background-position: center;` : ''} opacity: ${cc.backCoverImage ? '1' : '0'}; z-index: 0; }
         footer::after { content: ''; position: absolute; inset: 0; background: rgba(15,23,42,${backCoverOverlayAlpha.toFixed(2)}); z-index: 1; ${cc.backCoverImage ? '' : 'display:none;'} }
         footer > * { position: relative; z-index: 2; }
-        footer h3 { font-size: 13px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.7; margin-bottom: 10px; }
+        footer h3 { font-size: ${backCoverTitleFontSizePx}px; font-weight: 700; letter-spacing: 0.2em; text-transform: ${catalogTextTransform(cc.backCoverTitleUppercase, false)}; line-height: ${backCoverTitleLineHeight}; opacity: 0.7; margin-bottom: 10px; }
         footer .contact-grid { display: grid; gap: 10px; max-width: 480px; margin: 0 auto 32px; }
-        footer .row { font-size: 14px; }
+        footer .row { font-size: ${backCoverValueFontSizePx}px; line-height: ${backCoverValueLineHeight}; text-transform: ${catalogTextTransform(cc.backCoverValueUppercase, false)}; }
+        footer .row strong { font-size: ${backCoverLabelFontSizePx}px; line-height: ${backCoverLabelLineHeight}; text-transform: ${catalogTextTransform(cc.backCoverLabelUppercase, true)}; }
         .qr-block { margin: 24px auto; }
         .qr-card { display: inline-block; background: #fff; padding: 12px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
         .qr-card img { width: 140px; height: 140px; }
-        .qr-label { margin-top: 10px; font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.8; }
+        .qr-label { margin-top: 10px; font-size: ${backCoverQrLabelFontSizePx}px; letter-spacing: 0.25em; line-height: ${backCoverQrLabelLineHeight}; text-transform: ${catalogTextTransform(cc.backCoverQrLabelUppercase, true)}; opacity: 0.8; }
         .socials { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 18px; }
         .social-icon {
             display: inline-flex; align-items: center; justify-content: center;
@@ -4893,7 +4954,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         @media print {
             .socials { display: none !important; }
         }
-        .footer-text { font-size: 11px; opacity: 0.5; margin-top: 24px; }
+        .footer-text { font-size: ${backCoverFooterFontSizePx}px; line-height: ${backCoverFooterLineHeight}; text-transform: ${catalogTextTransform(cc.backCoverFooterUppercase, false)}; opacity: 0.5; margin-top: 24px; }
 
         /* ── Inquiry Cart ── */
         .cta-secondary { background: transparent !important; color: var(--primary) !important; border: 2px solid var(--primary); box-shadow: none; }
@@ -16691,6 +16752,167 @@ function AppInner() {
         return catalogConfig.languages.map(lang => dict[lang][key]).join(' / ');
     };
 
+    const clampCatalogNumber = (value: unknown, fallback: number, min: number, max: number) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.min(max, Math.max(min, n));
+    };
+    const catalogBool = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback;
+    const catalogTextTransform = (value: unknown, fallback: boolean) => catalogBool(value, fallback) ? 'uppercase' : 'none';
+    const catalogTextStyle = (
+        fontSize: number,
+        lineHeight: number,
+        uppercase: unknown,
+        uppercaseDefault: boolean
+    ): React.CSSProperties => ({
+        fontSize: `${fontSize}px`,
+        lineHeight,
+        textTransform: catalogTextTransform(uppercase, uppercaseDefault),
+    });
+    const renderCatalogTypographyControl = ({
+        label,
+        fontSizeKey,
+        lineHeightKey,
+        uppercaseKey,
+        defaultFontSize,
+        defaultLineHeight,
+        defaultUppercase,
+        minFont = 8,
+        maxFont = 72,
+    }: {
+        label: string;
+        fontSizeKey: keyof CatalogConfig;
+        lineHeightKey: keyof CatalogConfig;
+        uppercaseKey: keyof CatalogConfig;
+        defaultFontSize: number;
+        defaultLineHeight: number;
+        defaultUppercase: boolean;
+        minFont?: number;
+        maxFont?: number;
+    }) => {
+        const fontSize = clampCatalogNumber(catalogConfig[fontSizeKey], defaultFontSize, minFont, maxFont);
+        const lineHeight = clampCatalogNumber(catalogConfig[lineHeightKey], defaultLineHeight, 0.8, 2.4);
+        const uppercase = catalogBool(catalogConfig[uppercaseKey], defaultUppercase);
+        return (
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 space-y-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-600">{label}</span>
+                    <span className="text-[10px] text-slate-400 tabular-nums">{fontSize}px / {lineHeight.toFixed(2)}</span>
+                </div>
+                <label className="block space-y-1">
+                    <span className="text-[10px] text-slate-400">Font size</span>
+                    <input
+                        type="range"
+                        min={minFont}
+                        max={maxFont}
+                        value={fontSize}
+                        onChange={(e) => setCatalogConfig({ ...catalogConfig, [fontSizeKey]: Number(e.target.value) })}
+                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                </label>
+                <label className="block space-y-1">
+                    <span className="text-[10px] text-slate-400">Line spacing</span>
+                    <input
+                        type="range"
+                        min={0.8}
+                        max={2.4}
+                        step={0.05}
+                        value={lineHeight}
+                        onChange={(e) => setCatalogConfig({ ...catalogConfig, [lineHeightKey]: Number(e.target.value) })}
+                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                </label>
+                <label className="flex items-center gap-2 text-[10px] text-slate-600 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={uppercase}
+                        onChange={(e) => setCatalogConfig({ ...catalogConfig, [uppercaseKey]: e.target.checked })}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Capital / Uppercase
+                </label>
+            </div>
+        );
+    };
+    const coverHeaderStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.coverHeaderFontSizePx, 14, 8, 40),
+        clampCatalogNumber(catalogConfig.coverHeaderLineHeight, 1.25, 0.8, 2.4),
+        catalogConfig.coverHeaderUppercase,
+        true
+    );
+    const coverYearStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.coverYearFontSizePx, 12, 8, 32),
+        clampCatalogNumber(catalogConfig.coverYearLineHeight, 1.25, 0.8, 2.4),
+        catalogConfig.coverYearUppercase,
+        false
+    );
+    const coverCollectionStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.coverCollectionFontSizePx, 30, 10, 72),
+        clampCatalogNumber(catalogConfig.coverCollectionLineHeight, 1.15, 0.8, 2.4),
+        catalogConfig.coverCollectionUppercase,
+        true
+    );
+    const coverTitleStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.coverTitleFontSizePx, 56, 20, 120),
+        clampCatalogNumber(catalogConfig.coverTitleLineHeight, 1.05, 0.8, 2.4),
+        catalogConfig.coverTitleUppercase,
+        false
+    );
+    const coverSubtitleStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.coverSubtitleFontSizePx, 24, 10, 64),
+        clampCatalogNumber(catalogConfig.coverSubtitleLineHeight, 1.35, 0.8, 2.4),
+        catalogConfig.coverSubtitleUppercase,
+        false
+    );
+    const coverContactTitleStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.coverContactTitleFontSizePx, 18, 10, 48),
+        clampCatalogNumber(catalogConfig.coverContactTitleLineHeight, 1.25, 0.8, 2.4),
+        catalogConfig.coverContactTitleUppercase,
+        true
+    );
+    const coverContactBodyStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.coverContactBodyFontSizePx, 14, 8, 36),
+        clampCatalogNumber(catalogConfig.coverContactBodyLineHeight, 1.45, 0.8, 2.4),
+        catalogConfig.coverContactBodyUppercase,
+        false
+    );
+    const backCoverTitleStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.backCoverTitleFontSizePx, 36, 12, 90),
+        clampCatalogNumber(catalogConfig.backCoverTitleLineHeight, 1.2, 0.8, 2.4),
+        catalogConfig.backCoverTitleUppercase,
+        false
+    );
+    const backCoverLabelStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.backCoverLabelFontSizePx, 14, 8, 36),
+        clampCatalogNumber(catalogConfig.backCoverLabelLineHeight, 1.25, 0.8, 2.4),
+        catalogConfig.backCoverLabelUppercase,
+        true
+    );
+    const backCoverValueStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.backCoverValueFontSizePx, 18, 8, 48),
+        clampCatalogNumber(catalogConfig.backCoverValueLineHeight, 1.45, 0.8, 2.4),
+        catalogConfig.backCoverValueUppercase,
+        false
+    );
+    const backCoverSocialStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.backCoverSocialFontSizePx, 12, 8, 32),
+        clampCatalogNumber(catalogConfig.backCoverSocialLineHeight, 1.3, 0.8, 2.4),
+        catalogConfig.backCoverSocialUppercase,
+        false
+    );
+    const backCoverQrLabelStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.backCoverQrLabelFontSizePx, 12, 8, 32),
+        clampCatalogNumber(catalogConfig.backCoverQrLabelLineHeight, 1.3, 0.8, 2.4),
+        catalogConfig.backCoverQrLabelUppercase,
+        true
+    );
+    const backCoverFooterStyle = catalogTextStyle(
+        clampCatalogNumber(catalogConfig.backCoverFooterFontSizePx, 12, 8, 32),
+        clampCatalogNumber(catalogConfig.backCoverFooterLineHeight, 1.35, 0.8, 2.4),
+        catalogConfig.backCoverFooterUppercase,
+        false
+    );
+
     // Toggle Language Helper
     const toggleLanguage = (lang: 'en' | 'fa' | 'ar') => {
         const current = catalogConfig.languages;
@@ -17966,30 +18188,91 @@ ${html}
                                    <input type="text" value={catalogConfig.title} onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none" placeholder="Main Title"/>
                               </div>
                               <div className="space-y-1">
-                                  <div className="flex justify-between">
-                                      <label className="text-[10px] text-slate-400 font-medium">Title font size</label>
-                                      <span className="text-[10px] text-slate-600 tabular-nums">
-                                          {catalogConfig.coverTitleFontSizePx ?? 56}px
-                                      </span>
-                                  </div>
-                                  <input
-                                      type="range"
-                                      min={20}
-                                      max={120}
-                                      value={catalogConfig.coverTitleFontSizePx ?? 56}
-                                      onChange={(e) =>
-                                          setCatalogConfig({
-                                              ...catalogConfig,
-                                              coverTitleFontSizePx: parseInt(e.target.value, 10),
-                                          })
-                                      }
-                                      className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                  />
-                              </div>
-                              <div className="space-y-1">
                                    <label className="text-[10px] text-slate-400 font-medium">Subtitle</label>
                                    <input type="text" value={catalogConfig.subtitle} onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none" placeholder="Subtitle" />
                               </div>
+                              <details className="rounded-xl border border-blue-100 bg-blue-50/40 p-2">
+                                  <summary className="cursor-pointer text-[11px] font-bold text-blue-800">Front cover typography</summary>
+                                  <div className="mt-3 space-y-2">
+                                      {renderCatalogTypographyControl({
+                                          label: 'Header Brand',
+                                          fontSizeKey: 'coverHeaderFontSizePx',
+                                          lineHeightKey: 'coverHeaderLineHeight',
+                                          uppercaseKey: 'coverHeaderUppercase',
+                                          defaultFontSize: 14,
+                                          defaultLineHeight: 1.25,
+                                          defaultUppercase: true,
+                                          minFont: 8,
+                                          maxFont: 40,
+                                      })}
+                                      {renderCatalogTypographyControl({
+                                          label: 'Header Year',
+                                          fontSizeKey: 'coverYearFontSizePx',
+                                          lineHeightKey: 'coverYearLineHeight',
+                                          uppercaseKey: 'coverYearUppercase',
+                                          defaultFontSize: 12,
+                                          defaultLineHeight: 1.25,
+                                          defaultUppercase: false,
+                                          minFont: 8,
+                                          maxFont: 32,
+                                      })}
+                                      {renderCatalogTypographyControl({
+                                          label: 'Collection Tag',
+                                          fontSizeKey: 'coverCollectionFontSizePx',
+                                          lineHeightKey: 'coverCollectionLineHeight',
+                                          uppercaseKey: 'coverCollectionUppercase',
+                                          defaultFontSize: 30,
+                                          defaultLineHeight: 1.15,
+                                          defaultUppercase: true,
+                                          minFont: 10,
+                                          maxFont: 72,
+                                      })}
+                                      {renderCatalogTypographyControl({
+                                          label: 'Main Title',
+                                          fontSizeKey: 'coverTitleFontSizePx',
+                                          lineHeightKey: 'coverTitleLineHeight',
+                                          uppercaseKey: 'coverTitleUppercase',
+                                          defaultFontSize: 56,
+                                          defaultLineHeight: 1.05,
+                                          defaultUppercase: false,
+                                          minFont: 20,
+                                          maxFont: 120,
+                                      })}
+                                      {renderCatalogTypographyControl({
+                                          label: 'Subtitle',
+                                          fontSizeKey: 'coverSubtitleFontSizePx',
+                                          lineHeightKey: 'coverSubtitleLineHeight',
+                                          uppercaseKey: 'coverSubtitleUppercase',
+                                          defaultFontSize: 24,
+                                          defaultLineHeight: 1.35,
+                                          defaultUppercase: false,
+                                          minFont: 10,
+                                          maxFont: 64,
+                                      })}
+                                      {renderCatalogTypographyControl({
+                                          label: 'Contact Title',
+                                          fontSizeKey: 'coverContactTitleFontSizePx',
+                                          lineHeightKey: 'coverContactTitleLineHeight',
+                                          uppercaseKey: 'coverContactTitleUppercase',
+                                          defaultFontSize: 18,
+                                          defaultLineHeight: 1.25,
+                                          defaultUppercase: true,
+                                          minFont: 10,
+                                          maxFont: 48,
+                                      })}
+                                      {renderCatalogTypographyControl({
+                                          label: 'Contact Details',
+                                          fontSizeKey: 'coverContactBodyFontSizePx',
+                                          lineHeightKey: 'coverContactBodyLineHeight',
+                                          uppercaseKey: 'coverContactBodyUppercase',
+                                          defaultFontSize: 14,
+                                          defaultLineHeight: 1.45,
+                                          defaultUppercase: false,
+                                          minFont: 8,
+                                          maxFont: 36,
+                                      })}
+                                  </div>
+                              </details>
                           </div>
                       </div>
                       
@@ -18447,6 +18730,77 @@ ${html}
                                   />
                               </div>
                           )}
+                          <details className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-2">
+                              <summary className="cursor-pointer text-[11px] font-bold text-indigo-800">Back cover typography</summary>
+                              <div className="mt-3 space-y-2">
+                                  {renderCatalogTypographyControl({
+                                      label: 'Contact Title',
+                                      fontSizeKey: 'backCoverTitleFontSizePx',
+                                      lineHeightKey: 'backCoverTitleLineHeight',
+                                      uppercaseKey: 'backCoverTitleUppercase',
+                                      defaultFontSize: 36,
+                                      defaultLineHeight: 1.2,
+                                      defaultUppercase: false,
+                                      minFont: 12,
+                                      maxFont: 90,
+                                  })}
+                                  {renderCatalogTypographyControl({
+                                      label: 'Labels',
+                                      fontSizeKey: 'backCoverLabelFontSizePx',
+                                      lineHeightKey: 'backCoverLabelLineHeight',
+                                      uppercaseKey: 'backCoverLabelUppercase',
+                                      defaultFontSize: 14,
+                                      defaultLineHeight: 1.25,
+                                      defaultUppercase: true,
+                                      minFont: 8,
+                                      maxFont: 36,
+                                  })}
+                                  {renderCatalogTypographyControl({
+                                      label: 'Contact Values',
+                                      fontSizeKey: 'backCoverValueFontSizePx',
+                                      lineHeightKey: 'backCoverValueLineHeight',
+                                      uppercaseKey: 'backCoverValueUppercase',
+                                      defaultFontSize: 18,
+                                      defaultLineHeight: 1.45,
+                                      defaultUppercase: false,
+                                      minFont: 8,
+                                      maxFont: 48,
+                                  })}
+                                  {renderCatalogTypographyControl({
+                                      label: 'Social Handles',
+                                      fontSizeKey: 'backCoverSocialFontSizePx',
+                                      lineHeightKey: 'backCoverSocialLineHeight',
+                                      uppercaseKey: 'backCoverSocialUppercase',
+                                      defaultFontSize: 12,
+                                      defaultLineHeight: 1.3,
+                                      defaultUppercase: false,
+                                      minFont: 8,
+                                      maxFont: 32,
+                                  })}
+                                  {renderCatalogTypographyControl({
+                                      label: 'QR Label',
+                                      fontSizeKey: 'backCoverQrLabelFontSizePx',
+                                      lineHeightKey: 'backCoverQrLabelLineHeight',
+                                      uppercaseKey: 'backCoverQrLabelUppercase',
+                                      defaultFontSize: 12,
+                                      defaultLineHeight: 1.3,
+                                      defaultUppercase: true,
+                                      minFont: 8,
+                                      maxFont: 32,
+                                  })}
+                                  {renderCatalogTypographyControl({
+                                      label: 'Footer Text',
+                                      fontSizeKey: 'backCoverFooterFontSizePx',
+                                      lineHeightKey: 'backCoverFooterLineHeight',
+                                      uppercaseKey: 'backCoverFooterUppercase',
+                                      defaultFontSize: 12,
+                                      defaultLineHeight: 1.35,
+                                      defaultUppercase: false,
+                                      minFont: 8,
+                                      maxFont: 32,
+                                  })}
+                              </div>
+                          </details>
                       </div>
 
                       {/* --- EXTRA PAGES SECTION --- */}
@@ -18983,14 +19337,14 @@ ${html}
                                borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                            }}>
                                 <div className="space-y-1">
-                                    <h3 className="text-sm font-bold tracking-[0.3em] uppercase opacity-80 min-h-[1.25rem]">
+                                    <h3 className="font-bold tracking-[0.3em] opacity-80 min-h-[1.25rem]" style={coverHeaderStyle}>
                                         {catalogConfig.coverHeaderText}
                                     </h3>
                                     {catalogConfig.showCoverLines !== false && (
                                         <div className="w-12 h-1 opacity-50" style={{ backgroundColor: catalogConfig.coverLineColor || 'white' }}></div>
                                     )}
                                 </div>
-                                <div className="text-right opacity-60 font-mono text-xs">
+                                <div className="text-right opacity-60 font-mono" style={coverYearStyle}>
                                      {catalogConfig.coverYearText}
                                 </div>
                            </div>
@@ -19000,17 +19354,18 @@ ${html}
                                <input 
                                   value={catalogConfig.collectionText || ''}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, collectionText: e.target.value})}
-                                  className="bg-transparent text-2xl md:text-3xl tracking-[0.2em] font-light uppercase w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
+                                  className="bg-transparent tracking-[0.2em] font-light w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
+                                  style={coverCollectionStyle}
                                   placeholder="COLLECTION NAME"
                               />
                                <textarea 
                                   value={catalogConfig.title}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
                                   rows={4}
-                                  className="bg-transparent font-black tracking-tight w-full outline-none placeholder-white/40 leading-[1.05] resize-none overflow-visible block"
+                                  className="bg-transparent font-black tracking-tight w-full outline-none placeholder-white/40 resize-none overflow-visible block"
                                   style={{
-                                      fontSize: `clamp(${Math.max(16, Math.round((catalogConfig.coverTitleFontSizePx ?? 56) * 0.45))}px, 8vw, ${catalogConfig.coverTitleFontSizePx ?? 56}px)`,
-                                      minHeight: `${Math.max(120, Math.round((catalogConfig.coverTitleFontSizePx ?? 56) * 2.35))}px`,
+                                      ...coverTitleStyle,
+                                      minHeight: `${Math.max(120, Math.round(clampCatalogNumber(catalogConfig.coverTitleFontSizePx, 56, 20, 120) * 2.35))}px`,
                                   }}
                                   placeholder="TITLE"
                               />
@@ -19018,7 +19373,8 @@ ${html}
                                   value={catalogConfig.subtitle}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})}
                                   rows={2}
-                                  className="bg-transparent text-xl md:text-2xl font-light w-full outline-none placeholder-white/40 opacity-90 resize-none overflow-hidden leading-snug"
+                                  className="bg-transparent font-light w-full outline-none placeholder-white/40 opacity-90 resize-none overflow-hidden"
+                                  style={coverSubtitleStyle}
                                   placeholder="Subtitle text goes here"
                               />
                           </div>
@@ -19030,11 +19386,11 @@ ${html}
                                     borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
                             }}>
                                 <div className="text-right space-y-1">
-                                    <h3 className="text-lg font-bold mb-2 tracking-wide uppercase">
+                                    <h3 className="font-bold mb-2 tracking-wide" style={coverContactTitleStyle}>
                                         {catalogConfig.coverContactTitle || tCombined('contact')}
                                     </h3>
-                                    <p className="text-sm font-light tracking-wide opacity-90">{catalogConfig.contactEmail}</p>
-                                    <p className="text-sm font-light tracking-wide opacity-90">{catalogConfig.website}</p>
+                                    <p className="font-light tracking-wide opacity-90" style={coverContactBodyStyle}>{catalogConfig.contactEmail}</p>
+                                    <p className="font-light tracking-wide opacity-90" style={coverContactBodyStyle}>{catalogConfig.website}</p>
                                 </div>
                             </div>
                           )}
@@ -19479,25 +19835,25 @@ ${html}
                           </div>
                       )}
                       <div className="relative z-10 w-full flex flex-col items-center">
-                      <h2 className="text-4xl font-bold mb-8">{tCombined('contact')}</h2>
+                      <h2 className="font-bold mb-8" style={backCoverTitleStyle}>{tCombined('contact')}</h2>
                       
                       <div className="space-y-6 text-lg">
                            <div>
-                               <p className="opacity-60 text-sm uppercase tracking-widest mb-1">{tCombined('phone')}</p>
-                               <p className="font-semibold">{catalogConfig.contactPhone}</p>
+                               <p className="opacity-60 tracking-widest mb-1" style={backCoverLabelStyle}>{tCombined('phone')}</p>
+                               <p className="font-semibold" style={backCoverValueStyle}>{catalogConfig.contactPhone}</p>
                            </div>
                            <div>
-                               <p className="opacity-60 text-sm uppercase tracking-widest mb-1">{tCombined('email')}</p>
-                               <p className="font-semibold">{catalogConfig.contactEmail}</p>
+                               <p className="opacity-60 tracking-widest mb-1" style={backCoverLabelStyle}>{tCombined('email')}</p>
+                               <p className="font-semibold" style={backCoverValueStyle}>{catalogConfig.contactEmail}</p>
                            </div>
                            <div>
-                               <p className="opacity-60 text-sm uppercase tracking-widest mb-1">{tCombined('website')}</p>
-                               <p className="font-semibold">{catalogConfig.website}</p>
+                               <p className="opacity-60 tracking-widest mb-1" style={backCoverLabelStyle}>{tCombined('website')}</p>
+                               <p className="font-semibold" style={backCoverValueStyle}>{catalogConfig.website}</p>
                            </div>
                            {catalogConfig.contactAddress && (
                                <div>
-                                   <p className="opacity-60 text-sm uppercase tracking-widest mb-1">Address</p>
-                                   <p className="font-semibold whitespace-pre-line">{catalogConfig.contactAddress}</p>
+                                   <p className="opacity-60 tracking-widest mb-1" style={backCoverLabelStyle}>Address</p>
+                                   <p className="font-semibold whitespace-pre-line" style={backCoverValueStyle}>{catalogConfig.contactAddress}</p>
                                </div>
                            )}
                       </div>
@@ -19509,7 +19865,7 @@ ${html}
                                        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
                                            {getSocialIcon(link.platform, "w-5 h-5")}
                                        </div>
-                                       <span className="text-xs opacity-70">{link.handle}</span>
+                                       <span className="opacity-70" style={backCoverSocialStyle}>{link.handle}</span>
                                    </div>
                                )
                           ))}
@@ -19520,14 +19876,14 @@ ${html}
                               <div className="bg-white p-3 rounded-2xl shadow-xl ring-1 ring-white/20">
                                   <img src={qrDataUrl} alt="QR Code" className="w-32 h-32 block" />
                               </div>
-                              <p className="text-xs uppercase tracking-[0.25em] opacity-80">
+                              <p className="tracking-[0.25em] opacity-80" style={backCoverQrLabelStyle}>
                                   {catalogConfig.qrCodeLabel || 'Scan to visit'}
                               </p>
                           </div>
                       )}
                       </div>
 
-                      <div className="absolute bottom-12 text-xs opacity-40 z-10">
+                      <div className="absolute bottom-12 opacity-40 z-10" style={backCoverFooterStyle}>
                           {catalogConfig.footerText}
                       </div>
                   </div>

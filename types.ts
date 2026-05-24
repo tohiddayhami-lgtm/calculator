@@ -398,10 +398,48 @@ export interface CatalogConfig {
   coverTextColor?: string;
   /** Main cover title (h1) max font size in px; HTML uses clamp() down to ~45% for small viewports */
   coverTitleFontSizePx?: number;
+  coverHeaderFontSizePx?: number;
+  coverHeaderLineHeight?: number;
+  coverHeaderUppercase?: boolean;
+  coverYearFontSizePx?: number;
+  coverYearLineHeight?: number;
+  coverYearUppercase?: boolean;
+  coverCollectionFontSizePx?: number;
+  coverCollectionLineHeight?: number;
+  coverCollectionUppercase?: boolean;
+  coverTitleLineHeight?: number;
+  coverTitleUppercase?: boolean;
+  coverSubtitleFontSizePx?: number;
+  coverSubtitleLineHeight?: number;
+  coverSubtitleUppercase?: boolean;
+  coverContactTitleFontSizePx?: number;
+  coverContactTitleLineHeight?: number;
+  coverContactTitleUppercase?: boolean;
+  coverContactBodyFontSizePx?: number;
+  coverContactBodyLineHeight?: number;
+  coverContactBodyUppercase?: boolean;
 
   // Back Cover background image + overlay
   backCoverImage?: string;
   backCoverOverlayOpacity?: number; // 0-100
+  backCoverTitleFontSizePx?: number;
+  backCoverTitleLineHeight?: number;
+  backCoverTitleUppercase?: boolean;
+  backCoverLabelFontSizePx?: number;
+  backCoverLabelLineHeight?: number;
+  backCoverLabelUppercase?: boolean;
+  backCoverValueFontSizePx?: number;
+  backCoverValueLineHeight?: number;
+  backCoverValueUppercase?: boolean;
+  backCoverSocialFontSizePx?: number;
+  backCoverSocialLineHeight?: number;
+  backCoverSocialUppercase?: boolean;
+  backCoverQrLabelFontSizePx?: number;
+  backCoverQrLabelLineHeight?: number;
+  backCoverQrLabelUppercase?: boolean;
+  backCoverFooterFontSizePx?: number;
+  backCoverFooterLineHeight?: number;
+  backCoverFooterUppercase?: boolean;
 
   // QR Code on back cover
   showQrCode?: boolean;
