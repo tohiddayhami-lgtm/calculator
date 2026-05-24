@@ -34,6 +34,7 @@ export function normalizeExhibitionReservation(r: ExhibitionReservation): Exhibi
     phone: typeof r.phone === 'string' ? r.phone : '',
     city: typeof r.city === 'string' ? r.city : '',
     products: typeof r.products === 'string' ? r.products : '',
+    storeUrl: typeof r.storeUrl === 'string' ? r.storeUrl : '',
     reservationStatus: r.reservationStatus === 'reserved' ? 'reserved' : 'confirmed',
     amountPaid: r.amountPaid ?? '',
     amountRemaining: r.amountRemaining ?? '',

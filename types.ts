@@ -1471,6 +1471,8 @@ export interface ExhibitionReservation {
   phone: string;
   city: string;
   products: string;
+  /** Public shop / catalog / website URL shown on generated exhibition page */
+  storeUrl?: string;
   reservationStatus: ExhibitionReservationStatus;
   amountPaid: string;
   amountRemaining: string;

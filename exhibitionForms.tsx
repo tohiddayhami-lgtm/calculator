@@ -2,9 +2,13 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
+  Copy,
   Download,
+  ExternalLink,
+  Globe,
   Image as ImageIcon,
   LayoutGrid,
+  Loader2,
   Pencil,
   Plus,
   Save,
@@ -110,13 +114,21 @@ function categoryStats(event: ExhibitionEvent, categoryId: string) {
 type Props = {
   events: ExhibitionEvent[];
   onSaveEvents: (events: ExhibitionEvent[]) => void;
+  onPublishOnline?: (event: ExhibitionEvent) => Promise<{ url: string; shortUrl?: string; qr?: string }>;
 };
 
-export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents }: Props) {
+export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline }: Props) {
   const [subView, setSubView] = useState<'list' | 'editor'>('list');
   const [editing, setEditing] = useState<ExhibitionEvent | null>(null);
   const [exporting, setExporting] = useState(false);
   const [storyPreviewUrl, setStoryPreviewUrl] = useState<string | null>(null);
+  const [onlineLinkInfo, setOnlineLinkInfo] = useState<{
+    url: string;
+    shortUrl?: string;
+    qr?: string;
+    uploading?: boolean;
+    error?: string;
+  } | null>(null);
   const [editingReservationId, setEditingReservationId] = useState<string | null>(null);
   const [reservationForm, setReservationForm] = useState({
     categoryId: '',
@@ -125,6 +137,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     phone: '',
     city: '',
     products: '',
+    storeUrl: '',
     reservationStatus: 'confirmed' as ExhibitionReservationStatus,
     amountPaid: '',
     amountRemaining: '',
@@ -136,6 +149,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     phone: string;
     city: string;
     products: string;
+    storeUrl: string;
     reservationStatus: ExhibitionReservationStatus;
     amountPaid: string;
     amountRemaining: string;
@@ -273,6 +287,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: reservationForm.phone.trim(),
       city: reservationForm.city.trim(),
       products: reservationForm.products.trim(),
+      storeUrl: reservationForm.storeUrl.trim(),
       reservationStatus: reservationForm.reservationStatus,
       amountPaid: reservationForm.amountPaid.trim(),
       amountRemaining: reservationForm.amountRemaining.trim(),
@@ -287,6 +302,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: '',
       city: '',
       products: '',
+      storeUrl: '',
       amountPaid: '',
       amountRemaining: '',
       paymentNote: '',
@@ -321,6 +337,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: reservation.phone,
       city: reservation.city,
       products: reservation.products,
+      storeUrl: reservation.storeUrl ?? '',
       reservationStatus: reservation.reservationStatus,
       amountPaid: reservation.amountPaid,
       amountRemaining: reservation.amountRemaining,
@@ -347,6 +364,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         phone: reservationEditForm.phone.trim(),
         city: reservationEditForm.city.trim(),
         products: reservationEditForm.products.trim(),
+        storeUrl: reservationEditForm.storeUrl.trim(),
         reservationStatus: reservationEditForm.reservationStatus,
         amountPaid: reservationEditForm.amountPaid,
         amountRemaining: reservationEditForm.amountRemaining,
@@ -383,6 +401,41 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     }
   };
 
+  const handlePublishOnline = async () => {
+    if (!editing) return;
+    if (!onPublishOnline) {
+      setOnlineLinkInfo({
+        url: '',
+        uploading: false,
+        error: 'برای ساخت لینک آنلاین باید وارد حساب کاربری متصل به Firebase باشید.',
+      });
+      return;
+    }
+    setOnlineLinkInfo({ url: '', uploading: true });
+    try {
+      const saved = saveEvent(editing);
+      const info = await onPublishOnline(saved);
+      setOnlineLinkInfo({ ...info, uploading: false });
+    } catch (err: any) {
+      setOnlineLinkInfo({
+        url: '',
+        uploading: false,
+        error: err?.message || String(err) || 'ساخت لینک آنلاین انجام نشد.',
+      });
+    }
+  };
+
+  const copyOnlineLink = async () => {
+    const link = onlineLinkInfo?.shortUrl || onlineLinkInfo?.url;
+    if (!link) return;
+    try {
+      await navigator.clipboard?.writeText(link);
+      alert('لینک کپی شد.');
+    } catch {
+      prompt('لینک آنلاین:', link);
+    }
+  };
+
   if (subView === 'list') {
     return (
       <div className="space-y-4">
@@ -399,7 +452,20 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             onClick={() => {
               const blank = makeBlankExhibitionEvent();
               setEditing(blank);
-              setReservationForm(f => ({ ...f, categoryId: blank.categories[0].id }));
+              setReservationForm({
+                categoryId: blank.categories[0].id,
+                companyName: '',
+                contactName: '',
+                phone: '',
+                city: '',
+                products: '',
+                storeUrl: '',
+                reservationStatus: 'confirmed',
+                amountPaid: '',
+                amountRemaining: '',
+                paymentNote: '',
+              });
+              setOnlineLinkInfo(null);
               setSubView('editor');
             }}
             className="flex items-center gap-2 text-sm bg-purple-600 text-white hover:bg-purple-700 rounded-lg px-4 py-2 font-medium"
@@ -458,7 +524,20 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                       onClick={() => {
                         const normalizedEvent = normalizeExhibitionEvent(JSON.parse(JSON.stringify(normalized)) as ExhibitionEvent);
                         setEditing(normalizedEvent);
-                        setReservationForm(f => ({ ...f, categoryId: normalizedEvent.categories[0]?.id || '' }));
+                        setReservationForm({
+                          categoryId: normalizedEvent.categories[0]?.id || '',
+                          companyName: '',
+                          contactName: '',
+                          phone: '',
+                          city: '',
+                          products: '',
+                          storeUrl: '',
+                          reservationStatus: 'confirmed',
+                          amountPaid: '',
+                          amountRemaining: '',
+                          paymentNote: '',
+                        });
+                        setOnlineLinkInfo(null);
                         setSubView('editor');
                       }}
                       className="text-sm text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 hover:bg-purple-50"
@@ -499,6 +578,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             closeReservationEdit();
             if (storyPreviewUrl) URL.revokeObjectURL(storyPreviewUrl);
             setStoryPreviewUrl(null);
+            setOnlineLinkInfo(null);
           }}
           className="flex items-center gap-1 text-slate-500 hover:text-slate-900 text-sm"
         >
@@ -521,6 +601,10 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
           <Download className="w-4 h-4" />{' '}
           {exporting ? '…' : `دانلود استوری 8K (${EXHIBITION_STORY_EXPORT_WIDTH}×${EXHIBITION_STORY_EXPORT_HEIGHT})`}
         </button>
+        <button type="button" onClick={handlePublishOnline} disabled={onlineLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-slate-900 text-white rounded-lg px-3 py-1.5 hover:bg-slate-800 disabled:opacity-50">
+          {onlineLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+          {onlineLinkInfo?.uploading ? 'در حال ساخت...' : 'ساخت لینک آنلاین'}
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -533,6 +617,43 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
           <Save className="w-4 h-4" /> ذخیره
         </button>
       </div>
+
+      {onlineLinkInfo && !onlineLinkInfo.uploading ? (
+        onlineLinkInfo.error ? (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
+            {onlineLinkInfo.error}
+          </div>
+        ) : (
+          <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white rounded-xl border border-purple-300/30 p-4 flex flex-col md:flex-row md:items-center gap-4">
+            {onlineLinkInfo.qr ? (
+              <img src={onlineLinkInfo.qr} alt="QR code" className="w-24 h-24 rounded-xl bg-white p-1 shrink-0" />
+            ) : null}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold mb-1">لینک آنلاین نمایشگاه آماده شد</p>
+              <a
+                href={onlineLinkInfo.shortUrl || onlineLinkInfo.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-cyan-200 break-all hover:underline"
+                dir="ltr"
+              >
+                {onlineLinkInfo.shortUrl || onlineLinkInfo.url}
+              </a>
+              <p className="text-[11px] text-slate-300 mt-1">
+                این صفحه غرفه‌های رزروشده را با لینک فروشگاه هر شرکت نمایش می‌دهد.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button type="button" onClick={copyOnlineLink} className="flex items-center gap-1 text-xs bg-white/10 hover:bg-white/15 rounded-lg px-3 py-2">
+                <Copy className="w-3.5 h-3.5" /> کپی
+              </button>
+              <a href={onlineLinkInfo.shortUrl || onlineLinkInfo.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg px-3 py-2">
+                <ExternalLink className="w-3.5 h-3.5" /> باز کردن
+              </a>
+            </div>
+          </div>
+        )
+      ) : null}
 
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="space-y-4">
@@ -700,6 +821,14 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               <input placeholder="شهر / کشور" value={reservationForm.city} onChange={e => setReservationForm(f => ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" disabled={selectedCategoryFull} />
             </div>
             <textarea placeholder="محصولات / حوزه فعالیت" value={reservationForm.products} onChange={e => setReservationForm(f => ({ ...f, products: e.target.value }))} rows={2} className={inputCls + ' mb-3'} dir="rtl" disabled={selectedCategoryFull} />
+            <input
+              placeholder="لینک فروشگاه / کاتالوگ آنلاین شرکت (https://...)"
+              value={reservationForm.storeUrl}
+              onChange={e => setReservationForm(f => ({ ...f, storeUrl: e.target.value }))}
+              className={inputCls + ' mb-3'}
+              dir="ltr"
+              disabled={selectedCategoryFull}
+            />
             <p className="text-xs text-slate-500 mb-2 font-medium">پرداخت (پیش‌پرداخت / مانده)</p>
             <div className="grid grid-cols-2 gap-2 mb-2">
               <input placeholder="مبلغ پرداخت‌شده" value={formatAmountDisplay(reservationForm.amountPaid)} onChange={e => setReservationForm(f => ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" disabled={selectedCategoryFull} />
@@ -805,6 +934,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                           <span>{category?.name || '—'}</span>
                         </div>
                         {reservation.products ? <p className="text-xs text-slate-500 mb-2 line-clamp-2">{reservation.products}</p> : null}
+                        {reservation.storeUrl ? (
+                          <a href={reservation.storeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-purple-700 hover:underline break-all block mb-2" dir="ltr">
+                            {reservation.storeUrl}
+                          </a>
+                        ) : null}
                         <div className="grid grid-cols-2 gap-2 mb-2">
                           <input value={formatAmountDisplay(reservation.amountPaid)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountPaid: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="ltr" placeholder="پرداخت‌شده" />
                           <input value={formatAmountDisplay(reservation.amountRemaining)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountRemaining: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="ltr" placeholder="مانده" />
@@ -841,6 +975,13 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 <input placeholder="شهر / کشور" value={reservationEditForm.city} onChange={e => setReservationEditForm(f => f && ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" />
               </div>
               <textarea placeholder="محصولات / حوزه فعالیت" value={reservationEditForm.products} onChange={e => setReservationEditForm(f => f && ({ ...f, products: e.target.value }))} rows={2} className={inputCls + ' mb-3'} dir="rtl" />
+              <input
+                placeholder="لینک فروشگاه / کاتالوگ آنلاین شرکت (https://...)"
+                value={reservationEditForm.storeUrl}
+                onChange={e => setReservationEditForm(f => f && ({ ...f, storeUrl: e.target.value }))}
+                className={inputCls + ' mb-3'}
+                dir="ltr"
+              />
               <div className="flex gap-2 mb-3">
                 <button type="button" onClick={() => setReservationEditForm(f => f && ({ ...f, reservationStatus: 'confirmed' }))} className={`flex-1 text-sm py-2 rounded-lg border ${reservationEditForm.reservationStatus === 'confirmed' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-slate-200'}`}>قطعی</button>
                 <button type="button" onClick={() => setReservationEditForm(f => f && ({ ...f, reservationStatus: 'reserved' }))} className={`flex-1 text-sm py-2 rounded-lg border ${reservationEditForm.reservationStatus === 'reserved' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-slate-200'}`}>رزرو موقت</button>
