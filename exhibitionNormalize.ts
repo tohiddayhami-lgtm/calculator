@@ -5,6 +5,7 @@ import type {
   ExhibitionMasterLink,
   ExhibitionReservation,
   ExhibitionTopViewMarker,
+  ExhibitionTopViewStructure,
 } from './types';
 import { currencyShort } from './educationFormat';
 
@@ -102,6 +103,44 @@ function normalizeTopViewMarker(raw: unknown, categoryIds: Set<string>, index: n
   };
 }
 
+function clampPercent(raw: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
+function normalizeTopViewStructure(raw: unknown, categoryIds: Set<string>, index: number): ExhibitionTopViewStructure | null {
+  const structure = raw as Partial<ExhibitionTopViewStructure> | null;
+  if (!structure || typeof structure !== 'object') return null;
+  const categoryId =
+    typeof structure.categoryId === 'string' && categoryIds.has(structure.categoryId)
+      ? structure.categoryId
+      : Array.from(categoryIds)[0] || '';
+  if (!categoryId) return null;
+  const kind: ExhibitionTopViewStructure['kind'] =
+    structure.kind === 'divider' || structure.kind === 'pavilion' ? structure.kind : 'column';
+  const defaultColors: Record<ExhibitionTopViewStructure['kind'], string> = {
+    column: '#38bdf8',
+    divider: '#facc15',
+    pavilion: '#22c55e',
+  };
+  return {
+    id: typeof structure.id === 'string' && structure.id ? structure.id : `structure_${index + 1}`,
+    kind,
+    categoryId,
+    title: typeof structure.title === 'string' ? structure.title : '',
+    description: typeof structure.description === 'string' ? structure.description : '',
+    x: clampPercent(structure.x, 0, 100, 50),
+    y: clampPercent(structure.y, 0, 100, 50),
+    width: clampPercent(structure.width, 1, 100, kind === 'pavilion' ? 28 : kind === 'divider' ? 2 : 8),
+    height: clampPercent(structure.height, 1, 100, kind === 'pavilion' ? 30 : kind === 'divider' ? 75 : 8),
+    color:
+      typeof structure.color === 'string' && /^#[0-9a-f]{6}$/i.test(structure.color)
+        ? structure.color
+        : defaultColors[kind],
+    opacity: clampPercent(structure.opacity, 5, 100, kind === 'pavilion' ? 18 : 42),
+  };
+}
+
 function normalizeMasterLink(raw: unknown): ExhibitionMasterLink | undefined {
   const link = raw as Partial<ExhibitionMasterLink> | null;
   if (!link || typeof link !== 'object') return undefined;
@@ -168,6 +207,11 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
       ? event.topViewMarkers
           .map((marker, index) => normalizeTopViewMarker(marker, categoryIds, index))
           .filter(Boolean) as ExhibitionTopViewMarker[]
+      : [],
+    topViewStructures: Array.isArray(event.topViewStructures)
+      ? event.topViewStructures
+          .map((structure, index) => normalizeTopViewStructure(structure, categoryIds, index))
+          .filter(Boolean) as ExhibitionTopViewStructure[]
       : [],
     onlineMasterLink: normalizeMasterLink(event.onlineMasterLink),
     topViewMasterLink: normalizeMasterLink(event.topViewMasterLink),

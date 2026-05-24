@@ -24,6 +24,7 @@ import type {
   ExhibitionReservation,
   ExhibitionReservationStatus,
   ExhibitionTopViewMarker,
+  ExhibitionTopViewStructure,
 } from './types';
 import {
   EDUCATION_CURRENCY_OPTIONS,
@@ -59,6 +60,19 @@ const TOP_VIEW_MARKER_KIND_OPTIONS: {
   { value: 'exit', label: 'End / Exit / انتهای مسیر', defaultTitle: 'Exit / End of Exhibition', color: '#34d399' },
   { value: 'guide', label: 'Guide Sign / راهنما', defaultTitle: 'Visitor Guide', color: '#facc15' },
   { value: 'ad', label: 'Ad Board / تابلو تبلیغاتی', defaultTitle: 'Advertising Board', color: '#fb7185' },
+];
+const TOP_VIEW_STRUCTURE_KIND_OPTIONS: {
+  value: ExhibitionTopViewStructure['kind'];
+  label: string;
+  defaultTitle: string;
+  color: string;
+  width: number;
+  height: number;
+  opacity: number;
+}[] = [
+  { value: 'column', label: 'Movable Column / ستون متحرک', defaultTitle: 'Central Column', color: '#38bdf8', width: 8, height: 8, opacity: 55 },
+  { value: 'divider', label: 'Boundary Line / خط مرزی', defaultTitle: 'Pavilion Boundary', color: '#facc15', width: 2, height: 75, opacity: 65 },
+  { value: 'pavilion', label: 'Pavilion Area / محدوده پاویون', defaultTitle: 'Iran Pavilion', color: '#22c55e', width: 30, height: 34, opacity: 18 },
 ];
 
 function newId(): string {
@@ -97,6 +111,7 @@ export function makeBlankExhibitionEvent(): ExhibitionEvent {
     categories: [makeCategory(0)],
     reservations: [],
     topViewMarkers: [],
+    topViewStructures: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -130,6 +145,15 @@ function topViewFloorCols(boothCount: number): number {
   if (boothCount <= 20) return 5;
   if (boothCount <= 48) return 8;
   return Math.min(16, Math.max(10, Math.ceil(Math.sqrt(boothCount * 1.35))));
+}
+
+function hexToRgba(hex: string, opacity: number): string {
+  const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex : '#38bdf8';
+  const value = normalized.slice(1);
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${Math.min(100, Math.max(0, opacity)) / 100})`;
 }
 
 type Props = {
@@ -373,6 +397,50 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
   const removeTopViewMarker = (id: string) => {
     if (!editing) return;
     upd({ topViewMarkers: (editing.topViewMarkers ?? []).filter(marker => marker.id !== id) });
+  };
+
+  const addTopViewStructure = (kind: ExhibitionTopViewStructure['kind'] = 'column') => {
+    if (!editing) return;
+    const preset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === kind) || TOP_VIEW_STRUCTURE_KIND_OPTIONS[0];
+    const structure: ExhibitionTopViewStructure = {
+      id: newId(),
+      kind,
+      categoryId: editing.categories[0]?.id || '',
+      title: preset.defaultTitle,
+      description: '',
+      x: kind === 'pavilion' ? 30 : 50,
+      y: kind === 'pavilion' ? 35 : 50,
+      width: preset.width,
+      height: preset.height,
+      color: preset.color,
+      opacity: preset.opacity,
+    };
+    upd({ topViewStructures: [...(editing.topViewStructures ?? []), structure] });
+  };
+
+  const updateTopViewStructure = (id: string, patch: Partial<ExhibitionTopViewStructure>) => {
+    if (!editing) return;
+    const nextStructures = (editing.topViewStructures ?? []).map(structure => {
+      if (structure.id !== id) return structure;
+      const next = { ...structure, ...patch };
+      if (patch.kind) {
+        const preset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === patch.kind);
+        if (preset) {
+          next.color = preset.color;
+          next.width = preset.width;
+          next.height = preset.height;
+          next.opacity = preset.opacity;
+          if (!structure.title.trim()) next.title = preset.defaultTitle;
+        }
+      }
+      return next;
+    });
+    upd({ topViewStructures: nextStructures });
+  };
+
+  const removeTopViewStructure = (id: string) => {
+    if (!editing) return;
+    upd({ topViewStructures: (editing.topViewStructures ?? []).filter(structure => structure.id !== id) });
   };
 
   const handleAddReservation = () => {
@@ -854,6 +922,109 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 <ExternalLink className="w-3.5 h-3.5" /> باز کردن
               </a>
             </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                    <LayoutGrid className="w-4 h-4 text-amber-500" />
+                    ستون‌ها، مرزبندی و پاویون‌ها
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    برای مشخص کردن مرز بین پاویون‌ها، ستون‌های وسط سالن یا محدوده‌هایی مثل Iran Pavilion و Turkey Pavilion استفاده کن.
+                  </p>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-2 mb-4">
+                {TOP_VIEW_STRUCTURE_KIND_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => addTopViewStructure(option.value)}
+                    className="text-xs rounded-lg border border-slate-200 px-3 py-2 text-right hover:bg-amber-50 hover:border-amber-200"
+                  >
+                    + {option.label}
+                  </button>
+                ))}
+              </div>
+              {(editing.topViewStructures ?? []).length === 0 ? (
+                <p className="text-sm text-slate-400 border border-dashed border-slate-200 rounded-xl p-5 text-center">
+                  هنوز ستون، خط مرزی یا پاویون تعریف نشده.
+                </p>
+              ) : (
+                <div className="space-y-3 max-h-[34rem] overflow-y-auto pr-1">
+                  {(editing.topViewStructures ?? []).map(structure => {
+                    const kindPreset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === structure.kind) || TOP_VIEW_STRUCTURE_KIND_OPTIONS[0];
+                    return (
+                      <div key={structure.id} className="border border-slate-200 rounded-xl p-3 bg-amber-50/40 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={structure.kind}
+                            onChange={e => updateTopViewStructure(structure.id, { kind: e.target.value as ExhibitionTopViewStructure['kind'] })}
+                            className={inputCls}
+                          >
+                            {TOP_VIEW_STRUCTURE_KIND_OPTIONS.map(option => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={structure.categoryId}
+                            onChange={e => updateTopViewStructure(structure.id, { categoryId: e.target.value })}
+                            className={inputCls}
+                          >
+                            {editing.categories.map(category => (
+                              <option key={category.id} value={category.id}>{category.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <input
+                          value={structure.title}
+                          onChange={e => updateTopViewStructure(structure.id, { title: e.target.value })}
+                          className={inputCls}
+                          dir="ltr"
+                          placeholder={kindPreset.defaultTitle}
+                        />
+                        <textarea
+                          value={structure.description}
+                          onChange={e => updateTopViewStructure(structure.id, { description: e.target.value })}
+                          className={inputCls}
+                          rows={2}
+                          dir="rtl"
+                          placeholder="مثلاً محدوده پاویون ایران، مرز غرفه‌های ترکیه، مسیر اصلی بازدیدکننده"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className={labelCls}>X: {structure.x}%</label>
+                            <input type="range" min={0} max={100} value={structure.x} onChange={e => updateTopViewStructure(structure.id, { x: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <div>
+                            <label className={labelCls}>Y: {structure.y}%</label>
+                            <input type="range" min={0} max={100} value={structure.y} onChange={e => updateTopViewStructure(structure.id, { y: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <div>
+                            <label className={labelCls}>عرض: {structure.width}%</label>
+                            <input type="range" min={1} max={100} value={structure.width} onChange={e => updateTopViewStructure(structure.id, { width: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <div>
+                            <label className={labelCls}>ارتفاع: {structure.height}%</label>
+                            <input type="range" min={1} max={100} value={structure.height} onChange={e => updateTopViewStructure(structure.id, { height: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+                          <div>
+                            <label className={labelCls}>شفافیت: {structure.opacity}%</label>
+                            <input type="range" min={5} max={100} value={structure.opacity} onChange={e => updateTopViewStructure(structure.id, { opacity: Number(e.target.value) })} className="w-full accent-amber-500" />
+                          </div>
+                          <input type="color" value={structure.color} onChange={e => updateTopViewStructure(structure.id, { color: e.target.value })} className="w-11 h-10 rounded-lg border border-slate-200 bg-white" />
+                        </div>
+                        <button type="button" onClick={() => removeTopViewStructure(structure.id)} className="text-xs text-red-600 hover:underline">
+                          حذف این سازه
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )
       ) : null}
@@ -1077,6 +1248,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
             <div className="space-y-4">
               {editing.categories.map(category => {
                 const markers = (editing.topViewMarkers ?? []).filter(marker => marker.categoryId === category.id);
+                const structures = (editing.topViewStructures ?? []).filter(structure => structure.categoryId === category.id);
                 const cols = topViewFloorCols(category.boothCount);
                 const rows = Math.ceil(category.boothCount / cols);
                 const previewCells = Array.from({ length: category.boothCount }, (_, i) => i + 1);
@@ -1087,14 +1259,44 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                         <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-300">Hall Preview</p>
                         <h4 className="font-bold">{category.name}</h4>
                       </div>
-                      <span className="text-xs text-slate-400">{category.boothCount} booth · {markers.length} marker</span>
+                      <span className="text-xs text-slate-400">{category.boothCount} booth · {structures.length} structure · {markers.length} marker</span>
                     </div>
                     <div
                       className="relative rounded-2xl border border-white/10 overflow-hidden bg-[linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,41,59,.72))]"
                       style={{ minHeight: Math.max(260, rows * 24 + 68) }}
                     >
-                      <div className="absolute left-4 right-4 top-1/2 h-4 -translate-y-1/2 rounded-full border border-cyan-300/20 bg-cyan-300/10" />
-                      <div className="absolute top-4 bottom-4 left-1/2 w-4 -translate-x-1/2 rounded-full border border-cyan-300/20 bg-cyan-300/10" />
+                      {structures.map(structure => {
+                        const preset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === structure.kind);
+                        const isPavilion = structure.kind === 'pavilion';
+                        return (
+                          <div
+                            key={structure.id}
+                            className={`absolute -translate-x-1/2 -translate-y-1/2 border text-white flex items-center justify-center text-center px-2 ${
+                              isPavilion
+                                ? 'rounded-2xl border-dashed font-black'
+                                : structure.kind === 'divider'
+                                  ? 'rounded-full font-bold'
+                                  : 'rounded-2xl font-bold'
+                            }`}
+                            style={{
+                              left: `${structure.x}%`,
+                              top: `${structure.y}%`,
+                              width: `${structure.width}%`,
+                              height: `${structure.height}%`,
+                              minWidth: structure.kind === 'column' ? 24 : undefined,
+                              minHeight: structure.kind === 'column' ? 24 : undefined,
+                              backgroundColor: hexToRgba(structure.color, structure.opacity),
+                              borderColor: structure.color,
+                              zIndex: isPavilion ? 1 : 3,
+                            }}
+                            title={structure.description}
+                          >
+                            <span className="text-[10px] leading-tight drop-shadow">
+                              {structure.title || preset?.defaultTitle}
+                            </span>
+                          </div>
+                        );
+                      })}
                       <div className="absolute inset-5 grid gap-1.5 opacity-45" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                         {previewCells.map(num => (
                           <span key={num} className="rounded-md border border-white/10 bg-white/10 text-[8px] text-white/45 flex items-center justify-center">
@@ -1108,7 +1310,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                           <div
                             key={marker.id}
                             className="absolute -translate-x-1/2 -translate-y-1/2 rounded-xl px-2.5 py-2 text-[10px] font-bold shadow-lg max-w-[140px]"
-                            style={{ left: `${marker.x}%`, top: `${marker.y}%`, backgroundColor: marker.color }}
+                            style={{ left: `${marker.x}%`, top: `${marker.y}%`, backgroundColor: marker.color, zIndex: 5 }}
                             title={marker.description}
                           >
                             <div className="text-white leading-tight">{marker.title || preset?.defaultTitle}</div>

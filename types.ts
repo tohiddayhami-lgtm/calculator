@@ -1499,6 +1499,26 @@ export interface ExhibitionTopViewMarker {
   url?: string;
 }
 
+export type ExhibitionTopViewStructureKind = 'column' | 'divider' | 'pavilion';
+
+export interface ExhibitionTopViewStructure {
+  id: string;
+  kind: ExhibitionTopViewStructureKind;
+  /** Hall/category where this structure should be placed */
+  categoryId: string;
+  title: string;
+  description: string;
+  /** Center position inside the top-view hall floor, 0-100 percent */
+  x: number;
+  y: number;
+  /** Size inside the top-view hall floor, 1-100 percent */
+  width: number;
+  height: number;
+  color: string;
+  /** Visual opacity, 0-100 percent */
+  opacity: number;
+}
+
 export interface ExhibitionMasterLink {
   shortCode: string;
   shortUrl: string;
@@ -1526,6 +1546,7 @@ export interface ExhibitionEvent {
   categories: ExhibitionBoothCategory[];
   reservations: ExhibitionReservation[];
   topViewMarkers?: ExhibitionTopViewMarker[];
+  topViewStructures?: ExhibitionTopViewStructure[];
   onlineMasterLink?: ExhibitionMasterLink;
   topViewMasterLink?: ExhibitionMasterLink;
   createdAt: number;
