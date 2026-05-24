@@ -2697,11 +2697,24 @@ const APP_VIEW_ITEMS: { id: AppView; label: string; shortLabel?: string; icon: a
 
 const APP_PERMISSION_LABELS: Record<AppPermissionKey, string> = {
   dashboard: 'داشبورد محاسبات',
+  dashboardServiceRetail: 'محاسبات خدمات و محصولات',
   warehouse: 'مدیریت انبار',
   invoice: 'پروفورما و فاکتور',
-  forms: 'فرم‌ها و قراردادها',
+  forms: 'بخش Forms',
+  formsCustom: 'فرم‌ساز و فرم‌های سفارشی',
   iso: 'سیستم ISO',
-  catalog: 'کاتالوگ آنلاین',
+  contracts: 'قراردادها',
+  proposals: 'پروپوزال‌ها',
+  education: 'Academy',
+  exhibition: 'Exhibition',
+  packingList: 'Packing List',
+  formArchive: 'بایگانی فرم‌ها',
+  metaPort: 'Meta Port',
+  catalog: 'بخش Catalog',
+  catalogBuilder: 'Catalog Generator',
+  catalogueShop: 'Catalogue Shop',
+  metaTradingHub: 'Meta Trading Hub',
+  storyStudio: 'Story Studio',
   suppliers: 'تامین‌کنندگان',
   buyers: 'خریداران',
   community: 'Community',
@@ -2719,11 +2732,24 @@ const VIEW_PERMISSION_KEY: Partial<Record<AppView, AppPermissionKey>> = {
 
 const DEFAULT_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
   dashboard: true,
+  dashboardServiceRetail: true,
   warehouse: true,
   invoice: true,
   forms: true,
+  formsCustom: true,
   iso: true,
+  contracts: true,
+  proposals: true,
+  education: true,
+  exhibition: true,
+  packingList: true,
+  formArchive: true,
+  metaPort: true,
   catalog: true,
+  catalogBuilder: true,
+  catalogueShop: true,
+  metaTradingHub: true,
+  storyStudio: true,
   suppliers: true,
   buyers: true,
   community: true,
@@ -2731,17 +2757,48 @@ const DEFAULT_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
 
 const MASTER_USER_PERMISSIONS: Record<AppPermissionKey, boolean> = {
   dashboard: true,
+  dashboardServiceRetail: true,
   warehouse: true,
   invoice: true,
   forms: true,
+  formsCustom: true,
   iso: true,
+  contracts: true,
+  proposals: true,
+  education: true,
+  exhibition: true,
+  packingList: true,
+  formArchive: true,
+  metaPort: true,
   catalog: true,
+  catalogBuilder: true,
+  catalogueShop: true,
+  metaTradingHub: true,
+  storyStudio: true,
   suppliers: true,
   buyers: true,
   community: true,
 };
 
 const MANAGED_USER_PERMISSION_KEYS = Object.keys(DEFAULT_USER_PERMISSIONS) as AppPermissionKey[];
+const DASHBOARD_SECTION_PERMISSION_KEYS: AppPermissionKey[] = ['dashboard', 'dashboardServiceRetail', 'warehouse'];
+const FORM_SECTION_PERMISSION_KEYS: AppPermissionKey[] = [
+  'formsCustom',
+  'iso',
+  'contracts',
+  'proposals',
+  'education',
+  'exhibition',
+  'packingList',
+  'formArchive',
+  'metaPort',
+];
+const CATALOG_SECTION_PERMISSION_KEYS: AppPermissionKey[] = [
+  'catalogBuilder',
+  'catalogueShop',
+  'metaTradingHub',
+  'storyStudio',
+];
 const DEFAULT_NEW_USER_PASSWORD = 'Td@2026-User!';
 const DEFAULT_NEW_USER_SUBSCRIPTION_DAYS = 30;
 const DB_NAME = 'CloudExportProDB';
@@ -6522,12 +6579,20 @@ function AppInner() {
     && !isMasterUser
     && !!currentUserProfile
     && (currentUserProfile.disabled || isManagedUserExpired(currentUserProfile));
-  const canUseWarehouse = isMasterUser || currentPermissions.warehouse;
-  const canUseIso = isMasterUser || currentPermissions.iso;
+  const hasPermission = (key: AppPermissionKey) => isMasterUser || currentPermissions[key];
+  const canUseWarehouse = hasPermission('warehouse');
+  const canUseIso = hasPermission('iso');
+  const canUseDashboardWorkspace = hasPermission('dashboard');
+  const canUseDashboardServiceRetail = hasPermission('dashboardServiceRetail');
+  const canUseFormsSection = (key: AppPermissionKey) => hasPermission(key);
+  const canUseCatalogSection = (key: AppPermissionKey) => hasPermission(key);
   const canAccessView = (candidate: AppView) => {
     if (candidate === 'admin') return isMasterUser;
+    if (candidate === 'dashboard') return DASHBOARD_SECTION_PERMISSION_KEYS.some((key) => hasPermission(key));
+    if (candidate === 'forms') return hasPermission('forms') || FORM_SECTION_PERMISSION_KEYS.some((key) => hasPermission(key));
+    if (candidate === 'catalog') return hasPermission('catalog') || CATALOG_SECTION_PERMISSION_KEYS.some((key) => hasPermission(key));
     const permissionKey = VIEW_PERMISSION_KEY[candidate];
-    return !permissionKey || currentPermissions[permissionKey] || isMasterUser;
+    return !permissionKey || hasPermission(permissionKey);
   };
   const visibleNavItems = APP_VIEW_ITEMS.filter((item) => (
     item.masterOnly ? isMasterUser : canAccessView(item.id)
@@ -7282,10 +7347,43 @@ function AppInner() {
   }, [view, isMasterUser, currentPermissions]);
 
   useEffect(() => {
-    if (formsSubView === 'iso' && !canUseIso) {
-      setFormsSubView('list');
+    if (dashboardSubView === 'workspace' && !canUseDashboardWorkspace) {
+      setDashboardSubView(canUseDashboardServiceRetail ? 'service-retail' : canUseWarehouse ? 'warehouse' : 'workspace');
+    } else if (dashboardSubView === 'service-retail' && !canUseDashboardServiceRetail) {
+      setDashboardSubView(canUseDashboardWorkspace ? 'workspace' : canUseWarehouse ? 'warehouse' : 'workspace');
+    } else if (dashboardSubView === 'warehouse' && !canUseWarehouse) {
+      setDashboardSubView(canUseDashboardWorkspace ? 'workspace' : canUseDashboardServiceRetail ? 'service-retail' : 'workspace');
     }
-  }, [formsSubView, canUseIso]);
+  }, [dashboardSubView, currentPermissions, isMasterUser]);
+
+  useEffect(() => {
+    const allowedFormViews = [
+      canUseFormsSection('formsCustom') ? 'list' : null,
+      canUseFormsSection('iso') ? 'iso' : null,
+      canUseFormsSection('contracts') ? 'contracts' : null,
+      canUseFormsSection('proposals') ? 'proposals' : null,
+      canUseFormsSection('education') ? 'education' : null,
+      canUseFormsSection('exhibition') ? 'exhibition' : null,
+      canUseFormsSection('packingList') ? 'packinglist' : null,
+      canUseFormsSection('formArchive') ? 'archive' : null,
+      canUseFormsSection('metaPort') ? 'metaport' : null,
+    ].filter(Boolean) as typeof formsSubView[];
+    if (!allowedFormViews.includes(formsSubView)) {
+      setFormsSubView(allowedFormViews[0] || 'list');
+    }
+  }, [formsSubView, currentPermissions, isMasterUser]);
+
+  useEffect(() => {
+    const allowedCatalogTabs = [
+      canUseCatalogSection('catalogBuilder') ? 'catalog' : null,
+      canUseCatalogSection('catalogueShop') ? 'catalogue-shop' : null,
+      canUseCatalogSection('metaTradingHub') ? 'meta-trading-hub' : null,
+      canUseCatalogSection('storyStudio') ? 'story-studio' : null,
+    ].filter(Boolean) as typeof catalogPageTab[];
+    if (!allowedCatalogTabs.includes(catalogPageTab)) {
+      setCatalogPageTab(allowedCatalogTabs[0] || 'catalog');
+    }
+  }, [catalogPageTab, currentPermissions, isMasterUser]);
 
   // Auto-assign SKU to any product missing one (e.g., legacy data, JSON import)
   useEffect(() => {
@@ -13779,30 +13877,34 @@ function AppInner() {
   const renderDashboard = () => (
     <div className="space-y-6" data-dashboard-layout="export-warehouse-only">
       <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1 gap-1 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setDashboardSubView('workspace')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
-            dashboardSubView === 'workspace'
-              ? 'bg-white text-blue-800 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <LayoutDashboard className="w-4 h-4" />
-          محاسبه صادرات
-        </button>
-        <button
-          type="button"
-          onClick={() => setDashboardSubView('service-retail')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
-            dashboardSubView === 'service-retail'
-              ? 'bg-white text-indigo-800 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <BadgeCheck className="w-4 h-4" />
-          محاسبات خدمات و محصولات
-        </button>
+        {canUseDashboardWorkspace && (
+          <button
+            type="button"
+            onClick={() => setDashboardSubView('workspace')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+              dashboardSubView === 'workspace'
+                ? 'bg-white text-blue-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            محاسبه صادرات
+          </button>
+        )}
+        {canUseDashboardServiceRetail && (
+          <button
+            type="button"
+            onClick={() => setDashboardSubView('service-retail')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${
+              dashboardSubView === 'service-retail'
+                ? 'bg-white text-indigo-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <BadgeCheck className="w-4 h-4" />
+            محاسبات خدمات و محصولات
+          </button>
+        )}
         {canUseWarehouse && (
           <button
             type="button"
@@ -13830,9 +13932,9 @@ function AppInner() {
           productSettings={warehouseProductSettings}
           setProductSettings={setWarehouseProductSettings}
         />
-      ) : dashboardSubView === 'service-retail' ? (
+      ) : dashboardSubView === 'service-retail' && canUseDashboardServiceRetail ? (
         renderServiceRetailDashboard()
-      ) : (
+      ) : canUseDashboardWorkspace ? (
       <>
       {/* 1. CONFIG BAR */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
@@ -16359,6 +16461,10 @@ function AppInner() {
         </div>
       </div>
       </>
+      ) : (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+          برای این داشبورد دسترسی فعالی تعریف نشده است.
+        </div>
       )}
     </div>
   );
@@ -17583,33 +17689,41 @@ ${html}
       <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 8rem)' }}>
           {/* ── TAB BAR ────────────────────────────────────────────────── */}
           <div className="flex border-b border-slate-200 bg-white print:hidden flex-shrink-0">
-              <button
-                  onClick={() => setCatalogPageTab('catalog')}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'catalog' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                  <LayoutTemplate className="w-4 h-4" /> Catalog
-              </button>
-              <button
-                  onClick={() => setCatalogPageTab('catalogue-shop')}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'catalogue-shop' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                  <ShoppingCart className="w-4 h-4" /> Catalogue Shop
-              </button>
-              <button
-                  onClick={() => setCatalogPageTab('meta-trading-hub')}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'meta-trading-hub' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                  <Globe2 className="w-4 h-4" /> Meta Trading Hub
-              </button>
-              <button
-                  onClick={() => setCatalogPageTab('story-studio')}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'story-studio' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                  <ImageIcon className="w-4 h-4" /> Story Studio
-              </button>
+              {canUseCatalogSection('catalogBuilder') && (
+                <button
+                    onClick={() => setCatalogPageTab('catalog')}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'catalog' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <LayoutTemplate className="w-4 h-4" /> Catalog
+                </button>
+              )}
+              {canUseCatalogSection('catalogueShop') && (
+                <button
+                    onClick={() => setCatalogPageTab('catalogue-shop')}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'catalogue-shop' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <ShoppingCart className="w-4 h-4" /> Catalogue Shop
+                </button>
+              )}
+              {canUseCatalogSection('metaTradingHub') && (
+                <button
+                    onClick={() => setCatalogPageTab('meta-trading-hub')}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'meta-trading-hub' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <Globe2 className="w-4 h-4" /> Meta Trading Hub
+                </button>
+              )}
+              {canUseCatalogSection('storyStudio') && (
+                <button
+                    onClick={() => setCatalogPageTab('story-studio')}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${catalogPageTab === 'story-studio' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <ImageIcon className="w-4 h-4" /> Story Studio
+                </button>
+              )}
           </div>
 
-          {catalogPageTab === 'catalog' && (
+          {catalogPageTab === 'catalog' && canUseCatalogSection('catalogBuilder') && (
           <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-8rem)]">
           {/* SIDEBAR CONTROLS (Hide in Print) */}
           <div className="w-full lg:w-80 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto p-4 flex-shrink-0 print:hidden space-y-6">
@@ -19797,7 +19911,7 @@ ${html}
       </div>
           )} {/* end catalogPageTab === 'catalog' */}
 
-          {catalogPageTab === 'catalogue-shop' && (
+          {catalogPageTab === 'catalogue-shop' && canUseCatalogSection('catalogueShop') && (
               <div className="flex flex-col xl:flex-row overflow-hidden bg-slate-100" style={{ height: 'calc(100vh - 9.5rem)' }}>
                   <aside className="w-full xl:w-[28rem] bg-white border-b xl:border-b-0 xl:border-r border-slate-200 overflow-y-auto p-4 space-y-4">
                       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
@@ -20250,7 +20364,7 @@ ${html}
           )}
 
           {/* ── META TRADING HUB TAB ───────────────────────────────────── */}
-          {catalogPageTab === 'meta-trading-hub' && (
+          {catalogPageTab === 'meta-trading-hub' && canUseCatalogSection('metaTradingHub') && (
               <div className="flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 9.5rem)' }}>
                   {/* Action Bar */}
                   <div className="flex flex-wrap items-center gap-2 p-3 border-b border-slate-200 bg-slate-50 print:hidden flex-shrink-0">
@@ -20825,7 +20939,7 @@ ${html}
                   )}
               </div>
           )}
-          {catalogPageTab === 'story-studio' && (
+          {catalogPageTab === 'story-studio' && canUseCatalogSection('storyStudio') && (
               <div className="flex flex-col xl:flex-row overflow-hidden bg-slate-100" style={{ height: 'calc(100vh - 9.5rem)' }}>
                   <aside className="w-full xl:w-96 bg-white border-b xl:border-b-0 xl:border-r border-slate-200 overflow-y-auto p-4 space-y-4">
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -28108,12 +28222,16 @@ ${html}
   const renderForms = () => (
     <div className="space-y-4">
       <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
-        <button onClick={() => setFormsSubView('list')}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'list' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <ListTodo className="w-4 h-4" /> Custom Forms
-        </button>
-        <div className="w-px bg-slate-200" />
-        {canUseIso && (
+        {canUseFormsSection('formsCustom') && (
+          <>
+            <button onClick={() => setFormsSubView('list')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'list' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <ListTodo className="w-4 h-4" /> Custom Forms
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('iso') && (
           <>
             <button onClick={() => setFormsSubView('iso')}
               className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'iso' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
@@ -28122,59 +28240,85 @@ ${html}
             <div className="w-px bg-slate-200" />
           </>
         )}
-        <button onClick={() => { setFormsSubView('contracts'); setContractsSubView('list'); }}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'contracts' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <FileText className="w-4 h-4" /> Contracts
-        </button>
-        <div className="w-px bg-slate-200" />
-        <button onClick={() => { setFormsSubView('proposals'); setProposalsSubView('list'); }}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'proposals' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <FileText className="w-4 h-4" /> Proposals
-        </button>
-        <div className="w-px bg-slate-200" />
-        <button onClick={() => setFormsSubView('education')}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'education' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <GraduationCap className="w-4 h-4" /> Academy
-        </button>
-        <div className="w-px bg-slate-200" />
-        <button onClick={() => setFormsSubView('exhibition')}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'exhibition' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <Building2 className="w-4 h-4" /> Exhibition
-        </button>
-        <div className="w-px bg-slate-200" />
-        <button onClick={() => setFormsSubView('packinglist')}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'packinglist' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          <ClipboardList className="w-4 h-4" /> Packing List
-        </button>
-        <div className="w-px bg-slate-200" />
-        <button
-          onClick={() => {
-            setFormsSubView('archive');
-            setFormArchiveOpenId(null);
-          }}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'archive' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-          <Archive className="w-4 h-4" /> بایگانی
-          {formSubmissions.filter((s) => !s.isRead).length > 0 ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">
-              {formSubmissions.filter((s) => !s.isRead).length}
-            </span>
-          ) : null}
-        </button>
-        <div className="w-px bg-slate-200" />
-        <button onClick={() => setFormsSubView('metaport')}
-          className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'metaport' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-          🌐 Meta Port
-        </button>
+        {canUseFormsSection('contracts') && (
+          <>
+            <button onClick={() => { setFormsSubView('contracts'); setContractsSubView('list'); }}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'contracts' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <FileText className="w-4 h-4" /> Contracts
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('proposals') && (
+          <>
+            <button onClick={() => { setFormsSubView('proposals'); setProposalsSubView('list'); }}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'proposals' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <FileText className="w-4 h-4" /> Proposals
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('education') && (
+          <>
+            <button onClick={() => setFormsSubView('education')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'education' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <GraduationCap className="w-4 h-4" /> Academy
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('exhibition') && (
+          <>
+            <button onClick={() => setFormsSubView('exhibition')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'exhibition' ? 'bg-purple-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <Building2 className="w-4 h-4" /> Exhibition
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('packingList') && (
+          <>
+            <button onClick={() => setFormsSubView('packinglist')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'packinglist' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <ClipboardList className="w-4 h-4" /> Packing List
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('formArchive') && (
+          <>
+            <button
+              onClick={() => {
+                setFormsSubView('archive');
+                setFormArchiveOpenId(null);
+              }}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'archive' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Archive className="w-4 h-4" /> بایگانی
+              {formSubmissions.filter((s) => !s.isRead).length > 0 ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">
+                  {formSubmissions.filter((s) => !s.isRead).length}
+                </span>
+              ) : null}
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('metaPort') && (
+          <button onClick={() => setFormsSubView('metaport')}
+            className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'metaport' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+            🌐 Meta Port
+          </button>
+        )}
       </div>
-      {formsSubView === 'list' && renderCustomFormsList()}
-      {formsSubView === 'iso' && canUseIso && renderIsoSystem()}
-      {formsSubView === 'contracts' && renderContracts()}
-      {formsSubView === 'proposals' && renderProposals()}
-      {formsSubView === 'education' && (
+      {formsSubView === 'list' && canUseFormsSection('formsCustom') && renderCustomFormsList()}
+      {formsSubView === 'iso' && canUseFormsSection('iso') && renderIsoSystem()}
+      {formsSubView === 'contracts' && canUseFormsSection('contracts') && renderContracts()}
+      {formsSubView === 'proposals' && canUseFormsSection('proposals') && renderProposals()}
+      {formsSubView === 'education' && canUseFormsSection('education') && (
         <EducationFormsPanel courses={educationCourses} onSaveCourses={setEducationCourses} />
       )}
-      {formsSubView === 'exhibition' && (
+      {formsSubView === 'exhibition' && canUseFormsSection('exhibition') && (
         <ExhibitionFormsPanel
           events={exhibitionEvents}
           onSaveEvents={setExhibitionEvents}
@@ -28182,9 +28326,9 @@ ${html}
           onPublishTopView={handlePublishExhibitionTopView}
         />
       )}
-      {formsSubView === 'packinglist' && renderPackingList()}
-      {formsSubView === 'archive' && renderFormArchive()}
-      {formsSubView === 'metaport' && renderMetaPort()}
+      {formsSubView === 'packinglist' && canUseFormsSection('packingList') && renderPackingList()}
+      {formsSubView === 'archive' && canUseFormsSection('formArchive') && renderFormArchive()}
+      {formsSubView === 'metaport' && canUseFormsSection('metaPort') && renderMetaPort()}
     </div>
   );
 
