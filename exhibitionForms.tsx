@@ -45,7 +45,6 @@ import {
 export const EXHIBITION_STORAGE_KEY = 'exportcalc_exhibition_events_v1';
 
 const BACKGROUND_MAX_BYTES = 5 * 1024 * 1024;
-const COMPANY_LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const CATEGORY_COLORS = ['#8b5cf6', '#06b6d4', '#f97316', '#22c55e', '#ec4899', '#eab308', '#14b8a6', '#ef4444'];
 
 function newId(): string {
@@ -138,7 +137,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     phone: '',
     city: '',
     products: '',
-    logoUrl: '',
     storeUrl: '',
     reservationStatus: 'confirmed' as ExhibitionReservationStatus,
     amountPaid: '',
@@ -151,7 +149,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     phone: string;
     city: string;
     products: string;
-    logoUrl: string;
     storeUrl: string;
     reservationStatus: ExhibitionReservationStatus;
     amountPaid: string;
@@ -223,34 +220,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
     reader.readAsDataURL(file);
   };
 
-  const handleCompanyLogoChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    target: 'form' | 'edit',
-  ) => {
-    const input = e.target;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('فقط فایل تصویر برای لوگوی شرکت مجاز است.');
-      return;
-    }
-    if (file.size > COMPANY_LOGO_MAX_BYTES) {
-      alert('حجم لوگوی شرکت حداکثر ۲ مگابایت باشد.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const logoUrl = String(reader.result || '');
-      if (target === 'form') {
-        setReservationForm(f => ({ ...f, logoUrl }));
-      } else {
-        setReservationEditForm(f => f && ({ ...f, logoUrl }));
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
   const patchCategory = (id: string, patch: Partial<ExhibitionBoothCategory>) => {
     if (!editing) return;
     let reservations = editing.reservations;
@@ -318,7 +287,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: reservationForm.phone.trim(),
       city: reservationForm.city.trim(),
       products: reservationForm.products.trim(),
-      logoUrl: reservationForm.logoUrl.trim(),
       storeUrl: reservationForm.storeUrl.trim(),
       reservationStatus: reservationForm.reservationStatus,
       amountPaid: reservationForm.amountPaid.trim(),
@@ -334,7 +302,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: '',
       city: '',
       products: '',
-      logoUrl: '',
       storeUrl: '',
       amountPaid: '',
       amountRemaining: '',
@@ -370,7 +337,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       phone: reservation.phone,
       city: reservation.city,
       products: reservation.products,
-      logoUrl: reservation.logoUrl ?? '',
       storeUrl: reservation.storeUrl ?? '',
       reservationStatus: reservation.reservationStatus,
       amountPaid: reservation.amountPaid,
@@ -398,7 +364,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         phone: reservationEditForm.phone.trim(),
         city: reservationEditForm.city.trim(),
         products: reservationEditForm.products.trim(),
-        logoUrl: reservationEditForm.logoUrl.trim(),
         storeUrl: reservationEditForm.storeUrl.trim(),
         reservationStatus: reservationEditForm.reservationStatus,
         amountPaid: reservationEditForm.amountPaid,
@@ -494,7 +459,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 phone: '',
                 city: '',
                 products: '',
-                logoUrl: '',
                 storeUrl: '',
                 reservationStatus: 'confirmed',
                 amountPaid: '',
@@ -567,7 +531,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                           phone: '',
                           city: '',
                           products: '',
-                          logoUrl: '',
                           storeUrl: '',
                           reservationStatus: 'confirmed',
                           amountPaid: '',
@@ -858,41 +821,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               <input placeholder="شهر / کشور" value={reservationForm.city} onChange={e => setReservationForm(f => ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" disabled={selectedCategoryFull} />
             </div>
             <textarea placeholder="محصولات / حوزه فعالیت" value={reservationForm.products} onChange={e => setReservationForm(f => ({ ...f, products: e.target.value }))} rows={2} className={inputCls + ' mb-3'} dir="rtl" disabled={selectedCategoryFull} />
-            <div className="border border-slate-200 rounded-xl p-3 mb-3 bg-slate-50/70">
-              <label className={labelCls}>لوگوی شرکت برای نقشه آنلاین</label>
-              <div className="flex flex-col sm:flex-row gap-3 items-start">
-                <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                  {reservationForm.logoUrl ? (
-                    <img src={reservationForm.logoUrl} alt="" className="w-full h-full object-contain p-1" />
-                  ) : (
-                    <ImageIcon className="w-6 h-6 text-slate-300" />
-                  )}
-                </div>
-                <div className="flex-1 w-full space-y-2">
-                  <input
-                    placeholder="Logo URL یا بعد از آپلود خودکار پر می‌شود"
-                    value={reservationForm.logoUrl}
-                    onChange={e => setReservationForm(f => ({ ...f, logoUrl: e.target.value }))}
-                    className={inputCls}
-                    dir="ltr"
-                    disabled={selectedCategoryFull}
-                  />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="text-xs w-full"
-                    disabled={selectedCategoryFull}
-                    onChange={e => handleCompanyLogoChange(e, 'form')}
-                  />
-                  {reservationForm.logoUrl ? (
-                    <button type="button" onClick={() => setReservationForm(f => ({ ...f, logoUrl: '' }))} className="text-xs text-red-600 hover:underline">
-                      حذف لوگو
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-2">در صفحه آنلاین، لوگو از نمای بالا روی سقف غرفه نمایش داده می‌شود.</p>
-            </div>
             <input
               placeholder="لینک فروشگاه / کاتالوگ آنلاین شرکت (https://...)"
               value={reservationForm.storeUrl}
@@ -987,17 +915,12 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                     return (
                       <div key={reservation.id} className={`border rounded-lg p-3 text-sm ${reservation.reservationStatus === 'reserved' ? 'border-orange-200 bg-orange-50/50' : 'border-emerald-200 bg-emerald-50/50'}`}>
                         <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex items-start gap-2">
-                            {reservation.logoUrl ? (
-                              <img src={reservation.logoUrl} alt="" className="w-9 h-9 rounded-lg bg-white border border-slate-200 object-contain p-1 shrink-0" />
-                            ) : null}
-                            <div>
+                          <div>
                             <span className="font-mono text-xs font-bold text-slate-500">{category ? boothCode(category, reservation.boothNumber) : `#${reservation.boothNumber}`}</span>
                             <span className="font-semibold mr-2">{reservation.companyName}</span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${reservation.reservationStatus === 'reserved' ? 'bg-orange-200 text-orange-800' : 'bg-emerald-200 text-emerald-800'}`}>
                               {reservation.reservationStatus === 'reserved' ? 'رزرو موقت' : 'قطعی'}
                             </span>
-                            </div>
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <button type="button" onClick={() => openReservationEdit(reservation)} className="text-purple-600 p-1 hover:bg-purple-50 rounded" title="ویرایش"><Pencil className="w-4 h-4" /></button>
@@ -1052,33 +975,6 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 <input placeholder="شهر / کشور" value={reservationEditForm.city} onChange={e => setReservationEditForm(f => f && ({ ...f, city: e.target.value }))} className={inputCls} dir="rtl" />
               </div>
               <textarea placeholder="محصولات / حوزه فعالیت" value={reservationEditForm.products} onChange={e => setReservationEditForm(f => f && ({ ...f, products: e.target.value }))} rows={2} className={inputCls + ' mb-3'} dir="rtl" />
-              <div className="border border-slate-200 rounded-xl p-3 mb-3 bg-slate-50/70">
-                <label className={labelCls}>لوگوی شرکت برای نقشه آنلاین</label>
-                <div className="flex flex-col sm:flex-row gap-3 items-start">
-                  <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                    {reservationEditForm.logoUrl ? (
-                      <img src={reservationEditForm.logoUrl} alt="" className="w-full h-full object-contain p-1" />
-                    ) : (
-                      <ImageIcon className="w-6 h-6 text-slate-300" />
-                    )}
-                  </div>
-                  <div className="flex-1 w-full space-y-2">
-                    <input
-                      placeholder="Logo URL یا بعد از آپلود خودکار پر می‌شود"
-                      value={reservationEditForm.logoUrl}
-                      onChange={e => setReservationEditForm(f => f && ({ ...f, logoUrl: e.target.value }))}
-                      className={inputCls}
-                      dir="ltr"
-                    />
-                    <input type="file" accept="image/*" className="text-xs w-full" onChange={e => handleCompanyLogoChange(e, 'edit')} />
-                    {reservationEditForm.logoUrl ? (
-                      <button type="button" onClick={() => setReservationEditForm(f => f && ({ ...f, logoUrl: '' }))} className="text-xs text-red-600 hover:underline">
-                        حذف لوگو
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
               <input
                 placeholder="لینک فروشگاه / کاتالوگ آنلاین شرکت (https://...)"
                 value={reservationEditForm.storeUrl}

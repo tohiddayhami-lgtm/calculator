@@ -1471,8 +1471,6 @@ export interface ExhibitionReservation {
   phone: string;
   city: string;
   products: string;
-  /** Company logo URL or data URL, shown on the online exhibition booth */
-  logoUrl?: string;
   /** Public shop / catalog / website URL shown on generated exhibition page */
   storeUrl?: string;
   reservationStatus: ExhibitionReservationStatus;
