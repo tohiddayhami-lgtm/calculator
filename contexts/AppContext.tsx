@@ -99,6 +99,9 @@ export type BreakdownItem = {
 
 export type Calculations = {
   processedProducts: ProcessedProduct[];
+  processedProductsById: Map<number, ProcessedProduct>;
+  productScenarioBreakdown: any[];
+  productScenarioBreakdownById: Map<number, any>;
   breakdown: BreakdownItem[];
   costs: {
     exw: number;
@@ -108,7 +111,6 @@ export type Calculations = {
   };
   totalLogisticsCost: number;
   totalExwCost: number;
-  productScenarioBreakdown: any[];
   paginatedGroups?: any;
   [key: string]: any;
 };

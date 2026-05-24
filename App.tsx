@@ -6642,6 +6642,17 @@ function AppInner() {
     { id: 1, name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }
   ]);
 
+  // Debounced products for calculation engine — prevents recalculating on every keystroke
+  const [productsForCalc, setProductsForCalc] = useState<Product[]>([
+    { id: 1, name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }
+  ]);
+  const _calcDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    clearTimeout(_calcDebounceRef.current);
+    _calcDebounceRef.current = setTimeout(() => setProductsForCalc(products), 200);
+    return () => clearTimeout(_calcDebounceRef.current);
+  }, [products]);
+
   const [logistics, setLogistics] = useState<Logistics>({
     inland: { val: 0, curr: 'IRR' },
     port: { val: 0, curr: 'IRR' },
@@ -11527,13 +11538,13 @@ function AppInner() {
   const toOutput = (amountInIRR: number) => (amountInIRR / (rates[config.outputCurrency] || 1));
   const convert = (amount: number, curr: string) => toOutput(toBase(amount, curr));
 
-  const updateProduct = (id: number, field: keyof Product, val: any) => { 
-      setProducts(products.map(p => p.id === id ? { ...p, [field]: val } : p)); 
-  };
+  const updateProduct = useCallback((id: number, field: keyof Product, val: any) => {
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, [field]: val } : p));
+  }, []);
 
-  const updateProductPatch = (id: number, patch: Partial<Product>) => {
+  const updateProductPatch = useCallback((id: number, patch: Partial<Product>) => {
       setProducts(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
-  };
+  }, []);
 
   const addServiceRetailItem = () => {
       const sku = formatSku(nextSkuNumber(products));
@@ -11592,7 +11603,7 @@ function AppInner() {
       return Object.keys(next).length ? next : undefined;
   };
   
-  const updateProductScenarioMap = <K extends keyof Product>(
+  const updateProductScenarioMap = useCallback(<K extends keyof Product>(
       id: number,
       field: K,
       term: string,
@@ -11603,7 +11614,7 @@ function AppInner() {
           const next = setScenarioMapValue(p[field] as Record<string, any> | undefined, term, val);
           return { ...p, [field]: next };
       }));
-  };
+  }, []);
 
   const toggleBulkExportProfitTerm = (term: ScenarioTerm) => {
       setBulkExportProfitTerms(prev => {
@@ -11712,9 +11723,9 @@ function AppInner() {
       setProductColumnSettings(normalizeProductTableColumnSettings());
   };
 
-  const toggleProductActive = (id: number) => { 
-      setProducts(products.map(p => p.id === id ? { ...p, active: !p.active } : p)); 
-  };
+  const toggleProductActive = useCallback((id: number) => {
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, active: !p.active } : p));
+  }, []);
   
   const updateLogisticsMain = (key: 'inland' | 'port' | 'freight' | 'insurance' | 'destination', field: 'val' | 'curr', val: any) => {
       setLogistics(prev => ({ ...prev, [key]: { ...prev[key], [field]: val } }));
@@ -11836,7 +11847,7 @@ function AppInner() {
         return marginFactor > 0 ? cost / marginFactor : cost;
     };
 
-    const activeProducts = products.filter(p => p.active !== false);
+    const activeProducts = productsForCalc.filter(p => p.active !== false);
     const totalQty = activeProducts.reduce((sum, p) => sum + p.qty, 0);
 
     const costExwExtras = (logistics.exwExtras || []).reduce((acc, curr) => acc + convert(curr.val, curr.curr), 0);
@@ -11869,7 +11880,7 @@ function AppInner() {
     let accSell_CIF = 0;
     let accSell_DDP = 0;
     
-    const processedProducts = products.map(p => {
+    const processedProducts = productsForCalc.map(p => {
         const isActive = p.active !== false; 
         
         const inputMode = p.priceInputMode || 'unit';
@@ -12173,16 +12184,21 @@ function AppInner() {
             };
         });
 
-    return { 
-        processedProducts, 
-        costs, 
-        totalLogisticsCost, 
-        breakdown, 
-        scenarioData, 
+    const processedProductsById = new Map(processedProducts.map(p => [p.id, p]));
+    const productScenarioBreakdownById = new Map(productScenarioBreakdown.map((b: any) => [b.id, b]));
+
+    return {
+        processedProducts,
+        processedProductsById,
+        costs,
+        totalLogisticsCost,
+        breakdown,
+        scenarioData,
         totalQty,
-        productScenarioBreakdown
+        productScenarioBreakdown,
+        productScenarioBreakdownById
     };
-  }, [products, logistics, config, rates]);
+  }, [productsForCalc, logistics, config, rates]);
 
   const printShipmentProfitLossReport = () => {
     if (typeof window === 'undefined') return;
@@ -12220,8 +12236,8 @@ function AppInner() {
     };
     const buyerUnitResaleForProduct = (unitSell: number) => applyBuyerProfit(unitSell);
     const buyerResaleRevenue = activeProducts.reduce((sum, p) => {
-      const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
-      const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+      const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+      const termRow = scenarioBlock?.rows.find((row: any) => row.term === selectedTerm);
       const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
       return sum + buyerUnitResaleForProduct(unitSell) * (p.qty || 0);
     }, 0);
@@ -12257,8 +12273,8 @@ function AppInner() {
       <tr><td>${escapeHtml(x.name || 'Destination extra')}</td><td>${escapeHtml(formatMoney(x.val || 0, x.curr))}</td><td>${escapeHtml(fmt(convert(x.val, x.curr)))}</td></tr>
     `).join('');
     const productRows = activeProducts.map((p, index) => {
-      const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
-      const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+      const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+      const termRow = scenarioBlock?.rows.find((row: any) => row.term === selectedTerm);
       const unitCost = termRow?.unitCost ?? p.unitCostOutput ?? 0;
       const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
       const unitLabel = productUnitLabel(p);
@@ -12291,8 +12307,8 @@ function AppInner() {
       `;
     }).join('');
     const buyerAnalysisRows = activeProducts.map((p, index) => {
-      const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
-      const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+      const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+      const termRow = scenarioBlock?.rows.find((row: any) => row.term === selectedTerm);
       const unitSell = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
       const unitLabel = productUnitLabel(p);
       const q = p.qty || 0;
@@ -12348,8 +12364,8 @@ function AppInner() {
     const tierShipmentRevenue = (tier: typeof volumeTiers[0]) => {
       const scale = tierScale(tier);
       return activeProducts.reduce((sum, p) => {
-        const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
-        const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+        const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+        const termRow = scenarioBlock?.rows.find((row: any) => row.term === selectedTerm);
         const base = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
         return sum + tierUnitSell(base, tier) * (p.qty || 0) * scale;
       }, 0);
@@ -12359,8 +12375,8 @@ function AppInner() {
     const tierBuyerResale = (tier: typeof volumeTiers[0]) => {
       const scale = tierScale(tier);
       return activeProducts.reduce((sum, p) => {
-        const scenarioBlock = calculations.productScenarioBreakdown.find((block) => block.id === p.id);
-        const termRow = scenarioBlock?.rows.find((row) => row.term === selectedTerm);
+        const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+        const termRow = scenarioBlock?.rows.find((row: any) => row.term === selectedTerm);
         const base = termRow?.unitSell ?? p.scenarioPrices?.[selectedTerm] ?? p.unitSellPrice ?? 0;
         return sum + buyerUnitResaleForProduct(tierUnitSell(base, tier)) * (p.qty || 0) * scale;
       }, 0);
@@ -13663,7 +13679,7 @@ function AppInner() {
                     <td colSpan={9} className="px-4 py-10 text-center text-slate-400">هنوز آیتمی ثبت نشده است.</td>
                   </tr>
                 ) : products.map((p) => {
-                  const computed = calculations.processedProducts.find(x => x.id === p.id) || p;
+                  const computed = calculations.processedProductsById.get(p.id) || p;
                   const cost = computed.unitCostOutput || 0;
                   const baseSell = (computed.scenarioPrices as Record<string, number> | undefined)?.EXW || 0;
                   const margin = baseSell > 0 ? ((baseSell - cost) / baseSell) * 100 : 0;
@@ -15216,7 +15232,7 @@ function AppInner() {
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 bg-white">
                                       {block.rows.filter((r) => visibleScenarioTerms.includes(r.term)).map((row) => {
-                                          const scenarioProduct = calculations.processedProducts.find((p) => p.id === block.id);
+                                          const scenarioProduct = calculations.processedProductsById.get(block.id);
                                           const scenarioType = scenarioProduct?.scenarioProfitTypes?.[row.term] || config.profitType;
                                           const scenarioPercent = scenarioProduct?.scenarioProfitPercents?.[row.term];
                                           const manualUnitSell = scenarioProduct?.scenarioManualUnitSellPrices?.[row.term];
@@ -15731,8 +15747,8 @@ function AppInner() {
 
         const buyerResaleRevenue = profitLossReportTerm
           ? activeProducts.reduce((sum, p) => {
-              const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
-              const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+              const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+              const termRow = scenarioBlock?.rows.find((r: any) => r.term === profitLossReportTerm);
               const unitSell = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
               return sum + calcBuyerResale(unitSell) * (p.qty || 0);
             }, 0)
@@ -15778,8 +15794,8 @@ function AppInner() {
           if (!profitLossReportTerm) return 0;
           const scale = tierScale(tier);
           return activeProducts.reduce((sum, p) => {
-            const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
-            const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+            const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+            const termRow = scenarioBlock?.rows.find((r: any) => r.term === profitLossReportTerm);
             const base = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
             return sum + tierUnitSell(base, tier) * (p.qty || 0) * scale;
           }, 0);
@@ -15790,8 +15806,8 @@ function AppInner() {
           if (!profitLossReportTerm) return 0;
           const scale = tierScale(tier);
           return activeProducts.reduce((sum, p) => {
-            const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
-            const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+            const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+            const termRow = scenarioBlock?.rows.find((r: any) => r.term === profitLossReportTerm);
             const base = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
             const discounted = tierUnitSell(base, tier);
             return sum + calcBuyerResale(discounted) * (p.qty || 0) * scale;
@@ -16202,8 +16218,8 @@ function AppInner() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {activeProducts.map((p) => {
-                          const scenarioBlock = calculations.productScenarioBreakdown.find((b) => b.id === p.id);
-                          const termRow = scenarioBlock?.rows.find((r) => r.term === profitLossReportTerm);
+                          const scenarioBlock = calculations.productScenarioBreakdownById.get(p.id);
+                          const termRow = scenarioBlock?.rows.find((r: any) => r.term === profitLossReportTerm);
                           const unitCost = termRow?.unitCost ?? (p as any).baseCostEXW ?? 0;
                           const unitSell = termRow?.unitSell ?? (p as any).scenarioPrices?.[profitLossReportTerm] ?? p.unitSellPrice ?? 0;
                           const unitLabel = productUnitLabel(p);
