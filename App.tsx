@@ -4761,6 +4761,35 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .overlay-add-btn:active { transform: scale(0.96); }
         .overlay-add-btn.added { background: #10b981 !important; color: #fff !important; }
         @media (hover: none) { .card-overlay { display: none; } }
+        .card-image { cursor: zoom-in; }
+
+        /* ── Product Detail Modal ── */
+        .pd-overlay { position: fixed; inset: 0; z-index: 9000; background: rgba(0,0,0,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px; opacity: 1; transition: opacity 0.22s; }
+        .pd-overlay.pd-hidden { opacity: 0; pointer-events: none; }
+        .pd-modal { background: #fff; border-radius: 20px; width: 100%; max-width: 860px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 32px 80px rgba(0,0,0,0.35); position: relative; transform: translateY(0); transition: transform 0.25s cubic-bezier(.22,1,.36,1); }
+        .pd-overlay.pd-hidden .pd-modal { transform: translateY(24px); }
+        .pd-close { position: absolute; top: 12px; right: 12px; z-index: 10; width: 36px; height: 36px; border-radius: 50%; border: none; background: rgba(15,23,42,0.08); color: #475569; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.16s, color 0.16s; }
+        .pd-close:hover { background: rgba(15,23,42,0.18); color: #0f172a; }
+        .pd-body { display: flex; flex-direction: row; overflow: hidden; flex: 1; }
+        .pd-gallery { width: 50%; flex-shrink: 0; background: #f8fafc; position: relative; }
+        .pd-gallery .carousel { aspect-ratio: unset; height: 100%; min-height: 260px; border-radius: 0; }
+        .pd-gallery .slide img { object-fit: contain; background: #f8fafc; }
+        .pd-gallery .nav { opacity: 0.7; }
+        .pd-gallery .carousel:hover .nav { opacity: 1; }
+        .pd-info { flex: 1; overflow-y: auto; padding: 28px 28px 28px 24px; display: flex; flex-direction: column; gap: 12px; }
+        .pd-info .product-name { font-size: clamp(18px,2.4vw,24px); font-weight: 800; color: var(--heading); margin: 0; line-height: 1.2; }
+        .pd-info .description { font-size: 14px; line-height: 1.75; color: var(--text); margin: 0; }
+        .pd-info .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+        .pd-info .prices { display: flex; flex-direction: column; gap: 6px; }
+        .pd-info .meta-grid { display: flex; flex-direction: column; gap: 4px; }
+        .pd-info .card-cta, .pd-info a.card-cta { display: block; text-align: center; margin-top: auto; padding-top: 12px; }
+        .pd-info .volume-tiers { margin-top: 0; }
+        @media (max-width: 600px) {
+          .pd-body { flex-direction: column; }
+          .pd-gallery { width: 100%; }
+          .pd-gallery .carousel { min-height: 220px; height: 220px; }
+          .pd-info { padding: 18px 18px 20px; }
+        }
 
         /* Carousel */
         .carousel { position: relative; width: 100%; aspect-ratio: 4/3; background: #f8fafc; overflow: hidden; }
@@ -5076,38 +5105,79 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 if (startTab) startTab.click();
             }
 
-            var carousels = document.querySelectorAll('.carousel');
-            carousels.forEach(function(car){
+            function initCarousel(car){
                 var slides = car.querySelectorAll('.slide');
                 if (slides.length < 2) return;
                 var dots = car.querySelectorAll('.dot');
                 var prev = car.querySelector('.nav.prev');
                 var next = car.querySelector('.nav.next');
                 var idx = 0;
-                function pauseVideosInCarousel(root){
-                    root.querySelectorAll('video').forEach(function(v){ try { v.pause(); } catch(e){} });
-                }
+                function pauseVideos(root){ root.querySelectorAll('video').forEach(function(v){ try { v.pause(); } catch(e){} }); }
                 function show(i){
-                    pauseVideosInCarousel(car);
+                    pauseVideos(car);
                     idx = (i + slides.length) % slides.length;
                     slides.forEach(function(s,k){ s.classList.toggle('active', k === idx); });
                     dots.forEach(function(d,k){ d.classList.toggle('active', k === idx); });
                 }
                 if (prev) prev.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); show(idx - 1); });
                 if (next) next.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); show(idx + 1); });
-                dots.forEach(function(d){
-                    d.addEventListener('click', function(){ show(parseInt(d.getAttribute('data-idx'), 10) || 0); });
-                });
+                dots.forEach(function(d){ d.addEventListener('click', function(){ show(parseInt(d.getAttribute('data-idx'), 10) || 0); }); });
                 var startX = 0, isTouch = false;
                 car.addEventListener('touchstart', function(e){ startX = e.touches[0].clientX; isTouch = true; }, {passive:true});
                 car.addEventListener('touchend', function(e){
-                    if (!isTouch) return;
-                    isTouch = false;
+                    if (!isTouch) return; isTouch = false;
                     var dx = e.changedTouches[0].clientX - startX;
                     if (Math.abs(dx) < 30) return;
                     show(idx + (dx < 0 ? 1 : -1));
                 });
+            }
+            document.querySelectorAll('.carousel').forEach(initCarousel);
+
+            // ── Product Detail Modal ──
+            var pdOverlay = document.getElementById('pd-overlay');
+            var pdGallery = document.getElementById('pd-gallery');
+            var pdInfo   = document.getElementById('pd-info');
+            var pdClose  = document.getElementById('pd-close');
+            function openPD(card) {
+                // Gallery: clone carousel from card
+                var car = card.querySelector('.carousel');
+                pdGallery.innerHTML = '';
+                if (car) {
+                    var clone = car.cloneNode(true);
+                    // Reset all slides to first
+                    clone.querySelectorAll('.slide').forEach(function(s,i){ s.classList.toggle('active', i === 0); });
+                    clone.querySelectorAll('.dot').forEach(function(d,i){ d.classList.toggle('active', i === 0); });
+                    pdGallery.appendChild(clone);
+                    initCarousel(clone);
+                } else {
+                    pdGallery.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:14px;">No image</div>';
+                }
+                // Info: copy card-body HTML (name, badges, desc, prices, meta)
+                var body = card.querySelector('.card-body');
+                pdInfo.innerHTML = body ? body.innerHTML : '';
+                // Remove duplicate CTA buttons that already exist in card-body (keep one)
+                pdOverlay.classList.remove('pd-hidden');
+                document.body.style.overflow = 'hidden';
+            }
+            function closePD() {
+                pdOverlay.classList.add('pd-hidden');
+                document.body.style.overflow = '';
+                // Pause videos when closing
+                if (pdGallery) pdGallery.querySelectorAll('video,iframe').forEach(function(el){
+                    try { if (el.tagName === 'VIDEO') el.pause(); else { var src = el.src; el.src = ''; el.src = src; } } catch(e){}
+                });
+            }
+            document.querySelectorAll('.card').forEach(function(card){
+                card.querySelector('.card-image').addEventListener('click', function(e){
+                    if (e.target.closest('.cart-add-btn') || e.target.closest('.overlay-add-btn') || e.target.closest('.nav') || e.target.closest('.dot')) return;
+                    openPD(card);
+                });
+                var pname = card.querySelector('.product-name');
+                if (pname) { pname.style.cursor = 'pointer'; pname.addEventListener('click', function(){ openPD(card); }); }
             });
+            if (pdClose) pdClose.addEventListener('click', closePD);
+            if (pdOverlay) pdOverlay.addEventListener('click', function(e){ if (e.target === pdOverlay) closePD(); });
+            document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closePD(); });
         })();
 
         ${cartEnabled ? `
@@ -5906,6 +5976,19 @@ ${firebaseInquiryScript}
     }
 })();
 </script>
+
+<!-- Product Detail Modal -->
+<div class="pd-overlay pd-hidden" id="pd-overlay" role="dialog" aria-modal="true" aria-label="Product detail">
+  <div class="pd-modal">
+    <button class="pd-close" id="pd-close" aria-label="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="pd-body">
+      <div class="pd-gallery" id="pd-gallery"></div>
+      <div class="pd-info" id="pd-info"></div>
+    </div>
+  </div>
+</div>
 </body>
 </html>`;
 };
