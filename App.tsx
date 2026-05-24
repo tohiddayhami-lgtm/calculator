@@ -2387,6 +2387,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     showMOQ: true,
     moqLabel: '',
     showGroupCovers: false,
+    groupCoverTextColor: '#ffffff',
     showTargetPrice: false,
     targetPriceLabel: 'Target',
     showTargetProfit: false,
@@ -11001,6 +11002,7 @@ function AppInner() {
             contactAddress: project.data.catalogConfig.contactAddress || '',
             socialLinks: project.data.catalogConfig.socialLinks || [],
             showGroupCovers: project.data.catalogConfig.showGroupCovers || false,
+            groupCoverTextColor: project.data.catalogConfig.groupCoverTextColor || '#ffffff',
             itemsPerPage: project.data.catalogConfig.itemsPerPage || 4,
             includedProductIds: project.data.catalogConfig.includedProductIds || [],
             priceBasis: project.data.catalogConfig.priceBasis || 'both',
@@ -18442,15 +18444,28 @@ ${html}
                           </div>
                           
                           <div className="mt-3 space-y-2">
-                               <label className="flex items-center gap-2 cursor-pointer bg-slate-50 p-2 rounded-md border border-slate-200">
-                                  <input 
-                                      type="checkbox" 
-                                      checked={catalogConfig.showGroupCovers || false} 
-                                      onChange={(e) => setCatalogConfig({...catalogConfig, showGroupCovers: e.target.checked})}
-                                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                  />
-                                  <span className="text-xs font-medium text-slate-700">Show Group Covers</span>
-                               </label>
+                               <div className="bg-slate-50 p-2 rounded-md border border-slate-200 space-y-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={catalogConfig.showGroupCovers || false} 
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, showGroupCovers: e.target.checked})}
+                                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                      />
+                                      <span className="text-xs font-medium text-slate-700">Show Group Covers</span>
+                                  </label>
+                                  {catalogConfig.showGroupCovers && (
+                                      <div className="flex items-center justify-between gap-2 pl-5">
+                                          <label className="text-[10px] text-slate-400 font-medium">Group cover text color</label>
+                                          <input
+                                              type="color"
+                                              value={catalogConfig.groupCoverTextColor || '#ffffff'}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, groupCoverTextColor: e.target.value})}
+                                              className="w-7 h-7 rounded cursor-pointer border-0 p-0"
+                                          />
+                                      </div>
+                                  )}
+                               </div>
                           </div>
                       </div>
 
@@ -19639,11 +19654,17 @@ ${html}
                                 className="w-full h-[297mm] relative flex flex-col items-center justify-center print-page"
                                 style={{ backgroundColor: catalogConfig.primaryColor }}
                              >
-                                 <div className="text-center p-12 border-y-2 border-white/20 w-full max-w-2xl">
-                                     <h2 className="text-6xl font-bold text-white uppercase tracking-widest mb-4 drop-shadow-md">
+                                 <div
+                                    className="text-center p-12 border-y-2 w-full max-w-2xl"
+                                    style={{
+                                        color: catalogConfig.groupCoverTextColor || '#ffffff',
+                                        borderColor: `${catalogConfig.groupCoverTextColor || '#ffffff'}33`,
+                                    }}
+                                 >
+                                     <h2 className="text-6xl font-bold uppercase tracking-widest mb-4 drop-shadow-md">
                                          {group.name}
                                      </h2>
-                                     <p className="text-white/70 text-lg uppercase tracking-wider">{catalogConfig.collectionText}</p>
+                                     <p className="text-lg uppercase tracking-wider" style={{ opacity: 0.7 }}>{catalogConfig.collectionText}</p>
                                  </div>
                              </div>
                         )}

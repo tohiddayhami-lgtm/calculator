@@ -347,6 +347,7 @@ export interface CatalogConfig {
   moqLabel?: string; // New: Custom label for MOQ
   showLogisticsDetails?: boolean; // New: Toggle to show box/pallet/container capacities
   showGroupCovers?: boolean; // New: Option to show separate covers for groups
+  groupCoverTextColor?: string;
   showTargetPrice?: boolean; // New: Optional - show buyer Target Price in catalog
   targetPriceLabel?: string; // New: Custom label for Target Price (default: "Target")
   showTargetProfit?: boolean; // New: Optional - show profit % vs Target Price
