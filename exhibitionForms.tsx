@@ -113,6 +113,7 @@ export function makeBlankExhibitionEvent(variant: ExhibitionFormsVariant = 'exhi
     boothFeeCurrencyLabel: 'OMR',
     storyBackgroundUrl: '',
     storyBackgroundOpacity: 35,
+    storyHeaderText: isMall ? 'نقشه Top View و اجاره مغازه‌های متامال' : 'نقشه Top View و رزرو غرفه‌های نمایشگاهی',
     storyFootNote: isMall ? 'برای انتخاب و اجاره مغازه، شماره مغازه موردنظر را اعلام کنید.' : 'برای انتخاب و رزرو غرفه، شماره غرفه موردنظر را اعلام کنید.',
     categories: [makeCategory(0, variant)],
     reservations: [],
@@ -1509,6 +1510,16 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                 <span className="text-xs text-slate-500">شفافیت عکس: {editing.storyBackgroundOpacity ?? 35}%</span>
                 <input type="range" min={0} max={100} value={editing.storyBackgroundOpacity ?? 35} onChange={e => upd({ storyBackgroundOpacity: Number(e.target.value) })} className="w-full accent-purple-600" />
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>تیتر کوچک بالای عکس استوری</label>
+              <input
+                value={editing.storyHeaderText ?? ''}
+                onChange={e => upd({ storyHeaderText: e.target.value })}
+                className={inputCls}
+                dir="rtl"
+                placeholder={isMall ? 'نقشه Top View و اجاره مغازه‌های متامال' : 'نقشه Top View و رزرو غرفه‌های نمایشگاهی'}
+              />
             </div>
             <div>
               <label className={labelCls}>نوت استوری</label>

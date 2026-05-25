@@ -583,7 +583,8 @@ export async function renderExhibitionStoryPng(
   let y = 158;
 
   ctx.font = `700 30px ${FONT}`;
-  y = drawRtlWrapped(ctx, 'نقشه Top View و رزرو غرفه‌های نمایشگاهی', textRight, y, innerW, 40, 1, '#a5b4fc') + 12;
+  const headerText = event.storyHeaderText?.trim() || 'نقشه Top View و رزرو غرفه‌های نمایشگاهی';
+  y = drawRtlWrapped(ctx, headerText, textRight, y, innerW, 40, 1, '#a5b4fc') + 12;
 
   ctx.font = `800 54px ${FONT}`;
   y = drawRtlWrapped(ctx, event.title || 'عنوان نمایشگاه', textRight, y, innerW, 68, 3, '#ffffff') + 8;

@@ -199,6 +199,7 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
         : currencyShort(normCurrency(event.boothFeeCurrency)),
     storyBackgroundUrl: typeof event.storyBackgroundUrl === 'string' ? event.storyBackgroundUrl : '',
     storyBackgroundOpacity: opacity,
+    storyHeaderText: typeof event.storyHeaderText === 'string' ? event.storyHeaderText : '',
     storyFootNote: typeof event.storyFootNote === 'string' ? event.storyFootNote : '',
     categories: safeCategories,
     reservations: (event.reservations ?? [])

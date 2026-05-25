@@ -1631,6 +1631,8 @@ export interface ExhibitionEvent {
   boothFeeCurrencyLabel?: string;
   storyBackgroundUrl?: string;
   storyBackgroundOpacity?: number;
+  /** Small headline shown above the exhibition title in story PNG export */
+  storyHeaderText?: string;
   storyFootNote?: string;
   categories: ExhibitionBoothCategory[];
   reservations: ExhibitionReservation[];
