@@ -1,4 +1,10 @@
-import type { ExhibitionBoothCategory, ExhibitionEvent, ExhibitionReservation } from './types';
+import type {
+  ExhibitionBoothCategory,
+  ExhibitionEvent,
+  ExhibitionReservation,
+  ExhibitionTopViewMarker,
+  ExhibitionTopViewStructure,
+} from './types';
 import { feeCurrencyDisplay, formatAmountDisplay } from './educationFormat';
 import { boothCode, normalizeExhibitionEvent } from './exhibitionNormalize';
 import { ensureVazirmatnLoaded } from './educationStoryExport';
@@ -119,7 +125,7 @@ function drawLegend(ctx: CanvasRenderingContext2D, x: number, y: number) {
   const items = [
     { label: 'قطعی', color: CONFIRMED },
     { label: 'رزرو موقت', color: RESERVED },
-    { label: 'خالی', color: EMPTY },
+    { label: 'خالی / قابل رزرو', color: EMPTY },
   ];
   ctx.font = `500 20px ${FONT}`;
   ctx.textBaseline = 'middle';
@@ -134,6 +140,289 @@ function drawLegend(ctx: CanvasRenderingContext2D, x: number, y: number) {
     ctx.fillText(item.label, x - 30, rowY);
   });
   ctx.textBaseline = 'alphabetic';
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function hexToRgba(hex: string, opacity: number): string {
+  const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex : '#38bdf8';
+  const value = normalized.slice(1);
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${clamp(opacity, 0, 100) / 100})`;
+}
+
+function topViewFloorCols(boothCount: number): number {
+  if (boothCount <= 20) return 5;
+  if (boothCount <= 48) return 8;
+  return Math.min(16, Math.max(10, Math.ceil(Math.sqrt(boothCount * 1.35))));
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return (parts.slice(0, 2).map(part => part[0]).join('') || 'EX').toUpperCase();
+}
+
+function markerKindLabel(kind: ExhibitionTopViewMarker['kind']): string {
+  if (kind === 'entrance') return 'Entrance';
+  if (kind === 'conference') return 'Conference';
+  if (kind === 'exit') return 'Exit';
+  if (kind === 'guide') return 'Guide';
+  return 'Ad Board';
+}
+
+function markerIcon(kind: ExhibitionTopViewMarker['kind']): string {
+  if (kind === 'entrance') return 'IN';
+  if (kind === 'conference') return 'CONF';
+  if (kind === 'exit') return 'OUT';
+  if (kind === 'guide') return 'INFO';
+  return 'AD';
+}
+
+function structureKindLabel(kind: ExhibitionTopViewStructure['kind']): string {
+  if (kind === 'divider') return 'Boundary';
+  if (kind === 'pavilion') return 'Pavilion';
+  return 'Column';
+}
+
+function storyTopViewMapHeight(cat: ExhibitionBoothCategory, w: number, preferredCell: number, gap: number): number {
+  const cols = topViewFloorCols(cat.boothCount);
+  const cell = Math.max(18, Math.min(preferredCell, Math.floor((w - 96 - (cols - 1) * gap) / cols)));
+  const rows = Math.ceil(cat.boothCount / cols);
+  return 112 + rows * (cell + gap) - gap + 56;
+}
+
+function drawTopViewStructure(
+  ctx: CanvasRenderingContext2D,
+  structure: ExhibitionTopViewStructure,
+  floorX: number,
+  floorY: number,
+  floorW: number,
+  floorH: number,
+) {
+  const width = clamp(structure.width, 1, 100) * floorW / 100;
+  const height = clamp(structure.height, 1, 100) * floorH / 100;
+  const cx = floorX + clamp(structure.x, 0, 100) * floorW / 100;
+  const cy = floorY + clamp(structure.y, 0, 100) * floorH / 100;
+  const x = cx - width / 2;
+  const y = cy - height / 2;
+  ctx.fillStyle = hexToRgba(structure.color || '#38bdf8', structure.opacity);
+  ctx.strokeStyle = structure.color || '#38bdf8';
+  ctx.lineWidth = structure.kind === 'pavilion' ? 2 : 1.5;
+  roundRect(ctx, x, y, width, height, structure.kind === 'divider' ? Math.min(width, height) / 2 : 18);
+  ctx.fill();
+  ctx.stroke();
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.direction = 'ltr';
+  ctx.font = `800 ${Math.max(9, Math.min(17, height * 0.22))}px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillText(structure.title || structureKindLabel(structure.kind), cx, cy + 4);
+  ctx.restore();
+}
+
+function drawTopViewMarker(
+  ctx: CanvasRenderingContext2D,
+  marker: ExhibitionTopViewMarker,
+  floorX: number,
+  floorY: number,
+  floorW: number,
+  floorH: number,
+) {
+  const cx = floorX + clamp(marker.x, 0, 100) * floorW / 100;
+  const cy = floorY + clamp(marker.y, 0, 100) * floorH / 100;
+  const color = marker.color || '#22d3ee';
+  const w = marker.kind === 'ad' ? 148 : 126;
+  const h = 46;
+  const x = clamp(cx - w / 2, floorX + 6, floorX + floorW - w - 6);
+  const y = clamp(cy - h / 2, floorY + 6, floorY + floorH - h - 6);
+  const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, 'rgba(15,23,42,0.92)');
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = 'rgba(255,255,255,0.38)';
+  ctx.lineWidth = 1.4;
+  roundRect(ctx, x, y, w, h, 14);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = color;
+  roundRect(ctx, cx - 7, y + h + 4, 14, 14, 7);
+  ctx.fill();
+  ctx.textAlign = 'left';
+  ctx.direction = 'ltr';
+  ctx.font = `900 10px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fillText(markerIcon(marker.kind), x + 10, y + 18);
+  ctx.font = `800 11px ${FONT}`;
+  ctx.fillText(marker.title || markerKindLabel(marker.kind), x + 10, y + 34);
+}
+
+function drawStoryTopViewMap(
+  ctx: CanvasRenderingContext2D,
+  event: ExhibitionEvent,
+  cat: ExhibitionBoothCategory,
+  x: number,
+  y: number,
+  w: number,
+  preferredCell: number,
+  gap: number,
+  logoImages: Map<string, HTMLImageElement>,
+): number {
+  const cols = topViewFloorCols(cat.boothCount);
+  const cell = Math.max(18, Math.min(preferredCell, Math.floor((w - 96 - (cols - 1) * gap) / cols)));
+  const rows = Math.ceil(cat.boothCount / cols);
+  const floorX = x + 24;
+  const floorY = y + 92;
+  const floorW = w - 48;
+  const floorH = rows * (cell + gap) - gap + 48;
+  const h = 112 + rows * (cell + gap) - gap + 56;
+  const reservations = event.reservations.filter(r => r.categoryId === cat.id);
+  const confirmed = reservations.filter(r => r.reservationStatus === 'confirmed').length;
+  const reserved = reservations.length - confirmed;
+  const markers = (event.topViewMarkers ?? []).filter(marker => marker.categoryId === cat.id);
+  const structures = (event.topViewStructures ?? []).filter(structure => structure.categoryId === cat.id);
+
+  const panelGrad = ctx.createLinearGradient(x, y, x, y + h);
+  panelGrad.addColorStop(0, 'rgba(255,255,255,0.105)');
+  panelGrad.addColorStop(1, 'rgba(255,255,255,0.045)');
+  ctx.fillStyle = panelGrad;
+  roundRect(ctx, x, y, w, h, 30);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  ctx.fillStyle = cat.color;
+  roundRect(ctx, x + w - 32, y + 22, 14, 14, 5);
+  ctx.fill();
+  ctx.textAlign = 'right';
+  ctx.direction = 'rtl';
+  ctx.font = `800 25px ${FONT}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(cat.name, x + w - 48, y + 36);
+  ctx.font = `500 16px ${FONT}`;
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(`${reservations.length}/${cat.boothCount} غرفه · قطعی ${confirmed} · رزرو ${reserved}`, x + w - 48, y + 60);
+  ctx.textAlign = 'left';
+  ctx.direction = 'ltr';
+  ctx.font = `800 12px ${FONT}`;
+  ctx.fillStyle = '#93c5fd';
+  ctx.fillText('TOP VIEW HALL', x + 28, y + 36);
+
+  ctx.fillStyle = 'rgba(147,197,253,0.82)';
+  ctx.textAlign = 'center';
+  ctx.font = `900 11px ${FONT}`;
+  ctx.fillText('MAIN AISLE', x + w / 2, floorY - 13);
+
+  const floorGrad = ctx.createLinearGradient(floorX, floorY, floorX + floorW, floorY + floorH);
+  floorGrad.addColorStop(0, 'rgba(15,23,42,0.96)');
+  floorGrad.addColorStop(1, 'rgba(30,41,59,0.72)');
+  ctx.fillStyle = floorGrad;
+  roundRect(ctx, floorX, floorY, floorW, floorH, 24);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+  ctx.lineWidth = 1;
+  for (let gx = floorX + 24; gx < floorX + floorW; gx += 34) {
+    ctx.beginPath();
+    ctx.moveTo(gx, floorY);
+    ctx.lineTo(gx, floorY + floorH);
+    ctx.stroke();
+  }
+  for (let gy = floorY + 24; gy < floorY + floorH; gy += 34) {
+    ctx.beginPath();
+    ctx.moveTo(floorX, gy);
+    ctx.lineTo(floorX + floorW, gy);
+    ctx.stroke();
+  }
+
+  structures
+    .filter(structure => structure.kind === 'pavilion')
+    .forEach(structure => drawTopViewStructure(ctx, structure, floorX, floorY, floorW, floorH));
+
+  const gridX = floorX + 24;
+  const gridY = floorY + 24;
+  for (let i = 0; i < cat.boothCount; i++) {
+    const n = i + 1;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const bx = gridX + col * (cell + gap);
+    const by = gridY + row * (cell + gap);
+    const reservation = reservationByBooth(event, cat.id, n);
+    const radius = Math.max(5, Math.floor(cell * 0.22));
+    if (!reservation) {
+      ctx.fillStyle = 'rgba(255,255,255,0.055)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+      roundRect(ctx, bx, by, cell, cell, radius);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#64748b';
+      ctx.font = `800 ${Math.max(8, cell * 0.22)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.direction = 'ltr';
+      ctx.fillText(boothCode(cat, n), bx + cell / 2, by + cell / 2 + 3);
+      continue;
+    }
+
+    const boothGrad = ctx.createLinearGradient(bx, by, bx + cell, by + cell);
+    boothGrad.addColorStop(0, reservation.reservationStatus === 'reserved' ? RESERVED : cat.color);
+    boothGrad.addColorStop(1, 'rgba(15,23,42,0.75)');
+    ctx.fillStyle = boothGrad;
+    ctx.strokeStyle = reservation.reservationStatus === 'reserved' ? 'rgba(251,146,60,0.78)' : 'rgba(52,211,153,0.58)';
+    ctx.lineWidth = 1.6;
+    roundRect(ctx, bx, by, cell, cell, radius);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    const roof = Math.max(14, Math.min(38, cell * 0.52));
+    roundRect(ctx, bx + (cell - roof) / 2, by + Math.max(5, cell * 0.18), roof, roof, Math.max(6, roof * 0.22));
+    ctx.fill();
+    const logo = logoImages.get(reservation.id);
+    if (logo) {
+      ctx.save();
+      roundRect(ctx, bx + (cell - roof) / 2, by + Math.max(5, cell * 0.18), roof, roof, Math.max(6, roof * 0.22));
+      ctx.clip();
+      ctx.drawImage(logo, bx + (cell - roof) / 2, by + Math.max(5, cell * 0.18), roof, roof);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#0f172a';
+      ctx.textAlign = 'center';
+      ctx.direction = 'ltr';
+      ctx.font = `900 ${Math.max(8, roof * 0.32)}px ${FONT}`;
+      ctx.fillText(initials(reservation.companyName), bx + cell / 2, by + Math.max(5, cell * 0.18) + roof / 2 + 4);
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.font = `900 ${Math.max(7, cell * 0.17)}px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(boothCode(cat, n), bx + 5, by + 12);
+    if (cell >= 34) {
+      ctx.textAlign = 'center';
+      ctx.direction = 'rtl';
+      ctx.font = `800 ${Math.max(8, cell * 0.18)}px ${FONT}`;
+      const lines = wrapTextLines(ctx, reservation.companyName, cell - 8, 2);
+      lines.forEach((line, idx) => ctx.fillText(line, bx + cell / 2, by + cell - 13 + idx * 11));
+    }
+  }
+
+  structures
+    .filter(structure => structure.kind !== 'pavilion')
+    .forEach(structure => drawTopViewStructure(ctx, structure, floorX, floorY, floorW, floorH));
+  markers.forEach(marker => drawTopViewMarker(ctx, marker, floorX, floorY, floorW, floorH));
+
+  ctx.fillStyle = 'rgba(147,197,253,0.7)';
+  ctx.textAlign = 'center';
+  ctx.direction = 'ltr';
+  ctx.font = `900 11px ${FONT}`;
+  ctx.fillText('VISITOR FLOW', x + w / 2, floorY + floorH + 27);
+
+  return y + h;
 }
 
 function categoryMapHeight(cat: ExhibitionBoothCategory, cols: number, cell: number, gap: number): number {
@@ -226,6 +515,16 @@ export async function renderExhibitionStoryPng(
   ctx.scale(scale, scale);
 
   const bgImg = await loadBackgroundImage(event.storyBackgroundUrl || '');
+  const logoImages = new Map<string, HTMLImageElement>();
+  await Promise.all(
+    event.reservations
+      .filter(reservation => !!reservation.logoUrl?.trim())
+      .slice(0, 100)
+      .map(async reservation => {
+        const logo = await loadBackgroundImage(reservation.logoUrl || '');
+        if (logo) logoImages.set(reservation.id, logo);
+      }),
+  );
   const grad = ctx.createLinearGradient(0, 0, W, H);
   grad.addColorStop(0, '#020617');
   grad.addColorStop(0.42, '#312e81');
@@ -248,7 +547,7 @@ export async function renderExhibitionStoryPng(
   let y = 158;
 
   ctx.font = `700 30px ${FONT}`;
-  y = drawRtlWrapped(ctx, 'رزرو غرفه‌های نمایشگاهی', textRight, y, innerW, 40, 1, '#a5b4fc') + 12;
+  y = drawRtlWrapped(ctx, 'نقشه Top View و رزرو غرفه‌های نمایشگاهی', textRight, y, innerW, 40, 1, '#a5b4fc') + 12;
 
   ctx.font = `800 54px ${FONT}`;
   y = drawRtlWrapped(ctx, event.title || 'عنوان نمایشگاه', textRight, y, innerW, 68, 3, '#ffffff') + 8;
@@ -321,19 +620,21 @@ export async function renderExhibitionStoryPng(
   y += 122;
 
   const availableHeight = H - y - 210;
-  let cell = 34;
-  let gap = 7;
-  const estimated = event.categories.reduce((sum, c) => {
-    const cols = Math.max(6, Math.min(14, Math.floor((innerW - 40) / (cell + gap))));
-    return sum + categoryMapHeight(c, cols, cell, gap) + 14;
-  }, 0);
+  let cell = 48;
+  let gap = 8;
+  let estimated = event.categories.reduce((sum, c) => sum + storyTopViewMapHeight(c, innerW, cell, gap) + 14, 0);
+  if (estimated > availableHeight) {
+    cell = 36;
+    gap = 6;
+    estimated = event.categories.reduce((sum, c) => sum + storyTopViewMapHeight(c, innerW, cell, gap) + 14, 0);
+  }
   if (estimated > availableHeight) {
     cell = 26;
     gap = 5;
   }
 
   for (const cat of event.categories) {
-    const nextY = drawCategoryMap(ctx, event, cat, pad, y, innerW, cell, gap) + 14;
+    const nextY = drawStoryTopViewMap(ctx, event, cat, pad, y, innerW, cell, gap, logoImages) + 14;
     if (nextY > H - 180) break;
     y = nextY;
   }
