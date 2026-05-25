@@ -16779,6 +16779,9 @@ function AppInner() {
         if (!Number.isFinite(n)) return fallback;
         return Math.min(max, Math.max(min, n));
     };
+    const setCatalogNumberKey = (key: keyof CatalogConfig, value: number) => {
+        setCatalogConfig(prev => ({ ...prev, [key]: value }));
+    };
     const catalogBool = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback;
     const catalogTextTransform = (value: unknown, fallback: boolean) => catalogBool(value, fallback) ? 'uppercase' : 'none';
     const catalogTextStyle = (
