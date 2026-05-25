@@ -1617,6 +1617,24 @@ export interface ExhibitionMasterLink {
   updatedAt: number;
 }
 
+export interface ExhibitionStoryTextBox {
+  id: string;
+  text: string;
+  xPercent: number;
+  yPercent: number;
+  widthPercent: number;
+  heightPercent: number;
+  fontSizePx: number;
+  bold: boolean;
+  align: 'right' | 'center' | 'left';
+  textColor: string;
+  boxEnabled: boolean;
+  boxColor: string;
+  boxOpacity: number;
+  borderEnabled: boolean;
+  borderColor: string;
+}
+
 export interface ExhibitionEvent {
   id: string;
   title: string;
@@ -1651,6 +1669,7 @@ export interface ExhibitionEvent {
   storyFootNoteBoxOpacity?: number;
   storyFootNoteBorderEnabled?: boolean;
   storyFootNoteBorderColor?: string;
+  storyFootNoteBoxes?: ExhibitionStoryTextBox[];
   categories: ExhibitionBoothCategory[];
   reservations: ExhibitionReservation[];
   topViewMarkers?: ExhibitionTopViewMarker[];

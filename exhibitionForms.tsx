@@ -24,6 +24,7 @@ import type {
   ExhibitionPublicReservationRequest,
   ExhibitionReservation,
   ExhibitionReservationStatus,
+  ExhibitionStoryTextBox,
   ExhibitionTopViewMarker,
   ExhibitionTopViewStructure,
 } from './types';
@@ -333,6 +334,54 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
     setEditing(normalizeExhibitionEvent({ ...editing, ...patch, updatedAt: Date.now() }));
   };
 
+  const makeStoryFootNoteBox = (source?: Partial<ExhibitionStoryTextBox>): ExhibitionStoryTextBox => ({
+    id: newId(),
+    text: source?.text ?? editing?.storyFootNote ?? '',
+    xPercent: Math.min(100, Math.max(0, Math.round(source?.xPercent ?? ((editing?.storyFootNoteXPercent ?? 5) + 4)))),
+    yPercent: Math.min(100, Math.max(0, Math.round(source?.yPercent ?? ((editing?.storyFootNoteYPercent ?? 92) - 6)))),
+    widthPercent: Math.min(100, Math.max(5, Math.round(source?.widthPercent ?? editing?.storyFootNoteWidthPercent ?? 90))),
+    heightPercent: Math.min(50, Math.max(2, Math.round(source?.heightPercent ?? editing?.storyFootNoteHeightPercent ?? 4))),
+    fontSizePx: Math.min(80, Math.max(8, Math.round(source?.fontSizePx ?? editing?.storyFootNoteFontSizePx ?? 24))),
+    bold: source?.bold ?? (editing?.storyFootNoteBold !== false),
+    align: source?.align ?? editing?.storyFootNoteAlign ?? 'center',
+    textColor: source?.textColor ?? editing?.storyFootNoteTextColor ?? '#fef9c3',
+    boxEnabled: source?.boxEnabled ?? (editing?.storyFootNoteBoxEnabled !== false),
+    boxColor: source?.boxColor ?? editing?.storyFootNoteBoxColor ?? '#000000',
+    boxOpacity: Math.min(100, Math.max(0, Math.round(source?.boxOpacity ?? editing?.storyFootNoteBoxOpacity ?? 44))),
+    borderEnabled: source?.borderEnabled ?? (editing?.storyFootNoteBorderEnabled !== false),
+    borderColor: source?.borderColor ?? editing?.storyFootNoteBorderColor ?? '#fbbf24',
+  });
+
+  const duplicatePrimaryStoryFootNote = () => {
+    if (!editing) return;
+    upd({ storyFootNoteBoxes: [...(editing.storyFootNoteBoxes ?? []), makeStoryFootNoteBox()] });
+  };
+
+  const updateStoryFootNoteBox = (id: string, patch: Partial<ExhibitionStoryTextBox>) => {
+    if (!editing) return;
+    upd({ storyFootNoteBoxes: (editing.storyFootNoteBoxes ?? []).map(box => (box.id === id ? { ...box, ...patch } : box)) });
+  };
+
+  const duplicateStoryFootNoteBox = (box: ExhibitionStoryTextBox) => {
+    if (!editing) return;
+    upd({
+      storyFootNoteBoxes: [
+        ...(editing.storyFootNoteBoxes ?? []),
+        makeStoryFootNoteBox({
+          ...box,
+          text: box.text ? `${box.text} کپی` : box.text,
+          xPercent: Math.min(100, box.xPercent + 4),
+          yPercent: Math.max(0, box.yPercent - 4),
+        }),
+      ],
+    });
+  };
+
+  const removeStoryFootNoteBox = (id: string) => {
+    if (!editing) return;
+    upd({ storyFootNoteBoxes: (editing.storyFootNoteBoxes ?? []).filter(box => box.id !== id) });
+  };
+
   const totalBooths = editing?.categories.reduce((sum, c) => sum + c.boothCount, 0) ?? 0;
   const filled = editing?.reservations.length ?? 0;
   const isFull = totalBooths > 0 && filled >= totalBooths;
@@ -381,6 +430,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
   const footNoteHeightPercent = Math.min(50, Math.max(2, Math.round(editing?.storyFootNoteHeightPercent ?? 4)));
   const footNoteFontSizePx = Math.min(80, Math.max(8, Math.round(editing?.storyFootNoteFontSizePx ?? 24)));
   const footNoteBoxOpacity = Math.min(100, Math.max(0, Math.round(editing?.storyFootNoteBoxOpacity ?? 44)));
+  const storyFootNoteBoxes = editing?.storyFootNoteBoxes ?? [];
 
   const handleBackgroundChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
@@ -1659,27 +1709,33 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
             <div className="border border-amber-200 rounded-xl p-4 space-y-3 bg-amber-50/40">
               <div className="flex items-center justify-between gap-2">
                 <label className={labelCls + ' mb-0'}>نوت استوری مثل Text Box</label>
-                <button
-                  type="button"
-                  onClick={() => upd({
-                    storyFootNoteXPercent: 5,
-                    storyFootNoteYPercent: 92,
-                    storyFootNoteWidthPercent: 90,
-                    storyFootNoteHeightPercent: 4,
-                    storyFootNoteFontSizePx: 24,
-                    storyFootNoteBold: true,
-                    storyFootNoteAlign: 'center',
-                    storyFootNoteTextColor: '#fef9c3',
-                    storyFootNoteBoxEnabled: true,
-                    storyFootNoteBoxColor: '#000000',
-                    storyFootNoteBoxOpacity: 44,
-                    storyFootNoteBorderEnabled: true,
-                    storyFootNoteBorderColor: '#fbbf24',
-                  })}
-                  className="text-[11px] font-bold text-amber-700 hover:underline"
-                >
-                  ریست ظاهر نوت
-                </button>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={duplicatePrimaryStoryFootNote} className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 hover:underline">
+                    <Copy className="w-3 h-3" />
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => upd({
+                      storyFootNoteXPercent: 5,
+                      storyFootNoteYPercent: 92,
+                      storyFootNoteWidthPercent: 90,
+                      storyFootNoteHeightPercent: 4,
+                      storyFootNoteFontSizePx: 24,
+                      storyFootNoteBold: true,
+                      storyFootNoteAlign: 'center',
+                      storyFootNoteTextColor: '#fef9c3',
+                      storyFootNoteBoxEnabled: true,
+                      storyFootNoteBoxColor: '#000000',
+                      storyFootNoteBoxOpacity: 44,
+                      storyFootNoteBorderEnabled: true,
+                      storyFootNoteBorderColor: '#fbbf24',
+                    })}
+                    className="text-[11px] font-bold text-amber-700 hover:underline"
+                  >
+                    ریست ظاهر نوت
+                  </button>
+                </div>
               </div>
               <textarea value={editing.storyFootNote ?? ''} onChange={e => upd({ storyFootNote: e.target.value })} rows={3} className={inputCls} dir="rtl" />
               <div className="grid grid-cols-2 gap-3">
@@ -1752,6 +1808,98 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                   <input type="color" value={editing.storyFootNoteBorderColor || '#fbbf24'} onChange={e => upd({ storyFootNoteBorderColor: e.target.value })} className="w-full h-10 rounded-lg border border-amber-200 bg-white" />
                 </div>
               </div>
+              {storyFootNoteBoxes.length > 0 && (
+                <div className="space-y-3 pt-2 border-t border-amber-200">
+                  <p className="text-xs font-black text-amber-900">نوت‌های کپی‌شده</p>
+                  {storyFootNoteBoxes.map((box, index) => (
+                    <div key={box.id} className="rounded-xl border border-amber-200 bg-white/75 p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-slate-700">Text Box #{index + 2}</span>
+                        <div className="flex items-center gap-3">
+                          <button type="button" onClick={() => duplicateStoryFootNoteBox(box)} className="inline-flex items-center gap-1 text-xs text-amber-700 hover:underline">
+                            <Copy className="w-3 h-3" />
+                            Duplicate
+                          </button>
+                          <button type="button" onClick={() => removeStoryFootNoteBox(box.id)} className="text-xs text-red-600 hover:underline">
+                            حذف
+                          </button>
+                        </div>
+                      </div>
+                      <textarea value={box.text} onChange={e => updateStoryFootNoteBox(box.id, { text: e.target.value })} rows={2} className={inputCls} dir="rtl" />
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <span className="text-xs text-slate-500">X: {box.xPercent}%</span>
+                          <input type="range" min={0} max={100} value={box.xPercent} onChange={e => updateStoryFootNoteBox(box.id, { xPercent: Number(e.target.value) })} className="w-full accent-amber-500" />
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-500">Y: {box.yPercent}%</span>
+                          <input type="range" min={0} max={100} value={box.yPercent} onChange={e => updateStoryFootNoteBox(box.id, { yPercent: Number(e.target.value) })} className="w-full accent-amber-500" />
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-500">عرض: {box.widthPercent}%</span>
+                          <input type="range" min={5} max={100} value={box.widthPercent} onChange={e => updateStoryFootNoteBox(box.id, { widthPercent: Number(e.target.value) })} className="w-full accent-amber-500" />
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-500">ارتفاع: {box.heightPercent}%</span>
+                          <input type="range" min={2} max={50} value={box.heightPercent} onChange={e => updateStoryFootNoteBox(box.id, { heightPercent: Number(e.target.value) })} className="w-full accent-amber-500" />
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-500">سایز فونت: {box.fontSizePx}px</span>
+                          <input type="range" min={8} max={80} value={box.fontSizePx} onChange={e => updateStoryFootNoteBox(box.id, { fontSizePx: Number(e.target.value) })} className="w-full accent-amber-500" />
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-500">شفافیت باکس: {box.boxOpacity}%</span>
+                          <input type="range" min={0} max={100} value={box.boxOpacity} onChange={e => updateStoryFootNoteBox(box.id, { boxOpacity: Number(e.target.value) })} className="w-full accent-amber-500" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['right', 'center', 'left'] as const).map(align => (
+                          <button
+                            key={align}
+                            type="button"
+                            onClick={() => updateStoryFootNoteBox(box.id, { align })}
+                            className={`rounded-lg border px-2 py-2 text-xs font-bold ${
+                              box.align === align
+                                ? 'bg-amber-500 border-amber-500 text-white'
+                                : 'bg-white border-amber-200 text-slate-600'
+                            }`}
+                          >
+                            {align === 'right' ? 'راست' : align === 'center' ? 'وسط' : 'چپ'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid sm:grid-cols-3 gap-2">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                          <input type="checkbox" checked={box.bold !== false} onChange={e => updateStoryFootNoteBox(box.id, { bold: e.target.checked })} className="rounded accent-amber-500" />
+                          بولد
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                          <input type="checkbox" checked={box.boxEnabled !== false} onChange={e => updateStoryFootNoteBox(box.id, { boxEnabled: e.target.checked })} className="rounded accent-amber-500" />
+                          باکس
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                          <input type="checkbox" checked={box.borderEnabled !== false} onChange={e => updateStoryFootNoteBox(box.id, { borderEnabled: e.target.checked })} className="rounded accent-amber-500" />
+                          خط دور
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className={labelCls}>رنگ متن</label>
+                          <input type="color" value={box.textColor || '#fef9c3'} onChange={e => updateStoryFootNoteBox(box.id, { textColor: e.target.value })} className="w-full h-10 rounded-lg border border-amber-200 bg-white" />
+                        </div>
+                        <div>
+                          <label className={labelCls}>رنگ باکس</label>
+                          <input type="color" value={box.boxColor || '#000000'} onChange={e => updateStoryFootNoteBox(box.id, { boxColor: e.target.value })} className="w-full h-10 rounded-lg border border-amber-200 bg-white" />
+                        </div>
+                        <div>
+                          <label className={labelCls}>رنگ خط</label>
+                          <input type="color" value={box.borderColor || '#fbbf24'} onChange={e => updateStoryFootNoteBox(box.id, { borderColor: e.target.value })} className="w-full h-10 rounded-lg border border-amber-200 bg-white" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

@@ -2,6 +2,7 @@ import type {
   ExhibitionBoothCategory,
   ExhibitionEvent,
   ExhibitionReservation,
+  ExhibitionStoryTextBox,
   ExhibitionTopViewMarker,
   ExhibitionTopViewStructure,
 } from './types';
@@ -121,6 +122,46 @@ function drawAlignedWrapped(
   ctx.textAlign = align;
   const textX = align === 'right' ? x + w - padding : align === 'center' ? x + w / 2 : x + padding;
   lines.forEach((line, index) => ctx.fillText(line, textX, startY + index * lineHeight));
+}
+
+function drawStoryTextBox(
+  ctx: CanvasRenderingContext2D,
+  box: Omit<ExhibitionStoryTextBox, 'id'>,
+  W: number,
+  H: number,
+) {
+  const text = box.text?.trim();
+  if (!text) return;
+  const boxW = clamp(box.widthPercent ?? 90, 5, 100) * W / 100;
+  const boxH = clamp(box.heightPercent ?? 4, 2, 50) * H / 100;
+  const boxX = clamp((box.xPercent ?? 5) * W / 100, 0, W - boxW);
+  const boxY = clamp((box.yPercent ?? 92) * H / 100, 0, H - boxH);
+  const radius = Math.min(22, Math.max(4, Math.min(boxW, boxH) * 0.25));
+  if (box.boxEnabled !== false) {
+    ctx.fillStyle = hexToRgba(box.boxColor || '#000000', box.boxOpacity ?? 44);
+    roundRect(ctx, boxX, boxY, boxW, boxH, radius);
+    ctx.fill();
+  }
+  if (box.borderEnabled !== false) {
+    ctx.strokeStyle = box.borderColor || '#fbbf24';
+    ctx.lineWidth = 2;
+    roundRect(ctx, boxX, boxY, boxW, boxH, radius);
+    ctx.stroke();
+  }
+  const fontSize = clamp(box.fontSizePx ?? 24, 8, 80);
+  const fontWeight = box.bold === false ? 500 : 800;
+  ctx.font = `${fontWeight} ${fontSize}px ${FONT}`;
+  drawAlignedWrapped(
+    ctx,
+    text,
+    boxX,
+    boxY,
+    boxW,
+    boxH,
+    Math.round(fontSize * 1.35),
+    box.align || 'center',
+    box.textColor || '#fef9c3',
+  );
 }
 
 function reservationByBooth(event: ExhibitionEvent, categoryId: string, boothNumber: number): ExhibitionReservation | undefined {
@@ -731,37 +772,23 @@ export async function renderExhibitionStoryPng(
   }
 
   const footRaw = event.storyFootNote?.trim() || 'برای انتخاب و رزرو غرفه، شماره غرفه موردنظر را اعلام کنید.';
-  const footW = clamp(event.storyFootNoteWidthPercent ?? 90, 5, 100) * W / 100;
-  const footH = clamp(event.storyFootNoteHeightPercent ?? 4, 2, 50) * H / 100;
-  const footX = clamp((event.storyFootNoteXPercent ?? 5) * W / 100, 0, W - footW);
-  const footY = clamp((event.storyFootNoteYPercent ?? 92) * H / 100, 0, H - footH);
-  const footRadius = Math.min(22, Math.max(4, Math.min(footW, footH) * 0.25));
-  if (event.storyFootNoteBoxEnabled !== false) {
-    ctx.fillStyle = hexToRgba(event.storyFootNoteBoxColor || '#000000', event.storyFootNoteBoxOpacity ?? 44);
-    roundRect(ctx, footX, footY, footW, footH, footRadius);
-    ctx.fill();
-  }
-  if (event.storyFootNoteBorderEnabled !== false) {
-    ctx.strokeStyle = event.storyFootNoteBorderColor || '#fbbf24';
-    ctx.lineWidth = 2;
-    roundRect(ctx, footX, footY, footW, footH, footRadius);
-    ctx.stroke();
-  }
-  const footFontSize = clamp(event.storyFootNoteFontSizePx ?? 24, 8, 80);
-  const footWeight = event.storyFootNoteBold === false ? 500 : 800;
-  const footAlign = event.storyFootNoteAlign || 'center';
-  ctx.font = `${footWeight} ${footFontSize}px ${FONT}`;
-  drawAlignedWrapped(
-    ctx,
-    footRaw,
-    footX,
-    footY,
-    footW,
-    footH,
-    Math.round(footFontSize * 1.35),
-    footAlign,
-    event.storyFootNoteTextColor || '#fef9c3',
-  );
+  drawStoryTextBox(ctx, {
+    text: footRaw,
+    xPercent: event.storyFootNoteXPercent ?? 5,
+    yPercent: event.storyFootNoteYPercent ?? 92,
+    widthPercent: event.storyFootNoteWidthPercent ?? 90,
+    heightPercent: event.storyFootNoteHeightPercent ?? 4,
+    fontSizePx: event.storyFootNoteFontSizePx ?? 24,
+    bold: event.storyFootNoteBold !== false,
+    align: event.storyFootNoteAlign || 'center',
+    textColor: event.storyFootNoteTextColor || '#fef9c3',
+    boxEnabled: event.storyFootNoteBoxEnabled !== false,
+    boxColor: event.storyFootNoteBoxColor || '#000000',
+    boxOpacity: event.storyFootNoteBoxOpacity ?? 44,
+    borderEnabled: event.storyFootNoteBorderEnabled !== false,
+    borderColor: event.storyFootNoteBorderColor || '#fbbf24',
+  }, W, H);
+  (event.storyFootNoteBoxes ?? []).forEach(box => drawStoryTextBox(ctx, box, W, H));
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('Export failed'))), 'image/png', 1);

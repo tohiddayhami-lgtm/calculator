@@ -4,6 +4,7 @@ import type {
   ExhibitionEvent,
   ExhibitionMasterLink,
   ExhibitionReservation,
+  ExhibitionStoryTextBox,
   ExhibitionTopViewMarker,
   ExhibitionTopViewStructure,
 } from './types';
@@ -112,6 +113,32 @@ function clampPercent(raw: unknown, min: number, max: number, fallback: number):
 function clampStoryNumber(raw: unknown, min: number, max: number, fallback: number): number {
   const n = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
+function normalizeHex(raw: unknown, fallback: string): string {
+  return typeof raw === 'string' && /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
+}
+
+function normalizeStoryTextBox(raw: unknown, index: number): ExhibitionStoryTextBox | null {
+  const box = raw as Partial<ExhibitionStoryTextBox> | null;
+  if (!box || typeof box !== 'object') return null;
+  return {
+    id: typeof box.id === 'string' && box.id ? box.id : `story_box_${index + 1}`,
+    text: typeof box.text === 'string' ? box.text : '',
+    xPercent: clampStoryNumber(box.xPercent, 0, 100, 9),
+    yPercent: clampStoryNumber(box.yPercent, 0, 100, 86),
+    widthPercent: clampStoryNumber(box.widthPercent, 5, 100, 82),
+    heightPercent: clampStoryNumber(box.heightPercent, 2, 50, 4),
+    fontSizePx: clampStoryNumber(box.fontSizePx, 8, 80, 24),
+    bold: box.bold !== false,
+    align: box.align === 'right' || box.align === 'left' ? box.align : 'center',
+    textColor: normalizeHex(box.textColor, '#fef9c3'),
+    boxEnabled: box.boxEnabled !== false,
+    boxColor: normalizeHex(box.boxColor, '#000000'),
+    boxOpacity: clampStoryNumber(box.boxOpacity, 0, 100, 44),
+    borderEnabled: box.borderEnabled !== false,
+    borderColor: normalizeHex(box.borderColor, '#fbbf24'),
+  };
 }
 
 function normalizeTopViewStructure(raw: unknown, categoryIds: Set<string>, index: number): ExhibitionTopViewStructure | null {
@@ -233,6 +260,11 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
       typeof event.storyFootNoteBorderColor === 'string' && /^#[0-9a-f]{6}$/i.test(event.storyFootNoteBorderColor)
         ? event.storyFootNoteBorderColor
         : '#fbbf24',
+    storyFootNoteBoxes: Array.isArray(event.storyFootNoteBoxes)
+      ? event.storyFootNoteBoxes
+          .map((box, index) => normalizeStoryTextBox(box, index))
+          .filter(Boolean) as ExhibitionStoryTextBox[]
+      : [],
     categories: safeCategories,
     reservations: (event.reservations ?? [])
       .map(normalizeExhibitionReservation)
