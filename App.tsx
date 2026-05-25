@@ -2429,6 +2429,11 @@ function createDefaultCatalogConfig(): CatalogConfig {
     logoPosition: 'top-left',
     logoStyle: 'plain',
     coverTextColor: '#ffffff',
+    coverPagePaddingPx: 64,
+    coverHeaderOffsetYPx: 32,
+    coverTitleBlockOffsetYPx: 0,
+    coverTitleBlockGapPx: 24,
+    coverContactOffsetYPx: 32,
     coverTitleFontSizePx: 56,
     coverHeaderFontSizePx: 14,
     coverHeaderLineHeight: 1.25,
@@ -4196,25 +4201,31 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         if (!Number.isFinite(n)) return fallback;
         return Math.min(max, Math.max(min, n));
     };
+    const setCatalogNumberKey = (key: keyof CatalogConfig, value: number) => {
+        setCatalogConfig(prev => ({ ...prev, [key]: value }));
+    };
     const catalogBool = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback;
     const catalogTextTransform = (value: unknown, fallback: boolean) => catalogBool(value, fallback) ? 'uppercase' : 'none';
-    const coverTitlePx = Math.min(120, Math.max(20, Number(cc.coverTitleFontSizePx) || 56));
+    const coverTitlePx = clampCatalogNumber(cc.coverTitleFontSizePx, 56, 1, 300);
     const coverTitleClampMin = Math.max(16, Math.round(coverTitlePx * 0.45));
-    const coverCollectionFontSizePx = clampCatalogNumber(cc.coverCollectionFontSizePx, 30, 10, 72);
-    const coverCollectionLineHeight = clampCatalogNumber(cc.coverCollectionLineHeight, 1.15, 0.8, 2.4);
-    const coverTitleLineHeight = clampCatalogNumber(cc.coverTitleLineHeight, 1.05, 0.8, 2.4);
-    const coverSubtitleFontSizePx = clampCatalogNumber(cc.coverSubtitleFontSizePx, 24, 10, 64);
-    const coverSubtitleLineHeight = clampCatalogNumber(cc.coverSubtitleLineHeight, 1.35, 0.8, 2.4);
-    const backCoverTitleFontSizePx = clampCatalogNumber(cc.backCoverTitleFontSizePx, 36, 12, 90);
-    const backCoverTitleLineHeight = clampCatalogNumber(cc.backCoverTitleLineHeight, 1.2, 0.8, 2.4);
-    const backCoverLabelFontSizePx = clampCatalogNumber(cc.backCoverLabelFontSizePx, 14, 8, 36);
-    const backCoverLabelLineHeight = clampCatalogNumber(cc.backCoverLabelLineHeight, 1.25, 0.8, 2.4);
-    const backCoverValueFontSizePx = clampCatalogNumber(cc.backCoverValueFontSizePx, 18, 8, 48);
-    const backCoverValueLineHeight = clampCatalogNumber(cc.backCoverValueLineHeight, 1.45, 0.8, 2.4);
-    const backCoverQrLabelFontSizePx = clampCatalogNumber(cc.backCoverQrLabelFontSizePx, 12, 8, 32);
-    const backCoverQrLabelLineHeight = clampCatalogNumber(cc.backCoverQrLabelLineHeight, 1.3, 0.8, 2.4);
-    const backCoverFooterFontSizePx = clampCatalogNumber(cc.backCoverFooterFontSizePx, 12, 8, 32);
-    const backCoverFooterLineHeight = clampCatalogNumber(cc.backCoverFooterLineHeight, 1.35, 0.8, 2.4);
+    const coverCollectionFontSizePx = clampCatalogNumber(cc.coverCollectionFontSizePx, 30, 1, 300);
+    const coverCollectionLineHeight = clampCatalogNumber(cc.coverCollectionLineHeight, 1.15, 0.2, 10);
+    const coverTitleLineHeight = clampCatalogNumber(cc.coverTitleLineHeight, 1.05, 0.2, 10);
+    const coverSubtitleFontSizePx = clampCatalogNumber(cc.coverSubtitleFontSizePx, 24, 1, 300);
+    const coverSubtitleLineHeight = clampCatalogNumber(cc.coverSubtitleLineHeight, 1.35, 0.2, 10);
+    const coverPagePaddingPx = clampCatalogNumber(cc.coverPagePaddingPx, 64, 0, 260);
+    const coverTitleBlockOffsetYPx = clampCatalogNumber(cc.coverTitleBlockOffsetYPx, 0, -520, 520);
+    const coverTitleBlockGapPx = clampCatalogNumber(cc.coverTitleBlockGapPx, 24, 0, 260);
+    const backCoverTitleFontSizePx = clampCatalogNumber(cc.backCoverTitleFontSizePx, 36, 1, 300);
+    const backCoverTitleLineHeight = clampCatalogNumber(cc.backCoverTitleLineHeight, 1.2, 0.2, 10);
+    const backCoverLabelFontSizePx = clampCatalogNumber(cc.backCoverLabelFontSizePx, 14, 1, 300);
+    const backCoverLabelLineHeight = clampCatalogNumber(cc.backCoverLabelLineHeight, 1.25, 0.2, 10);
+    const backCoverValueFontSizePx = clampCatalogNumber(cc.backCoverValueFontSizePx, 18, 1, 300);
+    const backCoverValueLineHeight = clampCatalogNumber(cc.backCoverValueLineHeight, 1.45, 0.2, 10);
+    const backCoverQrLabelFontSizePx = clampCatalogNumber(cc.backCoverQrLabelFontSizePx, 12, 1, 300);
+    const backCoverQrLabelLineHeight = clampCatalogNumber(cc.backCoverQrLabelLineHeight, 1.3, 0.2, 10);
+    const backCoverFooterFontSizePx = clampCatalogNumber(cc.backCoverFooterFontSizePx, 12, 1, 300);
+    const backCoverFooterLineHeight = clampCatalogNumber(cc.backCoverFooterLineHeight, 1.35, 0.2, 10);
     const coverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.coverOverlayOpacity ?? 60) || 0) / 100));
     const backCoverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.backCoverOverlayOpacity ?? 60) || 0) / 100));
     const normalizeExtraAlign = (value: any, fallback: 'left' | 'center' | 'right' | 'justify') =>
@@ -4719,14 +4730,14 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .container { max-width: 1280px; margin: 0 auto; padding: 0 20px; }
 
         /* ── Cover / Hero ── */
-        .cover { background: var(--cover); color: var(--cover-text); padding: 80px 24px; text-align: center; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
+        .cover { background: var(--cover); color: var(--cover-text); padding: ${coverPagePaddingPx}px 24px; text-align: center; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
         .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: cover; background-position: center;` : ''} z-index: 0; }
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,${(coverOverlayAlpha * 0.65).toFixed(2)}) 0%, rgba(0,0,0,${coverOverlayAlpha.toFixed(2)}) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
-        .cover-inner { position: relative; z-index: 2; max-width: 740px; margin: 0 auto; }
+        .cover-inner { position: relative; z-index: 2; max-width: 740px; margin: 0 auto; transform: translateY(${coverTitleBlockOffsetYPx}px); }
         .logo { max-height: 72px; margin: 0 auto 22px; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.35)); }
-        .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: ${coverTitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverTitleUppercase, false)}; margin-bottom: 14px; }
+        .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: ${coverTitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverTitleUppercase, false)}; margin-bottom: ${coverTitleBlockGapPx}px; }
         .cover .subtitle { font-size: clamp(${Math.max(12, Math.round(coverSubtitleFontSizePx * 0.65))}px, 2.5vw, ${coverSubtitleFontSizePx}px); opacity: 0.9; font-weight: 300; letter-spacing: 0.04em; white-space: pre-wrap; word-break: break-word; line-height: ${coverSubtitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverSubtitleUppercase, false)}; }
-        .cover .collection { font-size: ${coverCollectionFontSizePx}px; letter-spacing: 0.35em; text-transform: ${catalogTextTransform(cc.coverCollectionUppercase, true)}; line-height: ${coverCollectionLineHeight}; opacity: 0.75; margin-bottom: 18px; }
+        .cover .collection { font-size: ${coverCollectionFontSizePx}px; letter-spacing: 0.35em; text-transform: ${catalogTextTransform(cc.coverCollectionUppercase, true)}; line-height: ${coverCollectionLineHeight}; opacity: 0.75; margin-bottom: ${coverTitleBlockGapPx}px; }
 
         /* ── Category Filter Bar ── */
         .filter-bar-wrap { display: flex; align-items: center; gap: 6px; padding: 16px 0 2px; }
@@ -11026,6 +11037,11 @@ function AppInner() {
             logoPosition: project.data.catalogConfig.logoPosition || 'top-left',
             logoStyle: project.data.catalogConfig.logoStyle || 'plain',
             coverTextColor: project.data.catalogConfig.coverTextColor || '#ffffff',
+            coverPagePaddingPx: project.data.catalogConfig.coverPagePaddingPx !== undefined ? project.data.catalogConfig.coverPagePaddingPx : 64,
+            coverHeaderOffsetYPx: project.data.catalogConfig.coverHeaderOffsetYPx !== undefined ? project.data.catalogConfig.coverHeaderOffsetYPx : 32,
+            coverTitleBlockOffsetYPx: project.data.catalogConfig.coverTitleBlockOffsetYPx !== undefined ? project.data.catalogConfig.coverTitleBlockOffsetYPx : 0,
+            coverTitleBlockGapPx: project.data.catalogConfig.coverTitleBlockGapPx !== undefined ? project.data.catalogConfig.coverTitleBlockGapPx : 24,
+            coverContactOffsetYPx: project.data.catalogConfig.coverContactOffsetYPx !== undefined ? project.data.catalogConfig.coverContactOffsetYPx : 32,
             coverTitleFontSizePx:
                 project.data.catalogConfig.coverTitleFontSizePx !== undefined
                     ? project.data.catalogConfig.coverTitleFontSizePx
@@ -16783,8 +16799,8 @@ function AppInner() {
         defaultFontSize,
         defaultLineHeight,
         defaultUppercase,
-        minFont = 8,
-        maxFont = 72,
+        minFont = 1,
+        maxFont = 300,
     }: {
         label: string;
         fontSizeKey: keyof CatalogConfig;
@@ -16797,7 +16813,7 @@ function AppInner() {
         maxFont?: number;
     }) => {
         const fontSize = clampCatalogNumber(catalogConfig[fontSizeKey], defaultFontSize, minFont, maxFont);
-        const lineHeight = clampCatalogNumber(catalogConfig[lineHeightKey], defaultLineHeight, 0.8, 2.4);
+        const lineHeight = clampCatalogNumber(catalogConfig[lineHeightKey], defaultLineHeight, 0.2, 10);
         const uppercase = catalogBool(catalogConfig[uppercaseKey], defaultUppercase);
         return (
             <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 space-y-2">
@@ -16807,26 +16823,47 @@ function AppInner() {
                 </div>
                 <label className="block space-y-1">
                     <span className="text-[10px] text-slate-400">Font size</span>
-                    <input
-                        type="range"
-                        min={minFont}
-                        max={maxFont}
-                        value={fontSize}
-                        onChange={(e) => setCatalogConfig({ ...catalogConfig, [fontSizeKey]: Number(e.target.value) })}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="range"
+                            min={minFont}
+                            max={maxFont}
+                            value={fontSize}
+                            onChange={(e) => setCatalogNumberKey(fontSizeKey, Number(e.target.value))}
+                            className="min-w-0 flex-1 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <input
+                            type="number"
+                            min={minFont}
+                            max={maxFont}
+                            value={fontSize}
+                            onChange={(e) => setCatalogNumberKey(fontSizeKey, clampCatalogNumber(e.target.value, defaultFontSize, minFont, maxFont))}
+                            className="w-16 text-[10px] border border-slate-200 rounded px-1.5 py-1 outline-none focus:border-blue-500"
+                        />
+                    </div>
                 </label>
                 <label className="block space-y-1">
                     <span className="text-[10px] text-slate-400">Line spacing</span>
-                    <input
-                        type="range"
-                        min={0.8}
-                        max={2.4}
-                        step={0.05}
-                        value={lineHeight}
-                        onChange={(e) => setCatalogConfig({ ...catalogConfig, [lineHeightKey]: Number(e.target.value) })}
-                        className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="range"
+                            min={0.2}
+                            max={10}
+                            step={0.05}
+                            value={lineHeight}
+                            onChange={(e) => setCatalogNumberKey(lineHeightKey, Number(e.target.value))}
+                            className="min-w-0 flex-1 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <input
+                            type="number"
+                            min={0.2}
+                            max={10}
+                            step={0.05}
+                            value={lineHeight}
+                            onChange={(e) => setCatalogNumberKey(lineHeightKey, clampCatalogNumber(e.target.value, defaultLineHeight, 0.2, 10))}
+                            className="w-16 text-[10px] border border-slate-200 rounded px-1.5 py-1 outline-none focus:border-blue-500"
+                        />
+                    </div>
                 </label>
                 <label className="flex items-center gap-2 text-[10px] text-slate-600 cursor-pointer">
                     <input
@@ -16840,84 +16877,136 @@ function AppInner() {
             </div>
         );
     };
+    const renderCatalogPositionControl = ({
+        label,
+        valueKey,
+        defaultValue,
+        min,
+        max,
+        step = 1,
+        suffix = 'px',
+    }: {
+        label: string;
+        valueKey: keyof CatalogConfig;
+        defaultValue: number;
+        min: number;
+        max: number;
+        step?: number;
+        suffix?: string;
+    }) => {
+        const value = clampCatalogNumber(catalogConfig[valueKey], defaultValue, min, max);
+        return (
+            <label className="block space-y-1">
+                <span className="text-[10px] text-slate-500 font-semibold flex justify-between">
+                    <span>{label}</span>
+                    <span className="tabular-nums">{value}{suffix}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={value}
+                        onChange={(e) => setCatalogNumberKey(valueKey, Number(e.target.value))}
+                        className="min-w-0 flex-1 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                    <input
+                        type="number"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={value}
+                        onChange={(e) => setCatalogNumberKey(valueKey, clampCatalogNumber(e.target.value, defaultValue, min, max))}
+                        className="w-16 text-[10px] border border-slate-200 rounded px-1.5 py-1 outline-none focus:border-blue-500"
+                    />
+                </div>
+            </label>
+        );
+    };
     const coverHeaderStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.coverHeaderFontSizePx, 14, 8, 40),
-        clampCatalogNumber(catalogConfig.coverHeaderLineHeight, 1.25, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.coverHeaderFontSizePx, 14, 1, 300),
+        clampCatalogNumber(catalogConfig.coverHeaderLineHeight, 1.25, 0.2, 10),
         catalogConfig.coverHeaderUppercase,
         true
     );
     const coverYearStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.coverYearFontSizePx, 12, 8, 32),
-        clampCatalogNumber(catalogConfig.coverYearLineHeight, 1.25, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.coverYearFontSizePx, 12, 1, 300),
+        clampCatalogNumber(catalogConfig.coverYearLineHeight, 1.25, 0.2, 10),
         catalogConfig.coverYearUppercase,
         false
     );
     const coverCollectionStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.coverCollectionFontSizePx, 30, 10, 72),
-        clampCatalogNumber(catalogConfig.coverCollectionLineHeight, 1.15, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.coverCollectionFontSizePx, 30, 1, 300),
+        clampCatalogNumber(catalogConfig.coverCollectionLineHeight, 1.15, 0.2, 10),
         catalogConfig.coverCollectionUppercase,
         true
     );
     const coverTitleStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.coverTitleFontSizePx, 56, 20, 120),
-        clampCatalogNumber(catalogConfig.coverTitleLineHeight, 1.05, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.coverTitleFontSizePx, 56, 1, 300),
+        clampCatalogNumber(catalogConfig.coverTitleLineHeight, 1.05, 0.2, 10),
         catalogConfig.coverTitleUppercase,
         false
     );
     const coverSubtitleStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.coverSubtitleFontSizePx, 24, 10, 64),
-        clampCatalogNumber(catalogConfig.coverSubtitleLineHeight, 1.35, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.coverSubtitleFontSizePx, 24, 1, 300),
+        clampCatalogNumber(catalogConfig.coverSubtitleLineHeight, 1.35, 0.2, 10),
         catalogConfig.coverSubtitleUppercase,
         false
     );
     const coverContactTitleStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.coverContactTitleFontSizePx, 18, 10, 48),
-        clampCatalogNumber(catalogConfig.coverContactTitleLineHeight, 1.25, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.coverContactTitleFontSizePx, 18, 1, 300),
+        clampCatalogNumber(catalogConfig.coverContactTitleLineHeight, 1.25, 0.2, 10),
         catalogConfig.coverContactTitleUppercase,
         true
     );
     const coverContactBodyStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.coverContactBodyFontSizePx, 14, 8, 36),
-        clampCatalogNumber(catalogConfig.coverContactBodyLineHeight, 1.45, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.coverContactBodyFontSizePx, 14, 1, 300),
+        clampCatalogNumber(catalogConfig.coverContactBodyLineHeight, 1.45, 0.2, 10),
         catalogConfig.coverContactBodyUppercase,
         false
     );
     const backCoverTitleStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.backCoverTitleFontSizePx, 36, 12, 90),
-        clampCatalogNumber(catalogConfig.backCoverTitleLineHeight, 1.2, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.backCoverTitleFontSizePx, 36, 1, 300),
+        clampCatalogNumber(catalogConfig.backCoverTitleLineHeight, 1.2, 0.2, 10),
         catalogConfig.backCoverTitleUppercase,
         false
     );
     const backCoverLabelStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.backCoverLabelFontSizePx, 14, 8, 36),
-        clampCatalogNumber(catalogConfig.backCoverLabelLineHeight, 1.25, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.backCoverLabelFontSizePx, 14, 1, 300),
+        clampCatalogNumber(catalogConfig.backCoverLabelLineHeight, 1.25, 0.2, 10),
         catalogConfig.backCoverLabelUppercase,
         true
     );
     const backCoverValueStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.backCoverValueFontSizePx, 18, 8, 48),
-        clampCatalogNumber(catalogConfig.backCoverValueLineHeight, 1.45, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.backCoverValueFontSizePx, 18, 1, 300),
+        clampCatalogNumber(catalogConfig.backCoverValueLineHeight, 1.45, 0.2, 10),
         catalogConfig.backCoverValueUppercase,
         false
     );
     const backCoverSocialStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.backCoverSocialFontSizePx, 12, 8, 32),
-        clampCatalogNumber(catalogConfig.backCoverSocialLineHeight, 1.3, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.backCoverSocialFontSizePx, 12, 1, 300),
+        clampCatalogNumber(catalogConfig.backCoverSocialLineHeight, 1.3, 0.2, 10),
         catalogConfig.backCoverSocialUppercase,
         false
     );
     const backCoverQrLabelStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.backCoverQrLabelFontSizePx, 12, 8, 32),
-        clampCatalogNumber(catalogConfig.backCoverQrLabelLineHeight, 1.3, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.backCoverQrLabelFontSizePx, 12, 1, 300),
+        clampCatalogNumber(catalogConfig.backCoverQrLabelLineHeight, 1.3, 0.2, 10),
         catalogConfig.backCoverQrLabelUppercase,
         true
     );
     const backCoverFooterStyle = catalogTextStyle(
-        clampCatalogNumber(catalogConfig.backCoverFooterFontSizePx, 12, 8, 32),
-        clampCatalogNumber(catalogConfig.backCoverFooterLineHeight, 1.35, 0.8, 2.4),
+        clampCatalogNumber(catalogConfig.backCoverFooterFontSizePx, 12, 1, 300),
+        clampCatalogNumber(catalogConfig.backCoverFooterLineHeight, 1.35, 0.2, 10),
         catalogConfig.backCoverFooterUppercase,
         false
     );
+    const coverPagePaddingPx = clampCatalogNumber(catalogConfig.coverPagePaddingPx, 64, 0, 260);
+    const coverHeaderOffsetYPx = clampCatalogNumber(catalogConfig.coverHeaderOffsetYPx, 32, -260, 520);
+    const coverTitleBlockOffsetYPx = clampCatalogNumber(catalogConfig.coverTitleBlockOffsetYPx, 0, -520, 520);
+    const coverTitleBlockGapPx = clampCatalogNumber(catalogConfig.coverTitleBlockGapPx, 24, 0, 260);
+    const coverContactOffsetYPx = clampCatalogNumber(catalogConfig.coverContactOffsetYPx, 32, -260, 520);
 
     // Toggle Language Helper
     const toggleLanguage = (lang: 'en' | 'fa' | 'ar') => {
@@ -18283,8 +18372,65 @@ ${html}
                                    <input type="text" value={catalogConfig.subtitle} onChange={(e) => setCatalogConfig({...catalogConfig, subtitle: e.target.value})} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 outline-none" placeholder="Subtitle" />
                               </div>
                               <details className="rounded-xl border border-blue-100 bg-blue-50/40 p-2">
-                                  <summary className="cursor-pointer text-[11px] font-bold text-blue-800">Front cover typography</summary>
+                                  <summary className="cursor-pointer text-[11px] font-bold text-blue-800">Front cover typography & position</summary>
                                   <div className="mt-3 space-y-2">
+                                      <div className="rounded-lg border border-blue-100 bg-white/70 p-2 space-y-2">
+                                          <div className="flex items-center justify-between">
+                                              <span className="text-[10px] font-bold text-blue-800">Cover text layout</span>
+                                              <button
+                                                  type="button"
+                                                  onClick={() => setCatalogConfig({
+                                                      ...catalogConfig,
+                                                      coverPagePaddingPx: 64,
+                                                      coverHeaderOffsetYPx: 32,
+                                                      coverTitleBlockOffsetYPx: 0,
+                                                      coverTitleBlockGapPx: 24,
+                                                      coverContactOffsetYPx: 32,
+                                                  })}
+                                                  className="text-[10px] font-bold text-blue-600 hover:underline"
+                                              >
+                                                  Reset
+                                              </button>
+                                          </div>
+                                          {renderCatalogPositionControl({
+                                              label: 'Page padding',
+                                              valueKey: 'coverPagePaddingPx',
+                                              defaultValue: 64,
+                                              min: 0,
+                                              max: 260,
+                                          })}
+                                          {renderCatalogPositionControl({
+                                              label: 'Top header vertical move',
+                                              valueKey: 'coverHeaderOffsetYPx',
+                                              defaultValue: 32,
+                                              min: -260,
+                                              max: 520,
+                                          })}
+                                          {renderCatalogPositionControl({
+                                              label: 'Title block vertical move',
+                                              valueKey: 'coverTitleBlockOffsetYPx',
+                                              defaultValue: 0,
+                                              min: -520,
+                                              max: 520,
+                                          })}
+                                          {renderCatalogPositionControl({
+                                              label: 'Collection / title / subtitle gap',
+                                              valueKey: 'coverTitleBlockGapPx',
+                                              defaultValue: 24,
+                                              min: 0,
+                                              max: 260,
+                                          })}
+                                          {renderCatalogPositionControl({
+                                              label: 'Contact block vertical move',
+                                              valueKey: 'coverContactOffsetYPx',
+                                              defaultValue: 32,
+                                              min: -260,
+                                              max: 520,
+                                          })}
+                                          <p className="text-[10px] text-blue-700/70 leading-snug">
+                                              عددهای منفی متن را به بالا می‌برند؛ عددهای بزرگ‌تر آن را پایین‌تر یا دورتر می‌کنند.
+                                          </p>
+                                      </div>
                                       {renderCatalogTypographyControl({
                                           label: 'Header Brand',
                                           fontSizeKey: 'coverHeaderFontSizePx',
@@ -18293,8 +18439,8 @@ ${html}
                                           defaultFontSize: 14,
                                           defaultLineHeight: 1.25,
                                           defaultUppercase: true,
-                                          minFont: 8,
-                                          maxFont: 40,
+                                          minFont: 1,
+                                          maxFont: 300,
                                       })}
                                       {renderCatalogTypographyControl({
                                           label: 'Header Year',
@@ -18304,8 +18450,8 @@ ${html}
                                           defaultFontSize: 12,
                                           defaultLineHeight: 1.25,
                                           defaultUppercase: false,
-                                          minFont: 8,
-                                          maxFont: 32,
+                                          minFont: 1,
+                                          maxFont: 300,
                                       })}
                                       {renderCatalogTypographyControl({
                                           label: 'Collection Tag',
@@ -18315,8 +18461,8 @@ ${html}
                                           defaultFontSize: 30,
                                           defaultLineHeight: 1.15,
                                           defaultUppercase: true,
-                                          minFont: 10,
-                                          maxFont: 72,
+                                          minFont: 1,
+                                          maxFont: 300,
                                       })}
                                       {renderCatalogTypographyControl({
                                           label: 'Main Title',
@@ -18326,8 +18472,8 @@ ${html}
                                           defaultFontSize: 56,
                                           defaultLineHeight: 1.05,
                                           defaultUppercase: false,
-                                          minFont: 20,
-                                          maxFont: 120,
+                                          minFont: 1,
+                                          maxFont: 300,
                                       })}
                                       {renderCatalogTypographyControl({
                                           label: 'Subtitle',
@@ -18337,8 +18483,8 @@ ${html}
                                           defaultFontSize: 24,
                                           defaultLineHeight: 1.35,
                                           defaultUppercase: false,
-                                          minFont: 10,
-                                          maxFont: 64,
+                                          minFont: 1,
+                                          maxFont: 300,
                                       })}
                                       {renderCatalogTypographyControl({
                                           label: 'Contact Title',
@@ -18348,8 +18494,8 @@ ${html}
                                           defaultFontSize: 18,
                                           defaultLineHeight: 1.25,
                                           defaultUppercase: true,
-                                          minFont: 10,
-                                          maxFont: 48,
+                                          minFont: 1,
+                                          maxFont: 300,
                                       })}
                                       {renderCatalogTypographyControl({
                                           label: 'Contact Details',
@@ -18359,8 +18505,8 @@ ${html}
                                           defaultFontSize: 14,
                                           defaultLineHeight: 1.45,
                                           defaultUppercase: false,
-                                          minFont: 8,
-                                          maxFont: 36,
+                                          minFont: 1,
+                                          maxFont: 300,
                                       })}
                                   </div>
                               </details>
@@ -19467,11 +19613,18 @@ ${html}
                           );
                       })()}
 
-                      <div className="relative z-10 h-full flex flex-col justify-between p-16" style={{ color: catalogConfig.coverTextColor || '#ffffff' }}>
+                      <div
+                          className="relative z-10 h-full flex flex-col justify-between"
+                          style={{
+                              color: catalogConfig.coverTextColor || '#ffffff',
+                              padding: `${coverPagePaddingPx}px`,
+                          }}
+                      >
                            {/* Top Brand Mark */}
-                           <div className="flex justify-between items-start pt-8" style={{ 
+                           <div className="flex justify-between items-start" style={{ 
                                borderTopWidth: catalogConfig.showCoverLines !== false ? '4px' : '0',
-                               borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
+                               borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor,
+                               transform: `translateY(${coverHeaderOffsetYPx}px)`,
                            }}>
                                 <div className="space-y-1">
                                     <h3 className="font-bold tracking-[0.3em] opacity-80 min-h-[1.25rem]" style={coverHeaderStyle}>
@@ -19487,7 +19640,15 @@ ${html}
                            </div>
 
                           {/* Main Title Block */}
-                          <div className="space-y-6 max-w-3xl w-full shrink-0 py-2">
+                          <div
+                              className="max-w-3xl w-full shrink-0 py-2"
+                              style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: `${coverTitleBlockGapPx}px`,
+                                  transform: `translateY(${coverTitleBlockOffsetYPx}px)`,
+                              }}
+                          >
                                <input 
                                   value={catalogConfig.collectionText || ''}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, collectionText: e.target.value})}
@@ -19502,7 +19663,7 @@ ${html}
                                   className="bg-transparent font-black tracking-tight w-full outline-none placeholder-white/40 resize-none overflow-visible block"
                                   style={{
                                       ...coverTitleStyle,
-                                      minHeight: `${Math.max(120, Math.round(clampCatalogNumber(catalogConfig.coverTitleFontSizePx, 56, 20, 120) * 2.35))}px`,
+                                      minHeight: `${Math.max(40, Math.round(clampCatalogNumber(catalogConfig.coverTitleFontSizePx, 56, 1, 300) * 2.35))}px`,
                                   }}
                                   placeholder="TITLE"
                               />
@@ -19518,9 +19679,10 @@ ${html}
 
                           {/* Footer Contact */}
                           {catalogConfig.showCoverContact !== false && (
-                            <div className="flex flex-col items-end pb-8" style={{ 
+                            <div className="flex flex-col items-end" style={{ 
                                     borderBottomWidth: catalogConfig.showCoverLines !== false ? '4px' : '0', 
-                                    borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor 
+                                    borderColor: catalogConfig.coverLineColor || catalogConfig.primaryColor,
+                                    transform: `translateY(${-coverContactOffsetYPx}px)`,
                             }}>
                                 <div className="text-right space-y-1">
                                     <h3 className="font-bold mb-2 tracking-wide" style={coverContactTitleStyle}>
