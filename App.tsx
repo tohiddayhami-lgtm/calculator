@@ -2433,6 +2433,9 @@ function createDefaultCatalogConfig(): CatalogConfig {
     coverHeaderOffsetYPx: 32,
     coverTitleBlockOffsetYPx: 0,
     coverTitleBlockGapPx: 24,
+    coverCollectionTitleGapPx: 24,
+    coverTitleSubtitleGapPx: 6,
+    coverTitleBoxHeightPx: 132,
     coverContactOffsetYPx: 32,
     coverTitleFontSizePx: 56,
     coverHeaderFontSizePx: 14,
@@ -4216,6 +4219,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const coverPagePaddingPx = clampCatalogNumber(cc.coverPagePaddingPx, 64, 0, 260);
     const coverTitleBlockOffsetYPx = clampCatalogNumber(cc.coverTitleBlockOffsetYPx, 0, -520, 520);
     const coverTitleBlockGapPx = clampCatalogNumber(cc.coverTitleBlockGapPx, 24, 0, 260);
+    const coverCollectionTitleGapPx = clampCatalogNumber(cc.coverCollectionTitleGapPx ?? cc.coverTitleBlockGapPx, 24, -120, 260);
+    const coverTitleSubtitleGapPx = clampCatalogNumber(cc.coverTitleSubtitleGapPx, 6, -120, 260);
     const backCoverTitleFontSizePx = clampCatalogNumber(cc.backCoverTitleFontSizePx, 36, 1, 300);
     const backCoverTitleLineHeight = clampCatalogNumber(cc.backCoverTitleLineHeight, 1.2, 0.2, 10);
     const backCoverLabelFontSizePx = clampCatalogNumber(cc.backCoverLabelFontSizePx, 14, 1, 300);
@@ -4735,9 +4740,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,${(coverOverlayAlpha * 0.65).toFixed(2)}) 0%, rgba(0,0,0,${coverOverlayAlpha.toFixed(2)}) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover-inner { position: relative; z-index: 2; max-width: 740px; margin: 0 auto; transform: translateY(${coverTitleBlockOffsetYPx}px); }
         .logo { max-height: 72px; margin: 0 auto 22px; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.35)); }
-        .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: ${coverTitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverTitleUppercase, false)}; margin-bottom: ${coverTitleBlockGapPx}px; }
+        .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: ${coverTitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverTitleUppercase, false)}; margin-bottom: ${coverTitleSubtitleGapPx}px; }
         .cover .subtitle { font-size: clamp(${Math.max(12, Math.round(coverSubtitleFontSizePx * 0.65))}px, 2.5vw, ${coverSubtitleFontSizePx}px); opacity: 0.9; font-weight: 300; letter-spacing: 0.04em; white-space: pre-wrap; word-break: break-word; line-height: ${coverSubtitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverSubtitleUppercase, false)}; }
-        .cover .collection { font-size: ${coverCollectionFontSizePx}px; letter-spacing: 0.35em; text-transform: ${catalogTextTransform(cc.coverCollectionUppercase, true)}; line-height: ${coverCollectionLineHeight}; opacity: 0.75; margin-bottom: ${coverTitleBlockGapPx}px; }
+        .cover .collection { font-size: ${coverCollectionFontSizePx}px; letter-spacing: 0.35em; text-transform: ${catalogTextTransform(cc.coverCollectionUppercase, true)}; line-height: ${coverCollectionLineHeight}; opacity: 0.75; margin-bottom: ${coverCollectionTitleGapPx}px; }
 
         /* ── Category Filter Bar ── */
         .filter-bar-wrap { display: flex; align-items: center; gap: 6px; padding: 16px 0 2px; }
@@ -11041,6 +11046,9 @@ function AppInner() {
             coverHeaderOffsetYPx: project.data.catalogConfig.coverHeaderOffsetYPx !== undefined ? project.data.catalogConfig.coverHeaderOffsetYPx : 32,
             coverTitleBlockOffsetYPx: project.data.catalogConfig.coverTitleBlockOffsetYPx !== undefined ? project.data.catalogConfig.coverTitleBlockOffsetYPx : 0,
             coverTitleBlockGapPx: project.data.catalogConfig.coverTitleBlockGapPx !== undefined ? project.data.catalogConfig.coverTitleBlockGapPx : 24,
+            coverCollectionTitleGapPx: project.data.catalogConfig.coverCollectionTitleGapPx !== undefined ? project.data.catalogConfig.coverCollectionTitleGapPx : (project.data.catalogConfig.coverTitleBlockGapPx !== undefined ? project.data.catalogConfig.coverTitleBlockGapPx : 24),
+            coverTitleSubtitleGapPx: project.data.catalogConfig.coverTitleSubtitleGapPx !== undefined ? project.data.catalogConfig.coverTitleSubtitleGapPx : 6,
+            coverTitleBoxHeightPx: project.data.catalogConfig.coverTitleBoxHeightPx !== undefined ? project.data.catalogConfig.coverTitleBoxHeightPx : 132,
             coverContactOffsetYPx: project.data.catalogConfig.coverContactOffsetYPx !== undefined ? project.data.catalogConfig.coverContactOffsetYPx : 32,
             coverTitleFontSizePx:
                 project.data.catalogConfig.coverTitleFontSizePx !== undefined
@@ -17009,6 +17017,9 @@ function AppInner() {
     const coverHeaderOffsetYPx = clampCatalogNumber(catalogConfig.coverHeaderOffsetYPx, 32, -260, 520);
     const coverTitleBlockOffsetYPx = clampCatalogNumber(catalogConfig.coverTitleBlockOffsetYPx, 0, -520, 520);
     const coverTitleBlockGapPx = clampCatalogNumber(catalogConfig.coverTitleBlockGapPx, 24, 0, 260);
+    const coverCollectionTitleGapPx = clampCatalogNumber(catalogConfig.coverCollectionTitleGapPx ?? catalogConfig.coverTitleBlockGapPx, 24, -120, 260);
+    const coverTitleSubtitleGapPx = clampCatalogNumber(catalogConfig.coverTitleSubtitleGapPx, 6, -120, 260);
+    const coverTitleBoxHeightPx = clampCatalogNumber(catalogConfig.coverTitleBoxHeightPx, 132, 20, 700);
     const coverContactOffsetYPx = clampCatalogNumber(catalogConfig.coverContactOffsetYPx, 32, -260, 520);
 
     // Toggle Language Helper
@@ -18379,7 +18390,7 @@ ${html}
                                   <div className="mt-3 space-y-2">
                                       <div className="rounded-lg border border-blue-100 bg-white/70 p-2 space-y-2">
                                           <div className="flex items-center justify-between">
-                                              <span className="text-[10px] font-bold text-blue-800">Cover text layout</span>
+                                              <span className="text-[10px] font-bold text-blue-800">Cover text settings</span>
                                               <button
                                                   type="button"
                                                   onClick={() => setCatalogConfig({
@@ -18388,11 +18399,35 @@ ${html}
                                                       coverHeaderOffsetYPx: 32,
                                                       coverTitleBlockOffsetYPx: 0,
                                                       coverTitleBlockGapPx: 24,
+                                                      coverCollectionTitleGapPx: 24,
+                                                      coverTitleSubtitleGapPx: 6,
+                                                      coverTitleBoxHeightPx: 132,
                                                       coverContactOffsetYPx: 32,
+                                                      coverHeaderFontSizePx: 14,
+                                                      coverHeaderLineHeight: 1.25,
+                                                      coverHeaderUppercase: true,
+                                                      coverYearFontSizePx: 12,
+                                                      coverYearLineHeight: 1.25,
+                                                      coverYearUppercase: false,
+                                                      coverCollectionFontSizePx: 30,
+                                                      coverCollectionLineHeight: 1.15,
+                                                      coverCollectionUppercase: true,
+                                                      coverTitleFontSizePx: 56,
+                                                      coverTitleLineHeight: 1.05,
+                                                      coverTitleUppercase: false,
+                                                      coverSubtitleFontSizePx: 24,
+                                                      coverSubtitleLineHeight: 1.35,
+                                                      coverSubtitleUppercase: false,
+                                                      coverContactTitleFontSizePx: 18,
+                                                      coverContactTitleLineHeight: 1.25,
+                                                      coverContactTitleUppercase: true,
+                                                      coverContactBodyFontSizePx: 14,
+                                                      coverContactBodyLineHeight: 1.45,
+                                                      coverContactBodyUppercase: false,
                                                   })}
                                                   className="text-[10px] font-bold text-blue-600 hover:underline"
                                               >
-                                                  Reset
+                                                  Reset all
                                               </button>
                                           </div>
                                           {renderCatalogPositionControl({
@@ -18417,11 +18452,25 @@ ${html}
                                               max: 520,
                                           })}
                                           {renderCatalogPositionControl({
-                                              label: 'Collection / title / subtitle gap',
-                                              valueKey: 'coverTitleBlockGapPx',
+                                              label: 'Collection to title gap',
+                                              valueKey: 'coverCollectionTitleGapPx',
                                               defaultValue: 24,
-                                              min: 0,
+                                              min: -120,
                                               max: 260,
+                                          })}
+                                          {renderCatalogPositionControl({
+                                              label: 'Title to subtitle gap',
+                                              valueKey: 'coverTitleSubtitleGapPx',
+                                              defaultValue: 6,
+                                              min: -120,
+                                              max: 260,
+                                          })}
+                                          {renderCatalogPositionControl({
+                                              label: 'Title box height',
+                                              valueKey: 'coverTitleBoxHeightPx',
+                                              defaultValue: 132,
+                                              min: 20,
+                                              max: 700,
                                           })}
                                           {renderCatalogPositionControl({
                                               label: 'Contact block vertical move',
@@ -19648,7 +19697,7 @@ ${html}
                               style={{
                                   display: 'flex',
                                   flexDirection: 'column',
-                                  gap: `${coverTitleBlockGapPx}px`,
+                                  gap: 0,
                                   transform: `translateY(${coverTitleBlockOffsetYPx}px)`,
                               }}
                           >
@@ -19656,17 +19705,22 @@ ${html}
                                   value={catalogConfig.collectionText || ''}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, collectionText: e.target.value})}
                                   className="bg-transparent tracking-[0.2em] font-light w-full outline-none placeholder-white/40 border-b border-transparent focus:border-white/30 transition-colors pb-2"
-                                  style={coverCollectionStyle}
+                                  style={{
+                                      ...coverCollectionStyle,
+                                      marginBottom: `${coverCollectionTitleGapPx}px`,
+                                  }}
                                   placeholder="COLLECTION NAME"
                               />
                                <textarea 
                                   value={catalogConfig.title}
                                   onChange={(e) => setCatalogConfig({...catalogConfig, title: e.target.value})}
-                                  rows={4}
+                                  rows={1}
                                   className="bg-transparent font-black tracking-tight w-full outline-none placeholder-white/40 resize-none overflow-visible block"
                                   style={{
                                       ...coverTitleStyle,
-                                      minHeight: `${Math.max(40, Math.round(clampCatalogNumber(catalogConfig.coverTitleFontSizePx, 56, 1, 300) * 2.35))}px`,
+                                      height: `${coverTitleBoxHeightPx}px`,
+                                      minHeight: 0,
+                                      marginBottom: `${coverTitleSubtitleGapPx}px`,
                                   }}
                                   placeholder="TITLE"
                               />

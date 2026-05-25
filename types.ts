@@ -401,6 +401,9 @@ export interface CatalogConfig {
   coverHeaderOffsetYPx?: number;
   coverTitleBlockOffsetYPx?: number;
   coverTitleBlockGapPx?: number;
+  coverCollectionTitleGapPx?: number;
+  coverTitleSubtitleGapPx?: number;
+  coverTitleBoxHeightPx?: number;
   coverContactOffsetYPx?: number;
   /** Main cover title (h1) max font size in px; HTML uses clamp() down to ~45% for small viewports */
   coverTitleFontSizePx?: number;
