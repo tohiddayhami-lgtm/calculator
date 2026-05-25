@@ -29005,7 +29005,8 @@ ${html}
           }
           if (!shortCode) throw new Error('Could not allocate a stable short link.');
           shortUrl = buildPublicAppUrl({ c: shortCode });
-          await setDoc(doc(db, 'catalog_short_links', shortCode), {
+          const publicLinkRef = doc(db, 'catalog_short_links', shortCode);
+          const publicLinkData = {
             url,
             appId: dataAppId,
             ownerUserId: activeOwnerUid,
@@ -29015,7 +29016,19 @@ ${html}
             isMasterLink: true,
             updatedAt: serverTimestamp(),
             ...(options?.existingShortCode ? {} : { createdAt: serverTimestamp() }),
-          }, { merge: true });
+          };
+          try {
+            await setDoc(publicLinkRef, publicLinkData, { merge: true });
+          } catch (linkUpdateErr) {
+            if (!options?.existingShortCode) throw linkUpdateErr;
+            // Older deployed Firestore rules can reject updates to short-link docs.
+            // Replacing the same document ID keeps the public URL and QR stable.
+            await deleteDoc(publicLinkRef);
+            await setDoc(publicLinkRef, {
+              ...publicLinkData,
+              createdAt: serverTimestamp(),
+            });
+          }
 
           const meta = {
             fullUrl: url,

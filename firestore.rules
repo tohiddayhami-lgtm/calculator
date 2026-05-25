@@ -119,6 +119,7 @@ service cloud.firestore {
       allow delete: if request.auth != null
                     && (
                       resource.data.ownerUserId == request.auth.uid
+                      || isConfiguredMasterEmail()
                       || (
                         resource.data.keys().hasAny(['appId'])
                         && isMaster(resource.data.appId)
@@ -127,6 +128,7 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && (
                       resource.data.ownerUserId == request.auth.uid
+                      || isConfiguredMasterEmail()
                       || (
                         resource.data.keys().hasAny(['appId'])
                         && isMaster(resource.data.appId)
