@@ -1638,6 +1638,19 @@ export interface ExhibitionEvent {
   /** Gap between story title/subtitle/date block (px) */
   storyTitleMetaGapPx?: number;
   storyFootNote?: string;
+  storyFootNoteXPercent?: number;
+  storyFootNoteYPercent?: number;
+  storyFootNoteWidthPercent?: number;
+  storyFootNoteHeightPercent?: number;
+  storyFootNoteFontSizePx?: number;
+  storyFootNoteBold?: boolean;
+  storyFootNoteAlign?: 'right' | 'center' | 'left';
+  storyFootNoteTextColor?: string;
+  storyFootNoteBoxEnabled?: boolean;
+  storyFootNoteBoxColor?: string;
+  storyFootNoteBoxOpacity?: number;
+  storyFootNoteBorderEnabled?: boolean;
+  storyFootNoteBorderColor?: string;
   categories: ExhibitionBoothCategory[];
   reservations: ExhibitionReservation[];
   topViewMarkers?: ExhibitionTopViewMarker[];

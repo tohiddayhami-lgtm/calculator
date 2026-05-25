@@ -99,6 +99,30 @@ function drawRtlWrapped(
   return y + lines.length * lineHeight;
 }
 
+function drawAlignedWrapped(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  lineHeight: number,
+  align: 'right' | 'center' | 'left',
+  color: string,
+) {
+  const padding = Math.max(8, Math.min(24, lineHeight * 0.45));
+  const maxWidth = Math.max(20, w - padding * 2);
+  const maxLines = Math.max(1, Math.floor((h - padding * 2) / lineHeight));
+  const lines = wrapTextLines(ctx, text, maxWidth, maxLines);
+  const contentHeight = lines.length * lineHeight;
+  const startY = y + Math.max(padding + lineHeight * 0.78, (h - contentHeight) / 2 + lineHeight * 0.78);
+  ctx.fillStyle = color;
+  ctx.direction = 'rtl';
+  ctx.textAlign = align;
+  const textX = align === 'right' ? x + w - padding : align === 'center' ? x + w / 2 : x + padding;
+  lines.forEach((line, index) => ctx.fillText(line, textX, startY + index * lineHeight));
+}
+
 function reservationByBooth(event: ExhibitionEvent, categoryId: string, boothNumber: number): ExhibitionReservation | undefined {
   return event.reservations.find(r => r.categoryId === categoryId && r.boothNumber === boothNumber);
 }
@@ -707,13 +731,37 @@ export async function renderExhibitionStoryPng(
   }
 
   const footRaw = event.storyFootNote?.trim() || 'برای انتخاب و رزرو غرفه، شماره غرفه موردنظر را اعلام کنید.';
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.44)';
-  roundRect(ctx, 56, H - 142, W - 112, 76, 20);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
-  ctx.stroke();
-  ctx.font = `700 24px ${FONT}`;
-  drawRtlWrapped(ctx, footRaw, W - 82, H - 96, W - 164, 32, 2, '#fef9c3');
+  const footW = clamp(event.storyFootNoteWidthPercent ?? 90, 5, 100) * W / 100;
+  const footH = clamp(event.storyFootNoteHeightPercent ?? 4, 2, 50) * H / 100;
+  const footX = clamp((event.storyFootNoteXPercent ?? 5) * W / 100, 0, W - footW);
+  const footY = clamp((event.storyFootNoteYPercent ?? 92) * H / 100, 0, H - footH);
+  const footRadius = Math.min(22, Math.max(4, Math.min(footW, footH) * 0.25));
+  if (event.storyFootNoteBoxEnabled !== false) {
+    ctx.fillStyle = hexToRgba(event.storyFootNoteBoxColor || '#000000', event.storyFootNoteBoxOpacity ?? 44);
+    roundRect(ctx, footX, footY, footW, footH, footRadius);
+    ctx.fill();
+  }
+  if (event.storyFootNoteBorderEnabled !== false) {
+    ctx.strokeStyle = event.storyFootNoteBorderColor || '#fbbf24';
+    ctx.lineWidth = 2;
+    roundRect(ctx, footX, footY, footW, footH, footRadius);
+    ctx.stroke();
+  }
+  const footFontSize = clamp(event.storyFootNoteFontSizePx ?? 24, 8, 80);
+  const footWeight = event.storyFootNoteBold === false ? 500 : 800;
+  const footAlign = event.storyFootNoteAlign || 'center';
+  ctx.font = `${footWeight} ${footFontSize}px ${FONT}`;
+  drawAlignedWrapped(
+    ctx,
+    footRaw,
+    footX,
+    footY,
+    footW,
+    footH,
+    Math.round(footFontSize * 1.35),
+    footAlign,
+    event.storyFootNoteTextColor || '#fef9c3',
+  );
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('Export failed'))), 'image/png', 1);

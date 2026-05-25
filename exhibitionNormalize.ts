@@ -208,6 +208,31 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
     storyHeaderTitleGapPx: clampStoryNumber(event.storyHeaderTitleGapPx, 0, 80, 12),
     storyTitleMetaGapPx: clampStoryNumber(event.storyTitleMetaGapPx, 0, 80, 8),
     storyFootNote: typeof event.storyFootNote === 'string' ? event.storyFootNote : '',
+    storyFootNoteXPercent: clampStoryNumber(event.storyFootNoteXPercent, 0, 100, 5),
+    storyFootNoteYPercent: clampStoryNumber(event.storyFootNoteYPercent, 0, 100, 92),
+    storyFootNoteWidthPercent: clampStoryNumber(event.storyFootNoteWidthPercent, 5, 100, 90),
+    storyFootNoteHeightPercent: clampStoryNumber(event.storyFootNoteHeightPercent, 2, 50, 4),
+    storyFootNoteFontSizePx: clampStoryNumber(event.storyFootNoteFontSizePx, 8, 80, 24),
+    storyFootNoteBold: event.storyFootNoteBold !== false,
+    storyFootNoteAlign:
+      event.storyFootNoteAlign === 'right' || event.storyFootNoteAlign === 'left'
+        ? event.storyFootNoteAlign
+        : 'center',
+    storyFootNoteTextColor:
+      typeof event.storyFootNoteTextColor === 'string' && /^#[0-9a-f]{6}$/i.test(event.storyFootNoteTextColor)
+        ? event.storyFootNoteTextColor
+        : '#fef9c3',
+    storyFootNoteBoxEnabled: event.storyFootNoteBoxEnabled !== false,
+    storyFootNoteBoxColor:
+      typeof event.storyFootNoteBoxColor === 'string' && /^#[0-9a-f]{6}$/i.test(event.storyFootNoteBoxColor)
+        ? event.storyFootNoteBoxColor
+        : '#000000',
+    storyFootNoteBoxOpacity: clampStoryNumber(event.storyFootNoteBoxOpacity, 0, 100, 44),
+    storyFootNoteBorderEnabled: event.storyFootNoteBorderEnabled !== false,
+    storyFootNoteBorderColor:
+      typeof event.storyFootNoteBorderColor === 'string' && /^#[0-9a-f]{6}$/i.test(event.storyFootNoteBorderColor)
+        ? event.storyFootNoteBorderColor
+        : '#fbbf24',
     categories: safeCategories,
     reservations: (event.reservations ?? [])
       .map(normalizeExhibitionReservation)
