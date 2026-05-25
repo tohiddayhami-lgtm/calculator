@@ -17025,7 +17025,8 @@ function AppInner() {
                                 }
                                 if (!shortCode) throw new Error('Could not allocate a stable catalog short link.');
                                 shortUrl = buildPublicAppUrl({ c: shortCode });
-                                await setDoc(doc(db, 'catalog_short_links', shortCode), {
+                                const publicLinkRef = doc(db, 'catalog_short_links', shortCode);
+                                const publicLinkData = {
                                     url,
                                     appId: dataAppId,
                                     ownerUserId: activeOwnerUid,
@@ -17035,7 +17036,19 @@ function AppInner() {
                                     isMasterLink: true,
                                     updatedAt: serverTimestamp(),
                                     ...(existingMaster?.shortCode ? {} : { createdAt: serverTimestamp() }),
-                                }, { merge: true });
+                                };
+                                try {
+                                    await setDoc(publicLinkRef, publicLinkData, { merge: true });
+                                } catch (linkUpdateErr) {
+                                    if (!existingMaster?.shortCode) throw linkUpdateErr;
+                                    // Older deployed Firestore rules rejected updates to short-link docs.
+                                    // Replacing the same document ID preserves the public URL while refreshing the target.
+                                    await deleteDoc(publicLinkRef);
+                                    await setDoc(publicLinkRef, {
+                                        ...publicLinkData,
+                                        createdAt: serverTimestamp(),
+                                    });
+                                }
                                 const meta = {
                                     fullUrl: url,
                                     shortUrl,
@@ -20123,7 +20136,9 @@ ${html}
                                   </p>
                               </>
                           ) : (
-                              <p className="text-sm text-rose-600">Failed to upload. Please try again.</p>
+                              <p className="text-sm text-rose-600">
+                                  Failed to upload. {shareLinkInfo.error || 'Please try again.'}
+                              </p>
                           )}
                       </div>
                   </div>

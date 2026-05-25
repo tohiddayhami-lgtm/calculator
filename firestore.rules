@@ -124,7 +124,22 @@ service cloud.firestore {
                         && isMaster(resource.data.appId)
                       )
                     );
-      allow update: if false;
+      allow update: if request.auth != null
+                    && (
+                      resource.data.ownerUserId == request.auth.uid
+                      || (
+                        resource.data.keys().hasAny(['appId'])
+                        && isMaster(resource.data.appId)
+                      )
+                    )
+                    && request.resource.data.keys().hasAll(['url', 'ownerUserId', 'storagePath'])
+                    && request.resource.data.ownerUserId == resource.data.ownerUserId
+                    && request.resource.data.url is string
+                    && request.resource.data.storagePath is string
+                    && request.resource.data.url.size() < 4000
+                    && request.resource.data.storagePath.size() < 500
+                    && code.size() >= 8
+                    && code.size() <= 16;
     }
 
     // Saved seller / business profiles — owner only
