@@ -486,6 +486,18 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
     upd({ topViewMarkers: (editing.topViewMarkers ?? []).filter(marker => marker.id !== id) });
   };
 
+  const duplicateTopViewMarker = (marker: ExhibitionTopViewMarker) => {
+    if (!editing) return;
+    const clone: ExhibitionTopViewMarker = {
+      ...marker,
+      id: newId(),
+      title: marker.title ? `${marker.title} Copy` : marker.title,
+      x: Math.min(100, Math.max(0, marker.x + 4)),
+      y: Math.min(100, Math.max(0, marker.y + 4)),
+    };
+    upd({ topViewMarkers: [...(editing.topViewMarkers ?? []), clone] });
+  };
+
   const addTopViewStructure = (kind: ExhibitionTopViewStructure['kind'] = 'column') => {
     if (!editing) return;
     const preset = TOP_VIEW_STRUCTURE_KIND_OPTIONS.find(option => option.value === kind) || TOP_VIEW_STRUCTURE_KIND_OPTIONS[0];
@@ -528,6 +540,18 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
   const removeTopViewStructure = (id: string) => {
     if (!editing) return;
     upd({ topViewStructures: (editing.topViewStructures ?? []).filter(structure => structure.id !== id) });
+  };
+
+  const duplicateTopViewStructure = (structure: ExhibitionTopViewStructure) => {
+    if (!editing) return;
+    const clone: ExhibitionTopViewStructure = {
+      ...structure,
+      id: newId(),
+      title: structure.title ? `${structure.title} Copy` : structure.title,
+      x: Math.min(100, Math.max(0, structure.x + 4)),
+      y: Math.min(100, Math.max(0, structure.y + 4)),
+    };
+    upd({ topViewStructures: [...(editing.topViewStructures ?? []), clone] });
   };
 
   const handleAddReservation = () => {
@@ -1279,9 +1303,15 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                             className="w-full accent-cyan-600"
                           />
                         </div>
-                        <button type="button" onClick={() => removeTopViewMarker(marker.id)} className="text-xs text-red-600 hover:underline">
-                          حذف این المان
-                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button type="button" onClick={() => duplicateTopViewMarker(marker)} className="inline-flex items-center gap-1 text-xs text-cyan-700 hover:underline">
+                            <Copy className="w-3 h-3" />
+                            Duplicate / کپی
+                          </button>
+                          <button type="button" onClick={() => removeTopViewMarker(marker.id)} className="text-xs text-red-600 hover:underline">
+                            حذف این المان
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -1382,9 +1412,15 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                           </div>
                           <input type="color" value={structure.color} onChange={e => updateTopViewStructure(structure.id, { color: e.target.value })} className="w-11 h-10 rounded-lg border border-slate-200 bg-white" />
                         </div>
-                        <button type="button" onClick={() => removeTopViewStructure(structure.id)} className="text-xs text-red-600 hover:underline">
-                          حذف این سازه
-                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button type="button" onClick={() => duplicateTopViewStructure(structure)} className="inline-flex items-center gap-1 text-xs text-amber-700 hover:underline">
+                            <Copy className="w-3 h-3" />
+                            Duplicate / کپی
+                          </button>
+                          <button type="button" onClick={() => removeTopViewStructure(structure.id)} className="text-xs text-red-600 hover:underline">
+                            حذف این سازه
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
