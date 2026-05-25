@@ -569,10 +569,17 @@ export async function renderExhibitionStoryPng(
   ctx.fillRect(0, 0, W, H);
   if (bgImg) drawCoverImage(ctx, bgImg, W, H, Math.min(100, Math.max(0, event.storyBackgroundOpacity ?? 35)) / 100);
 
+  const headerText = event.storyHeaderText?.trim() || '';
+  const frameTop = headerText ? 100 : 72;
+  const frameX = 38;
+  const frameBottom = 48;
+  const frameW = W - frameX * 2;
+  const frameH = H - frameTop - frameBottom;
+
   ctx.fillStyle = 'rgba(2, 6, 23, 0.72)';
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  roundRect(ctx, 38, 100, W - 76, H - 148, 36);
+  roundRect(ctx, frameX, frameTop, frameW, frameH, 36);
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.14)';
   ctx.stroke();
@@ -580,12 +587,11 @@ export async function renderExhibitionStoryPng(
   const pad = 76;
   const innerW = W - pad * 2;
   const textRight = W - pad;
-  let y = 158;
+  let y = headerText ? frameTop + 58 : frameTop + 54;
   const headerTitleGap = clamp(event.storyHeaderTitleGapPx ?? 12, 0, 80);
   const titleMetaGap = clamp(event.storyTitleMetaGapPx ?? 8, 0, 80);
 
   ctx.font = `700 30px ${FONT}`;
-  const headerText = event.storyHeaderText?.trim() || '';
   if (headerText) {
     y = drawRtlWrapped(ctx, headerText, textRight, y, innerW, 40, 1, '#a5b4fc') + headerTitleGap;
   }
