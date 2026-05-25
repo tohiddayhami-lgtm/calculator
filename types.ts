@@ -1582,6 +1582,8 @@ export interface ExhibitionTopViewMarker {
   x: number;
   y: number;
   color: string;
+  /** Visual opacity, 10-100 percent */
+  opacity?: number;
   /** Optional link for advertising boards or guide signs */
   url?: string;
 }

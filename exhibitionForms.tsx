@@ -401,6 +401,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
       x: kind === 'entrance' ? 12 : kind === 'exit' ? 88 : kind === 'conference' ? 50 : 24,
       y: kind === 'entrance' ? 50 : kind === 'exit' ? 50 : kind === 'conference' ? 12 : 24,
       color: preset.color,
+      opacity: 88,
       url: '',
     };
     upd({ topViewMarkers: [...(editing.topViewMarkers ?? []), marker] });
@@ -1209,6 +1210,17 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                           </div>
                           <input type="color" value={marker.color} onChange={e => updateTopViewMarker(marker.id, { color: e.target.value })} className="w-11 h-10 rounded-lg border border-slate-200 bg-white" />
                         </div>
+                        <div>
+                          <label className={labelCls}>شفافیت: {marker.opacity ?? 88}%</label>
+                          <input
+                            type="range"
+                            min={10}
+                            max={100}
+                            value={marker.opacity ?? 88}
+                            onChange={e => updateTopViewMarker(marker.id, { opacity: Number(e.target.value) })}
+                            className="w-full accent-cyan-600"
+                          />
+                        </div>
                         <button type="button" onClick={() => removeTopViewMarker(marker.id)} className="text-xs text-red-600 hover:underline">
                           حذف این المان
                         </button>
@@ -1389,7 +1401,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                           <div
                             key={marker.id}
                             className="absolute -translate-x-1/2 -translate-y-1/2 rounded-xl px-2.5 py-2 text-[10px] font-bold shadow-lg max-w-[140px]"
-                            style={{ left: `${marker.x}%`, top: `${marker.y}%`, backgroundColor: marker.color, zIndex: 5 }}
+                            style={{ left: `${marker.x}%`, top: `${marker.y}%`, backgroundColor: hexToRgba(marker.color, marker.opacity ?? 88), border: `1px solid ${marker.color}`, zIndex: 5 }}
                             title={marker.description}
                           >
                             <div className="text-white leading-tight">{marker.title || preset?.defaultTitle}</div>

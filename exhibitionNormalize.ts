@@ -99,6 +99,7 @@ function normalizeTopViewMarker(raw: unknown, categoryIds: Set<string>, index: n
       typeof marker.color === 'string' && /^#[0-9a-f]{6}$/i.test(marker.color)
         ? marker.color
         : defaultColors[kind],
+    opacity: clampPercent(marker.opacity, 10, 100, 88),
     url: typeof marker.url === 'string' ? marker.url : '',
   };
 }
