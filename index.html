@@ -72,7 +72,7 @@
 
         // --- ?form= / ?iso= : just show overlay; React will remove it when it mounts ---
         if (isPublicDoc) {
-          var docOverlay = makeOverlay('در حال بارگذاری…');
+          var docOverlay = makeOverlay('Loading…');
           mountEl(docOverlay);
           // React removes this via the __removeCatalogOverlay flag below
           window.__removeCatalogOverlay = function () {
@@ -87,7 +87,7 @@
         var coll = c ? 'catalog_short_links' : 'meta_hub_links';
         window.__isCatalogPublicView = true;
 
-        var overlay = makeOverlay('در حال بارگذاری…');
+        var overlay = makeOverlay('Loading…');
         mountEl(overlay);
 
         function removeOverlay() {
