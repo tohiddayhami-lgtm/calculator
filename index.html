@@ -33,40 +33,73 @@
       window.__initial_auth_token = "";
     </script>
     <!-- Fast catalog loader: bypasses React bundle for ?c= / ?mh= public links -->
+    <!-- Also shows minimal loading overlay for ?form= / ?iso= while React bundle loads -->
     <script>
       (function () {
         var sp = new URLSearchParams(window.location.search);
         var c = sp.get('c');
         var mh = sp.get('mh');
-        var key = (c && /^[A-Za-z0-9]{8,14}$/.test(c)) ? c
-                : (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)) ? mh
-                : null;
-        if (!key) return;
-        var coll = c ? 'catalog_short_links' : 'meta_hub_links';
-        window.__isCatalogPublicView = true;
+        var form = sp.get('form');
+        var iso = sp.get('iso');
+        var isCatalogLink = !!(
+          (c && /^[A-Za-z0-9]{8,14}$/.test(c)) ||
+          (mh && /^[A-Za-z0-9]{8,14}$/.test(mh))
+        );
+        var isPublicDoc = !!(
+          (form && form.length >= 8) ||
+          (iso && iso.length >= 8)
+        );
+        if (!isCatalogLink && !isPublicDoc) return;
 
-        // Show spinner immediately — before any JS bundle loads
+        // Shared spinner style
         var spinStyle = document.createElement('style');
         spinStyle.textContent = '@keyframes __cl_spin{to{transform:rotate(360deg)}}';
         document.head.appendChild(spinStyle);
-        var overlay = document.createElement('div');
-        overlay.id = '__cat_overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;background:#f8fafc;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:99999';
-        overlay.innerHTML = '<div style="width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#10b981;border-radius:50%;animation:__cl_spin 0.8s linear infinite"></div>'
-          + '<p style="margin:0;font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#64748b">Loading catalog…</p>';
 
-        // Wait for body to be available
-        function mountOverlay() {
-          if (document.body) { document.body.appendChild(overlay); }
-          else { document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(overlay); }); }
+        function makeOverlay(label) {
+          var el = document.createElement('div');
+          el.id = '__cat_overlay';
+          el.style.cssText = 'position:fixed;inset:0;background:#f8fafc;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:99999';
+          el.innerHTML = '<div style="width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#10b981;border-radius:50%;animation:__cl_spin 0.8s linear infinite"></div>'
+            + '<p style="margin:0;font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#64748b">' + label + '</p>';
+          return el;
         }
-        mountOverlay();
+
+        function mountEl(el) {
+          if (document.body) { document.body.appendChild(el); }
+          else { document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(el); }); }
+        }
+
+        // --- ?form= / ?iso= : just show overlay; React will remove it when it mounts ---
+        if (isPublicDoc) {
+          var docOverlay = makeOverlay('در حال بارگذاری…');
+          mountEl(docOverlay);
+          // React removes this via the __removeCatalogOverlay flag below
+          window.__removeCatalogOverlay = function () {
+            var o = document.getElementById('__cat_overlay');
+            if (o) o.remove();
+          };
+          return;
+        }
+
+        // --- ?c= / ?mh= : fetch Firestore then load iframe ---
+        var key = (c && /^[A-Za-z0-9]{8,14}$/.test(c)) ? c : mh;
+        var coll = c ? 'catalog_short_links' : 'meta_hub_links';
+        window.__isCatalogPublicView = true;
+
+        var overlay = makeOverlay('در حال بارگذاری…');
+        mountEl(overlay);
+
+        function removeOverlay() {
+          var o = document.getElementById('__cat_overlay');
+          if (o) o.remove();
+        }
 
         try {
           var cfg = JSON.parse(window.__firebase_config || '{}');
           var pid = cfg.projectId;
           var apiKey = cfg.apiKey;
-          if (!pid || pid.indexOf('%VITE_') !== -1) { overlay.remove(); return; }
+          if (!pid || pid.indexOf('%VITE_') !== -1) { removeOverlay(); return; }
           var firestoreUrl = 'https://firestore.googleapis.com/v1/projects/' + pid
             + '/databases/(default)/documents/' + coll + '/' + encodeURIComponent(key)
             + (apiKey && apiKey.indexOf('%VITE_') === -1 ? '?key=' + encodeURIComponent(apiKey) : '');
@@ -89,19 +122,29 @@
               iframe.src = storageUrl;
               iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-same-origin allow-downloads');
               iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-              iframe.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:none;background:white;z-index:99998';
+              iframe.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:none;background:white;z-index:99998;opacity:0;transition:opacity 0.2s';
               if (document.body) document.body.appendChild(iframe);
-              overlay.remove();
+              // Remove overlay only after iframe content has loaded, not just after it's appended
+              var safetyTimer = setTimeout(removeOverlay, 20000);
+              iframe.onload = function () {
+                clearTimeout(safetyTimer);
+                iframe.style.opacity = '1';
+                removeOverlay();
+              };
+              iframe.onerror = function () {
+                clearTimeout(safetyTimer);
+                removeOverlay();
+              };
             })
             .catch(function () {
               // Fall back to React-based viewer
-              overlay.remove();
+              removeOverlay();
               var root = document.getElementById('root');
               if (root) root.style.display = '';
               window.__isCatalogPublicView = false;
             });
         } catch (e) {
-          overlay.remove();
+          removeOverlay();
           window.__isCatalogPublicView = false;
         }
       })();

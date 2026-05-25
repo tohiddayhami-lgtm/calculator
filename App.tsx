@@ -8043,6 +8043,14 @@ function AppInner() {
     metaHubLinkInfo?.url,
   ]);
 
+  // Remove the inline HTML loading overlay (for ?form= / ?iso=) once React has data ready
+  useEffect(() => {
+    if (publicFormLoading) return;
+    if (typeof window !== 'undefined' && typeof (window as any).__removeCatalogOverlay === 'function') {
+      (window as any).__removeCatalogOverlay();
+    }
+  }, [publicFormLoading]);
+
   // Public form view: ?form=KEY (no app login required when accessLevel is public)
   useEffect(() => {
     if (typeof window === 'undefined') return;
