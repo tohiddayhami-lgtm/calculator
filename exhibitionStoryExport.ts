@@ -5,7 +5,7 @@ import type {
   ExhibitionTopViewMarker,
   ExhibitionTopViewStructure,
 } from './types';
-import { feeCurrencyDisplay, formatAmountDisplayFa, toPersianDigits } from './educationFormat';
+import { feeCurrencyDisplay, formatAmountDisplay, formatAmountDisplayFa, toPersianDigits } from './educationFormat';
 import { boothCode, normalizeExhibitionEvent } from './exhibitionNormalize';
 import { ensureVazirmatnLoaded } from './educationStoryExport';
 
@@ -23,6 +23,29 @@ const FONT = 'Vazirmatn, Tahoma, sans-serif';
 const RESERVED = '#fb923c';
 const CONFIRMED = '#34d399';
 const EMPTY = 'rgba(255,255,255,0.12)';
+const RTL_TEXT_RE = /[\u0600-\u06FF]/;
+const LATIN_TEXT_RE = /[A-Za-z]/;
+
+function exhibitionUsesPersianDigits(event: ExhibitionEvent): boolean {
+  const primaryText = [
+    event.title,
+    event.subtitle,
+    event.organizerName,
+    event.location,
+    ...event.categories.flatMap(category => [category.name, category.description]),
+  ].join(' ');
+  if (RTL_TEXT_RE.test(primaryText)) return true;
+  if (LATIN_TEXT_RE.test(primaryText)) return false;
+  return RTL_TEXT_RE.test([event.boothFeeLabel, event.storyHeaderText, event.storyFootNote].join(' '));
+}
+
+function eventDigits(event: ExhibitionEvent, value: unknown): string {
+  return exhibitionUsesPersianDigits(event) ? toPersianDigits(value) : String(value ?? '');
+}
+
+function eventAmountDisplay(event: ExhibitionEvent, value: string): string {
+  return exhibitionUsesPersianDigits(event) ? formatAmountDisplayFa(value) : formatAmountDisplay(value);
+}
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rad = Math.min(r, w / 2, h / 2);
@@ -607,7 +630,7 @@ export async function renderExhibitionStoryPng(
   const meta: string[] = [];
   const dateStr = [event.startDate, event.endDate && event.endDate !== event.startDate ? event.endDate : '']
     .filter(Boolean)
-    .map(toPersianDigits)
+    .map(value => eventDigits(event, value))
     .join(' — ');
   if (dateStr) meta.push(`تاریخ: ${dateStr}`);
   if (event.location) meta.push(`مکان: ${event.location}`);
@@ -621,7 +644,7 @@ export async function renderExhibitionStoryPng(
     ctx.font = `700 28px ${FONT}`;
     y = drawRtlWrapped(
       ctx,
-      `${event.boothFeeLabel || 'هزینه غرفه'}: ${formatAmountDisplayFa(event.boothFee)} ${feeCurrencyDisplay({
+      `${event.boothFeeLabel || 'هزینه غرفه'}: ${eventAmountDisplay(event, event.boothFee)} ${feeCurrencyDisplay({
         courseFeeCurrency: event.boothFeeCurrency,
         courseFeeCurrencyLabel: event.boothFeeCurrencyLabel,
       })}`,

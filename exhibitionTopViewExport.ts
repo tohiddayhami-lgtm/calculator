@@ -17,6 +17,26 @@ type PublicReservationEndpoint = {
   publicKey: string;
 };
 
+const RTL_TEXT_RE = /[\u0600-\u06FF]/;
+const LATIN_TEXT_RE = /[A-Za-z]/;
+
+function exhibitionUsesPersianDigits(event: ExhibitionEvent): boolean {
+  const primaryText = [
+    event.title,
+    event.subtitle,
+    event.organizerName,
+    event.location,
+    ...event.categories.flatMap(category => [category.name, category.description]),
+  ].join(' ');
+  if (RTL_TEXT_RE.test(primaryText)) return true;
+  if (LATIN_TEXT_RE.test(primaryText)) return false;
+  return RTL_TEXT_RE.test([event.boothFeeLabel, event.storyHeaderText, event.storyFootNote].join(' '));
+}
+
+function eventDigits(event: ExhibitionEvent, value: unknown): string {
+  return exhibitionUsesPersianDigits(event) ? toPersianDigits(value) : String(value ?? '');
+}
+
 function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -302,7 +322,7 @@ export function buildExhibitionTopViewHtml(rawEvent: ExhibitionEvent, publicRese
 </head>
 <body>
 <main>
-  <header class="hero"><div class="wrap"><span class="badge">Interactive Top-View Exhibition</span><div class="hero-grid"><div><h1>${escapeHtml(event.title || 'Online Exhibition Hall')}</h1><p class="lead">${event.subtitle ? escapeHtml(event.subtitle) : 'Explore the exhibition from above, discover reserved booths, and enter each exhibitor store or catalog.'}</p><div class="meta">${event.location ? `<span>Location: ${escapeHtml(event.location)}</span>` : ''}${event.startDate ? `<span>Date: ${escapeHtml(toPersianDigits(event.startDate))}${event.endDate && event.endDate !== event.startDate ? ` - ${escapeHtml(toPersianDigits(event.endDate))}` : ''}</span>` : ''}${event.organizerName ? `<span>Organizer: ${escapeHtml(event.organizerName)}</span>` : ''}</div></div><aside class="stats-panel"><div class="stats"><div class="stat"><b>${totalBooths}</b><span>Total booths</span></div><div class="stat"><b>${event.reservations.length}</b><span>Reserved booths</span></div><div class="stat"><b>${confirmed}</b><span>Confirmed</span></div><div class="stat"><b>${openBooths}</b><span>Open spaces</span></div></div><div class="capacity"><i></i></div></aside></div></div></header>
+  <header class="hero"><div class="wrap"><span class="badge">Interactive Top-View Exhibition</span><div class="hero-grid"><div><h1>${escapeHtml(event.title || 'Online Exhibition Hall')}</h1><p class="lead">${event.subtitle ? escapeHtml(event.subtitle) : 'Explore the exhibition from above, discover reserved booths, and enter each exhibitor store or catalog.'}</p><div class="meta">${event.location ? `<span>Location: ${escapeHtml(event.location)}</span>` : ''}${event.startDate ? `<span>Date: ${escapeHtml(eventDigits(event, event.startDate))}${event.endDate && event.endDate !== event.startDate ? ` - ${escapeHtml(eventDigits(event, event.endDate))}` : ''}</span>` : ''}${event.organizerName ? `<span>Organizer: ${escapeHtml(event.organizerName)}</span>` : ''}</div></div><aside class="stats-panel"><div class="stats"><div class="stat"><b>${totalBooths}</b><span>Total booths</span></div><div class="stat"><b>${event.reservations.length}</b><span>Reserved booths</span></div><div class="stat"><b>${confirmed}</b><span>Confirmed</span></div><div class="stat"><b>${openBooths}</b><span>Open spaces</span></div></div><div class="capacity"><i></i></div></aside></div></div></header>
   <nav class="controls"><div class="controls-inner"><input id="search" class="search" type="search" placeholder="Search companies, products, halls, city, contact..." /><div class="hall-filters"><button class="hall-filter active" data-filter="all" style="--hall:#22d3ee"><span>All halls</span><b>${event.reservations.length}</b></button>${hallButtons}</div></div></nav>
   <section class="section"><div class="section-title"><div><h2>Top-View Exhibition Floor</h2><p>Click any branded booth to open a smart exhibitor note. Logos are placed on booth roofs so foreign visitors can scan the hall like a real exhibition map.</p></div><div class="legend"><span><i class="dot" style="--dot:#34d399"></i>Confirmed</span><span><i class="dot" style="--dot:#fb923c"></i>Reserved</span><span><i class="dot" style="--dot:#64748b"></i>Open</span></div></div>${hallMaps}</section>
   <section class="section"><div class="section-title"><div><h2>Exhibitor Notes</h2><p>Each note gives buyers a quick overview of the exhibitor, products, booth location, and direct store link.</p></div></div><div id="brandGrid" class="brand-grid">${cards || '<div class="empty-state">No reserved exhibitors yet.</div>'}</div><div id="empty" class="empty-state hidden">No exhibitors match your filter.</div></section>

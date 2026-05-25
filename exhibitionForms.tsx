@@ -183,6 +183,37 @@ function hexToRgba(hex: string, opacity: number): string {
   return `rgba(${r}, ${g}, ${b}, ${Math.min(100, Math.max(0, opacity)) / 100})`;
 }
 
+const RTL_TEXT_RE = /[\u0600-\u06FF]/;
+const LATIN_TEXT_RE = /[A-Za-z]/;
+
+function exhibitionUsesPersianDigits(event: Partial<ExhibitionEvent> | null | undefined): boolean {
+  if (!event) return true;
+  const primaryText = [
+    event.title,
+    event.subtitle,
+    event.organizerName,
+    event.location,
+    ...(event.categories ?? []).flatMap(category => [category.name, category.description]),
+  ].join(' ');
+  if (RTL_TEXT_RE.test(primaryText)) return true;
+  if (LATIN_TEXT_RE.test(primaryText)) return false;
+  return RTL_TEXT_RE.test([event.boothFeeLabel, event.storyHeaderText, event.storyFootNote].join(' '));
+}
+
+function eventDigits(event: Partial<ExhibitionEvent> | null | undefined, value: unknown): string {
+  return exhibitionUsesPersianDigits(event) ? toPersianDigits(value) : String(value ?? '');
+}
+
+function eventAmountDisplay(event: Partial<ExhibitionEvent> | null | undefined, value: string): string {
+  return exhibitionUsesPersianDigits(event) ? formatAmountDisplayFa(value) : formatAmountDisplay(value);
+}
+
+function eventAmountWithCurrency(event: ExhibitionEvent, value: string, currency: string, currencyLabel?: string): string {
+  return exhibitionUsesPersianDigits(event)
+    ? formatAmountWithCurrencyFa(value, currency, currencyLabel)
+    : formatAmountWithCurrency(value, currency, currencyLabel);
+}
+
 type Props = {
   events: ExhibitionEvent[];
   onSaveEvents: (events: ExhibitionEvent[]) => void;
@@ -869,11 +900,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                     <p className="text-sm text-slate-500 mt-0.5 truncate">{normalized.subtitle || normalized.organizerName || '—'}</p>
                     {normalized.boothFee?.trim() ? (
                       <p className="text-xs text-amber-700 mt-1">
-                        هزینه: {formatAmountWithCurrencyFa(normalized.boothFee, normalized.boothFeeCurrency, normalized.boothFeeCurrencyLabel)}
+                        هزینه: {eventAmountWithCurrency(normalized, normalized.boothFee, normalized.boothFeeCurrency, normalized.boothFeeCurrencyLabel)}
                       </p>
                     ) : null}
                     <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
-                      <span>{toPersianDigits(normalized.startDate)}</span>
+                      <span>{eventDigits(normalized, normalized.startDate)}</span>
                       <span>·</span>
                       <span className={pct >= 100 ? 'text-red-600 font-medium' : ''}>
                         {normalized.reservations.length} / {total} {unitLabel}
@@ -1470,11 +1501,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>تاریخ شروع</label>
-                <input value={toPersianDigits(editing.startDate)} onChange={e => upd({ startDate: normalizeLocalizedDigits(e.target.value) })} className={inputCls} dir="rtl" inputMode="numeric" />
+                <input value={eventDigits(editing, editing.startDate)} onChange={e => upd({ startDate: normalizeLocalizedDigits(e.target.value) })} className={inputCls} dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="numeric" />
               </div>
               <div>
                 <label className={labelCls}>تاریخ پایان</label>
-                <input value={toPersianDigits(editing.endDate)} onChange={e => upd({ endDate: normalizeLocalizedDigits(e.target.value) })} className={inputCls} dir="rtl" inputMode="numeric" />
+                <input value={eventDigits(editing, editing.endDate)} onChange={e => upd({ endDate: normalizeLocalizedDigits(e.target.value) })} className={inputCls} dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="numeric" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1484,7 +1515,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
               </div>
               <div>
                 <label className={labelCls}>مبلغ {unitLabel}</label>
-                <input value={formatAmountDisplayFa(editing.boothFee)} onChange={e => upd({ boothFee: onAmountInput(e.target.value) })} className={inputCls} dir="rtl" inputMode="decimal" placeholder="۱٬۵۰۰٬۰۰۰" />
+                <input value={eventAmountDisplay(editing, editing.boothFee)} onChange={e => upd({ boothFee: onAmountInput(e.target.value) })} className={inputCls} dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="decimal" placeholder={exhibitionUsesPersianDigits(editing) ? '۱٬۵۰۰٬۰۰۰' : '1,500,000'} />
               </div>
               <div>
                 <label className={labelCls}>ارز</label>
@@ -1774,8 +1805,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
             />
             <p className="text-xs text-slate-500 mb-2 font-medium">پرداخت (پیش‌پرداخت / مانده)</p>
             <div className="grid grid-cols-2 gap-2 mb-2">
-              <input placeholder="مبلغ پرداخت‌شده" value={formatAmountDisplayFa(reservationForm.amountPaid)} onChange={e => setReservationForm(f => ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" disabled={selectedCategoryFull} />
-              <input placeholder="مانده حساب" value={formatAmountDisplayFa(reservationForm.amountRemaining)} onChange={e => setReservationForm(f => ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" disabled={selectedCategoryFull} />
+              <input placeholder="مبلغ پرداخت‌شده" value={eventAmountDisplay(editing, reservationForm.amountPaid)} onChange={e => setReservationForm(f => ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="decimal" disabled={selectedCategoryFull} />
+              <input placeholder="مانده حساب" value={eventAmountDisplay(editing, reservationForm.amountRemaining)} onChange={e => setReservationForm(f => ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="decimal" disabled={selectedCategoryFull} />
             </div>
             {editing.boothFee?.trim() ? (
               <button type="button" onClick={() => fillHalfPayment('form')} disabled={selectedCategoryFull} className="text-xs text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 mb-2 hover:bg-purple-50 w-full">
@@ -1888,8 +1919,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                           </a>
                         ) : null}
                         <div className="grid grid-cols-2 gap-2 mb-2">
-                          <input value={formatAmountDisplayFa(reservation.amountPaid)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountPaid: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="rtl" inputMode="decimal" placeholder="پرداخت‌شده" />
-                          <input value={formatAmountDisplayFa(reservation.amountRemaining)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountRemaining: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="rtl" inputMode="decimal" placeholder="مانده" />
+                          <input value={eventAmountDisplay(editing, reservation.amountPaid)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountPaid: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="decimal" placeholder="پرداخت‌شده" />
+                          <input value={eventAmountDisplay(editing, reservation.amountRemaining)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountRemaining: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="decimal" placeholder="مانده" />
                         </div>
                         {editing.boothFee?.trim() ? (
                           <button type="button" onClick={() => fillHalfPayment(reservation.id)} className="text-xs text-purple-700 border border-purple-200 rounded px-2 py-1 mb-2 hover:bg-purple-50 w-full">نصف هزینه غرفه (خودکار)</button>
@@ -1962,8 +1993,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                 <button type="button" onClick={() => setReservationEditForm(f => f && ({ ...f, reservationStatus: 'reserved' }))} className={`flex-1 text-sm py-2 rounded-lg border ${reservationEditForm.reservationStatus === 'reserved' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-slate-200'}`}>رزرو موقت</button>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-3">
-                <input placeholder="پرداخت‌شده" value={formatAmountDisplayFa(reservationEditForm.amountPaid)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" />
-                <input placeholder="مانده" value={formatAmountDisplayFa(reservationEditForm.amountRemaining)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" />
+                <input placeholder="پرداخت‌شده" value={eventAmountDisplay(editing, reservationEditForm.amountPaid)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="decimal" />
+                <input placeholder="مانده" value={eventAmountDisplay(editing, reservationEditForm.amountRemaining)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir={exhibitionUsesPersianDigits(editing) ? 'rtl' : 'ltr'} inputMode="decimal" />
               </div>
               <input placeholder="یادداشت پرداخت" value={reservationEditForm.paymentNote} onChange={e => setReservationEditForm(f => f && ({ ...f, paymentNote: e.target.value }))} className={inputCls + ' mb-3'} dir="rtl" />
               <div className="flex gap-2">
