@@ -21,6 +21,7 @@ import type {
   EducationFeeCurrency,
   ExhibitionBoothCategory,
   ExhibitionEvent,
+  ExhibitionPublicReservationRequest,
   ExhibitionReservation,
   ExhibitionReservationStatus,
   ExhibitionTopViewMarker,
@@ -166,6 +167,11 @@ type Props = {
   onSaveEvents: (events: ExhibitionEvent[]) => void;
   onPublishOnline?: (event: ExhibitionEvent, options?: ExhibitionPublishOptions) => Promise<ExhibitionPublishResult>;
   onPublishTopView?: (event: ExhibitionEvent, options?: ExhibitionPublishOptions) => Promise<ExhibitionPublishResult>;
+  publicReservationRequests?: ExhibitionPublicReservationRequest[];
+  onReviewPublicReservationRequest?: (
+    request: ExhibitionPublicReservationRequest,
+    reviewStatus: 'accepted' | 'rejected',
+  ) => Promise<void>;
   variant?: ExhibitionFormsVariant;
 };
 
@@ -186,7 +192,15 @@ type ExhibitionPublishResult = {
   master?: boolean;
 };
 
-export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ events, onSaveEvents, onPublishOnline, onPublishTopView, variant = 'exhibition' }: Props) {
+export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
+  events,
+  onSaveEvents,
+  onPublishOnline,
+  onPublishTopView,
+  publicReservationRequests = [],
+  onReviewPublicReservationRequest,
+  variant = 'exhibition',
+}: Props) {
   const isMall = variant === 'mall';
   const unitLabel = isMall ? 'مغازه' : 'غرفه';
   const moduleTitle = isMall ? 'Tohid Meta Mall' : 'Exhibition';
@@ -259,6 +273,10 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
   const isFull = totalBooths > 0 && filled >= totalBooths;
   const confirmedCount = editing?.reservations.filter(r => r.reservationStatus === 'confirmed').length ?? 0;
   const reservedCount = filled - confirmedCount;
+  const currentOnlineRequests = editing
+    ? publicReservationRequests.filter(request => request.eventId === editing.id)
+    : [];
+  const newOnlineRequests = currentOnlineRequests.filter(request => request.reviewStatus !== 'accepted' && request.reviewStatus !== 'rejected');
 
   const selectedCategoryId = reservationForm.categoryId || editing?.categories[0]?.id || '';
   const selectedCategory = editing?.categories.find(c => c.id === selectedCategoryId) ?? editing?.categories[0];
@@ -503,6 +521,54 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
       amountRemaining: '',
       paymentNote: '',
     }));
+  };
+
+  const acceptOnlineReservationRequest = async (request: ExhibitionPublicReservationRequest) => {
+    if (!editing) return;
+    const category = editing.categories.find(c => c.id === request.categoryId);
+    if (!category) {
+      alert(`${isMall ? 'زون' : 'دسته'} این درخواست دیگر در نقشه وجود ندارد.`);
+      return;
+    }
+    const taken = editing.reservations.some(
+      r => r.categoryId === request.categoryId && r.boothNumber === request.boothNumber,
+    );
+    if (taken) {
+      alert(`${unitLabel} ${request.boothCode} قبلاً رزرو شده است.`);
+      return;
+    }
+    const reservation: ExhibitionReservation = {
+      id: newId(),
+      categoryId: request.categoryId,
+      boothNumber: request.boothNumber,
+      companyName: request.companyName.trim(),
+      contactName: request.contactName.trim(),
+      phone: request.phone.trim(),
+      city: request.city.trim(),
+      products: [request.activityType, request.products].filter(Boolean).join(' / '),
+      logoUrl: '',
+      storeUrl: request.website?.trim() || '',
+      reservationStatus: 'reserved',
+      amountPaid: '',
+      amountRemaining: '',
+      paymentNote: request.notes?.trim() || 'Online temporary reservation request',
+      reservedAt: Date.now(),
+    };
+    upd({ reservations: [...editing.reservations, reservation] });
+    try {
+      await onReviewPublicReservationRequest?.(request, 'accepted');
+    } catch {
+      alert('رزرو به لیست اضافه شد، اما وضعیت درخواست آنلاین در Firebase آپدیت نشد.');
+    }
+  };
+
+  const rejectOnlineReservationRequest = async (request: ExhibitionPublicReservationRequest) => {
+    if (!confirm(`درخواست رزرو ${request.boothCode} برای «${request.companyName}» رد شود؟`)) return;
+    try {
+      await onReviewPublicReservationRequest?.(request, 'rejected');
+    } catch {
+      alert('آپدیت وضعیت درخواست انجام نشد.');
+    }
   };
 
   const fillHalfPayment = (target: 'form' | string) => {
@@ -883,7 +949,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
         </button>
         <button type="button" onClick={handlePublishOnline} disabled={onlineLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-slate-900 text-white rounded-lg px-3 py-1.5 hover:bg-slate-800 disabled:opacity-50">
           {onlineLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-          {onlineLinkInfo?.uploading ? 'در حال ساخت...' : onlineMasterMode && editing.onlineMasterLink ? 'آپدیت لینک مادر آنلاین' : 'ساخت لینک آنلاین'}
+          {onlineLinkInfo?.uploading ? 'در حال ساخت...' : onlineMasterMode && editing.onlineMasterLink ? 'آپدیت لینک مادر آنلاین' : 'ساخت لینک آنلاین + رزرو'}
         </button>
         <button type="button" onClick={handlePublishTopView} disabled={topViewLinkInfo?.uploading} className="flex items-center gap-1 text-sm bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 text-white rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50">
           {topViewLinkInfo?.uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -924,7 +990,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
                 {onlineLinkInfo.shortUrl || onlineLinkInfo.url}
               </a>
               <p className="text-[11px] text-slate-300 mt-1">
-                {isMall ? 'این صفحه مغازه‌های اجاره‌شده را با لینک فروشگاه هر برند نمایش می‌دهد.' : 'این صفحه غرفه‌های رزروشده را با لینک فروشگاه هر شرکت نمایش می‌دهد.'}
+                {isMall ? 'این صفحه نقشه از بالا، مغازه‌های اجاره‌شده و لینک فروشگاه هر برند را نمایش می‌دهد.' : 'این صفحه همان نقشه Top View را دارد و بازدیدکننده می‌تواند غرفه خالی را برای بررسی، موقت رزرو کند.'}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -1471,6 +1537,83 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({ e
               })}
             </div>
           </div>
+
+          {currentOnlineRequests.length > 0 && (
+            <div className="bg-white rounded-xl border border-orange-200 p-5 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-orange-500" />
+                    درخواست‌های رزرو آنلاین غیرقطعی
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    اطلاعات کامل فقط در این پنل دیده می‌شود. روی لینک عمومی فقط نام کسب‌وکار و وضعیت رزرو موقت نمایش داده می‌شود.
+                  </p>
+                </div>
+                <span className="text-xs font-black rounded-full bg-orange-100 text-orange-700 px-2.5 py-1">
+                  جدید {newOnlineRequests.length}
+                </span>
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                {currentOnlineRequests.map(request => {
+                  const category = editing.categories.find(c => c.id === request.categoryId);
+                  const taken = editing.reservations.some(r => r.categoryId === request.categoryId && r.boothNumber === request.boothNumber);
+                  const reviewed = request.reviewStatus === 'accepted' || request.reviewStatus === 'rejected';
+                  return (
+                    <div key={request.id} className="rounded-xl border border-orange-100 bg-orange-50/45 p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-black text-slate-900">{request.companyName}</p>
+                          <p className="text-xs text-orange-700 font-semibold">
+                            {request.boothCode} · {category?.name || request.categoryId}
+                          </p>
+                        </div>
+                        <span className={`text-[10px] font-black rounded-full px-2 py-1 ${
+                          request.reviewStatus === 'accepted'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : request.reviewStatus === 'rejected'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-orange-100 text-orange-700'
+                        }`}>
+                          {request.reviewStatus === 'accepted' ? 'اضافه شد' : request.reviewStatus === 'rejected' ? 'رد شده' : 'جدید'}
+                        </span>
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-2 text-xs text-slate-600">
+                        <span>مسئول: {request.contactName || '-'}</span>
+                        <span dir="ltr">تلفن: {request.phone || '-'}</span>
+                        <span>شهر/کشور: {request.city || '-'}</span>
+                        <span>فعالیت: {request.activityType || '-'}</span>
+                        {request.email ? <span dir="ltr">Email: {request.email}</span> : null}
+                        {request.website ? <span dir="ltr">Website: {request.website}</span> : null}
+                      </div>
+                      {request.products ? <p className="text-xs text-slate-700 leading-relaxed">محصولات/توضیح: {request.products}</p> : null}
+                      {request.notes ? <p className="text-xs text-slate-500 leading-relaxed">یادداشت: {request.notes}</p> : null}
+                      {!reviewed && (
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => acceptOnlineReservationRequest(request)}
+                            disabled={taken || !onReviewPublicReservationRequest}
+                            className="flex-1 rounded-lg bg-orange-500 text-white text-xs font-bold py-2 disabled:opacity-50 hover:bg-orange-600"
+                          >
+                            {taken ? `${unitLabel} قبلاً پر شده` : 'افزودن به رزرو موقت'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => rejectOnlineReservationRequest(request)}
+                            disabled={!onReviewPublicReservationRequest}
+                            className="rounded-lg border border-red-200 text-red-600 text-xs font-bold px-3 py-2 disabled:opacity-50 hover:bg-red-50"
+                          >
+                            رد درخواست
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">

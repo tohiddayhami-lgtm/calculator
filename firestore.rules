@@ -161,6 +161,79 @@ service cloud.firestore {
       allow read, update, delete: if canAccessUserData(appId, userId);
     }
 
+    // Full online exhibition booth reservation requests — public can submit; owner/master reviews.
+    match /artifacts/{appId}/users/{userId}/exhibitionReservationRequests/{requestId} {
+      allow create: if request.resource.data.keys().hasAll([
+                      'eventId',
+                      'appId',
+                      'ownerUserId',
+                      'categoryId',
+                      'boothNumber',
+                      'boothCode',
+                      'companyName',
+                      'contactName',
+                      'phone',
+                      'activityType',
+                      'products',
+                      'publicKey',
+                      'publicReservationId',
+                      'reviewStatus',
+                      'createdAt'
+                    ])
+                    && request.resource.data.eventId is string
+                    && request.resource.data.appId is string
+                    && request.resource.data.ownerUserId is string
+                    && request.resource.data.categoryId is string
+                    && request.resource.data.boothNumber is number
+                    && request.resource.data.boothCode is string
+                    && request.resource.data.companyName is string
+                    && request.resource.data.companyName.size() > 0
+                    && request.resource.data.companyName.size() < 140
+                    && request.resource.data.contactName is string
+                    && request.resource.data.contactName.size() > 0
+                    && request.resource.data.contactName.size() < 140
+                    && request.resource.data.phone is string
+                    && request.resource.data.phone.size() > 0
+                    && request.resource.data.phone.size() < 100
+                    && request.resource.data.activityType is string
+                    && request.resource.data.activityType.size() > 0
+                    && request.resource.data.activityType.size() < 180
+                    && request.resource.data.products is string
+                    && request.resource.data.products.size() > 0
+                    && request.resource.data.products.size() < 1200
+                    && request.resource.data.reviewStatus == 'new';
+      allow read, update, delete: if canAccessUserData(appId, userId);
+    }
+
+    // Sanitized public reservation labels shown on public exhibition links.
+    match /publicExhibitionReservations/{publicKey}/items/{reservationId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll([
+                      'eventId',
+                      'categoryId',
+                      'boothNumber',
+                      'boothCode',
+                      'companyName',
+                      'status',
+                      'createdAt'
+                    ])
+                    && request.resource.data.eventId is string
+                    && request.resource.data.categoryId is string
+                    && request.resource.data.boothNumber is number
+                    && request.resource.data.boothCode is string
+                    && request.resource.data.companyName is string
+                    && request.resource.data.companyName.size() > 0
+                    && request.resource.data.companyName.size() < 140
+                    && request.resource.data.status == 'reserved'
+                    && publicKey.size() > 5
+                    && publicKey.size() < 180;
+      allow update, delete: if request.auth != null
+                            && (
+                              resource.data.ownerUserId == request.auth.uid
+                              || isMaster(resource.data.appId)
+                            );
+    }
+
     // Community posts — all authenticated users can read; owner creates/deletes; no edits by others
     match /artifacts/{appId}/communityPosts/{postId} {
       allow read: if request.auth != null;

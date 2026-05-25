@@ -1544,6 +1544,31 @@ export interface ExhibitionReservation {
   reservedAt: number;
 }
 
+export type ExhibitionPublicReservationReviewStatus = 'new' | 'accepted' | 'rejected';
+
+export interface ExhibitionPublicReservationRequest {
+  id: string;
+  eventId: string;
+  eventTitle?: string;
+  categoryId: string;
+  boothNumber: number;
+  boothCode: string;
+  companyName: string;
+  contactName: string;
+  phone: string;
+  email?: string;
+  city: string;
+  activityType: string;
+  products: string;
+  website?: string;
+  notes?: string;
+  publicKey: string;
+  publicReservationId: string;
+  reviewStatus: ExhibitionPublicReservationReviewStatus;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export type ExhibitionTopViewMarkerKind = 'entrance' | 'conference' | 'exit' | 'guide' | 'ad';
 
 export interface ExhibitionTopViewMarker {

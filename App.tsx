@@ -128,6 +128,7 @@ import {
   ProposalRtlLang,
   EducationCourse,
   ExhibitionEvent,
+  ExhibitionPublicReservationRequest,
   AppPermissionKey,
   ManagedUserProfile,
   WarehouseLocation,
@@ -138,7 +139,6 @@ import { EducationFormsPanel, EDUCATION_STORAGE_KEY } from './educationForms';
 import { normalizeEducationCourse } from './educationNormalize';
 import { ExhibitionFormsPanel, EXHIBITION_STORAGE_KEY, META_MALL_STORAGE_KEY } from './exhibitionForms';
 import { normalizeExhibitionEvent } from './exhibitionNormalize';
-import { buildExhibitionOnlineHtml } from './exhibitionOnlineExport';
 import { buildExhibitionTopViewHtml } from './exhibitionTopViewExport';
 import { buildMetaMallTopViewHtml } from './metaMallTopViewExport';
 import {
@@ -6739,6 +6739,7 @@ function AppInner() {
     } catch {}
     return [];
   });
+  const [exhibitionReservationRequests, setExhibitionReservationRequests] = useState<ExhibitionPublicReservationRequest[]>([]);
   const [metaMallEvents, setMetaMallEvents] = useState<ExhibitionEvent[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -7788,6 +7789,33 @@ function AppInner() {
             console.error('Inquiries listener failed:', err);
             setInquiriesLoading(false);
         }
+    );
+    return () => unsub();
+  }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
+
+  // Online booth reservation requests from public exhibition links
+  useEffect(() => {
+    if (authLoading) return;
+    const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
+    if (!isRealCloudUser) {
+      setExhibitionReservationRequests([]);
+      return;
+    }
+    let q: any;
+    const ref = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'exhibitionReservationRequests');
+    try {
+      q = query(ref, orderBy('createdAt', 'desc'), limit(300));
+    } catch {
+      q = ref;
+    }
+    const unsub = onSnapshot(
+      q,
+      (snap: any) => {
+        setExhibitionReservationRequests(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+      },
+      (err: any) => {
+        console.error('Exhibition reservation requests listener failed:', err);
+      },
     );
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
@@ -29063,7 +29091,22 @@ ${html}
     },
   ) => {
     const normalized = normalizeExhibitionEvent(event);
-    const html = buildExhibitionOnlineHtml(normalized);
+    const publicKey = `${activeOwnerUid}_${normalized.id}`
+      .replace(/[^a-z0-9-_]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 140);
+    const reservationEndpoint =
+      db && activeOwnerUid && firebaseConfig?.apiKey
+        ? {
+            firebaseConfig,
+            appId: dataAppId,
+            ownerId: activeOwnerUid,
+            eventId: normalized.id,
+            eventTitle: normalized.title || 'Online Exhibition',
+            publicKey: publicKey || normalized.id,
+          }
+        : null;
+    const html = buildExhibitionTopViewHtml(normalized, reservationEndpoint);
     const safeTitle = (normalized.title || 'exhibition')
       .replace(/[^a-z0-9-_]+/gi, '-')
       .replace(/^-+|-+$/g, '')
@@ -29155,6 +29198,29 @@ ${html}
       `${normalized.title || 'Tohid Meta Mall'} - Online Shop Map`,
       options,
     );
+  };
+
+  const handleReviewExhibitionReservationRequest = async (
+    request: ExhibitionPublicReservationRequest,
+    reviewStatus: 'accepted' | 'rejected',
+  ) => {
+    if (!db || !activeOwnerUid) {
+      throw new Error('برای بررسی رزرو آنلاین باید به Firebase متصل باشید.');
+    }
+    await updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'exhibitionReservationRequests', request.id), {
+      reviewStatus,
+      updatedAt: serverTimestamp(),
+    });
+    if (request.publicKey && request.publicReservationId) {
+      try {
+        await updateDoc(doc(db, 'publicExhibitionReservations', request.publicKey, 'items', request.publicReservationId), {
+          status: reviewStatus === 'rejected' ? 'rejected' : 'reserved',
+          reviewedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        console.warn('Public reservation status update failed:', err);
+      }
+    }
   };
 
   const renderForms = () => (
@@ -29271,6 +29337,8 @@ ${html}
           onSaveEvents={setExhibitionEvents}
           onPublishOnline={handlePublishExhibitionOnline}
           onPublishTopView={handlePublishExhibitionTopView}
+          publicReservationRequests={exhibitionReservationRequests}
+          onReviewPublicReservationRequest={handleReviewExhibitionReservationRequest}
         />
       )}
       {formsSubView === 'metamall' && canUseFormsSection('metaMall') && (
