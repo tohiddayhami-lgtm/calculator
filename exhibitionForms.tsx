@@ -659,7 +659,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
     try {
       const saved = saveEvent(editing);
       await downloadExhibitionStory(saved);
-    } catch {
+    } catch (err) {
+      console.error('Exhibition story export failed:', err);
       alert('خروجی تصویر انجام نشد. دوباره تلاش کنید.');
     } finally {
       setExporting(false);

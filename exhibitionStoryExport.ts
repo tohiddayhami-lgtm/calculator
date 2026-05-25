@@ -175,6 +175,10 @@ function topViewFloorCols(boothCount: number): number {
   return bestCols;
 }
 
+function previewMapHeight(rows: number): number {
+  return Math.max(260, rows * 24 + 68);
+}
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return (parts.slice(0, 2).map(part => part[0]).join('') || 'EX').toUpperCase();
