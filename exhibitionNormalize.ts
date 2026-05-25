@@ -109,6 +109,11 @@ function clampPercent(raw: unknown, min: number, max: number, fallback: number):
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
 }
 
+function clampStoryNumber(raw: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
 function normalizeTopViewStructure(raw: unknown, categoryIds: Set<string>, index: number): ExhibitionTopViewStructure | null {
   const structure = raw as Partial<ExhibitionTopViewStructure> | null;
   if (!structure || typeof structure !== 'object') return null;
@@ -200,6 +205,8 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
     storyBackgroundUrl: typeof event.storyBackgroundUrl === 'string' ? event.storyBackgroundUrl : '',
     storyBackgroundOpacity: opacity,
     storyHeaderText: typeof event.storyHeaderText === 'string' ? event.storyHeaderText : '',
+    storyHeaderTitleGapPx: clampStoryNumber(event.storyHeaderTitleGapPx, 0, 80, 12),
+    storyTitleMetaGapPx: clampStoryNumber(event.storyTitleMetaGapPx, 0, 80, 8),
     storyFootNote: typeof event.storyFootNote === 'string' ? event.storyFootNote : '',
     categories: safeCategories,
     reservations: (event.reservations ?? [])

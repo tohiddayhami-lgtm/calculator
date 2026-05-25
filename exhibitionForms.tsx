@@ -114,6 +114,8 @@ export function makeBlankExhibitionEvent(variant: ExhibitionFormsVariant = 'exhi
     storyBackgroundUrl: '',
     storyBackgroundOpacity: 35,
     storyHeaderText: isMall ? 'نقشه Top View و اجاره مغازه‌های متامال' : 'نقشه Top View و رزرو غرفه‌های نمایشگاهی',
+    storyHeaderTitleGapPx: 12,
+    storyTitleMetaGapPx: 8,
     storyFootNote: isMall ? 'برای انتخاب و اجاره مغازه، شماره مغازه موردنظر را اعلام کنید.' : 'برای انتخاب و رزرو غرفه، شماره غرفه موردنظر را اعلام کنید.',
     categories: [makeCategory(0, variant)],
     reservations: [],
@@ -320,6 +322,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
     'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 font-[Vazirmatn,Tahoma,sans-serif]';
   const labelCls = 'text-xs text-slate-500 font-medium mb-1 block';
   const onAmountInput = (raw: string) => parseAmountDigits(raw.replace(/,/g, '').replace(/،/g, ''));
+  const defaultStoryHeaderText = isMall
+    ? 'نقشه Top View و اجاره مغازه‌های متامال'
+    : 'نقشه Top View و رزرو غرفه‌های نمایشگاهی';
+  const storyHeaderTitleGapPx = Math.min(80, Math.max(0, Math.round(editing?.storyHeaderTitleGapPx ?? 12)));
+  const storyTitleMetaGapPx = Math.min(80, Math.max(0, Math.round(editing?.storyTitleMetaGapPx ?? 8)));
 
   const handleBackgroundChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
@@ -1511,15 +1518,53 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                 <input type="range" min={0} max={100} value={editing.storyBackgroundOpacity ?? 35} onChange={e => upd({ storyBackgroundOpacity: Number(e.target.value) })} className="w-full accent-purple-600" />
               </div>
             </div>
-            <div>
-              <label className={labelCls}>تیتر کوچک بالای عکس استوری</label>
+            <div className="border border-indigo-200 rounded-xl p-4 space-y-3 bg-indigo-50/40">
+              <div className="flex items-center justify-between gap-2">
+                <label className={labelCls + ' mb-0'}>متن و فاصله بالای عکس استوری</label>
+                <button
+                  type="button"
+                  onClick={() => upd({
+                    storyHeaderText: defaultStoryHeaderText,
+                    storyHeaderTitleGapPx: 12,
+                    storyTitleMetaGapPx: 8,
+                  })}
+                  className="text-[11px] font-bold text-indigo-700 hover:underline"
+                >
+                  ریست
+                </button>
+              </div>
               <input
                 value={editing.storyHeaderText ?? ''}
                 onChange={e => upd({ storyHeaderText: e.target.value })}
                 className={inputCls}
                 dir="rtl"
-                placeholder={isMall ? 'نقشه Top View و اجاره مغازه‌های متامال' : 'نقشه Top View و رزرو غرفه‌های نمایشگاهی'}
+                placeholder={defaultStoryHeaderText}
               />
+              <p className="text-[10px] text-slate-500">
+                این متن همان نوشته کوچک بالای «عنوان نمایشگاه» در خروجی عکس است. اگر خالی باشد، در خروجی نمایش داده نمی‌شود.
+              </p>
+              <div>
+                <span className="text-xs text-slate-500">فاصله تیتر کوچک تا عنوان: {storyHeaderTitleGapPx}px</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={80}
+                  value={storyHeaderTitleGapPx}
+                  onChange={e => upd({ storyHeaderTitleGapPx: Number(e.target.value) })}
+                  className="w-full accent-indigo-600"
+                />
+              </div>
+              <div>
+                <span className="text-xs text-slate-500">فاصله عنوان تا توضیحات/تاریخ: {storyTitleMetaGapPx}px</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={80}
+                  value={storyTitleMetaGapPx}
+                  onChange={e => upd({ storyTitleMetaGapPx: Number(e.target.value) })}
+                  className="w-full accent-indigo-600"
+                />
+              </div>
             </div>
             <div>
               <label className={labelCls}>نوت استوری</label>

@@ -581,17 +581,21 @@ export async function renderExhibitionStoryPng(
   const innerW = W - pad * 2;
   const textRight = W - pad;
   let y = 158;
+  const headerTitleGap = clamp(event.storyHeaderTitleGapPx ?? 12, 0, 80);
+  const titleMetaGap = clamp(event.storyTitleMetaGapPx ?? 8, 0, 80);
 
   ctx.font = `700 30px ${FONT}`;
-  const headerText = event.storyHeaderText?.trim() || 'نقشه Top View و رزرو غرفه‌های نمایشگاهی';
-  y = drawRtlWrapped(ctx, headerText, textRight, y, innerW, 40, 1, '#a5b4fc') + 12;
+  const headerText = event.storyHeaderText?.trim() || '';
+  if (headerText) {
+    y = drawRtlWrapped(ctx, headerText, textRight, y, innerW, 40, 1, '#a5b4fc') + headerTitleGap;
+  }
 
   ctx.font = `800 54px ${FONT}`;
-  y = drawRtlWrapped(ctx, event.title || 'عنوان نمایشگاه', textRight, y, innerW, 68, 3, '#ffffff') + 8;
+  y = drawRtlWrapped(ctx, event.title || 'عنوان نمایشگاه', textRight, y, innerW, 68, 3, '#ffffff') + titleMetaGap;
 
   if (event.subtitle?.trim()) {
     ctx.font = `500 26px ${FONT}`;
-    y = drawRtlWrapped(ctx, event.subtitle.trim(), textRight, y, innerW, 36, 2, '#c4b5fd') + 10;
+    y = drawRtlWrapped(ctx, event.subtitle.trim(), textRight, y, innerW, 36, 2, '#c4b5fd') + titleMetaGap;
   }
 
   const meta: string[] = [];

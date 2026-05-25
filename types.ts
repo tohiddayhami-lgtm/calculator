@@ -1633,6 +1633,10 @@ export interface ExhibitionEvent {
   storyBackgroundOpacity?: number;
   /** Small headline shown above the exhibition title in story PNG export */
   storyHeaderText?: string;
+  /** Gap between story header and main title (px) */
+  storyHeaderTitleGapPx?: number;
+  /** Gap between story title/subtitle/date block (px) */
+  storyTitleMetaGapPx?: number;
   storyFootNote?: string;
   categories: ExhibitionBoothCategory[];
   reservations: ExhibitionReservation[];
