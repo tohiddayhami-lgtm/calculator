@@ -5,7 +5,7 @@ import type {
   ExhibitionTopViewMarker,
   ExhibitionTopViewStructure,
 } from './types';
-import { feeCurrencyDisplay, formatAmountDisplayFa } from './educationFormat';
+import { feeCurrencyDisplay, formatAmountDisplayFa, toPersianDigits } from './educationFormat';
 import { boothCode, normalizeExhibitionEvent } from './exhibitionNormalize';
 import { ensureVazirmatnLoaded } from './educationStoryExport';
 
@@ -607,6 +607,7 @@ export async function renderExhibitionStoryPng(
   const meta: string[] = [];
   const dateStr = [event.startDate, event.endDate && event.endDate !== event.startDate ? event.endDate : '']
     .filter(Boolean)
+    .map(toPersianDigits)
     .join(' — ');
   if (dateStr) meta.push(`تاریخ: ${dateStr}`);
   if (event.location) meta.push(`مکان: ${event.location}`);

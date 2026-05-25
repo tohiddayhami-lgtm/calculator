@@ -7,7 +7,7 @@ import type {
   ExhibitionTopViewMarker,
   ExhibitionTopViewStructure,
 } from './types';
-import { currencyShort } from './educationFormat';
+import { currencyShort, normalizeLocalizedDigits } from './educationFormat';
 
 const DEFAULT_CATEGORY_COLORS = ['#8b5cf6', '#06b6d4', '#f97316', '#22c55e', '#ec4899', '#eab308'];
 
@@ -190,8 +190,8 @@ export function normalizeExhibitionEvent(event: ExhibitionEvent): ExhibitionEven
     subtitle: typeof event.subtitle === 'string' ? event.subtitle : '',
     organizerName: typeof event.organizerName === 'string' ? event.organizerName : '',
     location: typeof event.location === 'string' ? event.location : '',
-    startDate: typeof event.startDate === 'string' ? event.startDate : '',
-    endDate: typeof event.endDate === 'string' ? event.endDate : '',
+    startDate: typeof event.startDate === 'string' ? normalizeLocalizedDigits(event.startDate) : '',
+    endDate: typeof event.endDate === 'string' ? normalizeLocalizedDigits(event.endDate) : '',
     boothFee: event.boothFee ?? '',
     boothFeeLabel:
       typeof event.boothFeeLabel === 'string' && event.boothFeeLabel.trim()

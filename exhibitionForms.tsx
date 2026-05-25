@@ -34,8 +34,10 @@ import {
   formatAmountDisplayFa,
   formatAmountWithCurrency,
   formatAmountWithCurrencyFa,
+  normalizeLocalizedDigits,
   parseAmountDigits,
   parseAmountNumber,
+  toPersianDigits,
 } from './educationFormat';
 import { boothCode, normalizeExhibitionEvent } from './exhibitionNormalize';
 import {
@@ -871,7 +873,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                       </p>
                     ) : null}
                     <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
-                      <span>{normalized.startDate}</span>
+                      <span>{toPersianDigits(normalized.startDate)}</span>
                       <span>·</span>
                       <span className={pct >= 100 ? 'text-red-600 font-medium' : ''}>
                         {normalized.reservations.length} / {total} {unitLabel}
@@ -1468,11 +1470,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>تاریخ شروع</label>
-                <input value={editing.startDate} onChange={e => upd({ startDate: e.target.value })} className={inputCls} dir="rtl" />
+                <input value={toPersianDigits(editing.startDate)} onChange={e => upd({ startDate: normalizeLocalizedDigits(e.target.value) })} className={inputCls} dir="rtl" inputMode="numeric" />
               </div>
               <div>
                 <label className={labelCls}>تاریخ پایان</label>
-                <input value={editing.endDate} onChange={e => upd({ endDate: e.target.value })} className={inputCls} dir="rtl" />
+                <input value={toPersianDigits(editing.endDate)} onChange={e => upd({ endDate: normalizeLocalizedDigits(e.target.value) })} className={inputCls} dir="rtl" inputMode="numeric" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
