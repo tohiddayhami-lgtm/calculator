@@ -156,9 +156,23 @@ function hexToRgba(hex: string, opacity: number): string {
 }
 
 function topViewFloorCols(boothCount: number): number {
-  if (boothCount <= 20) return 5;
-  if (boothCount <= 48) return 8;
-  return Math.min(16, Math.max(10, Math.ceil(Math.sqrt(boothCount * 1.35))));
+  const count = Math.max(1, Math.round(boothCount || 1));
+  const minCols = count <= 20 ? 4 : count <= 48 ? 5 : 8;
+  const maxCols = Math.min(16, count);
+  const ideal = Math.sqrt(count);
+  let bestCols = Math.min(maxCols, Math.max(minCols, Math.round(ideal)));
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let cols = minCols; cols <= maxCols; cols++) {
+    const rows = Math.ceil(count / cols);
+    const emptySlots = rows * cols - count;
+    const aspectPenalty = Math.abs(cols / rows - 1.35);
+    const score = emptySlots * 12 + aspectPenalty * 3 + Math.abs(cols - ideal) * 0.2;
+    if (score < bestScore) {
+      bestScore = score;
+      bestCols = cols;
+    }
+  }
+  return bestCols;
 }
 
 function initials(name: string): string {
@@ -190,7 +204,7 @@ function structureKindLabel(kind: ExhibitionTopViewStructure['kind']): string {
 
 function storyTopViewMapHeight(cat: ExhibitionBoothCategory, w: number, preferredCell: number, gap: number): number {
   const cols = topViewFloorCols(cat.boothCount);
-  const cell = Math.max(18, Math.min(preferredCell, Math.floor((w - 96 - (cols - 1) * gap) / cols)));
+  const cell = Math.max(preferredCell, Math.floor((w - 96 - (cols - 1) * gap) / cols));
   const rows = Math.ceil(cat.boothCount / cols);
   return 112 + rows * (cell + gap) - gap + 56;
 }
@@ -273,7 +287,7 @@ function drawStoryTopViewMap(
   logoImages: Map<string, HTMLImageElement>,
 ): number {
   const cols = topViewFloorCols(cat.boothCount);
-  const cell = Math.max(18, Math.min(preferredCell, Math.floor((w - 96 - (cols - 1) * gap) / cols)));
+  const cell = Math.max(preferredCell, Math.floor((w - 96 - (cols - 1) * gap) / cols));
   const rows = Math.ceil(cat.boothCount / cols);
   const floorX = x + 24;
   const floorY = y + 92;

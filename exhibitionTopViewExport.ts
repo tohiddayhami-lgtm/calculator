@@ -96,9 +96,23 @@ function hexToRgba(hex: string, opacity: number): string {
 }
 
 function topViewFloorCols(boothCount: number): number {
-  if (boothCount <= 20) return 5;
-  if (boothCount <= 48) return 8;
-  return Math.min(16, Math.max(10, Math.ceil(Math.sqrt(boothCount * 1.35))));
+  const count = Math.max(1, Math.round(boothCount || 1));
+  const minCols = count <= 20 ? 4 : count <= 48 ? 5 : 8;
+  const maxCols = Math.min(16, count);
+  const ideal = Math.sqrt(count);
+  let bestCols = Math.min(maxCols, Math.max(minCols, Math.round(ideal)));
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let cols = minCols; cols <= maxCols; cols++) {
+    const rows = Math.ceil(count / cols);
+    const emptySlots = rows * cols - count;
+    const aspectPenalty = Math.abs(cols / rows - 1.35);
+    const score = emptySlots * 12 + aspectPenalty * 3 + Math.abs(cols - ideal) * 0.2;
+    if (score < bestScore) {
+      bestScore = score;
+      bestCols = cols;
+    }
+  }
+  return bestCols;
 }
 
 export function buildExhibitionTopViewHtml(rawEvent: ExhibitionEvent, publicReservationEndpoint?: PublicReservationEndpoint | null): string {
