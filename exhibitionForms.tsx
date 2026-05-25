@@ -31,7 +31,9 @@ import {
   EDUCATION_CURRENCY_OPTIONS,
   currencyShort,
   formatAmountDisplay,
+  formatAmountDisplayFa,
   formatAmountWithCurrency,
+  formatAmountWithCurrencyFa,
   parseAmountDigits,
   parseAmountNumber,
 } from './educationFormat';
@@ -865,7 +867,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                     <p className="text-sm text-slate-500 mt-0.5 truncate">{normalized.subtitle || normalized.organizerName || '—'}</p>
                     {normalized.boothFee?.trim() ? (
                       <p className="text-xs text-amber-700 mt-1">
-                        هزینه: {formatAmountWithCurrency(normalized.boothFee, normalized.boothFeeCurrency, normalized.boothFeeCurrencyLabel)}
+                        هزینه: {formatAmountWithCurrencyFa(normalized.boothFee, normalized.boothFeeCurrency, normalized.boothFeeCurrencyLabel)}
                       </p>
                     ) : null}
                     <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
@@ -1480,7 +1482,7 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
               </div>
               <div>
                 <label className={labelCls}>مبلغ {unitLabel}</label>
-                <input value={formatAmountDisplay(editing.boothFee)} onChange={e => upd({ boothFee: onAmountInput(e.target.value) })} className={inputCls} dir="ltr" placeholder="1,500,000" />
+                <input value={formatAmountDisplayFa(editing.boothFee)} onChange={e => upd({ boothFee: onAmountInput(e.target.value) })} className={inputCls} dir="rtl" inputMode="decimal" placeholder="۱٬۵۰۰٬۰۰۰" />
               </div>
               <div>
                 <label className={labelCls}>ارز</label>
@@ -1770,8 +1772,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
             />
             <p className="text-xs text-slate-500 mb-2 font-medium">پرداخت (پیش‌پرداخت / مانده)</p>
             <div className="grid grid-cols-2 gap-2 mb-2">
-              <input placeholder="مبلغ پرداخت‌شده" value={formatAmountDisplay(reservationForm.amountPaid)} onChange={e => setReservationForm(f => ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" disabled={selectedCategoryFull} />
-              <input placeholder="مانده حساب" value={formatAmountDisplay(reservationForm.amountRemaining)} onChange={e => setReservationForm(f => ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" disabled={selectedCategoryFull} />
+              <input placeholder="مبلغ پرداخت‌شده" value={formatAmountDisplayFa(reservationForm.amountPaid)} onChange={e => setReservationForm(f => ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" disabled={selectedCategoryFull} />
+              <input placeholder="مانده حساب" value={formatAmountDisplayFa(reservationForm.amountRemaining)} onChange={e => setReservationForm(f => ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" disabled={selectedCategoryFull} />
             </div>
             {editing.boothFee?.trim() ? (
               <button type="button" onClick={() => fillHalfPayment('form')} disabled={selectedCategoryFull} className="text-xs text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 mb-2 hover:bg-purple-50 w-full">
@@ -1884,8 +1886,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                           </a>
                         ) : null}
                         <div className="grid grid-cols-2 gap-2 mb-2">
-                          <input value={formatAmountDisplay(reservation.amountPaid)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountPaid: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="ltr" placeholder="پرداخت‌شده" />
-                          <input value={formatAmountDisplay(reservation.amountRemaining)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountRemaining: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="ltr" placeholder="مانده" />
+                          <input value={formatAmountDisplayFa(reservation.amountPaid)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountPaid: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="rtl" inputMode="decimal" placeholder="پرداخت‌شده" />
+                          <input value={formatAmountDisplayFa(reservation.amountRemaining)} onChange={e => upd({ reservations: updateReservation(editing.reservations, reservation.id, { amountRemaining: onAmountInput(e.target.value) }) })} className="border rounded px-2 py-1 text-xs" dir="rtl" inputMode="decimal" placeholder="مانده" />
                         </div>
                         {editing.boothFee?.trim() ? (
                           <button type="button" onClick={() => fillHalfPayment(reservation.id)} className="text-xs text-purple-700 border border-purple-200 rounded px-2 py-1 mb-2 hover:bg-purple-50 w-full">نصف هزینه غرفه (خودکار)</button>
@@ -1958,8 +1960,8 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                 <button type="button" onClick={() => setReservationEditForm(f => f && ({ ...f, reservationStatus: 'reserved' }))} className={`flex-1 text-sm py-2 rounded-lg border ${reservationEditForm.reservationStatus === 'reserved' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-slate-200'}`}>رزرو موقت</button>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-3">
-                <input placeholder="پرداخت‌شده" value={formatAmountDisplay(reservationEditForm.amountPaid)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" />
-                <input placeholder="مانده" value={formatAmountDisplay(reservationEditForm.amountRemaining)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="ltr" />
+                <input placeholder="پرداخت‌شده" value={formatAmountDisplayFa(reservationEditForm.amountPaid)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountPaid: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" />
+                <input placeholder="مانده" value={formatAmountDisplayFa(reservationEditForm.amountRemaining)} onChange={e => setReservationEditForm(f => f && ({ ...f, amountRemaining: onAmountInput(e.target.value) }))} className={inputCls} dir="rtl" inputMode="decimal" />
               </div>
               <input placeholder="یادداشت پرداخت" value={reservationEditForm.paymentNote} onChange={e => setReservationEditForm(f => f && ({ ...f, paymentNote: e.target.value }))} className={inputCls + ' mb-3'} dir="rtl" />
               <div className="flex gap-2">

@@ -14,9 +14,23 @@ export function currencyShort(code: string): string {
   return EDUCATION_CURRENCY_OPTIONS.find(c => c.value === code)?.short ?? code;
 }
 
+export function normalizeLocalizedDigits(raw: string): string {
+  return String(raw ?? '')
+    .replace(/[۰-۹]/g, ch => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(ch)))
+    .replace(/[٠-٩]/g, ch => String('٠١٢٣٤٥٦٧٨٩'.indexOf(ch)))
+    .replace(/٬/g, ',')
+    .replace(/٫/g, '.');
+}
+
+export function toPersianDigits(value: unknown): string {
+  return String(value ?? '')
+    .replace(/[0-9]/g, ch => '۰۱۲۳۴۵۶۷۸۹'[Number(ch)])
+    .replace(/,/g, '٬');
+}
+
 /** Strip to digits and optional single decimal point. */
 export function parseAmountDigits(raw: string): string {
-  const s = String(raw ?? '').replace(/,/g, '').replace(/،/g, '').trim();
+  const s = normalizeLocalizedDigits(raw).replace(/,/g, '').replace(/،/g, '').trim();
   const m = s.match(/^(\d*)(?:\.(\d*))?$/);
   if (!m && s) {
     const digits = s.replace(/[^\d.]/g, '');
@@ -47,6 +61,10 @@ export function formatAmountDisplay(raw: string): string {
   return dec !== undefined ? `${intFormatted}.${dec}` : intFormatted;
 }
 
+export function formatAmountDisplayFa(raw: string): string {
+  return toPersianDigits(formatAmountDisplay(raw));
+}
+
 export function feeCurrencyDisplay(course: Pick<EducationCourse, 'courseFeeCurrency' | 'courseFeeCurrencyLabel'>): string {
   const custom = course.courseFeeCurrencyLabel?.trim();
   if (custom) return custom;
@@ -59,6 +77,17 @@ export function formatAmountWithCurrency(
   currencyLabel?: string,
 ): string {
   const display = formatAmountDisplay(amount);
+  if (!display) return '—';
+  const unit = currencyLabel?.trim() || currencyShort(currency);
+  return `${display} ${unit}`;
+}
+
+export function formatAmountWithCurrencyFa(
+  amount: string,
+  currency: string,
+  currencyLabel?: string,
+): string {
+  const display = formatAmountDisplayFa(amount);
   if (!display) return '—';
   const unit = currencyLabel?.trim() || currencyShort(currency);
   return `${display} ${unit}`;

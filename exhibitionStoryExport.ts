@@ -5,7 +5,7 @@ import type {
   ExhibitionTopViewMarker,
   ExhibitionTopViewStructure,
 } from './types';
-import { feeCurrencyDisplay, formatAmountDisplay } from './educationFormat';
+import { feeCurrencyDisplay, formatAmountDisplayFa } from './educationFormat';
 import { boothCode, normalizeExhibitionEvent } from './exhibitionNormalize';
 import { ensureVazirmatnLoaded } from './educationStoryExport';
 
@@ -620,7 +620,7 @@ export async function renderExhibitionStoryPng(
     ctx.font = `700 28px ${FONT}`;
     y = drawRtlWrapped(
       ctx,
-      `${event.boothFeeLabel || 'هزینه غرفه'}: ${formatAmountDisplay(event.boothFee)} ${feeCurrencyDisplay({
+      `${event.boothFeeLabel || 'هزینه غرفه'}: ${formatAmountDisplayFa(event.boothFee)} ${feeCurrencyDisplay({
         courseFeeCurrency: event.boothFeeCurrency,
         courseFeeCurrencyLabel: event.boothFeeCurrencyLabel,
       })}`,
