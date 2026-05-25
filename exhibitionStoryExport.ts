@@ -244,8 +244,8 @@ function drawTopViewStructure(
   floorW: number,
   floorH: number,
 ) {
-  const width = clamp(structure.width, 1, 100) * floorW / 100;
-  const height = clamp(structure.height, 1, 100) * floorH / 100;
+  const width = clamp(structure.width, 1, 300) * floorW / 100;
+  const height = clamp(structure.height, 1, 300) * floorH / 100;
   const cx = floorX + clamp(structure.x, 0, 100) * floorW / 100;
   const cy = floorY + clamp(structure.y, 0, 100) * floorH / 100;
   const x = cx - width / 2;
@@ -328,8 +328,6 @@ function drawStoryTopViewMap(
     const normalized = ((clamp(value, 0, 100) / 100) * previewH - previewInset) / Math.max(1, previewH - previewInset * 2);
     return clamp(((floorPadding + normalized * (floorH - floorPadding * 2)) / floorH) * 100, 0, 100);
   };
-  const projectHeight = (value: number) =>
-    clamp(((clamp(value, 1, 100) / 100) * previewH / floorH) * 100, 1, 100);
   const reservations = event.reservations.filter(r => r.categoryId === cat.id);
   const confirmed = reservations.filter(r => r.reservationStatus === 'confirmed').length;
   const reserved = reservations.length - confirmed;
@@ -397,7 +395,6 @@ function drawStoryTopViewMap(
     .forEach(structure => drawTopViewStructure(ctx, {
       ...structure,
       y: projectY(structure.y),
-      height: projectHeight(structure.height),
     }, floorX, floorY, floorW, floorH));
 
   const gridX = floorX + 24;
@@ -471,7 +468,6 @@ function drawStoryTopViewMap(
     .forEach(structure => drawTopViewStructure(ctx, {
       ...structure,
       y: projectY(structure.y),
-      height: projectHeight(structure.height),
     }, floorX, floorY, floorW, floorH));
   markers.forEach(marker => drawTopViewMarker(ctx, { ...marker, y: projectY(marker.y) }, floorX, floorY, floorW, floorH));
 

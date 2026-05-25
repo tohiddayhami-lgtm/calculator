@@ -137,8 +137,8 @@ function normalizeTopViewStructure(raw: unknown, categoryIds: Set<string>, index
     description: typeof structure.description === 'string' ? structure.description : '',
     x: clampPercent(structure.x, 0, 100, 50),
     y: clampPercent(structure.y, 0, 100, 50),
-    width: clampPercent(structure.width, 1, 100, kind === 'pavilion' ? 28 : kind === 'divider' ? 2 : 8),
-    height: clampPercent(structure.height, 1, 100, kind === 'pavilion' ? 30 : kind === 'divider' ? 75 : 8),
+    width: clampPercent(structure.width, 1, 300, kind === 'pavilion' ? 28 : kind === 'divider' ? 2 : 8),
+    height: clampPercent(structure.height, 1, 300, kind === 'pavilion' ? 30 : kind === 'divider' ? 75 : 8),
     color:
       typeof structure.color === 'string' && /^#[0-9a-f]{6}$/i.test(structure.color)
         ? structure.color

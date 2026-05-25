@@ -1398,11 +1398,11 @@ export const ExhibitionFormsPanel = React.memo(function ExhibitionFormsPanel({
                           </div>
                           <div>
                             <label className={labelCls}>عرض: {structure.width}%</label>
-                            <input type="range" min={1} max={100} value={structure.width} onChange={e => updateTopViewStructure(structure.id, { width: Number(e.target.value) })} className="w-full accent-amber-500" />
+                            <input type="range" min={1} max={300} value={structure.width} onChange={e => updateTopViewStructure(structure.id, { width: Number(e.target.value) })} className="w-full accent-amber-500" />
                           </div>
                           <div>
                             <label className={labelCls}>ارتفاع: {structure.height}%</label>
-                            <input type="range" min={1} max={100} value={structure.height} onChange={e => updateTopViewStructure(structure.id, { height: Number(e.target.value) })} className="w-full accent-amber-500" />
+                            <input type="range" min={1} max={300} value={structure.height} onChange={e => updateTopViewStructure(structure.id, { height: Number(e.target.value) })} className="w-full accent-amber-500" />
                           </div>
                         </div>
                         <div className="grid grid-cols-[1fr_auto] gap-2 items-end">

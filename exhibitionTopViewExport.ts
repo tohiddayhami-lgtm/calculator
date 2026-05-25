@@ -209,8 +209,8 @@ export function buildExhibitionTopViewHtml(rawEvent: ExhibitionEvent, publicRese
       const style = [
         `left:${Math.min(100, Math.max(0, structure.x))}%`,
         `top:${projectPreviewYPercent(structure.y, rows, boothHeight, gridGap)}%`,
-        `width:${Math.min(100, Math.max(1, structure.width))}%`,
-        `height:${projectPreviewHeightPercent(structure.height, rows, boothHeight, gridGap)}%`,
+        `width:${Math.min(300, Math.max(1, structure.width))}%`,
+        `height:${Math.min(300, Math.max(1, structure.height))}%`,
         `--structure:${escapeAttr(structure.color || '#38bdf8')}`,
         `--structure-bg:${escapeAttr(hexToRgba(structure.color || '#38bdf8', structure.opacity))}`,
       ].join(';');
