@@ -294,6 +294,15 @@ function drawStoryTopViewMap(
   const floorW = w - 48;
   const floorH = rows * (cell + gap) - gap + 48;
   const h = 112 + rows * (cell + gap) - gap + 56;
+  const previewH = previewMapHeight(rows);
+  const previewInset = 20;
+  const floorPadding = 24;
+  const projectY = (value: number) => {
+    const normalized = ((clamp(value, 0, 100) / 100) * previewH - previewInset) / Math.max(1, previewH - previewInset * 2);
+    return clamp(((floorPadding + normalized * (floorH - floorPadding * 2)) / floorH) * 100, 0, 100);
+  };
+  const projectHeight = (value: number) =>
+    clamp(((clamp(value, 1, 100) / 100) * previewH / floorH) * 100, 1, 100);
   const reservations = event.reservations.filter(r => r.categoryId === cat.id);
   const confirmed = reservations.filter(r => r.reservationStatus === 'confirmed').length;
   const reserved = reservations.length - confirmed;
@@ -358,7 +367,11 @@ function drawStoryTopViewMap(
 
   structures
     .filter(structure => structure.kind === 'pavilion')
-    .forEach(structure => drawTopViewStructure(ctx, structure, floorX, floorY, floorW, floorH));
+    .forEach(structure => drawTopViewStructure(ctx, {
+      ...structure,
+      y: projectY(structure.y),
+      height: projectHeight(structure.height),
+    }, floorX, floorY, floorW, floorH));
 
   const gridX = floorX + 24;
   const gridY = floorY + 24;
@@ -428,8 +441,12 @@ function drawStoryTopViewMap(
 
   structures
     .filter(structure => structure.kind !== 'pavilion')
-    .forEach(structure => drawTopViewStructure(ctx, structure, floorX, floorY, floorW, floorH));
-  markers.forEach(marker => drawTopViewMarker(ctx, marker, floorX, floorY, floorW, floorH));
+    .forEach(structure => drawTopViewStructure(ctx, {
+      ...structure,
+      y: projectY(structure.y),
+      height: projectHeight(structure.height),
+    }, floorX, floorY, floorW, floorH));
+  markers.forEach(marker => drawTopViewMarker(ctx, { ...marker, y: projectY(marker.y) }, floorX, floorY, floorW, floorH));
 
   ctx.fillStyle = 'rgba(147,197,253,0.7)';
   ctx.textAlign = 'center';
