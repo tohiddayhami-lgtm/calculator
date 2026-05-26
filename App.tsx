@@ -3375,40 +3375,33 @@ const buildHtmlVideoLinkHtml = (args: { title: string; sourceHtml: string; prese
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>${escapeHtml(args.title || 'HTML Video Link')}</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#020617;color:#e2e8f0;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body{display:flex;align-items:center;justify-content:center;padding:18px;overflow-x:hidden}.shell{width:min(1180px,100%);display:grid;gap:14px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:10px}.dot{width:12px;height:12px;border-radius:999px;background:#22c55e;box-shadow:0 0 24px #22c55e}.brand h1{font-size:16px;margin:0;font-weight:900;letter-spacing:.02em}.brand p{font-size:11px;margin:2px 0 0;color:#94a3b8}.meta{display:flex;gap:8px;flex-wrap:wrap}.pill{border:1px solid rgba(148,163,184,.26);background:rgba(15,23,42,.82);border-radius:999px;padding:7px 11px;font-size:11px;color:#cbd5e1;font-weight:800}.stage-wrap{position:relative;border:1px solid rgba(148,163,184,.24);border-radius:30px;padding:14px;background:radial-gradient(circle at top left,rgba(59,130,246,.22),transparent 34%),linear-gradient(180deg,rgba(15,23,42,.98),rgba(2,6,23,.94));box-shadow:0 32px 100px rgba(0,0,0,.46);overflow:hidden}.stage{position:relative;margin:auto;width:min(100%,calc((100vh - 150px) * ${preset.w / preset.h}));max-width:${preset.w}px;aspect-ratio:${preset.ratio};border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 70px rgba(0,0,0,.45)}iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}.play{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(2,6,23,.18),rgba(2,6,23,.72));transition:opacity .24s ease}.play.hidden{opacity:0;pointer-events:none}.play button{width:92px;height:92px;border-radius:999px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.92);color:#020617;font-size:34px;font-weight:900;cursor:pointer;box-shadow:0 22px 60px rgba(0,0,0,.35)}.controls{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:12px}.controls button{border:1px solid rgba(148,163,184,.28);background:#0f172a;color:#e2e8f0;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:800;cursor:pointer}.controls button:hover{background:#1e293b}.hint{text-align:center;color:#64748b;font-size:11px;margin:2px 0 0}@media(max-width:720px){body{padding:10px}.stage-wrap{padding:8px;border-radius:22px}.stage{width:100%;border-radius:16px}.play button{width:74px;height:74px;font-size:28px}.top{display:block}.meta{margin-top:10px}}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;overscroll-behavior:none}body{position:fixed;inset:0;-webkit-text-size-adjust:100%;touch-action:manipulation}.shell,.stage-wrap,.stage{position:fixed;inset:0;width:100vw;height:100dvh;margin:0;padding:0;border:0;border-radius:0;background:#000;overflow:hidden}.top,.controls,.hint,.play{display:none!important}iframe{position:absolute;inset:0;width:100vw;height:100dvh;border:0;background:#000;display:block}@supports not (height:100dvh){.shell,.stage-wrap,.stage,iframe{height:100vh}}@supports(padding:max(0px)){.stage{padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left)}iframe{width:calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right));height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));left:env(safe-area-inset-left);top:env(safe-area-inset-top)}}.tap-full{position:fixed;right:10px;bottom:10px;z-index:10;border:0;border-radius:999px;background:rgba(15,23,42,.58);color:#fff;font:700 11px system-ui;padding:8px 11px;backdrop-filter:blur(10px);opacity:.55}
 </style>
 </head>
 <body>
 <main class="shell">
-  <header class="top">
-    <div class="brand"><span class="dot"></span><div><h1>${escapeHtml(args.title || 'HTML Video Link')}</h1><p>${escapeHtml(args.fileName || 'Uploaded HTML')} · ${escapeHtml(preset.label)} · ${escapeHtml(preset.size)}</p></div></div>
-    <div class="meta"><span class="pill">HTML Preview Player</span><span class="pill">${escapeHtml(preset.label)}</span></div>
-  </header>
   <section class="stage-wrap">
     <div class="stage" id="stage">
       <iframe id="frame" sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads" srcdoc="${escapeAttr(args.sourceHtml)}"></iframe>
-      <div class="play" id="play"><button type="button" aria-label="Play">▶</button></div>
-    </div>
-    <div class="controls">
-      <button type="button" id="playBtn">Play / Hide Cover</button>
-      <button type="button" id="reloadBtn">Restart</button>
-      <button type="button" id="fullBtn">Fullscreen</button>
     </div>
   </section>
-  <p class="hint">This link displays the uploaded HTML in a video-style responsive frame.</p>
 </main>
+<button class="tap-full" id="fullBtn" type="button">Fullscreen</button>
 <script>
 (function(){
   var srcdoc = ${sourceHtmlScriptValue};
   var frame = document.getElementById('frame');
-  var play = document.getElementById('play');
   var stage = document.getElementById('stage');
-  function hide(){ if(play) play.classList.add('hidden'); }
-  function restart(){ hide(); if(frame) frame.srcdoc = srcdoc; }
-  document.getElementById('playBtn').addEventListener('click', hide);
-  document.getElementById('reloadBtn').addEventListener('click', restart);
-  document.getElementById('fullBtn').addEventListener('click', function(){ if(stage && stage.requestFullscreen) stage.requestFullscreen(); });
-  if(play) play.addEventListener('click', hide);
+  function goFull(){
+    var el = stage || document.documentElement;
+    try {
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } catch(e) {}
+  }
+  document.getElementById('fullBtn').addEventListener('click', goFull);
+  document.addEventListener('click', function(){ setTimeout(goFull, 0); }, { once:true });
+  window.addEventListener('orientationchange', function(){ if(frame) frame.srcdoc = srcdoc; });
 })();
 </script>
 </body>
