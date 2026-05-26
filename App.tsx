@@ -3365,6 +3365,9 @@ const HTML_VIDEO_PRESETS: Record<HtmlVideoPresetKey, { label: string; size: stri
 
 const buildHtmlVideoLinkHtml = (args: { title: string; sourceHtml: string; preset: HtmlVideoPresetKey; fileName: string }): string => {
     const preset = HTML_VIDEO_PRESETS[args.preset] || HTML_VIDEO_PRESETS.story;
+    // The uploaded HTML may contain </script>; escape closing tags before
+    // embedding it inside this wrapper's control script.
+    const sourceHtmlScriptValue = JSON.stringify(args.sourceHtml).replace(/<\//g, '<\\/');
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3396,7 +3399,7 @@ const buildHtmlVideoLinkHtml = (args: { title: string; sourceHtml: string; prese
 </main>
 <script>
 (function(){
-  var srcdoc = ${JSON.stringify(args.sourceHtml)};
+  var srcdoc = ${sourceHtmlScriptValue};
   var frame = document.getElementById('frame');
   var play = document.getElementById('play');
   var stage = document.getElementById('stage');
