@@ -1,7 +1,6 @@
 export type EbookLanguageKey = 'fa' | 'en' | 'both';
 export type EbookAccessMode = 'public' | 'private';
 export type EbookDirection = 'rtl' | 'ltr';
-export type EbookFlipbookStyle = 'flip' | 'simple';
 
 export type EbookFlipbookBuildArgs = {
   title: string;
@@ -11,7 +10,6 @@ export type EbookFlipbookBuildArgs = {
   language: EbookLanguageKey;
   direction: EbookDirection;
   accessMode: EbookAccessMode;
-  flipbookStyle?: EbookFlipbookStyle;
   passwordHash?: string;
   passwordSalt?: string;
   allowDownload: boolean;
@@ -41,7 +39,6 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     language: args.language || 'both',
     direction: args.direction || 'rtl',
     accessMode: args.accessMode || 'public',
-    flipbookStyle: args.flipbookStyle || 'flip',
     passwordHash: args.passwordHash || '',
     passwordSalt: args.passwordSalt || '',
     allowDownload: !!args.allowDownload,
@@ -55,8 +52,9 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>${escapeHtml(args.title || 'Ebook Flipbook')}</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#0f172a;color:#e5e7eb;font-family:Inter,Vazirmatn,Tahoma,Arial,sans-serif}body{overflow:hidden}.app{height:100dvh;display:grid;grid-template-rows:auto 1fr;background:radial-gradient(circle at 12% 0%,rgba(37,99,235,.28),transparent 32%),linear-gradient(135deg,#020617,#111827 42%,#172554)}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px max(14px,env(safe-area-inset-left)) 10px max(14px,env(safe-area-inset-left));border-bottom:1px solid rgba(255,255,255,.1);background:rgba(2,6,23,.72);backdrop-filter:blur(20px)}.brand{min-width:0}.brand h1{margin:0;font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.brand p{margin:2px 0 0;font-size:11px;color:#94a3b8}.toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}.btn,.chip{border:1px solid rgba(255,255,255,.16);background:rgba(15,23,42,.78);color:#f8fafc;border-radius:999px;padding:8px 11px;font-size:12px;font-weight:800;cursor:pointer}.btn:hover{background:rgba(30,41,59,.94)}.btn.primary{background:var(--accent);border-color:transparent}.btn:disabled{opacity:.45;cursor:not-allowed}.chip{cursor:default;color:#cbd5e1}.main{min-height:0;display:grid;grid-template-columns:76px minmax(0,1fr) 320px;gap:12px;padding:12px}.thumbs,.notes{border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.58);border-radius:22px;overflow:hidden;min-height:0}.thumbs{padding:8px;overflow-y:auto}.thumb{display:block;width:100%;margin:0 0 8px;border:2px solid transparent;border-radius:12px;overflow:hidden;background:#fff;cursor:pointer;padding:0}.thumb.active{border-color:var(--accent)}.thumb canvas{width:100%;display:block}.stage-wrap{position:relative;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.1);background:radial-gradient(circle at top,rgba(255,255,255,.09),transparent 34%),rgba(2,6,23,.34);border-radius:28px;overflow:hidden}.book{display:none}.page{background:#fff;color:#111827;box-shadow:0 22px 80px rgba(0,0,0,.28);overflow:hidden}.page canvas{width:100%;height:100%;display:block;background:#fff}.fallback-book{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:18px;perspective:1800px}.fallback-page{display:flex;align-items:center;justify-content:center;gap:clamp(8px,1.6vw,18px);width:100%;height:100%;max-width:1200px;max-height:100%;transition:transform .24s ease,opacity .24s ease;transform-style:preserve-3d}.fallback-page.turn-next{transform:rotateY(-8deg) translateX(-10px);opacity:.78}.fallback-page.turn-prev{transform:rotateY(8deg) translateX(10px);opacity:.78}.fallback-page .page{flex:0 1 auto;width:auto;height:100%;max-width:calc(50% - 10px);border-radius:18px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.38)}.fallback-page.single .page{max-width:100%;height:100%}.fallback-page .page canvas{width:auto;height:100%;max-width:100%;object-fit:contain}.edge{position:absolute;top:0;bottom:0;width:18%;border:0;background:transparent;cursor:pointer}.edge.prev{left:0}.edge.next{right:0}.hud{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.12);background:rgba(2,6,23,.72);backdrop-filter:blur(18px);border-radius:999px;padding:7px 9px}.notes{padding:14px;display:flex;flex-direction:column;gap:10px}.notes h2{margin:0;font-size:14px}.notes textarea{flex:1;min-height:170px;resize:none;border:1px solid rgba(148,163,184,.24);border-radius:16px;background:rgba(2,6,23,.52);color:#f8fafc;padding:12px;font:13px/1.6 inherit;outline:none}.search{display:flex;gap:6px}.search input{min-width:0;flex:1;border:1px solid rgba(148,163,184,.24);background:rgba(2,6,23,.52);color:#f8fafc;border-radius:999px;padding:9px 11px;font-size:12px;outline:none}.results{max-height:130px;overflow:auto;display:grid;gap:5px}.result{border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.78);color:#dbeafe;border-radius:12px;padding:7px 9px;text-align:inherit;cursor:pointer;font-size:11px}.loader,.lock{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#020617,#111827);padding:24px}.card{width:min(440px,100%);border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.86);border-radius:28px;padding:24px;box-shadow:0 24px 90px rgba(0,0,0,.35);text-align:center}.card h2{margin:0 0 8px;font-size:24px}.card p{margin:0 0 16px;color:#94a3b8;font-size:13px;line-height:1.7}.card input{width:100%;border:1px solid rgba(255,255,255,.18);background:#020617;color:#fff;border-radius:16px;padding:12px 14px;outline:none}.card .btn{width:100%;margin-top:10px}.hidden{display:none!important}.progress{height:8px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}.progress span{display:block;height:100%;width:0;background:var(--accent);transition:width .2s ease}.toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:40;background:rgba(2,6,23,.88);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:9px 13px;font-size:12px;color:#e2e8f0;box-shadow:0 18px 50px rgba(0,0,0,.32)}@media(max-width:900px){body{overflow:hidden}.app{height:100dvh}.topbar{align-items:flex-start}.brand h1{font-size:14px}.main{grid-template-columns:1fr;padding:8px;gap:8px}.thumbs{display:none}.notes{position:fixed;inset:auto 8px 8px 8px;z-index:20;max-height:48dvh;transform:translateY(calc(100% - 48px));transition:transform .24s ease}.notes.open{transform:translateY(0)}.stage-wrap{border-radius:20px}.fallback-book{height:100%;padding:10px}.fallback-page{gap:0}.fallback-page .page{max-width:100%;height:auto;max-height:100%;border-radius:14px}.fallback-page .page canvas{width:100%;height:auto;max-height:calc(100dvh - 142px)}.toolbar{gap:5px}.btn,.chip{padding:7px 9px;font-size:11px}.hud{bottom:8px}.notes textarea{min-height:140px}}@media(max-width:560px){.topbar{display:block}.toolbar{justify-content:flex-start;margin-top:9px}.chip.file{display:none}.fallback-page .page canvas{max-height:calc(100dvh - 172px)}}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#0f172a;color:#e5e7eb;font-family:Inter,Vazirmatn,Tahoma,Arial,sans-serif}body{overflow:hidden}.app{height:100dvh;display:grid;grid-template-rows:auto 1fr;background:radial-gradient(circle at 12% 0%,rgba(37,99,235,.28),transparent 32%),linear-gradient(135deg,#020617,#111827 42%,#172554)}.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px max(14px,env(safe-area-inset-left)) 10px max(14px,env(safe-area-inset-left));border-bottom:1px solid rgba(255,255,255,.1);background:rgba(2,6,23,.72);backdrop-filter:blur(20px)}.brand{min-width:0}.brand h1{margin:0;font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.brand p{margin:2px 0 0;font-size:11px;color:#94a3b8}.toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}.btn,.chip{border:1px solid rgba(255,255,255,.16);background:rgba(15,23,42,.78);color:#f8fafc;border-radius:999px;padding:8px 11px;font-size:12px;font-weight:800;cursor:pointer}.btn:hover{background:rgba(30,41,59,.94)}.btn.primary{background:var(--accent);border-color:transparent}.btn:disabled{opacity:.45;cursor:not-allowed}.chip{cursor:default;color:#cbd5e1}.main{min-height:0;display:grid;grid-template-columns:76px minmax(0,1fr) 320px;gap:12px;padding:12px}.thumbs,.notes{border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.58);border-radius:22px;overflow:hidden;min-height:0}.thumbs{padding:8px;overflow-y:auto}.thumb{display:block;width:100%;margin:0 0 8px;border:2px solid transparent;border-radius:12px;overflow:hidden;background:#fff;cursor:pointer;padding:0}.thumb.active{border-color:var(--accent)}.thumb canvas{width:100%;display:block}.stage-wrap{position:relative;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.1);background:radial-gradient(circle at top,rgba(255,255,255,.09),transparent 34%),rgba(2,6,23,.34);border-radius:28px;overflow:hidden}.book{width:min(100%,1160px);height:min(100%,760px)}.page{background:#fff;color:#111827;box-shadow:0 22px 80px rgba(0,0,0,.28);overflow:hidden}.page canvas{width:100%;height:100%;display:block;background:#fff}.fallback-book{display:flex;align-items:center;justify-content:center;gap:18px;width:100%;height:100%;padding:18px}.fallback-page{max-width:min(94%,760px);max-height:100%;background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.38);overflow:hidden;transition:transform .26s ease,opacity .26s ease}.fallback-page.turning{transform:rotateY(8deg) translateX(-8px);opacity:.82}.fallback-page canvas{display:block;width:100%;height:auto}.edge{position:absolute;top:0;bottom:0;width:18%;border:0;background:transparent;cursor:pointer}.edge.prev{left:0}.edge.next{right:0}.hud{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.12);background:rgba(2,6,23,.72);backdrop-filter:blur(18px);border-radius:999px;padding:7px 9px}.notes{padding:14px;display:flex;flex-direction:column;gap:10px}.notes h2{margin:0;font-size:14px}.notes textarea{flex:1;min-height:170px;resize:none;border:1px solid rgba(148,163,184,.24);border-radius:16px;background:rgba(2,6,23,.52);color:#f8fafc;padding:12px;font:13px/1.6 inherit;outline:none}.search{display:flex;gap:6px}.search input{min-width:0;flex:1;border:1px solid rgba(148,163,184,.24);background:rgba(2,6,23,.52);color:#f8fafc;border-radius:999px;padding:9px 11px;font-size:12px;outline:none}.results{max-height:130px;overflow:auto;display:grid;gap:5px}.result{border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.78);color:#dbeafe;border-radius:12px;padding:7px 9px;text-align:inherit;cursor:pointer;font-size:11px}.loader,.lock{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#020617,#111827);padding:24px}.card{width:min(440px,100%);border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.86);border-radius:28px;padding:24px;box-shadow:0 24px 90px rgba(0,0,0,.35);text-align:center}.card h2{margin:0 0 8px;font-size:24px}.card p{margin:0 0 16px;color:#94a3b8;font-size:13px;line-height:1.7}.card input{width:100%;border:1px solid rgba(255,255,255,.18);background:#020617;color:#fff;border-radius:16px;padding:12px 14px;outline:none}.card .btn{width:100%;margin-top:10px}.hidden{display:none!important}.progress{height:8px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}.progress span{display:block;height:100%;width:0;background:var(--accent);transition:width .2s ease}.toast{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:40;background:rgba(2,6,23,.88);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:9px 13px;font-size:12px;color:#e2e8f0;box-shadow:0 18px 50px rgba(0,0,0,.32)}@media(max-width:900px){body{overflow:auto}.app{height:100dvh}.topbar{align-items:flex-start}.brand h1{font-size:14px}.main{grid-template-columns:1fr;padding:8px;gap:8px}.thumbs{display:none}.notes{position:fixed;inset:auto 8px 8px 8px;z-index:20;max-height:48dvh;transform:translateY(calc(100% - 48px));transition:transform .24s ease}.notes.open{transform:translateY(0)}.stage-wrap{border-radius:20px}.book{height:calc(100dvh - 132px)}.toolbar{gap:5px}.btn,.chip{padding:7px 9px;font-size:11px}.hud{bottom:8px}.notes textarea{min-height:140px}}@media(max-width:560px){.topbar{display:block}.toolbar{justify-content:flex-start;margin-top:9px}.chip.file{display:none}.book{height:calc(100dvh - 162px)}}
 </style>
 </head>
 <body style="--accent:${safeHex(args.accentColor)}">
@@ -106,7 +104,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   } : {
     loading:'Loading Ebook', rendering:'Rendering pages...', private:'Private Ebook', pass:'Enter the password to open this flipbook.', open:'Open', wrong:'Wrong password.', first:'First', prev:'Prev', next:'Next', last:'Last', notes:'Notes', full:'Fullscreen', pdf:'PDF', saved:'Note saved', search:'Search', searchPh:'Search inside PDF', noResults:'No results found', page:'Page'
   };
-  var pdfDoc = null, currentPage = 1, pageCount = 0, zoom = 1, pages = [], pageTexts = [], spreadMode = false;
+  var pdfDoc = null, pageFlip = null, currentPage = 1, pageCount = 0, zoom = 1, pages = [], pageTexts = [], fallbackMode = false;
   var book = document.getElementById('book'), fallbackBook = document.getElementById('fallbackBook'), fallbackPage = document.getElementById('fallbackPage');
   var loader = document.getElementById('loader'), progress = document.getElementById('progress'), notesBox = document.getElementById('notesBox'), notesPanel = document.getElementById('notesPanel');
   function setText(id,value){ var el=document.getElementById(id); if(el) el.textContent=value; }
@@ -120,18 +118,6 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     document.querySelectorAll('.thumb').forEach(function(btn){ btn.classList.toggle('active', Number(btn.dataset.page) === currentPage); });
     loadNote();
   }
-  function shouldUseSpread(){
-    var stage = document.getElementById('stage');
-    return !!(stage && stage.clientWidth >= 860 && window.innerWidth >= 940);
-  }
-  function pageStep(){
-    return shouldUseSpread() ? 2 : 1;
-  }
-  function normalizePage(page){
-    page = Math.max(1, Math.min(pageCount || 1, page));
-    if(shouldUseSpread() && page > 1 && page % 2 === 0) page -= 1;
-    return page;
-  }
   async function hashPassword(salt, password){
     if(!window.crypto || !crypto.subtle) return '';
     var data = new TextEncoder().encode(salt + ':' + password);
@@ -144,33 +130,32 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     if(got && got === cfg.passwordHash){ document.getElementById('lock').classList.add('hidden'); start(); }
     else setText('lockError', txt.wrong);
   }
-  function renderVisiblePages(direction){
-    if(!pages.length) return;
-    spreadMode = shouldUseSpread();
-    currentPage = normalizePage(currentPage);
-    var animate = cfg.flipbookStyle === 'flip' && !!direction;
-    fallbackPage.className = 'fallback-page ' + (spreadMode ? 'spread' : 'single') + (animate ? ' turn-' + direction : '');
-    setTimeout(function(){
-      fallbackPage.innerHTML = '';
-      var first = pages[currentPage - 1];
-      if(first) fallbackPage.appendChild(first);
-      if(spreadMode && currentPage < pageCount){
-        var second = pages[currentPage];
-        if(second) fallbackPage.appendChild(second);
-      }
-      updateUi();
-      if(animate) setTimeout(function(){ fallbackPage.classList.remove('turn-next','turn-prev'); }, 80);
-    }, animate ? 90 : 0);
-  }
   function go(page){
-    var nextPage = normalizePage(page);
-    if(nextPage === currentPage) { updateUi(); return; }
-    var direction = nextPage > currentPage ? 'next' : 'prev';
-    currentPage = nextPage;
-    renderVisiblePages(direction);
+    page = Math.max(1, Math.min(pageCount, page));
+    if(page === currentPage && !fallbackMode) return;
+    if(pageFlip && !fallbackMode){ pageFlip.flip(page - 1); }
+    else {
+      currentPage = page;
+      fallbackPage.classList.add('turning');
+      setTimeout(function(){ fallbackPage.innerHTML=''; fallbackPage.appendChild(pages[currentPage - 1].cloneNode(true)); fallbackPage.classList.remove('turning'); updateUi(); }, 120);
+    }
   }
-  function nextPage(){ go(currentPage + pageStep()); }
-  function prevPage(){ go(currentPage - pageStep()); }
+  function initFlip(){
+    try {
+      pageFlip = new St.PageFlip(book, { width: 560, height: 760, size:'stretch', minWidth:260, maxWidth:620, minHeight:360, maxHeight:820, showCover:true, usePortrait:true, mobileScrollSupport:false, maxShadowOpacity:.38, flippingTime:760, direction: cfg.direction === 'rtl' ? 'rtl' : 'ltr' });
+      pageFlip.loadFromHTML(document.querySelectorAll('.page'));
+      pageFlip.on('flip', function(e){ currentPage = e.data + 1; updateUi(); });
+      fallbackBook.classList.add('hidden');
+      book.classList.remove('hidden');
+    } catch(e) {
+      fallbackMode = true;
+      book.classList.add('hidden');
+      fallbackBook.classList.remove('hidden');
+      fallbackPage.innerHTML = '';
+      fallbackPage.appendChild(pages[0].cloneNode(true));
+      updateUi();
+    }
+  }
   async function renderPage(n){
     var page = await pdfDoc.getPage(n);
     var viewport = page.getViewport({ scale: Math.min(2.2, 1.22 * zoom) });
@@ -206,10 +191,6 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   }
   async function loadPages(){
     book.innerHTML = ''; pages = []; pageTexts = [];
-    fallbackPage.innerHTML = '';
-    document.getElementById('thumbs').innerHTML = '';
-    fallbackBook.classList.remove('hidden');
-    book.classList.add('hidden');
     for(var i=1;i<=pageCount;i++){
       setText('loadingText', txt.rendering + ' ' + i + ' / ' + pageCount);
       progress.style.width = Math.round((i / pageCount) * 100) + '%';
@@ -219,8 +200,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
       renderThumb(i);
       indexText(i);
     }
-    currentPage = normalizePage(currentPage);
-    renderVisiblePages();
+    initFlip();
     loader.classList.add('hidden');
   }
   async function start(){
@@ -251,9 +231,9 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   document.getElementById('downloadBtn').href = cfg.pdfUrl;
   if(!cfg.allowDownload) document.getElementById('downloadBtn').classList.add('hidden');
   document.getElementById('firstBtn').onclick=function(){go(1);}; document.getElementById('lastBtn').onclick=function(){go(pageCount);};
-  document.getElementById('prevBtn').onclick=prevPage; document.getElementById('nextBtn').onclick=nextPage;
-  document.getElementById('hudPrev').onclick=prevPage; document.getElementById('hudNext').onclick=nextPage;
-  document.getElementById('edgePrev').onclick=prevPage; document.getElementById('edgeNext').onclick=nextPage;
+  document.getElementById('prevBtn').onclick=function(){go(currentPage-1);}; document.getElementById('nextBtn').onclick=function(){go(currentPage+1);};
+  document.getElementById('hudPrev').onclick=function(){go(currentPage-1);}; document.getElementById('hudNext').onclick=function(){go(currentPage+1);};
+  document.getElementById('edgePrev').onclick=function(){go(currentPage-1);}; document.getElementById('edgeNext').onclick=function(){go(currentPage+1);};
   document.getElementById('zoomInBtn').onclick=function(){ zoom=Math.min(1.8,zoom+.15); loader.classList.remove('hidden'); loadPages(); };
   document.getElementById('zoomOutBtn').onclick=function(){ zoom=Math.max(.75,zoom-.15); loader.classList.remove('hidden'); loadPages(); };
   document.getElementById('fullBtn').onclick=function(){ var el=document.documentElement; if(el.requestFullscreen) el.requestFullscreen(); else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen(); };
@@ -261,15 +241,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   document.getElementById('searchBtn').onclick=runSearch;
   document.getElementById('searchInput').onkeydown=function(e){ if(e.key === 'Enter') runSearch(); };
   notesBox.addEventListener('input', function(){ clearTimeout(notesBox._t); notesBox._t=setTimeout(saveNote, 450); });
-  document.addEventListener('keydown', function(e){ if(e.key==='ArrowLeft') (cfg.direction==='rtl'?nextPage:prevPage)(); if(e.key==='ArrowRight') (cfg.direction==='rtl'?prevPage:nextPage)(); });
-  var touchStartX = 0, touchStartY = 0;
-  document.getElementById('stage').addEventListener('touchstart', function(e){ var t=e.changedTouches[0]; touchStartX=t.clientX; touchStartY=t.clientY; }, { passive:true });
-  document.getElementById('stage').addEventListener('touchend', function(e){
-    var t=e.changedTouches[0], dx=t.clientX-touchStartX, dy=t.clientY-touchStartY;
-    if(Math.abs(dx) < 44 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
-    if(dx < 0) (cfg.direction==='rtl'?prevPage:nextPage)(); else (cfg.direction==='rtl'?nextPage:prevPage)();
-  }, { passive:true });
-  window.addEventListener('resize', function(){ clearTimeout(window.__ebookResizeTimer); window.__ebookResizeTimer=setTimeout(function(){ renderVisiblePages(); }, 160); });
+  document.addEventListener('keydown', function(e){ if(e.key==='ArrowLeft') go(cfg.direction==='rtl'?currentPage+1:currentPage-1); if(e.key==='ArrowRight') go(cfg.direction==='rtl'?currentPage-1:currentPage+1); });
   document.getElementById('unlockBtn').onclick=unlock;
   document.getElementById('passwordInput').onkeydown=function(e){ if(e.key==='Enter') unlock(); };
   if(cfg.accessMode === 'private' && cfg.passwordHash){ loader.classList.add('hidden'); document.getElementById('lock').classList.remove('hidden'); }
