@@ -8308,14 +8308,22 @@ function AppInner() {
     const key = catalogKey || metaHubKey || htmlVideoKey;
     if (!key) return;
     const kind: 'catalog' | 'meta-hub' | 'html-video' = catalogKey ? 'catalog' : metaHubKey ? 'meta-hub' : 'html-video';
-    const collectionName = kind === 'catalog' ? 'catalog_short_links' : kind === 'meta-hub' ? 'meta_hub_links' : 'html_video_links';
+    const collectionName = kind === 'meta-hub' ? 'meta_hub_links' : 'catalog_short_links';
     let cancelled = false;
     (async () => {
       setPublicCatalogLoading(true);
       setPublicCatalogError('');
       try {
         if (!db) throw new Error('Public link database is not configured.');
-        const snap = await getDoc(doc(db, collectionName, key));
+        let snap = await getDoc(doc(db, collectionName, key));
+        if (kind === 'html-video' && !snap.exists()) {
+          try {
+            const legacySnap = await getDoc(doc(db, 'html_video_links', key));
+            if (legacySnap.exists()) snap = legacySnap;
+          } catch (legacyErr) {
+            console.warn('Legacy HTML video link lookup failed:', legacyErr);
+          }
+        }
         if (cancelled) return;
         if (!snap.exists()) throw new Error('This public link was not found or is no longer active.');
         const linkData = snap.data() || {};
@@ -29906,7 +29914,10 @@ ${html}
         preset: htmlVideoPreset,
         fileName: htmlVideoFileName || 'uploaded.html',
       });
-      const path = `users/${activeOwnerUid}/html-video-links/${safeTitle}-${Date.now()}.html`;
+      // Reuse the existing catalog short-link rules so HTML video links work
+      // even before a dedicated html_video_links collection is deployed.
+      const publishOwnerUid = user.uid;
+      const path = `users/${publishOwnerUid}/html-video-links/${safeTitle}-${Date.now()}.html`;
       const ref = storageRef(storage, path);
       await withTimeout(
         uploadString(ref, wrapperHtml, 'raw', { contentType: 'text/html; charset=utf-8' }),
@@ -29918,15 +29929,15 @@ ${html}
       let shortCode = '';
       for (let attempt = 0; attempt < 24; attempt++) {
         const candidate = generateCatalogShortCode(10);
-        const snap = await getDoc(doc(db, 'html_video_links', candidate));
+        const snap = await getDoc(doc(db, 'catalog_short_links', candidate));
         if (!snap.exists()) { shortCode = candidate; break; }
       }
       if (!shortCode) throw new Error('Could not create a short link. Please try again.');
       const shortUrl = buildPublicAppUrl({ hv: shortCode });
-      await setDoc(doc(db, 'html_video_links', shortCode), {
+      await setDoc(doc(db, 'catalog_short_links', shortCode), {
         url,
         appId: dataAppId,
-        ownerUserId: activeOwnerUid,
+        ownerUserId: publishOwnerUid,
         storagePath: path,
         title,
         kind: 'html-video',
