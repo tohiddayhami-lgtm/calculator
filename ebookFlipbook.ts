@@ -1,6 +1,7 @@
 export type EbookLanguageKey = 'fa' | 'en' | 'both';
 export type EbookAccessMode = 'public' | 'private';
 export type EbookDirection = 'rtl' | 'ltr';
+export type EbookFlipbookStyle = 'flip' | 'simple';
 
 export type EbookFlipbookBuildArgs = {
   title: string;
@@ -10,6 +11,7 @@ export type EbookFlipbookBuildArgs = {
   language: EbookLanguageKey;
   direction: EbookDirection;
   accessMode: EbookAccessMode;
+  flipbookStyle?: EbookFlipbookStyle;
   passwordHash?: string;
   passwordSalt?: string;
   allowDownload: boolean;
@@ -39,6 +41,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     language: args.language || 'both',
     direction: args.direction || 'rtl',
     accessMode: args.accessMode || 'public',
+    flipbookStyle: args.flipbookStyle || 'flip',
     passwordHash: args.passwordHash || '',
     passwordSalt: args.passwordSalt || '',
     allowDownload: !!args.allowDownload,
@@ -145,18 +148,19 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     if(!pages.length) return;
     spreadMode = shouldUseSpread();
     currentPage = normalizePage(currentPage);
-    fallbackPage.className = 'fallback-page ' + (spreadMode ? 'spread' : 'single') + (direction ? ' turn-' + direction : '');
+    var animate = cfg.flipbookStyle === 'flip' && !!direction;
+    fallbackPage.className = 'fallback-page ' + (spreadMode ? 'spread' : 'single') + (animate ? ' turn-' + direction : '');
     setTimeout(function(){
       fallbackPage.innerHTML = '';
       var first = pages[currentPage - 1];
-      if(first) fallbackPage.appendChild(first.cloneNode(true));
+      if(first) fallbackPage.appendChild(first);
       if(spreadMode && currentPage < pageCount){
         var second = pages[currentPage];
-        if(second) fallbackPage.appendChild(second.cloneNode(true));
+        if(second) fallbackPage.appendChild(second);
       }
       updateUi();
-      if(direction) setTimeout(function(){ fallbackPage.classList.remove('turn-next','turn-prev'); }, 80);
-    }, direction ? 90 : 0);
+      if(animate) setTimeout(function(){ fallbackPage.classList.remove('turn-next','turn-prev'); }, 80);
+    }, animate ? 90 : 0);
   }
   function go(page){
     var nextPage = normalizePage(page);
@@ -202,6 +206,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   }
   async function loadPages(){
     book.innerHTML = ''; pages = []; pageTexts = [];
+    fallbackPage.innerHTML = '';
     document.getElementById('thumbs').innerHTML = '';
     fallbackBook.classList.remove('hidden');
     book.classList.add('hidden');

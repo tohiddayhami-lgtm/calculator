@@ -142,7 +142,7 @@ import { ExhibitionFormsPanel, EXHIBITION_STORAGE_KEY, META_MALL_STORAGE_KEY } f
 import { normalizeExhibitionEvent } from './exhibitionNormalize';
 import { buildExhibitionTopViewHtml } from './exhibitionTopViewExport';
 import { buildMetaMallTopViewHtml } from './metaMallTopViewExport';
-import { buildEbookFlipbookHtml, type EbookAccessMode, type EbookDirection, type EbookLanguageKey } from './ebookFlipbook';
+import { buildEbookFlipbookHtml, type EbookAccessMode, type EbookDirection, type EbookFlipbookStyle, type EbookLanguageKey } from './ebookFlipbook';
 import {
   computeVatFromNet,
   normalizeInvoiceExtraCharges,
@@ -6874,6 +6874,7 @@ function AppInner() {
   const [ebookPreviewUrl, setEbookPreviewUrl] = useState('');
   const [ebookLanguage, setEbookLanguage] = useState<EbookLanguageKey>('both');
   const [ebookDirection, setEbookDirection] = useState<EbookDirection>('rtl');
+  const [ebookFlipbookStyle, setEbookFlipbookStyle] = useState<EbookFlipbookStyle>('flip');
   const [ebookAccessMode, setEbookAccessMode] = useState<EbookAccessMode>('public');
   const [ebookPassword, setEbookPassword] = useState('');
   const [ebookAllowDownload, setEbookAllowDownload] = useState(true);
@@ -30083,6 +30084,7 @@ ${html}
         language: ebookLanguage,
         direction: ebookDirection,
         accessMode: ebookAccessMode,
+        flipbookStyle: ebookFlipbookStyle,
         passwordHash,
         passwordSalt,
         allowDownload: ebookAllowDownload,
@@ -30106,6 +30108,7 @@ ${html}
         title,
         kind: 'ebook',
         accessMode: ebookAccessMode,
+        flipbookStyle: ebookFlipbookStyle,
         language: ebookLanguage,
         direction: ebookDirection,
         allowDownload: ebookAllowDownload,
@@ -30121,6 +30124,7 @@ ${html}
         fileName: ebookFile.name,
         kind: 'ebook',
         accessMode: ebookAccessMode,
+        flipbookStyle: ebookFlipbookStyle,
         language: ebookLanguage,
         direction: ebookDirection,
         allowDownload: ebookAllowDownload,
@@ -30220,6 +30224,26 @@ ${html}
                     <option value="rtl">RTL / فارسی</option>
                     <option value="ltr">LTR / English</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Flipbook Style</label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'flip', label: 'Magazine Flip', desc: 'ورق زدن مجله‌ای' },
+                    { id: 'simple', label: 'Simple', desc: 'نمایش ساده و سریع' },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setEbookFlipbookStyle(item.id as EbookFlipbookStyle)}
+                      className={`rounded-2xl border px-3 py-2 text-left text-xs ${ebookFlipbookStyle === item.id ? 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      <div className="font-black">{item.label}</div>
+                      <div className="text-[10px] opacity-70">{item.desc}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
