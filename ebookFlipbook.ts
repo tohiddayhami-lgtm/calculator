@@ -118,6 +118,17 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     document.querySelectorAll('.thumb').forEach(function(btn){ btn.classList.toggle('active', Number(btn.dataset.page) === currentPage); });
     loadNote();
   }
+  function renderNativePage(page, animate){
+    if(!pages[page - 1]) return;
+    currentPage = page;
+    if(animate) fallbackPage.classList.add('turning');
+    setTimeout(function(){
+      fallbackPage.innerHTML = '';
+      fallbackPage.appendChild(pages[currentPage - 1].cloneNode(true));
+      fallbackPage.classList.remove('turning');
+      updateUi();
+    }, animate ? 110 : 0);
+  }
   async function hashPassword(salt, password){
     if(!window.crypto || !crypto.subtle) return '';
     var data = new TextEncoder().encode(salt + ':' + password);
@@ -132,15 +143,39 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   }
   function go(page){
     page = Math.max(1, Math.min(pageCount, page));
-    if(page === currentPage && !fallbackMode) return;
-    if(pageFlip && !fallbackMode){ pageFlip.flip(page - 1); }
-    else {
-      currentPage = page;
-      fallbackPage.classList.add('turning');
-      setTimeout(function(){ fallbackPage.innerHTML=''; fallbackPage.appendChild(pages[currentPage - 1].cloneNode(true)); fallbackPage.classList.remove('turning'); updateUi(); }, 120);
+    if(page === currentPage) return;
+    if(pageFlip && !fallbackMode){
+      try {
+        var expected = page;
+        pageFlip.flip(page - 1);
+        setTimeout(function(){
+          if(currentPage !== expected){
+            fallbackMode = true;
+            pageFlip = null;
+            book.classList.add('hidden');
+            fallbackBook.classList.remove('hidden');
+            renderNativePage(expected, true);
+          }
+        }, 900);
+        return;
+      } catch(e) {
+        fallbackMode = true;
+        pageFlip = null;
+        book.classList.add('hidden');
+        fallbackBook.classList.remove('hidden');
+      }
     }
+    renderNativePage(page, true);
   }
   function initFlip(){
+    // Native page mode is deliberately the default: it avoids page-flip library
+    // state bugs that can block multi-page PDFs after the first turns.
+    fallbackMode = true;
+    pageFlip = null;
+    book.classList.add('hidden');
+    fallbackBook.classList.remove('hidden');
+    renderNativePage(Math.max(1, Math.min(currentPage, pages.length || 1)), false);
+    return;
     try {
       pageFlip = new St.PageFlip(book, { width: 560, height: 760, size:'stretch', minWidth:260, maxWidth:620, minHeight:360, maxHeight:820, showCover:true, usePortrait:true, mobileScrollSupport:false, maxShadowOpacity:.38, flippingTime:760, direction: cfg.direction === 'rtl' ? 'rtl' : 'ltr' });
       pageFlip.loadFromHTML(document.querySelectorAll('.page'));
@@ -190,7 +225,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     } catch(e) { pageTexts[n] = ''; }
   }
   async function loadPages(){
-    book.innerHTML = ''; pages = []; pageTexts = [];
+    book.innerHTML = ''; document.getElementById('thumbs').innerHTML = ''; pages = []; pageTexts = [];
     for(var i=1;i<=pageCount;i++){
       setText('loadingText', txt.rendering + ' ' + i + ' / ' + pageCount);
       progress.style.width = Math.round((i / pageCount) * 100) + '%';
