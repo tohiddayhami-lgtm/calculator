@@ -403,9 +403,15 @@ service cloud.firestore {
                     && shortCode.size() >= 8
                     && shortCode.size() <= 16;
       allow read: if request.auth != null
-                  && (resource.data.ownerUserId == request.auth.uid || isConfiguredMasterEmail());
+                  && (
+                    get(/databases/$(database)/documents/catalog_analytics/$(shortCode)).data.ownerUserId == request.auth.uid
+                    || isConfiguredMasterEmail()
+                  );
       allow delete: if request.auth != null
-                    && (resource.data.ownerUserId == request.auth.uid || isConfiguredMasterEmail());
+                    && (
+                      get(/databases/$(database)/documents/catalog_analytics/$(shortCode)).data.ownerUserId == request.auth.uid
+                      || isConfiguredMasterEmail()
+                    );
     }
 
     // Deny everything else

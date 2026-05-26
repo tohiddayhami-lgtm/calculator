@@ -5962,12 +5962,17 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const fbApp = initializeApp(FB_CFG, 'analytics-' + Date.now());
     const fbDb = getFirestore(fbApp);
 
+    const safeSession = {
+      get(key) { try { return sessionStorage.getItem(key); } catch(e) { return null; } },
+      set(key, value) { try { sessionStorage.setItem(key, value); } catch(e) {} }
+    };
+
     // Session identity (one visit per session)
     const SID_KEY = 'cat_sid_' + SHORT_CODE;
-    let sessionId = sessionStorage.getItem(SID_KEY);
+    let sessionId = safeSession.get(SID_KEY);
     if (!sessionId) {
       sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      sessionStorage.setItem(SID_KEY, sessionId);
+      safeSession.set(SID_KEY, sessionId);
     }
 
     const ua = navigator.userAgent;
@@ -5992,7 +5997,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
           city: geoCity,
           createdAt: serverTimestamp(),
         }, extra || {}));
-      } catch(e) { /* silent */ }
+      } catch(e) { console.warn('Catalog analytics event failed:', e); }
     };
     window.__trackCatalogEvent = trackEvent;
 
@@ -6005,8 +6010,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
       .then(d => { geoCountry = d.country_name || d.country || ''; geoCity = d.city || ''; geoRegion = d.region || ''; })
       .catch(() => {})
       .finally(() => {
-        if (!sessionStorage.getItem(VISITED_KEY)) {
-          sessionStorage.setItem(VISITED_KEY, '1');
+        if (window.self !== window.top) return;
+        if (!safeSession.get(VISITED_KEY)) {
+          safeSession.set(VISITED_KEY, '1');
           trackEvent('visit', { country: geoCountry, city: geoCity, region: geoRegion });
         }
       });
@@ -6027,8 +6033,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             const name = e.target.getAttribute('data-analytics-section') || '';
             if (name) {
               const k = 'cat_sec_' + SHORT_CODE + '_' + name;
-              if (!sessionStorage.getItem(k)) {
-                sessionStorage.setItem(k, '1');
+              if (!safeSession.get(k)) {
+                safeSession.set(k, '1');
                 trackEvent('section_view', { sectionName: name });
               }
             }
@@ -6701,6 +6707,7 @@ function AppInner() {
   const [analyticsModalLink, setAnalyticsModalLink] = useState<{ shortCode: string; catalogTitle: string } | null>(null);
   const [analyticsEvents, setAnalyticsEvents] = useState<any[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'catalogue-shop' | 'meta-trading-hub' | 'story-studio'>('catalog');
   const [metaHubHtml, setMetaHubHtml] = useState<string>('');
   const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'visual' | 'preview'>('code');
@@ -7990,28 +7997,72 @@ function AppInner() {
   useEffect(() => {
     if (!analyticsModalLink || !db) {
       setAnalyticsEvents([]);
+      setAnalyticsError(null);
+      return;
+    }
+    const ownerFilter = activeOwnerUid || user?.uid || '';
+    if (!ownerFilter) {
+      setAnalyticsEvents([]);
+      setAnalyticsError('برای نمایش Analytics باید وارد حساب کاربری شوید.');
       return;
     }
     setAnalyticsLoading(true);
-    let q: any;
-    try {
-      q = query(
-        collection(db, 'catalog_analytics', analyticsModalLink.shortCode, 'events'),
-        orderBy('createdAt', 'desc'),
-        limit(1000),
-      );
-    } catch {
-      q = collection(db, 'catalog_analytics', analyticsModalLink.shortCode, 'events');
-    }
-    const unsub = onSnapshot(q, (snap: any) => {
-      setAnalyticsEvents(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
-      setAnalyticsLoading(false);
-    }, (err: any) => {
-      console.warn('Analytics events listener:', err);
-      setAnalyticsLoading(false);
-    });
-    return () => unsub();
-  }, [analyticsModalLink?.shortCode]);
+    setAnalyticsError(null);
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    const eventTimeMs = (event: any) => {
+      const ts = event?.createdAt;
+      if (!ts) return 0;
+      if (typeof ts.toMillis === 'function') return ts.toMillis();
+      if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+      if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+      const n = Number(ts);
+      return Number.isFinite(n) ? n : 0;
+    };
+    (async () => {
+      try {
+        await setDoc(doc(db, 'catalog_analytics', analyticsModalLink.shortCode), {
+          ownerUserId: ownerFilter,
+          appId: dataAppId,
+          shortCode: analyticsModalLink.shortCode,
+          catalogTitle: analyticsModalLink.catalogTitle || 'Catalog',
+          kind: 'catalog',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } catch (summaryErr) {
+        console.warn('Analytics summary ensure failed:', summaryErr);
+      }
+      if (cancelled) return;
+      let q: any;
+      try {
+        q = query(
+          collection(db, 'catalog_analytics', analyticsModalLink.shortCode, 'events'),
+          where('ownerUserId', '==', ownerFilter),
+          limit(1000),
+        );
+      } catch {
+        q = collection(db, 'catalog_analytics', analyticsModalLink.shortCode, 'events');
+      }
+      unsub = onSnapshot(q, (snap: any) => {
+        const rows = snap.docs
+          .map((d: any) => ({ id: d.id, ...d.data() }))
+          .sort((a: any, b: any) => eventTimeMs(b) - eventTimeMs(a));
+        setAnalyticsEvents(rows);
+        setAnalyticsLoading(false);
+      }, (err: any) => {
+        console.warn('Analytics events listener:', err);
+        setAnalyticsError(err?.code === 'permission-denied'
+          ? 'دسترسی به داده‌ها رد شد (Firestore permission). لطفاً Firestore rules را Deploy کنید و کاتالوگ را دوباره باز کنید.'
+          : `خطا: ${err?.message || err?.code || String(err)}`);
+        setAnalyticsLoading(false);
+      });
+    })();
+    return () => {
+      cancelled = true;
+      if (unsub) unsub();
+    };
+  }, [analyticsModalLink?.shortCode, analyticsModalLink?.catalogTitle, activeOwnerUid, dataAppId, user?.uid]);
 
   // MetaPort booths listener
   useEffect(() => {
@@ -8126,14 +8177,69 @@ function AppInner() {
         const snap = await getDoc(doc(db, collectionName, key));
         if (cancelled) return;
         if (!snap.exists()) throw new Error('This public link was not found or is no longer active.');
-        const target = snap.data()?.url;
+        const linkData = snap.data() || {};
+        const target = linkData.url;
         if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
           setPublicCatalogView({
             key,
             kind,
             url: target,
-            title: snap.data()?.catalogTitle || snap.data()?.title || (kind === 'catalog' ? 'Catalog' : 'Meta Trading Hub'),
+            title: linkData.catalogTitle || linkData.title || (kind === 'catalog' ? 'Catalog' : 'Meta Trading Hub'),
           });
+          if (kind === 'catalog') {
+            void (async () => {
+              try {
+                const ownerUserId = String(linkData.ownerUserId || '');
+                if (!ownerUserId) return;
+                const visitKey = `cat_shell_visit_${key}`;
+                try {
+                  if (sessionStorage.getItem(visitKey)) return;
+                  sessionStorage.setItem(visitKey, '1');
+                } catch {}
+                const sidKey = `cat_shell_sid_${key}`;
+                let sessionId = '';
+                try {
+                  sessionId = sessionStorage.getItem(sidKey) || '';
+                  if (!sessionId) {
+                    sessionId = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+                    sessionStorage.setItem(sidKey, sessionId);
+                  }
+                } catch {
+                  sessionId = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+                }
+                const ua = navigator.userAgent || '';
+                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
+                const isTablet = /iPad|Tablet/i.test(ua) || (isMobile && Math.min(screen.width, screen.height) > 600);
+                const deviceType = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+                let country = '';
+                let city = '';
+                let region = '';
+                try {
+                  const geoRes = await fetch('https://ipapi.co/json/');
+                  const geo = geoRes.ok ? await geoRes.json() : {};
+                  country = geo.country_name || geo.country || '';
+                  city = geo.city || '';
+                  region = geo.region || '';
+                } catch {}
+                await addDoc(collection(db, 'catalog_analytics', key, 'events'), {
+                  type: 'visit',
+                  sessionId,
+                  ownerUserId,
+                  appId: String(linkData.appId || dataAppId || appId),
+                  shortCode: key,
+                  deviceType,
+                  referrer: document.referrer ? (() => { try { return new URL(document.referrer).hostname; } catch { return ''; } })() : '',
+                  country,
+                  city,
+                  region,
+                  source: 'public_shell',
+                  createdAt: serverTimestamp(),
+                });
+              } catch (analyticsErr) {
+                console.warn('Public catalog analytics visit failed:', analyticsErr);
+              }
+            })();
+          }
         } else {
           throw new Error('This public link does not contain a valid catalog URL.');
         }
@@ -8150,7 +8256,7 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [db]);
+  }, [db, dataAppId]);
 
   // Meta Trading Hub: load saved draft from localStorage on first mount
   useEffect(() => {
@@ -30924,9 +31030,17 @@ ${html}
 
               {analyticsLoading ? (
                 <div className="p-10 text-center text-slate-500 text-sm">Loading analytics...</div>
+              ) : analyticsError ? (
+                <div className="p-8 text-center space-y-3">
+                  <div className="text-red-500 text-sm font-medium">{analyticsError}</div>
+                  <div className="text-xs text-slate-400">کاتالوگ را دوباره Publish کنید تا لینک جدید با پشتیبانی analytics ساخته شود.</div>
+                </div>
               ) : events.length === 0 ? (
-                <div className="p-10 text-center text-slate-400 text-sm">
-                  No data yet. Share this catalog link and visits will appear here in real-time.
+                <div className="p-8 text-center space-y-3">
+                  <div className="text-slate-400 text-sm">No data yet. Share this catalog link and visits will appear here in real-time.</div>
+                  <div className="text-xs text-slate-400 bg-amber-50 border border-amber-200 rounded-lg p-3 text-right">
+                    <strong>نکته:</strong> اگر لینک کاتالوگ قبلاً ساخته شده بود، باید آن را دوباره <strong>Publish</strong> کنید تا اسکریپت analytics داخل HTML قرار بگیرد.
+                  </div>
                 </div>
               ) : (
                 <div className="p-5 space-y-6">
