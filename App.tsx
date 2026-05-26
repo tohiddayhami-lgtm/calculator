@@ -3354,6 +3354,64 @@ const renderProductColorSwatchesHtml = (value: unknown, label = 'Colors'): strin
     return `<div class="color-options" aria-label="${escapeAttr(label)}"><span class="color-label">${escapeHtml(label)}</span>${colors.map((color) => `<span class="color-chip" title="${escapeAttr(color.name)}">${(color.hex || color.hex2) ? `<i style="background:${escapeAttr(productColorSwatchStyle(color))}"></i>` : ''}<b>${escapeHtml(color.name)}</b></span>`).join('')}</div>`;
 };
 
+type HtmlVideoPresetKey = 'story' | 'portrait' | 'landscape' | 'square';
+
+const HTML_VIDEO_PRESETS: Record<HtmlVideoPresetKey, { label: string; size: string; ratio: string; w: number; h: number }> = {
+    story: { label: 'Story 9:16', size: '1080 x 1920', ratio: '9 / 16', w: 1080, h: 1920 },
+    portrait: { label: 'Portrait 4:5', size: '1080 x 1350', ratio: '4 / 5', w: 1080, h: 1350 },
+    landscape: { label: 'Landscape 16:9', size: '1920 x 1080', ratio: '16 / 9', w: 1920, h: 1080 },
+    square: { label: 'Square 1:1', size: '1080 x 1080', ratio: '1 / 1', w: 1080, h: 1080 },
+};
+
+const buildHtmlVideoLinkHtml = (args: { title: string; sourceHtml: string; preset: HtmlVideoPresetKey; fileName: string }): string => {
+    const preset = HTML_VIDEO_PRESETS[args.preset] || HTML_VIDEO_PRESETS.story;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>${escapeHtml(args.title || 'HTML Video Link')}</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#020617;color:#e2e8f0;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body{display:flex;align-items:center;justify-content:center;padding:18px;overflow-x:hidden}.shell{width:min(1180px,100%);display:grid;gap:14px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:10px}.dot{width:12px;height:12px;border-radius:999px;background:#22c55e;box-shadow:0 0 24px #22c55e}.brand h1{font-size:16px;margin:0;font-weight:900;letter-spacing:.02em}.brand p{font-size:11px;margin:2px 0 0;color:#94a3b8}.meta{display:flex;gap:8px;flex-wrap:wrap}.pill{border:1px solid rgba(148,163,184,.26);background:rgba(15,23,42,.82);border-radius:999px;padding:7px 11px;font-size:11px;color:#cbd5e1;font-weight:800}.stage-wrap{position:relative;border:1px solid rgba(148,163,184,.24);border-radius:30px;padding:14px;background:radial-gradient(circle at top left,rgba(59,130,246,.22),transparent 34%),linear-gradient(180deg,rgba(15,23,42,.98),rgba(2,6,23,.94));box-shadow:0 32px 100px rgba(0,0,0,.46);overflow:hidden}.stage{position:relative;margin:auto;width:min(100%,calc((100vh - 150px) * ${preset.w / preset.h}));max-width:${preset.w}px;aspect-ratio:${preset.ratio};border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 20px 70px rgba(0,0,0,.45)}iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}.play{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(2,6,23,.18),rgba(2,6,23,.72));transition:opacity .24s ease}.play.hidden{opacity:0;pointer-events:none}.play button{width:92px;height:92px;border-radius:999px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.92);color:#020617;font-size:34px;font-weight:900;cursor:pointer;box-shadow:0 22px 60px rgba(0,0,0,.35)}.controls{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:12px}.controls button{border:1px solid rgba(148,163,184,.28);background:#0f172a;color:#e2e8f0;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:800;cursor:pointer}.controls button:hover{background:#1e293b}.hint{text-align:center;color:#64748b;font-size:11px;margin:2px 0 0}@media(max-width:720px){body{padding:10px}.stage-wrap{padding:8px;border-radius:22px}.stage{width:100%;border-radius:16px}.play button{width:74px;height:74px;font-size:28px}.top{display:block}.meta{margin-top:10px}}
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="top">
+    <div class="brand"><span class="dot"></span><div><h1>${escapeHtml(args.title || 'HTML Video Link')}</h1><p>${escapeHtml(args.fileName || 'Uploaded HTML')} · ${escapeHtml(preset.label)} · ${escapeHtml(preset.size)}</p></div></div>
+    <div class="meta"><span class="pill">HTML Preview Player</span><span class="pill">${escapeHtml(preset.label)}</span></div>
+  </header>
+  <section class="stage-wrap">
+    <div class="stage" id="stage">
+      <iframe id="frame" sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads" srcdoc="${escapeAttr(args.sourceHtml)}"></iframe>
+      <div class="play" id="play"><button type="button" aria-label="Play">▶</button></div>
+    </div>
+    <div class="controls">
+      <button type="button" id="playBtn">Play / Hide Cover</button>
+      <button type="button" id="reloadBtn">Restart</button>
+      <button type="button" id="fullBtn">Fullscreen</button>
+    </div>
+  </section>
+  <p class="hint">This link displays the uploaded HTML in a video-style responsive frame.</p>
+</main>
+<script>
+(function(){
+  var srcdoc = ${JSON.stringify(args.sourceHtml)};
+  var frame = document.getElementById('frame');
+  var play = document.getElementById('play');
+  var stage = document.getElementById('stage');
+  function hide(){ if(play) play.classList.add('hidden'); }
+  function restart(){ hide(); if(frame) frame.srcdoc = srcdoc; }
+  document.getElementById('playBtn').addEventListener('click', hide);
+  document.getElementById('reloadBtn').addEventListener('click', restart);
+  document.getElementById('fullBtn').addEventListener('click', function(){ if(stage && stage.requestFullscreen) stage.requestFullscreen(); });
+  if(play) play.addEventListener('click', hide);
+})();
+</script>
+</body>
+</html>`;
+};
+
 const PUBLIC_FORM_ASSETS_COLLECTION = 'publicFormAssets';
 
 type PublicFormAssetPayload = {
@@ -6796,6 +6854,14 @@ function AppInner() {
   const storyPreviewRef = useRef<HTMLDivElement | null>(null);
   const metaHubHtmlFileInputRef = useRef<HTMLInputElement | null>(null);
   const metaHubVisualFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const htmlVideoFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [htmlVideoTitle, setHtmlVideoTitle] = useState('HTML Video Link');
+  const [htmlVideoFileName, setHtmlVideoFileName] = useState('');
+  const [htmlVideoSource, setHtmlVideoSource] = useState('');
+  const [htmlVideoPreset, setHtmlVideoPreset] = useState<HtmlVideoPresetKey>('story');
+  const [htmlVideoPublishing, setHtmlVideoPublishing] = useState(false);
+  const [htmlVideoLinkInfo, setHtmlVideoLinkInfo] = useState<{ url: string; storagePath: string } | null>(null);
+  const [htmlVideoError, setHtmlVideoError] = useState('');
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
   const [serviceInvoiceDiscountCurrency, setServiceInvoiceDiscountCurrency] = useState('USD');
@@ -6812,7 +6878,7 @@ function AppInner() {
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
   const [isoDocuments, setIsoDocuments] = useState<IsoDocumentDef[]>([]);
   const [isoRecords, setIsoRecords] = useState<IsoExecutionRecord[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'exhibition' | 'metamall' | 'archive' | 'metaport'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'exhibition' | 'metamall' | 'archive' | 'metaport' | 'htmlvideo'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
 
@@ -7817,6 +7883,7 @@ function AppInner() {
       canUseFormsSection('contracts') ? 'contracts' : null,
       canUseFormsSection('proposals') ? 'proposals' : null,
       canUseFormsSection('education') ? 'education' : null,
+      canUseFormsSection('formsCustom') ? 'htmlvideo' : null,
       canUseFormsSection('exhibition') ? 'exhibition' : null,
       canUseFormsSection('metaMall') ? 'metamall' : null,
       canUseFormsSection('packingList') ? 'packinglist' : null,
@@ -29796,6 +29863,206 @@ ${html}
     }
   };
 
+  const handleHtmlVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setHtmlVideoError('');
+    setHtmlVideoLinkInfo(null);
+    if (!/\.html?$/i.test(file.name) && file.type && file.type !== 'text/html') {
+      setHtmlVideoError('فعلاً فقط فایل HTML / HTM پشتیبانی می‌شود.');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const html = String(reader.result || '');
+      setHtmlVideoSource(html);
+      setHtmlVideoFileName(file.name);
+      if (!htmlVideoTitle || htmlVideoTitle === 'HTML Video Link') {
+        setHtmlVideoTitle(file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ') || 'HTML Video Link');
+      }
+    };
+    reader.onerror = () => setHtmlVideoError('خواندن فایل انجام نشد. دوباره تلاش کنید.');
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handlePublishHtmlVideoLink = async () => {
+    if (!htmlVideoSource.trim()) {
+      setHtmlVideoError('اول یک فایل HTML وارد کنید.');
+      return;
+    }
+    if (!storage || !activeOwnerUid || !user || user.uid === DEMO_USER_ID || isDemoMode) {
+      setHtmlVideoError('برای ساخت لینک باید وارد حساب ابری شده باشید.');
+      return;
+    }
+    setHtmlVideoPublishing(true);
+    setHtmlVideoError('');
+    setHtmlVideoLinkInfo(null);
+    try {
+      const title = htmlVideoTitle.trim() || htmlVideoFileName || 'HTML Video Link';
+      const safeTitle = title.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'html-video-link';
+      const wrapperHtml = buildHtmlVideoLinkHtml({
+        title,
+        sourceHtml: htmlVideoSource,
+        preset: htmlVideoPreset,
+        fileName: htmlVideoFileName || 'uploaded.html',
+      });
+      const path = `users/${activeOwnerUid}/html-video-links/${safeTitle}-${Date.now()}.html`;
+      const ref = storageRef(storage, path);
+      await withTimeout(
+        uploadString(ref, wrapperHtml, 'raw', { contentType: 'text/html; charset=utf-8' }),
+        25000,
+        'Publish HTML video link',
+      );
+      const url = await getDownloadURL(ref);
+      setHtmlVideoLinkInfo({ url, storagePath: path });
+    } catch (err: any) {
+      console.error('HTML video link publish failed:', err);
+      setHtmlVideoError(err?.message || 'ساخت لینک انجام نشد.');
+    } finally {
+      setHtmlVideoPublishing(false);
+    }
+  };
+
+  const copyHtmlVideoLink = async () => {
+    if (!htmlVideoLinkInfo?.url) return;
+    try {
+      await navigator.clipboard.writeText(htmlVideoLinkInfo.url);
+      alert('Link copied.');
+    } catch {
+      window.prompt('Copy link:', htmlVideoLinkInfo.url);
+    }
+  };
+
+  const renderHtmlVideoLinkTool = () => {
+    const currentPreset = HTML_VIDEO_PRESETS[htmlVideoPreset];
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <Video className="w-5 h-5 text-indigo-600" />
+                تبدیل HTML به لینک ویدئویی
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                فایل HTML را وارد کن، سایز نمایش را انتخاب کن و یک لینک بساز که خروجی را داخل فریم شبیه ویدئو نمایش دهد.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <input ref={htmlVideoFileInputRef} type="file" accept=".html,.htm,text/html" className="hidden" onChange={handleHtmlVideoFileChange} />
+              <button
+                type="button"
+                onClick={() => htmlVideoFileInputRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-100"
+              >
+                <Upload className="w-4 h-4" />
+                Upload HTML
+              </button>
+              <button
+                type="button"
+                disabled={htmlVideoPublishing || !htmlVideoSource.trim()}
+                onClick={handlePublishHtmlVideoLink}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {htmlVideoPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                Create Link
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[320px_1fr]">
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Title</label>
+                <input
+                  value={htmlVideoTitle}
+                  onChange={(e) => setHtmlVideoTitle(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                  placeholder="Video link title"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Size / Ratio</label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {(Object.keys(HTML_VIDEO_PRESETS) as HtmlVideoPresetKey[]).map((key) => {
+                    const preset = HTML_VIDEO_PRESETS[key];
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setHtmlVideoPreset(key)}
+                        className={`rounded-xl border px-3 py-2 text-left text-xs transition ${htmlVideoPreset === key ? 'border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        <div className="font-black">{preset.label}</div>
+                        <div className="mt-0.5 text-[10px] opacity-70">{preset.size}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {htmlVideoFileName && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  <b>Loaded:</b> {htmlVideoFileName}
+                </div>
+              )}
+              {htmlVideoError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+                  {htmlVideoError}
+                </div>
+              )}
+              {htmlVideoLinkInfo?.url && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Published Link</label>
+                  <input
+                    value={htmlVideoLinkInfo.url}
+                    readOnly
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full rounded-lg border border-emerald-200 bg-white px-2 py-2 text-[11px] font-mono text-slate-700"
+                  />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={copyHtmlVideoLink} className="flex-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
+                      Copy
+                    </button>
+                    <a href={htmlVideoLinkInfo.url} target="_blank" rel="noopener" className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-center text-xs font-bold text-white hover:bg-blue-700">
+                      Open
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-100 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black text-slate-800">Preview</div>
+                  <div className="text-xs text-slate-500">{currentPreset.label} · {currentPreset.size}</div>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-slate-500 border border-slate-200">Responsive frame</span>
+              </div>
+              <div className="mx-auto overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200" style={{ aspectRatio: currentPreset.ratio, maxHeight: '70vh', width: `min(100%, ${(currentPreset.w / currentPreset.h) * 70}vh)` }}>
+                {htmlVideoSource ? (
+                  <iframe
+                    title="HTML video preview"
+                    sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads"
+                    srcDoc={htmlVideoSource}
+                    className="h-full w-full border-0 bg-white"
+                  />
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center bg-slate-50 text-slate-400">
+                    <Video className="mb-3 h-10 w-10 opacity-40" />
+                    <p className="text-sm font-bold">Upload an HTML file to preview it here.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderForms = () => (
     <div className="space-y-4">
       <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white w-fit">
@@ -29840,6 +30107,15 @@ ${html}
             <button onClick={() => setFormsSubView('education')}
               className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'education' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
               <GraduationCap className="w-4 h-4" /> Academy
+            </button>
+            <div className="w-px bg-slate-200" />
+          </>
+        )}
+        {canUseFormsSection('formsCustom') && (
+          <>
+            <button onClick={() => setFormsSubView('htmlvideo')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'htmlvideo' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <Video className="w-4 h-4" /> تبدیل HTML به لینک ویدئویی
             </button>
             <div className="w-px bg-slate-200" />
           </>
@@ -29904,6 +30180,7 @@ ${html}
       {formsSubView === 'education' && canUseFormsSection('education') && (
         <EducationFormsPanel courses={educationCourses} onSaveCourses={setEducationCourses} />
       )}
+      {formsSubView === 'htmlvideo' && canUseFormsSection('formsCustom') && renderHtmlVideoLinkTool()}
       {formsSubView === 'exhibition' && canUseFormsSection('exhibition') && (
         <ExhibitionFormsPanel
           events={exhibitionEvents}
