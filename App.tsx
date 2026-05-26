@@ -6920,7 +6920,7 @@ function AppInner() {
   const [formPublishing, setFormPublishing] = useState<string | null>(null);
   const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
   const [publicIsoView, setPublicIsoView] = useState<{ key: string; doc: IsoDocumentDef & any } | null>(null);
-  const [publicCatalogView, setPublicCatalogView] = useState<{ key: string; kind: 'catalog' | 'meta-hub'; url: string; title?: string } | null>(null);
+  const [publicCatalogView, setPublicCatalogView] = useState<{ key: string; kind: 'catalog' | 'meta-hub' | 'html-video'; url: string; title?: string } | null>(null);
   const [publicCatalogLoading, setPublicCatalogLoading] = useState(() => {
     if (typeof window === 'undefined') return false;
     const sp = new URLSearchParams(window.location.search);
@@ -8301,19 +8301,21 @@ function AppInner() {
     return () => unsub();
   }, [db, dataAppId]);
 
-  // Short links ?c=CODE / ?mh=CODE open inside this domain instead of redirecting
+  // Short links ?c=CODE / ?mh=CODE / ?hv=CODE open inside this domain instead of redirecting
   // to the raw Storage URL, so the browser address stays on calculator.tohiddayhami.com.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
     const c = sp.get('c');
     const mh = sp.get('mh');
+    const hv = sp.get('hv');
     const catalogKey = c && /^[A-Za-z0-9]{8,14}$/.test(c) ? c : '';
     const metaHubKey = mh && /^[A-Za-z0-9]{8,14}$/.test(mh) ? mh : '';
-    const key = catalogKey || metaHubKey;
+    const htmlVideoKey = hv && /^[A-Za-z0-9]{8,14}$/.test(hv) ? hv : '';
+    const key = catalogKey || metaHubKey || htmlVideoKey;
     if (!key) return;
-    const kind: 'catalog' | 'meta-hub' = catalogKey ? 'catalog' : 'meta-hub';
-    const collectionName = kind === 'catalog' ? 'catalog_short_links' : 'meta_hub_links';
+    const kind: 'catalog' | 'meta-hub' | 'html-video' = catalogKey ? 'catalog' : metaHubKey ? 'meta-hub' : 'html-video';
+    const collectionName = kind === 'catalog' ? 'catalog_short_links' : kind === 'meta-hub' ? 'meta_hub_links' : 'html_video_links';
     let cancelled = false;
     (async () => {
       setPublicCatalogLoading(true);
@@ -8330,7 +8332,7 @@ function AppInner() {
             key,
             kind,
             url: target,
-            title: linkData.catalogTitle || linkData.title || (kind === 'catalog' ? 'Catalog' : 'Meta Trading Hub'),
+            title: linkData.catalogTitle || linkData.title || (kind === 'catalog' ? 'Catalog' : kind === 'meta-hub' ? 'Meta Trading Hub' : 'HTML Video Link'),
           });
           if (kind === 'catalog') {
             void (async () => {
@@ -29919,7 +29921,26 @@ ${html}
         'Publish HTML video link',
       );
       const url = await getDownloadURL(ref);
-      setHtmlVideoLinkInfo({ url, storagePath: path });
+      if (!db) throw new Error('Database is required for short links.');
+      let shortCode = '';
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const candidate = generateCatalogShortCode(10);
+        const snap = await getDoc(doc(db, 'html_video_links', candidate));
+        if (!snap.exists()) { shortCode = candidate; break; }
+      }
+      if (!shortCode) throw new Error('Could not create a short link. Please try again.');
+      const shortUrl = buildPublicAppUrl({ hv: shortCode });
+      await setDoc(doc(db, 'html_video_links', shortCode), {
+        url,
+        appId: dataAppId,
+        ownerUserId: activeOwnerUid,
+        storagePath: path,
+        title,
+        kind: 'html-video',
+        preset: htmlVideoPreset,
+        createdAt: serverTimestamp(),
+      });
+      setHtmlVideoLinkInfo({ url: shortUrl, storagePath: path });
     } catch (err: any) {
       console.error('HTML video link publish failed:', err);
       setHtmlVideoError(err?.message || 'ساخت لینک انجام نشد.');
@@ -30845,8 +30866,10 @@ ${html}
           const sp = new URLSearchParams(window.location.search);
           const c = sp.get('c');
           const mh = sp.get('mh');
+          const hv = sp.get('hv');
           if (c && /^[A-Za-z0-9]{8,14}$/.test(c)) return c;
           if (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)) return mh;
+          if (hv && /^[A-Za-z0-9]{8,14}$/.test(hv)) return hv;
           return null;
         })()
       : null;

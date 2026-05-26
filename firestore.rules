@@ -376,6 +376,52 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // HTML video-style public links generated from Forms.
+    match /html_video_links/{code} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['url', 'ownerUserId', 'storagePath', 'createdAt'])
+                    && (
+                      request.resource.data.ownerUserId == request.auth.uid
+                      || (
+                        request.resource.data.keys().hasAny(['appId'])
+                        && isMaster(request.resource.data.appId)
+                      )
+                    )
+                    && request.resource.data.url is string
+                    && request.resource.data.storagePath is string
+                    && request.resource.data.url.size() < 4000
+                    && request.resource.data.storagePath.size() < 500
+                    && code.size() >= 8
+                    && code.size() <= 16;
+      allow delete: if request.auth != null
+                    && (
+                      resource.data.ownerUserId == request.auth.uid
+                      || isConfiguredMasterEmail()
+                      || (
+                        resource.data.keys().hasAny(['appId'])
+                        && isMaster(resource.data.appId)
+                      )
+                    );
+      allow update: if request.auth != null
+                    && (
+                      resource.data.ownerUserId == request.auth.uid
+                      || isConfiguredMasterEmail()
+                      || (
+                        resource.data.keys().hasAny(['appId'])
+                        && isMaster(resource.data.appId)
+                      )
+                    )
+                    && request.resource.data.keys().hasAll(['url', 'ownerUserId', 'storagePath'])
+                    && request.resource.data.ownerUserId == resource.data.ownerUserId
+                    && request.resource.data.url is string
+                    && request.resource.data.storagePath is string
+                    && request.resource.data.url.size() < 4000
+                    && request.resource.data.storagePath.size() < 500
+                    && code.size() >= 8
+                    && code.size() <= 16;
+    }
+
     // Catalog analytics — summary doc created by the app owner; events written by public catalog visitors
     match /catalog_analytics/{shortCode} {
       allow read: if request.auth != null
