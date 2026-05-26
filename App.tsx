@@ -5234,7 +5234,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 // Info: copy card-body HTML (name, badges, desc, prices, meta)
                 var body = card.querySelector('.card-body');
                 pdInfo.innerHTML = body ? body.innerHTML : '';
-                // Remove duplicate CTA buttons that already exist in card-body (keep one)
+                pdInfo.setAttribute('data-cart-source', 'detail');
+                ['data-idx','data-cart-sku','data-cart-name','data-cart-unit','data-cart-pack','data-cart-moq','data-cart-img','data-cart-unit-prices','data-cart-pack-prices','data-cart-currency'].forEach(function(attr){
+                    var val = card.getAttribute(attr);
+                    if (val != null) pdInfo.setAttribute(attr, val);
+                    else pdInfo.removeAttribute(attr);
+                });
                 pdOverlay.classList.remove('pd-hidden');
                 document.body.style.overflow = 'hidden';
                 if (window.__trackCatalogEvent) {
@@ -5641,37 +5646,45 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             }
             syncCartPrices();
 
-            // Add to cart buttons
-            document.querySelectorAll('[data-add-to-cart]').forEach(function(btn){
-                var card = btn.closest('.card');
-                if (!card) return;
-                var sku = card.getAttribute('data-cart-sku') || '';
-                var key = sku || ('p_' + (card.getAttribute('data-idx') || Math.random().toString(36).slice(2)));
-                btn.addEventListener('click', function(e){
-                    e.preventDefault();
-                    var name = card.getAttribute('data-cart-name') || 'Item';
-                    var pack = parseInt(card.getAttribute('data-cart-pack') || '0', 10) || 0;
-                    var existing = cart[key];
-                    cart[key] = {
-                        sku: sku,
-                        name: name,
-                        unit: card.getAttribute('data-cart-unit') || '',
-                        pack: pack,
-                        img: card.getAttribute('data-cart-img') || '',
-                        qty: existing ? (existing.qty || 0) + 1 : 1,
-                        mode: existing ? existing.mode : (pack > 0 ? 'pack' : 'unit'),
-                        unitPrices: parseJsonAttr(card, 'data-cart-unit-prices'),
-                        packPrices: parseJsonAttr(card, 'data-cart-pack-prices'),
-                        currency: card.getAttribute('data-cart-currency') || SELLER_CURRENCY
-                    };
-                    save();
-                    refresh();
+            function addSourceToCart(source, btn){
+                if (!source) return;
+                var sku = source.getAttribute('data-cart-sku') || '';
+                var key = sku || ('p_' + (source.getAttribute('data-idx') || Math.random().toString(36).slice(2)));
+                var name = source.getAttribute('data-cart-name') || 'Item';
+                var pack = parseInt(source.getAttribute('data-cart-pack') || '0', 10) || 0;
+                var existing = cart[key];
+                cart[key] = {
+                    sku: sku,
+                    name: name,
+                    unit: source.getAttribute('data-cart-unit') || '',
+                    pack: pack,
+                    img: source.getAttribute('data-cart-img') || '',
+                    qty: existing ? (existing.qty || 0) + 1 : 1,
+                    mode: existing ? existing.mode : (pack > 0 ? 'pack' : 'unit'),
+                    unitPrices: parseJsonAttr(source, 'data-cart-unit-prices'),
+                    packPrices: parseJsonAttr(source, 'data-cart-pack-prices'),
+                    currency: source.getAttribute('data-cart-currency') || SELLER_CURRENCY
+                };
+                save();
+                refresh();
+                if (btn) {
                     btn.classList.add('added');
                     var orig = btn.textContent;
                     btn.textContent = 'Added \\u2713';
                     setTimeout(function(){ btn.classList.remove('added'); btn.textContent = orig; }, 1200);
-                    openDrawer();
-                });
+                }
+                openDrawer();
+            }
+
+            // Add to cart buttons, including the product-detail modal contents.
+            document.addEventListener('click', function(e){
+                var btn = e.target && e.target.closest ? e.target.closest('[data-add-to-cart]') : null;
+                if (!btn) return;
+                var source = btn.closest('.card') || btn.closest('[data-cart-source]');
+                if (!source) return;
+                e.preventDefault();
+                e.stopPropagation();
+                addSourceToCart(source, btn);
             });
 
             if (fab) fab.addEventListener('click', openDrawer);
