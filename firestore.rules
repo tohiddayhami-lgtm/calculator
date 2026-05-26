@@ -376,6 +376,38 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Catalog analytics — summary doc created by the app owner; events written by public catalog visitors
+    match /catalog_analytics/{shortCode} {
+      allow read: if request.auth != null
+                  && (resource.data.ownerUserId == request.auth.uid || isConfiguredMasterEmail());
+      allow create: if request.auth != null
+                    && request.resource.data.keys().hasAll(['ownerUserId', 'appId', 'shortCode', 'createdAt'])
+                    && request.resource.data.shortCode == shortCode
+                    && shortCode.size() >= 8
+                    && shortCode.size() <= 16;
+      allow update: if request.auth != null
+                    && (resource.data.ownerUserId == request.auth.uid || isConfiguredMasterEmail());
+      allow delete: if request.auth != null
+                    && (resource.data.ownerUserId == request.auth.uid || isConfiguredMasterEmail());
+    }
+
+    // Individual analytics events — public catalog visitors can write; owner can read
+    match /catalog_analytics/{shortCode}/events/{eventId} {
+      allow create: if request.resource.data.keys().hasAll(['type', 'sessionId', 'ownerUserId', 'createdAt'])
+                    && request.resource.data.type in ['visit', 'product_view', 'section_view', 'order_submit', 'time_on_page']
+                    && request.resource.data.sessionId is string
+                    && request.resource.data.sessionId.size() >= 6
+                    && request.resource.data.sessionId.size() < 100
+                    && request.resource.data.ownerUserId is string
+                    && request.resource.data.ownerUserId.size() > 0
+                    && shortCode.size() >= 8
+                    && shortCode.size() <= 16;
+      allow read: if request.auth != null
+                  && (resource.data.ownerUserId == request.auth.uid || isConfiguredMasterEmail());
+      allow delete: if request.auth != null
+                    && (resource.data.ownerUserId == request.auth.uid || isConfiguredMasterEmail());
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

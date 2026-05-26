@@ -4189,9 +4189,10 @@ interface BuildCatalogHtmlArgs {
     qrDataUrl: string;
     tCombined: (key: string) => string;
     inquiryEndpoint?: { firebaseConfig: any; appId: string; ownerId: string } | null;
+    analyticsEndpoint?: { firebaseConfig: any; appId: string; ownerId: string; shortCode: string } | null;
 }
 
-const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], qrDataUrl, tCombined, inquiryEndpoint }: BuildCatalogHtmlArgs): string => {
+const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], qrDataUrl, tCombined, inquiryEndpoint, analyticsEndpoint }: BuildCatalogHtmlArgs): string => {
     const cc = catalogConfig || {};
     const primary = cc.primaryColor || '#0f172a';
     const heading = cc.headingColor || primary;
@@ -4470,7 +4471,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             : '';
 
         return `
-            <article class="card" data-idx="${idx}" data-group="${escapeAttr(p.group || '')}" ${cartDataAttrs}>
+            <article class="card" data-idx="${idx}" data-group="${escapeAttr(p.group || '')}" data-analytics-name="${escapeAttr(cartName)}" data-analytics-sku="${escapeAttr(p.sku || '')}" ${cartDataAttrs}>
                 <div class="card-image">
                     <div class="carousel" data-slides="${slideList.length}">
                         ${slidesHtml}
@@ -5236,6 +5237,11 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 // Remove duplicate CTA buttons that already exist in card-body (keep one)
                 pdOverlay.classList.remove('pd-hidden');
                 document.body.style.overflow = 'hidden';
+                if (window.__trackCatalogEvent) {
+                    var aName = card.getAttribute('data-analytics-name') || '';
+                    var aSku = card.getAttribute('data-analytics-sku') || '';
+                    window.__trackCatalogEvent('product_view', { productName: aName, productSku: aSku });
+                }
             }
             function closePD() {
                 pdOverlay.classList.add('pd-hidden');
@@ -5851,6 +5857,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                     statusEl.textContent = '';
                     statusEl.className = 'submit-status';
                     showThanks();
+                    if (window.__trackCatalogEvent) {
+                        window.__trackCatalogEvent('order_submit', {
+                            orderItemCount: Object.keys(cart).length,
+                            customerCountry: payload.customer.country || '',
+                        });
+                    }
                 } catch (err) {
                     submitBtn.disabled = false;
                     var msg = (err && err.message) ? err.message : 'Failed to send the inquiry to the seller.';
@@ -5922,6 +5934,102 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const websitePanelsHtml = websiteTabs
         .map((tab, index) => `<div class="site-tab-panel${index === 0 ? ' active' : ''}" data-site-panel="${escapeAttr(tab.id)}">${tab.html}</div>`)
         .join('');
+
+    // Firebase analytics script — always embedded when analyticsEndpoint is available (regardless of cart).
+    const anl = (analyticsEndpoint && analyticsEndpoint.firebaseConfig && analyticsEndpoint.ownerId && analyticsEndpoint.shortCode) ? analyticsEndpoint : null;
+    const firebaseAnalyticsScript = anl ? `
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+  import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+  try {
+    const FB_CFG = ${JSON.stringify(anl.firebaseConfig)};
+    const APP_ID = ${JSON.stringify(anl.appId || 'export-pro-default')};
+    const OWNER_ID = ${JSON.stringify(anl.ownerId)};
+    const SHORT_CODE = ${JSON.stringify(anl.shortCode)};
+    const fbApp = initializeApp(FB_CFG, 'analytics-' + Date.now());
+    const fbDb = getFirestore(fbApp);
+
+    // Session identity (one visit per session)
+    const SID_KEY = 'cat_sid_' + SHORT_CODE;
+    let sessionId = sessionStorage.getItem(SID_KEY);
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionStorage.setItem(SID_KEY, sessionId);
+    }
+
+    const ua = navigator.userAgent;
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
+    const isTablet = /iPad|Tablet/i.test(ua) || (isMobile && Math.min(screen.width, screen.height) > 600);
+    const deviceType = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+
+    let geoCountry = '', geoCity = '', geoRegion = '';
+
+    const trackEvent = async (type, extra) => {
+      try {
+        const evRef = collection(fbDb, 'catalog_analytics', SHORT_CODE, 'events');
+        await addDoc(evRef, Object.assign({
+          type,
+          sessionId,
+          ownerUserId: OWNER_ID,
+          appId: APP_ID,
+          shortCode: SHORT_CODE,
+          deviceType,
+          referrer: document.referrer ? (() => { try { return new URL(document.referrer).hostname; } catch(e) { return ''; } })() : '',
+          country: geoCountry,
+          city: geoCity,
+          createdAt: serverTimestamp(),
+        }, extra || {}));
+      } catch(e) { /* silent */ }
+    };
+    window.__trackCatalogEvent = trackEvent;
+
+    // Track visit once per session
+    const VISITED_KEY = 'cat_visited_' + SHORT_CODE;
+    const startTime = Date.now();
+
+    fetch('https://ipapi.co/json/')
+      .then(r => r.ok ? r.json() : {})
+      .then(d => { geoCountry = d.country_name || d.country || ''; geoCity = d.city || ''; geoRegion = d.region || ''; })
+      .catch(() => {})
+      .finally(() => {
+        if (!sessionStorage.getItem(VISITED_KEY)) {
+          sessionStorage.setItem(VISITED_KEY, '1');
+          trackEvent('visit', { country: geoCountry, city: geoCity, region: geoRegion });
+        }
+      });
+
+    // Track time on page
+    const trackTime = () => {
+      const dur = Math.round((Date.now() - startTime) / 1000);
+      if (dur > 5) trackEvent('time_on_page', { duration: dur });
+    };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') trackTime(); });
+    window.addEventListener('beforeunload', trackTime);
+
+    // Section view tracking via IntersectionObserver on product group sections
+    if ('IntersectionObserver' in window) {
+      const secObs = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            const name = e.target.getAttribute('data-analytics-section') || '';
+            if (name) {
+              const k = 'cat_sec_' + SHORT_CODE + '_' + name;
+              if (!sessionStorage.getItem(k)) {
+                sessionStorage.setItem(k, '1');
+                trackEvent('section_view', { sectionName: name });
+              }
+            }
+          }
+        });
+      }, { threshold: 0.25 });
+
+      // Observe category section headings (injected by filter pill script below)
+      document.addEventListener('cat_sections_ready', () => {
+        document.querySelectorAll('[data-analytics-section]').forEach(el => secObs.observe(el));
+      });
+    }
+  } catch(e) { console.warn('Catalog analytics init failed:', e); }
+</script>` : '';
 
     // Firebase backend script (embedded as ES module). Only included when an inquiry endpoint is provided.
     const inq = (inquiryEndpoint && inquiryEndpoint.firebaseConfig && inquiryEndpoint.ownerId) ? inquiryEndpoint : null;
@@ -5998,6 +6106,7 @@ ${cartHtml}
   </div>
 </div>
 
+${firebaseAnalyticsScript}
 ${firebaseInquiryScript}
 <script>${js}</script>
 <script>
@@ -6030,6 +6139,16 @@ ${firebaseInquiryScript}
     if (pills.length) {
         var cards = document.querySelectorAll('.card');
         var activeFilter = 'all';
+        // Add analytics-section markers to each group of cards for IntersectionObserver
+        var seenGroups = {};
+        cards.forEach(function(card) {
+            var g = card.getAttribute('data-group') || '';
+            if (g && !seenGroups[g]) {
+                seenGroups[g] = true;
+                card.setAttribute('data-analytics-section', g);
+            }
+        });
+        document.dispatchEvent(new Event('cat_sections_ready'));
         pills.forEach(function(pill){
             pill.addEventListener('click', function(){
                 activeFilter = pill.getAttribute('data-filter') || 'all';
@@ -6038,6 +6157,10 @@ ${firebaseInquiryScript}
                     var g = card.getAttribute('data-group') || '';
                     card.classList.toggle('hidden', activeFilter !== 'all' && g !== activeFilter);
                 });
+                // Track section navigation
+                if (activeFilter !== 'all' && window.__trackCatalogEvent) {
+                    window.__trackCatalogEvent('section_view', { sectionName: activeFilter });
+                }
                 // Scroll active pill into view
                 var activePill = document.querySelector('.filter-pill.active');
                 if (activePill) activePill.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
@@ -6562,6 +6685,9 @@ function AppInner() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [savedCatalogLinks, setSavedCatalogLinks] = useState<any[]>([]);
+  const [analyticsModalLink, setAnalyticsModalLink] = useState<{ shortCode: string; catalogTitle: string } | null>(null);
+  const [analyticsEvents, setAnalyticsEvents] = useState<any[]>([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [catalogPageTab, setCatalogPageTab] = useState<'catalog' | 'catalogue-shop' | 'meta-trading-hub' | 'story-studio'>('catalog');
   const [metaHubHtml, setMetaHubHtml] = useState<string>('');
   const [metaHubEditorMode, setMetaHubEditorMode] = useState<'code' | 'visual' | 'preview'>('code');
@@ -7846,6 +7972,33 @@ function AppInner() {
     );
     return () => unsub();
   }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
+
+  // Real-time analytics events listener — active when analytics modal is open
+  useEffect(() => {
+    if (!analyticsModalLink || !db) {
+      setAnalyticsEvents([]);
+      return;
+    }
+    setAnalyticsLoading(true);
+    let q: any;
+    try {
+      q = query(
+        collection(db, 'catalog_analytics', analyticsModalLink.shortCode, 'events'),
+        orderBy('createdAt', 'desc'),
+        limit(1000),
+      );
+    } catch {
+      q = collection(db, 'catalog_analytics', analyticsModalLink.shortCode, 'events');
+    }
+    const unsub = onSnapshot(q, (snap: any) => {
+      setAnalyticsEvents(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+      setAnalyticsLoading(false);
+    }, (err: any) => {
+      console.warn('Analytics events listener:', err);
+      setAnalyticsLoading(false);
+    });
+    return () => unsub();
+  }, [analyticsModalLink?.shortCode]);
 
   // MetaPort booths listener
   useEffect(() => {
@@ -17114,9 +17267,31 @@ function AppInner() {
 
     const handleExportCatalogHtml = async () => {
         try {
+            const useMasterLink = catalogMasterLinkMode;
+            const canUseShortLinks = !!db && !isDemoMode && user?.uid !== DEMO_USER_ID;
+            const existingMaster = catalogConfig.catalogMasterLink;
+
+            // Pre-allocate short code before HTML build so analytics endpoint can embed it.
+            let preShortCode: string | undefined;
+            if (user && canUseShortLinks && db) {
+                if (useMasterLink && existingMaster?.shortCode) {
+                    preShortCode = existingMaster.shortCode;
+                } else {
+                    for (let attempt = 0; attempt < 24; attempt++) {
+                        const candidate = generateCatalogShortCode(10);
+                        const snap = await getDoc(doc(db, 'catalog_short_links', candidate));
+                        if (!snap.exists()) { preShortCode = candidate; break; }
+                    }
+                }
+            }
+
             const inquiryEndpoint = (user && firebaseConfig && firebaseConfig.apiKey)
                 ? { firebaseConfig, appId, ownerId: activeOwnerUid }
                 : null;
+            const analyticsEndpoint = (user && firebaseConfig && firebaseConfig.apiKey && preShortCode)
+                ? { firebaseConfig, appId, ownerId: activeOwnerUid, shortCode: preShortCode }
+                : null;
+
             const html = buildCatalogHtml({
                 products: calculations.processedProducts.filter(p => p.isActive && isProductIncluded(p.id)),
                 config,
@@ -17124,7 +17299,8 @@ function AppInner() {
                 volumeTiers,
                 qrDataUrl,
                 tCombined,
-                inquiryEndpoint
+                inquiryEndpoint,
+                analyticsEndpoint,
             });
             const safeTitle = (catalogConfig.title || 'catalog').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'catalog';
             const fileName = `${safeTitle}.html`;
@@ -17134,12 +17310,9 @@ function AppInner() {
             if (user && storage) {
                 setShareLinkInfo({ url: '', qr: '', uploading: true });
                 try {
-                    const useMasterLink = catalogMasterLinkMode;
-                    const canUseShortLinks = !!db && !isDemoMode && user.uid !== DEMO_USER_ID;
                     if (useMasterLink && !canUseShortLinks) {
                         throw new Error('Stable master links require Firebase database access so the short link and QR can stay fixed.');
                     }
-                    const existingMaster = catalogConfig.catalogMasterLink;
                     const path = useMasterLink
                         ? existingMaster?.storagePath || `users/${activeOwnerUid}/catalogs/master-${safeTitle}.html`
                         : `users/${activeOwnerUid}/catalogs/${safeTitle}-${Date.now()}.html`;
@@ -17147,21 +17320,11 @@ function AppInner() {
                     await uploadString(ref, html, 'raw', { contentType: 'text/html; charset=utf-8' });
                     const url = await getDownloadURL(ref);
                     let shortUrl: string | undefined;
-                    let shortCode: string | undefined = useMasterLink ? existingMaster?.shortCode : undefined;
+                    let shortCode: string | undefined = preShortCode;
                     let catalogLinkId: string | undefined = useMasterLink ? existingMaster?.catalogLinkId : undefined;
-                    if (canUseShortLinks && db) {
+                    if (canUseShortLinks && db && shortCode) {
                         try {
                             if (useMasterLink) {
-                                if (!shortCode) {
-                                    for (let attempt = 0; attempt < 24; attempt++) {
-                                        const candidate = generateCatalogShortCode(10);
-                                        const pubRef = doc(db, 'catalog_short_links', candidate);
-                                        const existing = await getDoc(pubRef);
-                                        if (existing.exists()) continue;
-                                        shortCode = candidate;
-                                        break;
-                                    }
-                                }
                                 if (!shortCode) throw new Error('Could not allocate a stable catalog short link.');
                                 shortUrl = buildPublicAppUrl({ c: shortCode });
                                 const publicLinkRef = doc(db, 'catalog_short_links', shortCode);
@@ -17208,6 +17371,17 @@ function AppInner() {
                                     });
                                     catalogLinkId = created.id;
                                 }
+                                // Ensure analytics summary doc exists for this link
+                                try {
+                                    await setDoc(doc(db, 'catalog_analytics', shortCode), {
+                                        ownerUserId: activeOwnerUid,
+                                        appId: dataAppId,
+                                        shortCode,
+                                        catalogTitle: catalogConfig.title || 'Catalog',
+                                        kind: 'catalog',
+                                        createdAt: serverTimestamp(),
+                                    }, { merge: true });
+                                } catch(anlErr) { /* non-critical */ }
                                 setCatalogConfig(prev => ({
                                     ...prev,
                                     catalogMasterLink: {
@@ -17220,35 +17394,37 @@ function AppInner() {
                                     },
                                 }));
                             } else {
-                                for (let attempt = 0; attempt < 24; attempt++) {
-                                    const candidate = generateCatalogShortCode(10);
-                                    const pubRef = doc(db, 'catalog_short_links', candidate);
-                                    const existing = await getDoc(pubRef);
-                                    if (existing.exists()) continue;
-                                    shortCode = candidate;
-                                    const shortUrlFull = buildPublicAppUrl({ c: candidate });
-                                    await setDoc(pubRef, {
-                                        url,
-                                        appId: dataAppId,
+                                shortUrl = buildPublicAppUrl({ c: shortCode });
+                                await setDoc(doc(db, 'catalog_short_links', shortCode), {
+                                    url,
+                                    appId: dataAppId,
+                                    ownerUserId: activeOwnerUid,
+                                    storagePath: path,
+                                    catalogTitle: catalogConfig.title || 'Catalog',
+                                    kind: 'catalog',
+                                    createdAt: serverTimestamp()
+                                });
+                                await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+                                    fullUrl: url,
+                                    shortUrl,
+                                    shortCode,
+                                    storagePath: path,
+                                    catalogTitle: catalogConfig.title || 'Catalog',
+                                    fileName,
+                                    kind: 'catalog',
+                                    createdAt: serverTimestamp()
+                                });
+                                // Ensure analytics summary doc exists for this link
+                                try {
+                                    await setDoc(doc(db, 'catalog_analytics', shortCode), {
                                         ownerUserId: activeOwnerUid,
-                                        storagePath: path,
+                                        appId: dataAppId,
+                                        shortCode,
                                         catalogTitle: catalogConfig.title || 'Catalog',
                                         kind: 'catalog',
-                                        createdAt: serverTimestamp()
-                                    });
-                                    await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
-                                        fullUrl: url,
-                                        shortUrl: shortUrlFull,
-                                        shortCode: candidate,
-                                        storagePath: path,
-                                        catalogTitle: catalogConfig.title || 'Catalog',
-                                        fileName,
-                                        kind: 'catalog',
-                                        createdAt: serverTimestamp()
-                                    });
-                                    shortUrl = shortUrlFull;
-                                    break;
-                                }
+                                        createdAt: serverTimestamp(),
+                                    }, { merge: true });
+                                } catch(anlErr) { /* non-critical */ }
                             }
                         } catch (metaErr) {
                             console.warn('Catalog link metadata / short URL save failed:', metaErr);
@@ -19632,6 +19808,15 @@ ${html}
                                           >
                                               Open
                                           </a>
+                                          {link.shortCode ? (
+                                              <button
+                                                  type="button"
+                                                  onClick={() => setAnalyticsModalLink({ shortCode: link.shortCode, catalogTitle: link.catalogTitle || 'Catalog' })}
+                                                  className="px-1.5 py-0.5 bg-violet-100 text-violet-800 rounded font-medium hover:bg-violet-200"
+                                              >
+                                                  Analytics
+                                              </button>
+                                          ) : null}
                                           <button
                                               type="button"
                                               onClick={() => handleDeleteSavedCatalogLink(link)}
@@ -30681,6 +30866,178 @@ ${html}
       </main>
 
       {/* --- MODALS --- */}
+
+      {/* Catalog Analytics Modal */}
+      {analyticsModalLink && (() => {
+        const events = analyticsEvents;
+        const visitEvents = events.filter((e: any) => e.type === 'visit');
+        const uniqueSessions = new Set(events.map((e: any) => e.sessionId)).size;
+        const countryCounts: Record<string, number> = {};
+        visitEvents.forEach((e: any) => { if (e.country) countryCounts[e.country] = (countryCounts[e.country] || 0) + 1; });
+        const topCountries = Object.entries(countryCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+        const deviceCounts: Record<string, number> = {};
+        events.forEach((e: any) => { if (e.deviceType) deviceCounts[e.deviceType] = (deviceCounts[e.deviceType] || 0) + 1; });
+        const productViewCounts: Record<string, number> = {};
+        events.filter((e: any) => e.type === 'product_view').forEach((e: any) => {
+          const k = e.productName || e.productSku || 'Unknown';
+          productViewCounts[k] = (productViewCounts[k] || 0) + 1;
+        });
+        const topProducts = Object.entries(productViewCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+        const sectionCounts: Record<string, number> = {};
+        events.filter((e: any) => e.type === 'section_view').forEach((e: any) => {
+          const k = e.sectionName || 'Unknown';
+          sectionCounts[k] = (sectionCounts[k] || 0) + 1;
+        });
+        const topSections = Object.entries(sectionCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        const orderEvents = events.filter((e: any) => e.type === 'order_submit');
+        const recentActivity = events.slice(0, 15);
+        const formatTime = (ts: any) => {
+          if (!ts) return '';
+          const d = ts.toDate ? ts.toDate() : new Date(ts.seconds ? ts.seconds * 1000 : ts);
+          return d.toLocaleString();
+        };
+        const typeIcon: Record<string, string> = { visit: '👁', product_view: '📦', section_view: '📂', order_submit: '🛒', time_on_page: '⏱' };
+        return (
+          <div className="fixed inset-0 z-[80] bg-slate-900/50 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto" onClick={() => setAnalyticsModalLink(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl border border-slate-200 my-8" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Analytics — {analyticsModalLink.catalogTitle}</h2>
+                  <p className="text-xs text-slate-500 mt-0.5 font-mono">{analyticsModalLink.shortCode}</p>
+                </div>
+                <button onClick={() => setAnalyticsModalLink(null)} className="p-1 text-slate-400 hover:text-slate-900 rounded"><X className="w-5 h-5" /></button>
+              </div>
+
+              {analyticsLoading ? (
+                <div className="p-10 text-center text-slate-500 text-sm">Loading analytics...</div>
+              ) : events.length === 0 ? (
+                <div className="p-10 text-center text-slate-400 text-sm">
+                  No data yet. Share this catalog link and visits will appear here in real-time.
+                </div>
+              ) : (
+                <div className="p-5 space-y-6">
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: 'Total Visits', value: visitEvents.length, color: 'bg-blue-50 text-blue-700' },
+                      { label: 'Unique Sessions', value: uniqueSessions, color: 'bg-violet-50 text-violet-700' },
+                      { label: 'Product Views', value: events.filter((e: any) => e.type === 'product_view').length, color: 'bg-emerald-50 text-emerald-700' },
+                      { label: 'Orders Submitted', value: orderEvents.length, color: 'bg-amber-50 text-amber-700' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} className={`rounded-xl p-3 ${color}`}>
+                        <div className="text-2xl font-black">{value}</div>
+                        <div className="text-xs font-medium mt-0.5 opacity-80">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {/* Countries */}
+                    {topCountries.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Countries</h3>
+                        <div className="space-y-1.5">
+                          {topCountries.map(([country, count]) => (
+                            <div key={country} className="flex items-center gap-2">
+                              <div className="text-xs text-slate-700 w-28 truncate font-medium">{country}</div>
+                              <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.round((count / (topCountries[0]?.[1] || 1)) * 100)}%` }} />
+                              </div>
+                              <div className="text-xs font-bold text-slate-600 w-5 text-right">{count}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Devices */}
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Devices</h3>
+                      <div className="space-y-1.5">
+                        {Object.entries(deviceCounts).map(([device, count]) => (
+                          <div key={device} className="flex items-center gap-2">
+                            <div className="text-xs text-slate-700 w-20 font-medium capitalize">{device}</div>
+                            <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                              <div className="bg-violet-500 h-2 rounded-full" style={{ width: `${Math.round((count / events.length) * 100)}%` }} />
+                            </div>
+                            <div className="text-xs font-bold text-slate-600 w-5 text-right">{count}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {/* Top Products */}
+                    {topProducts.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Top Products Viewed</h3>
+                        <div className="space-y-1.5">
+                          {topProducts.map(([name, count]) => (
+                            <div key={name} className="flex items-center gap-2">
+                              <div className="text-xs text-slate-700 flex-1 truncate font-medium" title={name}>{name}</div>
+                              <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Top Sections */}
+                    {topSections.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Top Sections</h3>
+                        <div className="space-y-1.5">
+                          {topSections.map(([name, count]) => (
+                            <div key={name} className="flex items-center gap-2">
+                              <div className="text-xs text-slate-700 flex-1 truncate font-medium" title={name}>{name}</div>
+                              <span className="text-xs font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Orders */}
+                  {orderEvents.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Orders / Inquiries Submitted ({orderEvents.length})</h3>
+                      <div className="space-y-1">
+                        {orderEvents.slice(0, 8).map((e: any) => (
+                          <div key={e.id} className="flex items-center gap-2 text-xs bg-amber-50 rounded-lg px-2 py-1.5">
+                            <span className="font-medium text-amber-800">{e.country || '—'}</span>
+                            {e.orderItemCount ? <span className="text-amber-600">{e.orderItemCount} items</span> : null}
+                            <span className="text-slate-400 ml-auto">{formatTime(e.createdAt)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recent Activity */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Recent Activity</h3>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {recentActivity.map((e: any) => (
+                        <div key={e.id} className="flex items-center gap-2 text-xs text-slate-600 py-1 border-b border-slate-100 last:border-0">
+                          <span>{typeIcon[e.type] || '•'}</span>
+                          <span className="capitalize font-medium text-slate-700">{(e.type || '').replace(/_/g, ' ')}</span>
+                          {e.country && <span className="text-slate-400">· {e.country}</span>}
+                          {e.productName && <span className="text-emerald-600 truncate max-w-[120px]">{e.productName}</span>}
+                          {e.sectionName && <span className="text-orange-600 truncate max-w-[120px]">{e.sectionName}</span>}
+                          <span className="text-slate-400 ml-auto shrink-0">{formatTime(e.createdAt)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Storage Manager Modal */}
       {storageManagerModal && (
