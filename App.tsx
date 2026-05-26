@@ -142,6 +142,7 @@ import { ExhibitionFormsPanel, EXHIBITION_STORAGE_KEY, META_MALL_STORAGE_KEY } f
 import { normalizeExhibitionEvent } from './exhibitionNormalize';
 import { buildExhibitionTopViewHtml } from './exhibitionTopViewExport';
 import { buildMetaMallTopViewHtml } from './metaMallTopViewExport';
+import { buildEbookFlipbookHtml, type EbookAccessMode, type EbookDirection, type EbookLanguageKey } from './ebookFlipbook';
 import {
   computeVatFromNet,
   normalizeInvoiceExtraCharges,
@@ -3111,6 +3112,15 @@ const buildPublicAppUrl = (params: Record<string, string>): string => {
     if (value) url.searchParams.set(key, value);
   });
   return url.toString();
+};
+
+const sha256Hex = async (value: string): Promise<string> => {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    throw new Error('Password protection requires a browser with secure crypto support.');
+  }
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 };
 
 const isIOSDevice = (): boolean => {
@@ -6858,6 +6868,19 @@ function AppInner() {
   const [htmlVideoPublishing, setHtmlVideoPublishing] = useState(false);
   const [htmlVideoLinkInfo, setHtmlVideoLinkInfo] = useState<{ url: string; storagePath: string } | null>(null);
   const [htmlVideoError, setHtmlVideoError] = useState('');
+  const ebookFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [ebookTitle, setEbookTitle] = useState('Professional Ebook');
+  const [ebookFile, setEbookFile] = useState<File | null>(null);
+  const [ebookPreviewUrl, setEbookPreviewUrl] = useState('');
+  const [ebookLanguage, setEbookLanguage] = useState<EbookLanguageKey>('both');
+  const [ebookDirection, setEbookDirection] = useState<EbookDirection>('rtl');
+  const [ebookAccessMode, setEbookAccessMode] = useState<EbookAccessMode>('public');
+  const [ebookPassword, setEbookPassword] = useState('');
+  const [ebookAllowDownload, setEbookAllowDownload] = useState(true);
+  const [ebookAccentColor, setEbookAccentColor] = useState('#2563eb');
+  const [ebookPublishing, setEbookPublishing] = useState(false);
+  const [ebookLinkInfo, setEbookLinkInfo] = useState<{ url: string; storagePath: string; pdfStoragePath: string } | null>(null);
+  const [ebookError, setEbookError] = useState('');
   const [invoiceDocKind, setInvoiceDocKind] = useState<InvoiceDocKind>('products');
   const [serviceInvoiceLines, setServiceInvoiceLines] = useState<ServiceInvoiceLine[]>([]);
   const [serviceInvoiceDiscountCurrency, setServiceInvoiceDiscountCurrency] = useState('USD');
@@ -6874,7 +6897,7 @@ function AppInner() {
   const [formSubmissions, setFormSubmissions] = useState<FormSubmission[]>([]);
   const [isoDocuments, setIsoDocuments] = useState<IsoDocumentDef[]>([]);
   const [isoRecords, setIsoRecords] = useState<IsoExecutionRecord[]>([]);
-  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'exhibition' | 'metamall' | 'archive' | 'metaport' | 'htmlvideo'>('list');
+  const [formsSubView, setFormsSubView] = useState<'packinglist' | 'list' | 'iso' | 'contracts' | 'proposals' | 'education' | 'exhibition' | 'metamall' | 'archive' | 'metaport' | 'htmlvideo' | 'ebook'>('list');
   const [formArchiveOpenId, setFormArchiveOpenId] = useState<string | null>(null);
   const [showFormBuilder, setShowFormBuilder] = useState(false);
 
@@ -6913,14 +6936,15 @@ function AppInner() {
   const [formPublishing, setFormPublishing] = useState<string | null>(null);
   const [publicFormView, setPublicFormView] = useState<{ key: string; form: any } | null>(null);
   const [publicIsoView, setPublicIsoView] = useState<{ key: string; doc: IsoDocumentDef & any } | null>(null);
-  const [publicCatalogView, setPublicCatalogView] = useState<{ key: string; kind: 'catalog' | 'meta-hub' | 'html-video'; url: string; title?: string } | null>(null);
+  const [publicCatalogView, setPublicCatalogView] = useState<{ key: string; kind: 'catalog' | 'meta-hub' | 'html-video' | 'ebook'; url: string; title?: string } | null>(null);
   const [publicCatalogLoading, setPublicCatalogLoading] = useState(() => {
     if (typeof window === 'undefined') return false;
     const sp = new URLSearchParams(window.location.search);
     const c = sp.get('c');
     const mh = sp.get('mh');
     const hv = sp.get('hv');
-    return !!((c && /^[A-Za-z0-9]{8,14}$/.test(c)) || (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)) || (hv && /^[A-Za-z0-9]{8,14}$/.test(hv)));
+    const eb = sp.get('eb');
+    return !!((c && /^[A-Za-z0-9]{8,14}$/.test(c)) || (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)) || (hv && /^[A-Za-z0-9]{8,14}$/.test(hv)) || (eb && /^[A-Za-z0-9]{8,14}$/.test(eb)));
   });
   const [publicCatalogError, setPublicCatalogError] = useState('');
   const [publicIsoSubmitter, setPublicIsoSubmitter] = useState({ name: '', email: '', organization: '', notes: '' });
@@ -6959,6 +6983,12 @@ function AppInner() {
       document.body.style.overflow = prevOverflow;
     };
   }, [publicHtmlFrameOpenId]);
+
+  useEffect(() => {
+    return () => {
+      if (ebookPreviewUrl) URL.revokeObjectURL(ebookPreviewUrl);
+    };
+  }, [ebookPreviewUrl]);
 
   useEffect(() => {
     const el = formAppendixEditorRef.current;
@@ -7881,6 +7911,7 @@ function AppInner() {
       canUseFormsSection('proposals') ? 'proposals' : null,
       canUseFormsSection('education') ? 'education' : null,
       canUseFormsSection('formsCustom') ? 'htmlvideo' : null,
+      canUseFormsSection('formsCustom') ? 'ebook' : null,
       canUseFormsSection('exhibition') ? 'exhibition' : null,
       canUseFormsSection('metaMall') ? 'metamall' : null,
       canUseFormsSection('packingList') ? 'packinglist' : null,
@@ -8295,7 +8326,7 @@ function AppInner() {
     return () => unsub();
   }, [db, dataAppId]);
 
-  // Short links ?c=CODE / ?mh=CODE / ?hv=CODE open inside this domain instead of redirecting
+  // Short links ?c=CODE / ?mh=CODE / ?hv=CODE / ?eb=CODE open inside this domain instead of redirecting
   // to the raw Storage URL, so the browser address stays on calculator.tohiddayhami.com.
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -8303,12 +8334,14 @@ function AppInner() {
     const c = sp.get('c');
     const mh = sp.get('mh');
     const hv = sp.get('hv');
+    const eb = sp.get('eb');
     const catalogKey = c && /^[A-Za-z0-9]{8,14}$/.test(c) ? c : '';
     const metaHubKey = mh && /^[A-Za-z0-9]{8,14}$/.test(mh) ? mh : '';
     const htmlVideoKey = hv && /^[A-Za-z0-9]{8,14}$/.test(hv) ? hv : '';
-    const key = catalogKey || metaHubKey || htmlVideoKey;
+    const ebookKey = eb && /^[A-Za-z0-9]{8,14}$/.test(eb) ? eb : '';
+    const key = catalogKey || metaHubKey || htmlVideoKey || ebookKey;
     if (!key) return;
-    const kind: 'catalog' | 'meta-hub' | 'html-video' = catalogKey ? 'catalog' : metaHubKey ? 'meta-hub' : 'html-video';
+    const kind: 'catalog' | 'meta-hub' | 'html-video' | 'ebook' = catalogKey ? 'catalog' : metaHubKey ? 'meta-hub' : htmlVideoKey ? 'html-video' : 'ebook';
     const collectionName = kind === 'meta-hub' ? 'meta_hub_links' : 'catalog_short_links';
     let cancelled = false;
     (async () => {
@@ -8330,13 +8363,14 @@ function AppInner() {
         const linkData = snap.data() || {};
         const target = linkData.url;
         if (typeof target === 'string' && /^https?:\/\//i.test(target)) {
+          const resolvedKind = (linkData.kind === 'ebook' || linkData.kind === 'html-video' || linkData.kind === 'meta-hub' || linkData.kind === 'catalog') ? linkData.kind : kind;
           setPublicCatalogView({
             key,
-            kind,
+            kind: resolvedKind,
             url: target,
-            title: linkData.catalogTitle || linkData.title || (kind === 'catalog' ? 'Catalog' : kind === 'meta-hub' ? 'Meta Trading Hub' : 'HTML Video Link'),
+            title: linkData.catalogTitle || linkData.title || (resolvedKind === 'catalog' ? 'Catalog' : resolvedKind === 'meta-hub' ? 'Meta Trading Hub' : resolvedKind === 'ebook' ? 'Ebook Flipbook' : 'HTML Video Link'),
           });
-          if (kind === 'catalog') {
+          if (resolvedKind === 'catalog') {
             void (async () => {
               try {
                 const ownerUserId = String(linkData.ownerUserId || '');
@@ -9738,12 +9772,15 @@ function AppInner() {
       }
   };
 
-  const handleDeleteSavedCatalogLink = async (link: { id: string; shortCode?: string; storagePath?: string; isMasterLink?: boolean }) => {
+  const handleDeleteSavedCatalogLink = async (link: { id: string; shortCode?: string; storagePath?: string; pdfStoragePath?: string; isMasterLink?: boolean }) => {
       if (!user || !db) return;
       if (!window.confirm('Delete this hosted catalog file and remove both the short link and the long link from your list?')) return;
       try {
           if (storage && link.storagePath) {
               await withTimeout(deleteObject(storageRef(storage, link.storagePath)), 20000, 'Delete file');
+          }
+          if (storage && link.pdfStoragePath && link.pdfStoragePath !== link.storagePath) {
+              await withTimeout(deleteObject(storageRef(storage, link.pdfStoragePath)), 20000, 'Delete PDF');
           }
       } catch (e: any) {
           console.warn('Storage delete (catalog):', e);
@@ -29975,6 +30012,374 @@ ${html}
     }
   };
 
+  const handleEbookFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+      setEbookError('لطفاً فقط فایل PDF انتخاب کنید.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 80 * 1024 * 1024) {
+      setEbookError('حجم PDF بهتر است کمتر از 80MB باشد.');
+      e.target.value = '';
+      return;
+    }
+    if (ebookPreviewUrl) URL.revokeObjectURL(ebookPreviewUrl);
+    setEbookFile(file);
+    setEbookPreviewUrl(URL.createObjectURL(file));
+    setEbookError('');
+    setEbookLinkInfo(null);
+    if (!ebookTitle.trim() || ebookTitle === 'Professional Ebook') {
+      setEbookTitle(file.name.replace(/\.pdf$/i, '').replace(/[-_]+/g, ' ').trim() || 'Professional Ebook');
+    }
+    e.target.value = '';
+  };
+
+  const handlePublishEbookLink = async () => {
+    if (!ebookFile) {
+      setEbookError('اول یک فایل PDF انتخاب کنید.');
+      return;
+    }
+    if (!storage || !db || !activeOwnerUid || !user || user.uid === DEMO_USER_ID || isDemoMode) {
+      setEbookError('برای ساخت لینک باید وارد حساب ابری شده باشید.');
+      return;
+    }
+    if (ebookAccessMode === 'private' && ebookPassword.trim().length < 4) {
+      setEbookError('برای لینک خصوصی یک رمز حداقل 4 کاراکتری وارد کنید.');
+      return;
+    }
+    setEbookPublishing(true);
+    setEbookError('');
+    setEbookLinkInfo(null);
+    try {
+      const title = ebookTitle.trim() || ebookFile.name.replace(/\.pdf$/i, '') || 'Ebook Flipbook';
+      const safeTitle = title.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'ebook-flipbook';
+      let shortCode = '';
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const candidate = generateCatalogShortCode(10);
+        const snap = await getDoc(doc(db, 'catalog_short_links', candidate));
+        if (!snap.exists()) { shortCode = candidate; break; }
+      }
+      if (!shortCode) throw new Error('Could not create a short link. Please try again.');
+      const publishOwnerUid = user.uid;
+      const stamp = Date.now();
+      const pdfPath = `users/${publishOwnerUid}/catalogs/ebook-${safeTitle}-${stamp}.pdf`;
+      const viewerPath = `users/${publishOwnerUid}/catalogs/ebook-${safeTitle}-${stamp}.html`;
+      const pdfRef = storageRef(storage, pdfPath);
+      await withTimeout(
+        uploadBytes(pdfRef, ebookFile, { contentType: 'application/pdf', cacheControl: 'public,max-age=3600' }),
+        60000,
+        'Upload Ebook PDF',
+      );
+      const pdfUrl = await getDownloadURL(pdfRef);
+      const passwordSalt = ebookAccessMode === 'private' ? `${shortCode}_${stamp}` : '';
+      const passwordHash = ebookAccessMode === 'private' ? await sha256Hex(`${passwordSalt}:${ebookPassword.trim()}`) : '';
+      const viewerHtml = buildEbookFlipbookHtml({
+        title,
+        fileName: ebookFile.name,
+        pdfUrl,
+        shortCode,
+        language: ebookLanguage,
+        direction: ebookDirection,
+        accessMode: ebookAccessMode,
+        passwordHash,
+        passwordSalt,
+        allowDownload: ebookAllowDownload,
+        accentColor: ebookAccentColor,
+      });
+      const viewerRef = storageRef(storage, viewerPath);
+      await withTimeout(
+        uploadString(viewerRef, viewerHtml, 'raw', { contentType: 'text/html; charset=utf-8', cacheControl: 'public,max-age=300' }),
+        30000,
+        'Upload Ebook viewer',
+      );
+      const viewerUrl = await getDownloadURL(viewerRef);
+      const shortUrl = buildPublicAppUrl({ eb: shortCode });
+      await setDoc(doc(db, 'catalog_short_links', shortCode), {
+        url: viewerUrl,
+        appId: dataAppId,
+        ownerUserId: publishOwnerUid,
+        storagePath: viewerPath,
+        pdfStoragePath: pdfPath,
+        catalogTitle: title,
+        title,
+        kind: 'ebook',
+        accessMode: ebookAccessMode,
+        language: ebookLanguage,
+        direction: ebookDirection,
+        allowDownload: ebookAllowDownload,
+        createdAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+        fullUrl: viewerUrl,
+        shortUrl,
+        shortCode,
+        storagePath: viewerPath,
+        pdfStoragePath: pdfPath,
+        catalogTitle: title,
+        fileName: ebookFile.name,
+        kind: 'ebook',
+        accessMode: ebookAccessMode,
+        language: ebookLanguage,
+        direction: ebookDirection,
+        allowDownload: ebookAllowDownload,
+        createdAt: serverTimestamp(),
+      });
+      setEbookLinkInfo({ url: shortUrl, storagePath: viewerPath, pdfStoragePath: pdfPath });
+      setEbookPassword('');
+    } catch (err: any) {
+      console.error('Ebook publish failed:', err);
+      setEbookError(err?.message || 'ساخت لینک Ebook انجام نشد.');
+    } finally {
+      setEbookPublishing(false);
+    }
+  };
+
+  const copyEbookLink = async (url = ebookLinkInfo?.url) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert('Ebook link copied.');
+    } catch {
+      window.prompt('Copy Ebook link:', url);
+    }
+  };
+
+  const renderEbookFlipbookTool = () => {
+    const savedEbookLinks = savedCatalogLinks.filter((link: any) => link.kind === 'ebook');
+    return (
+      <div className="space-y-5">
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 p-6 text-white">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-2xl font-black">
+                  <BookOpen className="h-6 w-6 text-blue-200" />
+                  Ebook Flipbook
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-blue-100">
+                  PDF را آپلود کنید و یک فلیپ‌بوک حرفه‌ای، مینیمال، فارسی/انگلیسی و قابل ورق زدن بسازید. لینک عمومی بدون لاگین باز می‌شود و لینک خصوصی می‌تواند password داشته باشد.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input ref={ebookFileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleEbookFileChange} />
+                <button
+                  type="button"
+                  onClick={() => ebookFileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-sm font-black text-white ring-1 ring-white/20 hover:bg-white/15"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload PDF
+                </button>
+                <button
+                  type="button"
+                  disabled={ebookPublishing || !ebookFile}
+                  onClick={handlePublishEbookLink}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-blue-500 px-4 py-2 text-sm font-black text-white hover:bg-blue-400 disabled:opacity-50"
+                >
+                  {ebookPublishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                  Generate link
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-5 p-5 xl:grid-cols-[380px_1fr]">
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Title / عنوان</label>
+                <input
+                  value={ebookTitle}
+                  onChange={(e) => setEbookTitle(e.target.value)}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  placeholder="Ebook title"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-500">Language</label>
+                  <select
+                    value={ebookLanguage}
+                    onChange={(e) => setEbookLanguage(e.target.value as EbookLanguageKey)}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  >
+                    <option value="both">FA / EN</option>
+                    <option value="fa">Persian</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-500">Direction</label>
+                  <select
+                    value={ebookDirection}
+                    onChange={(e) => setEbookDirection(e.target.value as EbookDirection)}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  >
+                    <option value="rtl">RTL / فارسی</option>
+                    <option value="ltr">LTR / English</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Access</label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'public', label: 'Public', desc: 'بدون رمز' },
+                    { id: 'private', label: 'Private', desc: 'با password' },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setEbookAccessMode(item.id as EbookAccessMode)}
+                      className={`rounded-2xl border px-3 py-2 text-left text-xs ${ebookAccessMode === item.id ? 'border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      <div className="font-black">{item.label}</div>
+                      <div className="text-[10px] opacity-70">{item.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                {ebookAccessMode === 'private' && (
+                  <input
+                    type="password"
+                    value={ebookPassword}
+                    onChange={(e) => setEbookPassword(e.target.value)}
+                    className="mt-3 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                    placeholder="Private link password"
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-500">Accent color</label>
+                  <input
+                    value={ebookAccentColor}
+                    onChange={(e) => setEbookAccentColor(e.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm font-mono outline-none focus:border-blue-400"
+                  />
+                </div>
+                <input
+                  type="color"
+                  value={ebookAccentColor}
+                  onChange={(e) => setEbookAccentColor(e.target.value)}
+                  className="h-10 w-12 rounded-xl border border-slate-200 bg-white p-1"
+                  aria-label="Accent color"
+                />
+              </div>
+
+              <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700">
+                <span>Allow PDF download</span>
+                <input type="checkbox" checked={ebookAllowDownload} onChange={(e) => setEbookAllowDownload(e.target.checked)} className="h-4 w-4" />
+              </label>
+
+              {ebookFile && (
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                  <div className="font-black">{ebookFile.name}</div>
+                  <div className="mt-1">{(ebookFile.size / (1024 * 1024)).toFixed(2)} MB</div>
+                </div>
+              )}
+
+              {ebookError && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+                  {ebookError}
+                </div>
+              )}
+
+              {ebookLinkInfo?.url && (
+                <div className="space-y-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                  <label className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Published Ebook Link</label>
+                  <input
+                    value={ebookLinkInfo.url}
+                    readOnly
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full rounded-xl border border-emerald-200 bg-white px-2 py-2 text-[11px] font-mono text-slate-700"
+                  />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => copyEbookLink()} className="flex-1 rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800">
+                      Copy
+                    </button>
+                    <a href={ebookLinkInfo.url} target="_blank" rel="noopener" className="flex-1 rounded-xl bg-blue-600 px-3 py-2 text-center text-xs font-bold text-white hover:bg-blue-700">
+                      Open
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black text-slate-800">PDF Preview</div>
+                    <div className="text-xs text-slate-500">Preview uses the browser PDF viewer; generated link uses the professional flipbook viewer.</div>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black text-slate-500">
+                    {ebookAccessMode === 'private' ? 'Private' : 'Public'}
+                  </span>
+                </div>
+                <div className="h-[560px] overflow-hidden rounded-2xl bg-white shadow-inner ring-1 ring-slate-200">
+                  {ebookPreviewUrl ? (
+                    <iframe title="Ebook PDF preview" src={ebookPreviewUrl} className="h-full w-full border-0 bg-white" />
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
+                      <BookOpen className="mb-3 h-12 w-12 opacity-40" />
+                      <p className="text-sm font-bold">Upload a PDF to preview and generate a flipbook link.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="flex items-center gap-2 text-sm font-black text-slate-800">
+                    <Link2 className="h-4 w-4 text-blue-600" />
+                    Saved Ebook links
+                  </h3>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{savedEbookLinks.length}</span>
+                </div>
+                {!user || isDemoMode ? (
+                  <p className="text-xs text-slate-400">برای ذخیره لینک‌ها باید وارد حساب ابری باشید.</p>
+                ) : savedEbookLinks.length === 0 ? (
+                  <p className="text-xs text-slate-400">هنوز Ebook ساخته نشده. بعد از Generate link اینجا ذخیره می‌شود.</p>
+                ) : (
+                  <ul className="grid max-h-72 gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+                    {savedEbookLinks.map((link: any) => (
+                      <li key={link.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-black text-slate-800" title={link.catalogTitle || link.fileName}>{link.catalogTitle || 'Ebook Flipbook'}</div>
+                            <div className="mt-1 text-[10px] text-slate-400">{formatInquiryDate(link.createdAt)}</div>
+                          </div>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${link.accessMode === 'private' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                            {link.accessMode === 'private' ? 'Private' : 'Public'}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          <button type="button" onClick={() => copyEbookLink(link.shortUrl || link.fullUrl)} className="rounded-lg bg-emerald-100 px-2 py-1 font-bold text-emerald-800 hover:bg-emerald-200">
+                            Copy
+                          </button>
+                          <a href={link.shortUrl || link.fullUrl} target="_blank" rel="noopener" className="rounded-lg bg-blue-100 px-2 py-1 font-bold text-blue-800 hover:bg-blue-200">
+                            Open
+                          </a>
+                          <button type="button" onClick={() => handleDeleteSavedCatalogLink(link)} className="rounded-lg bg-red-50 px-2 py-1 font-bold text-red-700 hover:bg-red-100">
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderHtmlVideoLinkTool = () => {
     const currentPreset = HTML_VIDEO_PRESETS[htmlVideoPreset];
     const savedHtmlVideoLinks = savedCatalogLinks.filter((link: any) => link.kind === 'html-video');
@@ -30216,6 +30621,11 @@ ${html}
               <Video className="w-4 h-4" /> تبدیل HTML به لینک ویدئویی
             </button>
             <div className="w-px bg-slate-200" />
+            <button onClick={() => setFormsSubView('ebook')}
+              className={`px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors ${formsSubView === 'ebook' ? 'bg-blue-950 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              <BookOpen className="w-4 h-4" /> Ebook
+            </button>
+            <div className="w-px bg-slate-200" />
           </>
         )}
         {canUseFormsSection('exhibition') && (
@@ -30279,6 +30689,7 @@ ${html}
         <EducationFormsPanel courses={educationCourses} onSaveCourses={setEducationCourses} />
       )}
       {formsSubView === 'htmlvideo' && canUseFormsSection('formsCustom') && renderHtmlVideoLinkTool()}
+      {formsSubView === 'ebook' && canUseFormsSection('formsCustom') && renderEbookFlipbookTool()}
       {formsSubView === 'exhibition' && canUseFormsSection('exhibition') && (
         <ExhibitionFormsPanel
           events={exhibitionEvents}
@@ -30941,9 +31352,11 @@ ${html}
           const c = sp.get('c');
           const mh = sp.get('mh');
           const hv = sp.get('hv');
+          const eb = sp.get('eb');
           if (c && /^[A-Za-z0-9]{8,14}$/.test(c)) return c;
           if (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)) return mh;
           if (hv && /^[A-Za-z0-9]{8,14}$/.test(hv)) return hv;
+          if (eb && /^[A-Za-z0-9]{8,14}$/.test(eb)) return eb;
           return null;
         })()
       : null;
@@ -30963,6 +31376,8 @@ ${html}
           src={publicCatalogView.url}
           className="absolute inset-0 w-full h-full border-0 bg-white"
           sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads"
+          allow="fullscreen"
+          allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"
         />
       ) : (
