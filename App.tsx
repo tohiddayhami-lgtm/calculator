@@ -6919,7 +6919,8 @@ function AppInner() {
     const sp = new URLSearchParams(window.location.search);
     const c = sp.get('c');
     const mh = sp.get('mh');
-    return !!((c && /^[A-Za-z0-9]{8,14}$/.test(c)) || (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)));
+    const hv = sp.get('hv');
+    return !!((c && /^[A-Za-z0-9]{8,14}$/.test(c)) || (mh && /^[A-Za-z0-9]{8,14}$/.test(mh)) || (hv && /^[A-Za-z0-9]{8,14}$/.test(hv)));
   });
   const [publicCatalogError, setPublicCatalogError] = useState('');
   const [publicIsoSubmitter, setPublicIsoSubmitter] = useState({ name: '', email: '', organization: '', notes: '' });
@@ -20231,7 +20232,7 @@ ${html}
                                           >
                                               Open
                                           </a>
-                                          {link.shortCode ? (
+                                          {link.shortCode && link.kind === 'catalog' ? (
                                               <button
                                                   type="button"
                                                   onClick={() => setAnalyticsModalLink({ shortCode: link.shortCode, catalogTitle: link.catalogTitle || 'Catalog' })}
@@ -29914,10 +29915,10 @@ ${html}
         preset: htmlVideoPreset,
         fileName: htmlVideoFileName || 'uploaded.html',
       });
-      // Reuse the existing catalog short-link rules so HTML video links work
-      // even before a dedicated html_video_links collection is deployed.
+      // Reuse the existing public catalog storage/short-link paths so visitors
+      // can open HTML video links without signing in.
       const publishOwnerUid = user.uid;
-      const path = `users/${publishOwnerUid}/html-video-links/${safeTitle}-${Date.now()}.html`;
+      const path = `users/${publishOwnerUid}/catalogs/html-video-${safeTitle}-${Date.now()}.html`;
       const ref = storageRef(storage, path);
       await withTimeout(
         uploadString(ref, wrapperHtml, 'raw', { contentType: 'text/html; charset=utf-8' }),
@@ -29944,6 +29945,17 @@ ${html}
         preset: htmlVideoPreset,
         createdAt: serverTimestamp(),
       });
+      await addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'catalogLinks'), {
+        fullUrl: url,
+        shortUrl,
+        shortCode,
+        storagePath: path,
+        catalogTitle: title,
+        fileName: `${safeTitle}.html`,
+        kind: 'html-video',
+        preset: htmlVideoPreset,
+        createdAt: serverTimestamp(),
+      });
       setHtmlVideoLinkInfo({ url: shortUrl, storagePath: path });
     } catch (err: any) {
       console.error('HTML video link publish failed:', err);
@@ -29965,6 +29977,7 @@ ${html}
 
   const renderHtmlVideoLinkTool = () => {
     const currentPreset = HTML_VIDEO_PRESETS[htmlVideoPreset];
+    const savedHtmlVideoLinks = savedCatalogLinks.filter((link: any) => link.kind === 'html-video');
     return (
       <div className="space-y-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -30059,6 +30072,63 @@ ${html}
                   </div>
                 </div>
               )}
+              <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  <Link2 className="h-3 w-3" />
+                  Saved HTML video links
+                </label>
+                {!user || isDemoMode ? (
+                  <p className="text-xs text-slate-400">برای ذخیره لینک‌ها باید وارد حساب ابری باشید.</p>
+                ) : savedHtmlVideoLinks.length === 0 ? (
+                  <p className="text-xs text-slate-400">هنوز لینکی ساخته نشده. بعد از Generate link اینجا ذخیره می‌شود.</p>
+                ) : (
+                  <ul className="max-h-56 space-y-2 overflow-y-auto pr-0.5">
+                    {savedHtmlVideoLinks.map((link: any) => (
+                      <li key={link.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-bold text-slate-800" title={link.catalogTitle || link.fileName}>
+                              {link.catalogTitle || 'HTML Video Link'}
+                            </div>
+                            <div className="text-[10px] text-slate-400">{formatInquiryDate(link.createdAt)}</div>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(link.shortUrl || link.fullUrl);
+                                alert('Link copied.');
+                              } catch {
+                                window.prompt('Copy link:', link.shortUrl || link.fullUrl);
+                              }
+                            }}
+                            className="rounded bg-emerald-100 px-2 py-1 font-bold text-emerald-800 hover:bg-emerald-200"
+                          >
+                            Copy
+                          </button>
+                          <a
+                            href={link.shortUrl || link.fullUrl}
+                            target="_blank"
+                            rel="noopener"
+                            className="rounded bg-blue-100 px-2 py-1 font-bold text-blue-800 hover:bg-blue-200"
+                          >
+                            Open
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSavedCatalogLink(link)}
+                            className="rounded bg-red-50 px-2 py-1 font-bold text-red-700 hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-100 p-4">
