@@ -52,6 +52,8 @@ export interface ManagedUserProfile {
 export interface ProductColor {
   name: string;
   hex?: string;
+  /** Optional second color for two-tone / gradient product color swatches. */
+  hex2?: string;
 }
 
 export interface Product {

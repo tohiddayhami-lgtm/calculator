@@ -3220,7 +3220,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'itemsPerPack means how many units/pieces are inside each pack/carton.',
     'If the source says 24 packs and each pack contains 24 pcs, set qty to 576, itemsPerPack to 24, and packingQtyCartons to 24.',
     'Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.',
-    'If a product has selectable/available colors, put them in availableColors as an array of objects: { "name": "Matte Black", "hex": "#111827" }. The hex value is optional but recommended for catalog color swatches.',
+    'If a product has selectable/available colors, put them in availableColors as an array of objects: { "name": "Matte Black", "hex": "#111827" }. For two-tone or gradient products, add a second color as hex2, for example { "name": "Black to Gold", "hex": "#111827", "hex2": "#F59E0B" }.',
   ],
   products: [
     {
@@ -3243,6 +3243,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
         { name: 'Matte Black', hex: '#111827' },
         { name: 'Pearl White', hex: '#F8FAFC' },
         { name: 'Royal Blue', hex: '#2563EB' },
+        { name: 'Black / Gold Gradient', hex: '#111827', hex2: '#F59E0B' },
       ],
       scenarioManualUnitSellPrices: {
         EXW: 3.1,
@@ -3307,17 +3308,19 @@ const normalizeProductColors = (value: unknown): ProductColor[] => {
         if (typeof entry === 'string') {
             const text = entry.trim();
             if (!text) return null;
-            const hexMatch = text.match(/#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b/);
-            const hex = hexMatch ? normalizeHexColor(hexMatch[0]) : undefined;
-            const name = (hexMatch ? text.replace(hexMatch[0], '') : text).replace(/[-–—:()]+$/g, '').trim() || text;
-            return { name, ...(hex ? { hex } : {}) };
+            const hexMatches: string[] = text.match(/#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b/g) || [];
+            const hex = hexMatches[0] ? normalizeHexColor(hexMatches[0]) : undefined;
+            const hex2 = hexMatches[1] ? normalizeHexColor(hexMatches[1]) : undefined;
+            const name = hexMatches.reduce<string>((acc, match) => acc.replace(match, ''), text).replace(/[-–—:()\/]+$/g, '').trim() || text;
+            return { name, ...(hex ? { hex } : {}), ...(hex2 ? { hex2 } : {}) };
         }
         if (typeof entry === 'object') {
             const row = entry as Record<string, unknown>;
             const name = String(row.name ?? row.label ?? row.colorName ?? row.colourName ?? row.title ?? '').trim();
             const hex = normalizeHexColor(row.hex ?? row.color ?? row.colour ?? row.value ?? row.code);
-            if (!name && !hex) return null;
-            return { name: name || hex || 'Color', ...(hex ? { hex } : {}) };
+            const hex2 = normalizeHexColor(row.hex2 ?? row.secondHex ?? row.secondColor ?? row.secondColour ?? row.gradientTo ?? row.color2 ?? row.colour2);
+            if (!name && !hex && !hex2) return null;
+            return { name: name || hex || hex2 || 'Color', ...(hex ? { hex } : {}), ...(hex2 ? { hex2 } : {}) };
         }
         return null;
     };
@@ -3332,7 +3335,7 @@ const normalizeProductColors = (value: unknown): ProductColor[] => {
         .map(addColor)
         .filter((item): item is ProductColor => !!item)
         .filter((item) => {
-            const key = `${item.name.toLowerCase()}|${item.hex || ''}`;
+            const key = `${item.name.toLowerCase()}|${item.hex || ''}|${item.hex2 || ''}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
@@ -3340,10 +3343,15 @@ const normalizeProductColors = (value: unknown): ProductColor[] => {
         .slice(0, 24);
 };
 
+const productColorSwatchStyle = (color: ProductColor): string => {
+    if (color.hex && color.hex2) return `linear-gradient(135deg, ${color.hex} 0%, ${color.hex} 48%, ${color.hex2} 52%, ${color.hex2} 100%)`;
+    return color.hex || color.hex2 || '#CBD5E1';
+};
+
 const renderProductColorSwatchesHtml = (value: unknown, label = 'Colors'): string => {
     const colors = normalizeProductColors(value);
     if (!colors.length) return '';
-    return `<div class="color-options" aria-label="${escapeAttr(label)}"><span class="color-label">${escapeHtml(label)}</span>${colors.map((color) => `<span class="color-chip" title="${escapeAttr(color.name)}">${color.hex ? `<i style="background:${escapeAttr(color.hex)}"></i>` : ''}<b>${escapeHtml(color.name)}</b></span>`).join('')}</div>`;
+    return `<div class="color-options" aria-label="${escapeAttr(label)}"><span class="color-label">${escapeHtml(label)}</span>${colors.map((color) => `<span class="color-chip" title="${escapeAttr(color.name)}">${(color.hex || color.hex2) ? `<i style="background:${escapeAttr(productColorSwatchStyle(color))}"></i>` : ''}<b>${escapeHtml(color.name)}</b></span>`).join('')}</div>`;
 };
 
 const PUBLIC_FORM_ASSETS_COLLECTION = 'publicFormAssets';
@@ -12205,12 +12213,12 @@ function AppInner() {
               {colors.length > 0 && (
                   <div className={compact ? 'flex flex-wrap gap-1' : 'flex flex-col gap-2'}>
                       {colors.map((color, idx) => (
-                          <div key={`${idx}-${color.name}-${color.hex || ''}`} className={compact
+                          <div key={`${idx}-${color.name}-${color.hex || ''}-${color.hex2 || ''}`} className={compact
                               ? 'inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-0.5'
-                              : 'grid grid-cols-[2.25rem_1fr_auto] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2'
+                              : 'flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2'
                           }>
                               <label className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-full border border-slate-300 shadow-inner" title="Choose color">
-                                  <span className="absolute inset-0" style={{ backgroundColor: color.hex || '#CBD5E1' }} />
+                                  <span className="absolute inset-0" style={{ background: productColorSwatchStyle(color) }} />
                                   <input
                                       type="color"
                                       value={color.hex || '#CBD5E1'}
@@ -12229,6 +12237,37 @@ function AppInner() {
                                   }
                                   placeholder="Color name"
                               />
+                              {color.hex2 ? (
+                                  <label className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-full border border-slate-300 shadow-inner" title="Choose second gradient color">
+                                      <span className="absolute inset-0" style={{ backgroundColor: color.hex2 }} />
+                                      <input
+                                          type="color"
+                                          value={color.hex2}
+                                          onChange={(e) => setColorAt(idx, { hex2: normalizeHexColor(e.target.value) || e.target.value })}
+                                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                          aria-label={`Choose second color for ${color.name || 'color'}`}
+                                      />
+                                  </label>
+                              ) : (
+                                  <button
+                                      type="button"
+                                      onClick={() => setColorAt(idx, { hex2: '#F59E0B' })}
+                                      className="shrink-0 rounded-full border border-dashed border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-500 hover:border-amber-300 hover:text-amber-700"
+                                      title="Add second color / gradient"
+                                  >
+                                      +2
+                                  </button>
+                              )}
+                              {color.hex2 && !compact && (
+                                  <button
+                                      type="button"
+                                      onClick={() => setColorAt(idx, { hex2: undefined })}
+                                      className="text-[10px] font-bold text-slate-400 hover:text-rose-600"
+                                      title="Remove second color"
+                                  >
+                                      Solid
+                                  </button>
+                              )}
                               <button
                                   type="button"
                                   onClick={() => removeColor(idx)}
@@ -20528,7 +20567,7 @@ ${html}
                                                             <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Colors</span>
                                                             {normalizeProductColors(p.availableColors).slice(0, 8).map((color, colorIdx) => (
                                                                 <span key={`${color.name}-${color.hex || colorIdx}`} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
-                                                                    {color.hex && <span className="h-2.5 w-2.5 rounded-full border border-slate-300" style={{ backgroundColor: color.hex }} />}
+                                                                    {(color.hex || color.hex2) && <span className="h-2.5 w-2.5 rounded-full border border-slate-300" style={{ background: productColorSwatchStyle(color) }} />}
                                                                     {color.name}
                                                                 </span>
                                                             ))}
