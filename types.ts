@@ -49,6 +49,11 @@ export interface ManagedUserProfile {
   storageLimitMb?: number | null;
 }
 
+export interface ProductColor {
+  name: string;
+  hex?: string;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -71,6 +76,7 @@ export interface Product {
   catalogName?: string; // Editable name just for catalog
   catalogMOQ?: string; // Editable MOQ string just for catalog
   catalogDescription?: string; // New: Detailed features/description for catalog
+  availableColors?: ProductColor[]; // Optional color options shown in online/PDF catalog
   // New: Logistics Info for Catalog
   logisticsDetails?: {
       qtyPerBox?: number;

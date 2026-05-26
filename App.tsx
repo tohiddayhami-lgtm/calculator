@@ -64,6 +64,7 @@ import {
 // Types
 import {
   Product,
+  ProductColor,
   Logistics,
   LogisticsItem,
   LogisticsPreset,
@@ -3219,6 +3220,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'itemsPerPack means how many units/pieces are inside each pack/carton.',
     'If the source says 24 packs and each pack contains 24 pcs, set qty to 576, itemsPerPack to 24, and packingQtyCartons to 24.',
     'Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.',
+    'If a product has selectable/available colors, put them in availableColors as an array of objects: { "name": "Matte Black", "hex": "#111827" }. The hex value is optional but recommended for catalog color swatches.',
   ],
   products: [
     {
@@ -3237,6 +3239,11 @@ const AI_PRODUCT_INPUT_SAMPLE = {
       group: 'Sample Category',
       catalogMOQ: '24 packs',
       catalogDescription: 'Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.',
+      availableColors: [
+        { name: 'Matte Black', hex: '#111827' },
+        { name: 'Pearl White', hex: '#F8FAFC' },
+        { name: 'Royal Blue', hex: '#2563EB' },
+      ],
       scenarioManualUnitSellPrices: {
         EXW: 3.1,
         FOB: 3.45,
@@ -3286,6 +3293,63 @@ const escapeHtml = (s: any): string => {
 };
 
 const escapeAttr = escapeHtml;
+
+const normalizeHexColor = (value: unknown): string | undefined => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return undefined;
+    const hex = raw.startsWith('#') ? raw : `#${raw}`;
+    return /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(hex) ? hex.toUpperCase() : undefined;
+};
+
+const normalizeProductColors = (value: unknown): ProductColor[] => {
+    const addColor = (entry: unknown): ProductColor | null => {
+        if (entry == null) return null;
+        if (typeof entry === 'string') {
+            const text = entry.trim();
+            if (!text) return null;
+            const hexMatch = text.match(/#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b/);
+            const hex = hexMatch ? normalizeHexColor(hexMatch[0]) : undefined;
+            const name = (hexMatch ? text.replace(hexMatch[0], '') : text).replace(/[-–—:()]+$/g, '').trim() || text;
+            return { name, ...(hex ? { hex } : {}) };
+        }
+        if (typeof entry === 'object') {
+            const row = entry as Record<string, unknown>;
+            const name = String(row.name ?? row.label ?? row.colorName ?? row.colourName ?? row.title ?? '').trim();
+            const hex = normalizeHexColor(row.hex ?? row.color ?? row.colour ?? row.value ?? row.code);
+            if (!name && !hex) return null;
+            return { name: name || hex || 'Color', ...(hex ? { hex } : {}) };
+        }
+        return null;
+    };
+
+    const rawItems = Array.isArray(value)
+        ? value
+        : typeof value === 'string'
+            ? value.split(/[\n,،;]+/)
+            : [];
+    const seen = new Set<string>();
+    return rawItems
+        .map(addColor)
+        .filter((item): item is ProductColor => !!item)
+        .filter((item) => {
+            const key = `${item.name.toLowerCase()}|${item.hex || ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .slice(0, 24);
+};
+
+const productColorsToInputText = (value: unknown): string =>
+    normalizeProductColors(value)
+        .map((color) => `${color.name}${color.hex ? ` ${color.hex}` : ''}`)
+        .join(', ');
+
+const renderProductColorSwatchesHtml = (value: unknown, label = 'Colors'): string => {
+    const colors = normalizeProductColors(value);
+    if (!colors.length) return '';
+    return `<div class="color-options" aria-label="${escapeAttr(label)}"><span class="color-label">${escapeHtml(label)}</span>${colors.map((color) => `<span class="color-chip" title="${escapeAttr(color.name)}">${color.hex ? `<i style="background:${escapeAttr(color.hex)}"></i>` : ''}<b>${escapeHtml(color.name)}</b></span>`).join('')}</div>`;
+};
 
 const PUBLIC_FORM_ASSETS_COLLECTION = 'publicFormAssets';
 
@@ -4428,6 +4492,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         const descHtml = p.catalogDescription
             ? `<p class="description">${escapeHtml(p.catalogDescription)}</p>`
             : '';
+        const colorOptionsHtml = renderProductColorSwatchesHtml(p.availableColors);
 
         const groupBadge = p.group
             ? `<span class="group-badge">${escapeHtml(p.group)}</span>`
@@ -4485,6 +4550,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                     <h3 class="product-name">${escapeHtml(cartName)}</h3>
                     <div class="badges">${skuBadge}${hsBadge}</div>
                     ${descHtml}
+                    ${colorOptionsHtml}
                     <div class="meta-grid">${packHtml}${moqHtml}</div>
                     ${(showPrices || targetRowHtml) ? `<div class="prices">${priceRows}${targetRowHtml}</div>` : ''}
                     ${volumeTierHtml}
@@ -4895,6 +4961,13 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .sku-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-weight: 700; padding: 2px 7px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 5px; }
         .hs-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; padding: 2px 7px; color: #64748b; }
         .description { font-size: 12px; color: #64748b; line-height: 1.5; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .color-options { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+        .color-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
+        .color-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; border-radius: 999px; padding: 3px 7px 3px 4px; font-size: 10px; font-weight: 700; line-height: 1; }
+        .color-chip i { width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(15,23,42,.18); box-shadow: inset 0 0 0 1px rgba(255,255,255,.55); flex-shrink: 0; }
+        .pd-info .color-options { gap: 7px; }
+        .pd-info .color-label, .pd-info .color-chip { font-size: 12px; }
+        .pd-info .color-chip i { width: 16px; height: 16px; }
         .meta-grid { display: flex; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid #f1f5f9; }
         .meta-row { display: flex; align-items: center; gap: 4px; font-size: 11px; }
         .meta-label { color: #94a3b8; }
@@ -11163,6 +11236,7 @@ function AppInner() {
         catalogName: p.catalogName,
         catalogMOQ: p.catalogMOQ,
         catalogDescription: p.catalogDescription,
+        availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
         customProfit: p.customProfit,
         group: p.group || '',
         supplierId: p.supplierId,
@@ -11744,6 +11818,7 @@ function AppInner() {
                           catalogName: row.catalogName ? String(row.catalogName) : undefined,
                           catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
                           catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
+                          availableColors: normalizeProductColors(row.availableColors || row.catalogColors || row.colors || row.colours || row.productColors),
                           targetPrice: Number(row.targetPrice) > 0 ? Number(row.targetPrice) : undefined,
                           targetPriceCurrency: row.targetPriceCurrency
                               ? String(row.targetPriceCurrency).trim().toUpperCase()
@@ -14806,6 +14881,16 @@ function AppInner() {
                     onChange={(e) => updateProduct(p.id, 'catalogDescription', e.target.value)}
                     className="w-full resize-y min-h-[42px] rounded-md border border-slate-100 bg-slate-50/70 px-2 py-1 text-[11px] leading-snug text-slate-600 placeholder:text-slate-400 outline-none focus:border-blue-300 focus:bg-white focus:ring-1 focus:ring-blue-100"
                     placeholder="Details / ویژگی‌ها، کاربرد، گرید، مشخصات محصول..."
+                  />
+                  <input
+                    type="text"
+                    value={productColorsToInputText(p.availableColors)}
+                    onChange={(e) => {
+                      const next = normalizeProductColors(e.target.value);
+                      updateProduct(p.id, 'availableColors', next.length ? next : undefined);
+                    }}
+                    className="w-full rounded-md border border-slate-100 bg-white px-2 py-1 text-[11px] text-slate-600 placeholder:text-slate-400 outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100"
+                    placeholder="Colors: Black #111827, White #F8FAFC"
                   />
                 </div>
               </td>
@@ -20331,6 +20416,17 @@ ${html}
                                                             <p className="whitespace-pre-line leading-tight text-[10px] text-slate-600 line-clamp-3">{p.catalogDescription}</p>
                                                         </div>
                                                     )}
+                                                    {normalizeProductColors(p.availableColors).length > 0 && (
+                                                        <div className="flex flex-wrap items-center gap-1">
+                                                            <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Colors</span>
+                                                            {normalizeProductColors(p.availableColors).slice(0, 8).map((color, colorIdx) => (
+                                                                <span key={`${color.name}-${color.hex || colorIdx}`} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                                                                    {color.hex && <span className="h-2.5 w-2.5 rounded-full border border-slate-300" style={{ backgroundColor: color.hex }} />}
+                                                                    {color.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
 
                                                     <div className="grid grid-cols-2 gap-2 text-[10px]">
                                                         {(p.itemsPerPack && p.itemsPerPack > 0) ? (
@@ -20865,6 +20961,20 @@ ${html}
                                               className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500 resize-none"
                                               placeholder="Enter key features, material details, etc."
                                           />
+                                      </div>
+                                      <div>
+                                          <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Available Colors / رنگ‌های محصول</label>
+                                          <input
+                                              type="text"
+                                              value={productColorsToInputText(p.availableColors)}
+                                              onChange={(e) => {
+                                                  const next = normalizeProductColors(e.target.value);
+                                                  updateProduct(p.id, 'availableColors', next.length ? next : undefined);
+                                              }}
+                                              className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500"
+                                              placeholder="Matte Black #111827, Pearl White #F8FAFC"
+                                          />
+                                          <p className="text-[10px] text-slate-400 mt-1">Use name + optional HEX color. Example: Red #EF4444, Navy #1E3A8A</p>
                                       </div>
                                       <div>
                                           <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Custom MOQ Value</label>
@@ -21464,6 +21574,16 @@ ${html}
                                           onChange={(e) => updateProduct(p.id, 'catalogDescription', e.target.value)}
                                           className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 resize-none bg-white"
                                           placeholder="Description shown on card"
+                                      />
+                                      <input
+                                          type="text"
+                                          value={productColorsToInputText(p.availableColors)}
+                                          onChange={(e) => {
+                                              const next = normalizeProductColors(e.target.value);
+                                              updateProduct(p.id, 'availableColors', next.length ? next : undefined);
+                                          }}
+                                          className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white"
+                                          placeholder="Colors: Black #111827, White #F8FAFC"
                                       />
                                   </div>
                               ))}
