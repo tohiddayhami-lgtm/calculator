@@ -20747,6 +20747,26 @@ ${html}
                                                             <p className="whitespace-pre-line leading-tight text-[10px] text-slate-600 line-clamp-3">{p.catalogDescription}</p>
                                                         </div>
                                                     )}
+                                                    {normalizeProductOrigin(p.origin) && (() => {
+                                                        const origin = normalizeProductOrigin(p.origin);
+                                                        if (!origin) return null;
+                                                        return (
+                                                            <div className="flex flex-wrap items-center gap-1">
+                                                                <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Origin</span>
+                                                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-700">
+                                                                    {origin.flagUrl && (
+                                                                        <img
+                                                                            src={origin.flagUrl}
+                                                                            alt={`${origin.name} flag`}
+                                                                            className="h-3 w-5 rounded-[2px] border border-slate-200 object-cover shadow-sm"
+                                                                            loading="lazy"
+                                                                        />
+                                                                    )}
+                                                                    {origin.name}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                     {normalizeProductColors(p.availableColors).length > 0 && (
                                                         <div className="flex flex-wrap items-center gap-1">
                                                             <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">Colors</span>
