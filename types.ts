@@ -95,6 +95,7 @@ export interface Product {
       qty40ft?: number;
   };
   group?: string; // New: Group/Category name
+  subcategory?: string; // Optional subcategory shown under the main catalog category/tab
   supplierId?: number; // New: Link to a specific supplier
   // Optional: Target price (per unit) requested by buyer / target market
   targetPrice?: number;

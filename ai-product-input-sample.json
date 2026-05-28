@@ -14,6 +14,7 @@
     "If the source says 24 packs and each pack contains 24 pcs, set qty to 576, itemsPerPack to 24, and packingQtyCartons to 24.",
     "Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.",
     "If product origin is known, put it in origin as a country name, ISO code, or object, for example \"China\", \"CN\", or { \"code\": \"CN\", \"name\": \"China\" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.",
+    "Optional: put product subcategory in subcategory, for example \"Skincare\", \"Powder\", or \"Spare Parts\". Subcategories appear under the main group/category tab in the electronic catalog link.",
     "If a product has selectable/available colors, put them in availableColors as an array of objects: { \"name\": \"Matte Black\", \"hex\": \"#111827\" }. For two-tone or gradient products, add hex2."
   ],
   "products": [
@@ -31,6 +32,7 @@
       "sku": "PRD-1001",
       "hsCode": "000000",
       "group": "Sample Category",
+      "subcategory": "Sample Subcategory",
       "catalogMOQ": "24 packs",
       "catalogDescription": "Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.",
       "origin": {
@@ -100,6 +102,7 @@
       "sku": "PRD-1002",
       "hsCode": "000000",
       "group": "Sample Category",
+      "subcategory": "Bulk Commodity",
       "catalogMOQ": "1 container",
       "catalogDescription": "Another example where AI must fill both EXW and FOB direct prices.",
       "origin": "India",

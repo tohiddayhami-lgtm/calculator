@@ -3239,6 +3239,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.',
     'If a product has selectable/available colors, put them in availableColors as an array of objects: { "name": "Matte Black", "hex": "#111827" }. For two-tone or gradient products, add a second color as hex2, for example { "name": "Black to Gold", "hex": "#111827", "hex2": "#F59E0B" }.',
     'If product origin is known, put it in origin as a country name, ISO code, or object, for example "China", "CN", or { "code": "CN", "name": "China" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.',
+    'Optional: put product subcategory in subcategory, for example "Skincare", "Powder", or "Spare Parts". Subcategories appear under the main group/category tab in the electronic catalog link.',
   ],
   products: [
     {
@@ -3255,6 +3256,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
       sku: 'PRD-1001',
       hsCode: '000000',
       group: 'Sample Category',
+      subcategory: 'Sample Subcategory',
       catalogMOQ: '24 packs',
       catalogDescription: 'Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.',
       origin: { code: 'CN', name: 'China', flagUrl: 'https://flagcdn.com/w40/cn.png' },
@@ -3397,6 +3399,17 @@ const productOriginFromRow = (row: Record<string, unknown>): ProductOrigin | und
     row.madeInCountry ||
     row.countryOfManufacture
 );
+
+const productSubcategoryFromRow = (row: Record<string, unknown>): string => String(
+    row.subcategory ??
+    row.subCategory ??
+    row.subgroup ??
+    row.subGroup ??
+    row.catalogSubcategory ??
+    row.catalogSubCategory ??
+    row.childCategory ??
+    ''
+).trim();
 
 type HtmlVideoPresetKey = 'story' | 'portrait' | 'landscape' | 'square';
 
@@ -4595,6 +4608,23 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             : '';
         const originHtml = renderProductOriginHtml(p.origin);
         const colorOptionsHtml = renderProductColorSwatchesHtml(p.availableColors);
+        const origin = normalizeProductOrigin(p.origin);
+        const colorNames = normalizeProductColors(p.availableColors).map((color) => color.name).join(' ');
+        const subcategory = String(p.subcategory || '').trim();
+        const productSearchText = [
+            p.catalogName,
+            p.name,
+            p.sku,
+            p.hsCode,
+            p.group,
+            subcategory,
+            p.catalogDescription,
+            p.catalogMOQ,
+            p.measurementUnit,
+            origin?.name,
+            origin?.code,
+            colorNames,
+        ].filter(Boolean).join(' ');
 
         const groupBadge = p.group
             ? `<span class="group-badge">${escapeHtml(p.group)}</span>`
@@ -4605,6 +4635,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             : '';
         const hsBadge = p.hsCode
             ? `<span class="hs-badge">HS: ${escapeHtml(p.hsCode)}</span>`
+            : '';
+        const subcategoryBadge = subcategory
+            ? `<span class="subcat-badge">${escapeHtml(subcategory)}</span>`
             : '';
 
         const cartName = p.catalogName || p.name || 'Item';
@@ -4638,7 +4671,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             : '';
 
         return `
-            <article class="card" data-idx="${idx}" data-group="${escapeAttr(p.group || '')}" data-analytics-name="${escapeAttr(cartName)}" data-analytics-sku="${escapeAttr(p.sku || '')}" ${cartDataAttrs}>
+            <article class="card" data-idx="${idx}" data-group="${escapeAttr(p.group || '')}" data-subcategory="${escapeAttr(subcategory)}" data-search="${escapeAttr(productSearchText)}" data-analytics-name="${escapeAttr(cartName)}" data-analytics-sku="${escapeAttr(p.sku || '')}" ${cartDataAttrs}>
                 <div class="card-image">
                     <div class="carousel" data-slides="${slideList.length}">
                         ${slidesHtml}
@@ -4650,7 +4683,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 </div>
                 <div class="card-body">
                     <h3 class="product-name">${escapeHtml(cartName)}</h3>
-                    <div class="badges">${skuBadge}${hsBadge}</div>
+                    <div class="badges">${skuBadge}${hsBadge}${subcategoryBadge}</div>
                     ${descHtml}
                     ${originHtml}
                     ${colorOptionsHtml}
@@ -4925,6 +4958,22 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .filter-pill { flex-shrink: 0; padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 2px solid #e2e8f0; background: #fff; color: #64748b; cursor: pointer; transition: all 0.18s; white-space: nowrap; line-height: 1; }
         .filter-pill:hover { border-color: var(--primary); color: var(--primary); }
         .filter-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .catalog-tools { max-width: 760px; margin: 0 auto 6px; }
+        .catalog-search { position: relative; }
+        .catalog-search input { width: 100%; border: 1.5px solid #e2e8f0; border-radius: 999px; padding: 11px 42px 11px 16px; font-size: 13px; color: #334155; background: #fff; outline: none; box-shadow: 0 8px 26px rgba(15,23,42,0.06); transition: border-color .16s, box-shadow .16s; }
+        .catalog-search input:focus { border-color: var(--primary); box-shadow: 0 10px 30px rgba(15,23,42,0.10); }
+        .catalog-search svg { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+        .sub-filter-bar { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 2px 2px 12px; margin-top: -2px; }
+        .sub-filter-bar::-webkit-scrollbar { display: none; }
+        .sub-filter-set { display: none; gap: 6px; min-width: 0; }
+        .sub-filter-set.active { display: flex; }
+        .sub-filter-pill { flex-shrink: 0; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b; border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all .16s; white-space: nowrap; }
+        .sub-filter-pill:hover { color: var(--primary); border-color: var(--primary); background: #fff; }
+        .sub-filter-pill.active { background: rgba(15,23,42,.06); border-color: var(--primary); color: var(--primary); }
+        .catalog-empty { display: none; color: #94a3b8; text-align: center; padding: 30px 0 10px; font-size: 13px; font-weight: 600; }
+        .catalog-empty.visible { display: block; }
+        html[dir="rtl"] .catalog-search input { padding: 11px 16px 11px 42px; }
+        html[dir="rtl"] .catalog-search svg { right: auto; left: 15px; }
 
         /* ── Website Tabs ── */
         .site-tabs { display: flex; justify-content: center; gap: 8px; margin: 28px auto 10px; padding: 6px; width: max-content; max-width: 100%; overflow-x: auto; background: rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.08); border-radius: 999px; scrollbar-width: none; }
@@ -5063,6 +5112,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .badges { display: flex; flex-wrap: wrap; gap: 4px; }
         .sku-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-weight: 700; padding: 2px 7px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 5px; }
         .hs-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; padding: 2px 7px; color: #64748b; }
+        .subcat-badge { font-size: 10px; font-weight: 800; padding: 2px 7px; background: #ecfeff; color: #0e7490; border: 1px solid #cffafe; border-radius: 999px; }
         .description { font-size: 12px; color: #64748b; line-height: 1.5; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .origin-options { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
         .origin-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
@@ -6093,6 +6143,23 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     // Category filter bar (only if products have groups)
     const allGroups: string[] = [];
     products.forEach((p: any) => { if (p.group && !allGroups.includes(p.group)) allGroups.push(p.group); });
+    const subcategoriesByGroup = new Map<string, string[]>();
+    products.forEach((p: any) => {
+        const group = String(p.group || '').trim();
+        const subcategory = String(p.subcategory || '').trim();
+        if (!group || !subcategory) return;
+        const items = subcategoriesByGroup.get(group) || [];
+        if (!items.includes(subcategory)) items.push(subcategory);
+        subcategoriesByGroup.set(group, items);
+    });
+    const subFilterHtml = Array.from(subcategoriesByGroup.entries()).some(([, items]) => items.length > 0)
+        ? `<div class="sub-filter-bar" id="sub-filter-bar">${Array.from(subcategoriesByGroup.entries()).map(([group, items]) => `
+            <div class="sub-filter-set" data-parent-filter="${escapeAttr(group)}">
+                <button class="sub-filter-pill active" data-subfilter="all">All ${escapeHtml(group)}</button>
+                ${items.map((item) => `<button class="sub-filter-pill" data-subfilter="${escapeAttr(item)}">${escapeHtml(item)}</button>`).join('')}
+            </div>
+        `).join('')}</div>`
+        : '';
     const filterBarHtml = allGroups.length > 1 ? `
         <div class="filter-bar-wrap" id="filter-bar-wrap">
             <button class="filter-arrow fb-hidden" id="fbL" aria-label="Scroll left">
@@ -6105,15 +6172,25 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             <button class="filter-arrow" id="fbR" aria-label="Scroll right">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
+        </div>
+        ${subFilterHtml}` : subFilterHtml;
+    const searchHtml = products.length > 1 ? `
+        <div class="catalog-tools">
+            <label class="catalog-search" for="catalog-search-input">
+                <input id="catalog-search-input" type="search" placeholder="Search all products..." autocomplete="off" />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>
+            </label>
         </div>` : '';
 
     const productsPanelHtml = `
     <section class="products-section">
         <h2 class="section-title">${escapeHtml(cc.productTabLabel || tCombined('productList') || 'Products')}</h2>
+        ${searchHtml}
         ${filterBarHtml}
         <div class="grid">
             ${productCards || '<p style="color:#94a3b8;padding:24px 0;">No products to display.</p>'}
         </div>
+        <p class="catalog-empty" id="catalog-empty">No products found.</p>
     </section>
     ${ctaHtml}`;
     const websiteTabs = [
@@ -6336,39 +6413,89 @@ ${firebaseInquiryScript}
         syncCount();
         new MutationObserver(syncCount).observe(fabCount, { childList: true, characterData: true, subtree: true });
     }
-    // Category filter pills
+    // Search + category/subcategory filters
     var pills = document.querySelectorAll('.filter-pill');
-    if (pills.length) {
-        var cards = document.querySelectorAll('.card');
-        var activeFilter = 'all';
-        // Add analytics-section markers to each group of cards for IntersectionObserver
-        var seenGroups = {};
-        cards.forEach(function(card) {
-            var g = card.getAttribute('data-group') || '';
-            if (g && !seenGroups[g]) {
-                seenGroups[g] = true;
-                card.setAttribute('data-analytics-section', g);
+    var subPills = document.querySelectorAll('.sub-filter-pill');
+    var subSets = document.querySelectorAll('.sub-filter-set');
+    var cards = document.querySelectorAll('.card');
+    var searchInput = document.getElementById('catalog-search-input');
+    var emptyState = document.getElementById('catalog-empty');
+    var activeFilter = 'all';
+    var activeSubfilter = 'all';
+
+    // Add analytics-section markers to each group of cards for IntersectionObserver
+    var seenGroups = {};
+    cards.forEach(function(card) {
+        var g = card.getAttribute('data-group') || '';
+        if (g && !seenGroups[g]) {
+            seenGroups[g] = true;
+            card.setAttribute('data-analytics-section', g);
+        }
+    });
+    document.dispatchEvent(new Event('cat_sections_ready'));
+
+    function syncSubFilters() {
+        subSets.forEach(function(set) {
+            var parent = set.getAttribute('data-parent-filter') || '';
+            var show = (activeFilter !== 'all' && parent === activeFilter) || (!pills.length && !!parent);
+            set.classList.toggle('active', show);
+            if (show) {
+                set.querySelectorAll('.sub-filter-pill').forEach(function(pill) {
+                    pill.classList.toggle('active', pill.getAttribute('data-subfilter') === activeSubfilter);
+                });
             }
         });
-        document.dispatchEvent(new Event('cat_sections_ready'));
-        pills.forEach(function(pill){
-            pill.addEventListener('click', function(){
-                activeFilter = pill.getAttribute('data-filter') || 'all';
-                pills.forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-filter') === activeFilter); });
-                cards.forEach(function(card){
-                    var g = card.getAttribute('data-group') || '';
-                    card.classList.toggle('hidden', activeFilter !== 'all' && g !== activeFilter);
-                });
-                // Track section navigation
-                if (activeFilter !== 'all' && window.__trackCatalogEvent) {
-                    window.__trackCatalogEvent('section_view', { sectionName: activeFilter });
-                }
-                // Scroll active pill into view
-                var activePill = document.querySelector('.filter-pill.active');
-                if (activePill) activePill.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-            });
-        });
     }
+
+    function applyCatalogFilters() {
+        var q = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+        var visible = 0;
+        cards.forEach(function(card) {
+            var g = card.getAttribute('data-group') || '';
+            var sub = card.getAttribute('data-subcategory') || '';
+            var hay = String(card.getAttribute('data-search') || '').toLowerCase();
+            var matchesSearch = !q || hay.indexOf(q) !== -1;
+            // Search is global across all products; empty search respects tabs.
+            var matchesGroup = q ? true : (activeFilter === 'all' || g === activeFilter);
+            var matchesSub = q ? true : (activeSubfilter === 'all' || sub === activeSubfilter);
+            var show = matchesSearch && matchesGroup && matchesSub;
+            card.classList.toggle('hidden', !show);
+            if (show) visible += 1;
+        });
+        if (emptyState) emptyState.classList.toggle('visible', visible === 0);
+        syncSubFilters();
+    }
+
+    pills.forEach(function(pill){
+        pill.addEventListener('click', function(){
+            activeFilter = pill.getAttribute('data-filter') || 'all';
+            activeSubfilter = 'all';
+            pills.forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-filter') === activeFilter); });
+            if (activeFilter !== 'all' && window.__trackCatalogEvent) {
+                window.__trackCatalogEvent('section_view', { sectionName: activeFilter });
+            }
+            applyCatalogFilters();
+            var activePill = document.querySelector('.filter-pill.active');
+            if (activePill) activePill.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+        });
+    });
+
+    subPills.forEach(function(pill) {
+        pill.addEventListener('click', function() {
+            activeSubfilter = pill.getAttribute('data-subfilter') || 'all';
+            subPills.forEach(function(p) {
+                var set = p.closest('.sub-filter-set');
+                var parent = set ? (set.getAttribute('data-parent-filter') || '') : '';
+                p.classList.toggle('active', parent === activeFilter && p.getAttribute('data-subfilter') === activeSubfilter);
+            });
+            applyCatalogFilters();
+        });
+    });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', applyCatalogFilters);
+    }
+    applyCatalogFilters();
     // Filter bar scroll arrows (RTL-aware)
     var fb = document.getElementById('filter-bar');
     var fbL = document.getElementById('fbL');
@@ -11397,6 +11524,7 @@ function AppInner() {
         origin: productOriginFromRow(p as unknown as Record<string, unknown>),
         customProfit: p.customProfit,
         group: p.group || '',
+        subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
         supplierId: p.supplierId,
         measurementUnit: p.measurementUnit,
         targetPrice: p.targetPrice,
@@ -11715,6 +11843,7 @@ function AppInner() {
                           ...p,
                           availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
                           origin: productOriginFromRow(p as unknown as Record<string, unknown>),
+                          subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
                       }))
                       : importedProject.data.products,
               };
@@ -11788,6 +11917,7 @@ function AppInner() {
           active: true,
           availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
           origin: productOriginFromRow(p as unknown as Record<string, unknown>),
+          subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
       }));
 
       setProducts(prev => [...prev, ...newProducts]);
@@ -11813,8 +11943,8 @@ function AppInner() {
 
   const downloadProjectJsonSample = () => {
       const sampleProject: SavedProject = {
-          id: 'sample_catalog_project_with_colors_and_origin',
-          name: 'Sample Catalog Project With Product Colors and Origin',
+          id: 'sample_catalog_project_with_colors_origin_subcategories',
+          name: 'Sample Catalog Project With Product Colors, Origin, and Subcategories',
           folder: 'JSON Samples',
           createdAt: { seconds: Math.floor(Date.now() / 1000) },
           data: {
@@ -11827,10 +11957,10 @@ function AppInner() {
               selectedTerms,
               visibleScenarioTerms,
               invoiceTerms,
-              notes: 'Sample project JSON. Products may include availableColors and origin for online/PDF catalog color swatches and country-of-origin badges.',
+              notes: 'Sample project JSON. Products may include availableColors, origin, and optional subcategory for online/PDF catalog color swatches, country-of-origin badges, and catalog sub-tabs.',
               catalogConfig: {
                   ...catalogConfig,
-                  title: catalogConfig.title || 'Sample Catalog With Colors and Origin',
+                  title: catalogConfig.title || 'Sample Catalog With Colors, Origin, and Subcategories',
               },
               products: (AI_PRODUCT_INPUT_SAMPLE.products as any[]).map((p, idx) => ({
                   ...p,
@@ -11838,6 +11968,7 @@ function AppInner() {
                   active: true,
                   availableColors: normalizeProductColors(p.availableColors),
                   origin: productOriginFromRow(p),
+                  subcategory: productSubcategoryFromRow(p),
               })),
           },
       } as SavedProject;
@@ -11847,7 +11978,7 @@ function AppInner() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sample-project-catalog-colors.json';
+      a.download = 'sample-project-catalog-colors-origin-subcategories.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -12030,6 +12161,7 @@ function AppInner() {
                           sku,
                           hsCode: row.hsCode ? String(row.hsCode) : undefined,
                           group: row.group ? String(row.group) : '',
+                          subcategory: productSubcategoryFromRow(row),
                           catalogName: row.catalogName ? String(row.catalogName) : undefined,
                           catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
                           catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
@@ -15210,10 +15342,13 @@ function AppInner() {
           },
           group: {
             defaultLabel: PRODUCT_TABLE_DEFAULT_LABELS.group,
-            headerClassName: 'px-4 py-2 bg-slate-50 w-24',
+            headerClassName: 'px-4 py-2 bg-slate-50 w-32',
             renderCell: (p) => (
               <td className="px-4 py-2">
-                <input type="text" placeholder="Group" value={p.group || ''} onChange={(e) => updateProduct(p.id, 'group', e.target.value)} className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-500 font-medium w-full outline-none" />
+                <div className="space-y-1">
+                  <input type="text" placeholder="Group" value={p.group || ''} onChange={(e) => updateProduct(p.id, 'group', e.target.value)} className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-xs text-slate-500 font-medium w-full outline-none" />
+                  <input type="text" placeholder="Subcategory (optional)" value={p.subcategory || ''} onChange={(e) => updateProduct(p.id, 'subcategory', e.target.value)} className="bg-transparent border border-transparent hover:border-slate-200 focus:border-blue-400 rounded px-1 py-0.5 text-[10px] text-slate-400 font-medium w-full outline-none" />
+                </div>
               </td>
             ),
           },
@@ -20756,6 +20891,7 @@ ${html}
                                                         <div className="flex flex-wrap gap-2 mt-1">
                                                             {p.sku && <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{p.sku}</span>}
                                                             {p.hsCode && <span className="text-[10px] opacity-60 font-mono text-slate-500">HS: {p.hsCode}</span>}
+                                                            {p.subcategory && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-100">{p.subcategory}</span>}
                                                         </div>
                                                     </div>
                                                     {/* Quick Edit Icon */}
