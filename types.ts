@@ -87,6 +87,7 @@ export interface Product {
       qty40ft?: number;
   };
   group?: string; // New: Group/Category name
+  origin?: string; // ISO 3166-1 alpha-2 country code, e.g. 'CN', 'DE', 'US'
   supplierId?: number; // New: Link to a specific supplier
   // Optional: Target price (per unit) requested by buyer / target market
   targetPrice?: number;
