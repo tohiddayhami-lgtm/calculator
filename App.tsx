@@ -4323,28 +4323,6 @@ interface BuildCatalogHtmlArgs {
     analyticsEndpoint?: { firebaseConfig: any; appId: string; ownerId: string; shortCode: string } | null;
 }
 
-const CATALOG_COUNTRY_NAMES: Record<string, string> = {
-    AF:'Afghanistan',AL:'Albania',DZ:'Algeria',AR:'Argentina',AM:'Armenia',
-    AU:'Australia',AT:'Austria',AZ:'Azerbaijan',BD:'Bangladesh',BY:'Belarus',
-    BE:'Belgium',BO:'Bolivia',BA:'Bosnia',BR:'Brazil',BG:'Bulgaria',
-    KH:'Cambodia',CA:'Canada',CL:'Chile',CN:'China',CO:'Colombia',
-    HR:'Croatia',CZ:'Czech Republic',DK:'Denmark',EG:'Egypt',ET:'Ethiopia',
-    FI:'Finland',FR:'France',GE:'Georgia',DE:'Germany',GH:'Ghana',
-    GR:'Greece',GT:'Guatemala',HN:'Honduras',HK:'Hong Kong',HU:'Hungary',
-    IN:'India',ID:'Indonesia',IR:'Iran',IQ:'Iraq',IE:'Ireland',
-    IL:'Israel',IT:'Italy',JP:'Japan',JO:'Jordan',KZ:'Kazakhstan',
-    KE:'Kenya',KR:'South Korea',KW:'Kuwait',LV:'Latvia',LB:'Lebanon',
-    LT:'Lithuania',LU:'Luxembourg',MY:'Malaysia',MX:'Mexico',MA:'Morocco',
-    NL:'Netherlands',NZ:'New Zealand',NG:'Nigeria',NO:'Norway',OM:'Oman',
-    PK:'Pakistan',PE:'Peru',PH:'Philippines',PL:'Poland',PT:'Portugal',
-    QA:'Qatar',RO:'Romania',RU:'Russia',SA:'Saudi Arabia',RS:'Serbia',
-    SG:'Singapore',SK:'Slovakia',SI:'Slovenia',ZA:'South Africa',ES:'Spain',
-    LK:'Sri Lanka',SE:'Sweden',CH:'Switzerland',TW:'Taiwan',TZ:'Tanzania',
-    TH:'Thailand',TN:'Tunisia',TR:'Turkey',UA:'Ukraine',AE:'UAE',
-    GB:'United Kingdom',US:'United States',UZ:'Uzbekistan',VN:'Vietnam',
-    YE:'Yemen',
-};
-
 const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], qrDataUrl, tCombined, inquiryEndpoint, analyticsEndpoint }: BuildCatalogHtmlArgs): string => {
     const cc = catalogConfig || {};
     const primary = cc.primaryColor || '#0f172a';
@@ -4593,17 +4571,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         const hsBadge = p.hsCode
             ? `<span class="hs-badge">HS: ${escapeHtml(p.hsCode)}</span>`
             : '';
-        const originBadgeHtml = (() => {
-            if (!p.origin) return '';
-            const raw = String(p.origin).trim();
-            const code = raw.toUpperCase().slice(0, 2);
-            if (/^[A-Z]{2}$/.test(code)) {
-                const flag = code.replace(/[A-Z]/g, (c: string) => String.fromCodePoint(c.charCodeAt(0) + 127397));
-                const name = CATALOG_COUNTRY_NAMES[code] || code;
-                return `<span class="origin-badge"><span class="origin-flag">${flag}</span><span class="origin-name">${escapeHtml(name)}</span></span>`;
-            }
-            return `<span class="origin-badge"><span class="origin-name">${escapeHtml(raw)}</span></span>`;
-        })();
 
         const cartName = p.catalogName || p.name || 'Item';
         const cartUnit = p.measurementUnit || baseUnit;
@@ -4649,7 +4616,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 <div class="card-body">
                     <h3 class="product-name">${escapeHtml(cartName)}</h3>
                     <div class="badges">${skuBadge}${hsBadge}</div>
-                    ${originBadgeHtml ? `<div>${originBadgeHtml}</div>` : ''}
                     ${descHtml}
                     ${colorOptionsHtml}
                     <div class="meta-grid">${packHtml}${moqHtml}</div>
@@ -5061,9 +5027,6 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .badges { display: flex; flex-wrap: wrap; gap: 4px; }
         .sku-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-weight: 700; padding: 2px 7px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 5px; }
         .hs-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; padding: 2px 7px; color: #64748b; }
-        .origin-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 5px; border-radius: 4px; border: 1px solid #e2e8f0; background: #f8fafc; }
-        .origin-flag { font-size: 14px; line-height: 1; }
-        .origin-name { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.07em; }
         .description { font-size: 12px; color: #64748b; line-height: 1.5; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .color-options { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
         .color-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
@@ -11390,7 +11353,6 @@ function AppInner() {
         availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
         customProfit: p.customProfit,
         group: p.group || '',
-        origin: p.origin || '',
         supplierId: p.supplierId,
         measurementUnit: p.measurementUnit,
         targetPrice: p.targetPrice,
@@ -12009,7 +11971,6 @@ function AppInner() {
                           sku,
                           hsCode: row.hsCode ? String(row.hsCode) : undefined,
                           group: row.group ? String(row.group) : '',
-                          origin: row.origin ? String(row.origin).toUpperCase().slice(0, 2) : undefined,
                           catalogName: row.catalogName ? String(row.catalogName) : undefined,
                           catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
                           catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
@@ -21134,23 +21095,12 @@ ${html}
                                   </div>
                                   <div>
                                       <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Catalog Display Name (Optional)</label>
-                                      <input
-                                          type="text"
-                                          value={p.catalogName || p.name}
-                                          onChange={(e) => updateProduct(p.id, 'catalogName', e.target.value)}
+                                      <input 
+                                          type="text" 
+                                          value={p.catalogName || p.name} 
+                                          onChange={(e) => updateProduct(p.id, 'catalogName', e.target.value)} 
                                           className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500"
                                           placeholder="Overrides standard name"
-                                      />
-                                  </div>
-                                  <div>
-                                      <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Origin Country (Optional)</label>
-                                      <input
-                                          type="text"
-                                          value={p.origin || ''}
-                                          onChange={(e) => updateProduct(p.id, 'origin', e.target.value.toUpperCase().slice(0, 2))}
-                                          className="w-full text-sm border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500 uppercase tracking-widest font-mono"
-                                          placeholder="ISO code e.g. CN, DE, US"
-                                          maxLength={2}
                                       />
                                   </div>
                                   {/* Gallery (multiple angles) */}
@@ -21850,7 +21800,7 @@ ${html}
                                               placeholder="Catalog display name"
                                           />
                                       </div>
-                                      <div className="grid grid-cols-3 gap-1.5">
+                                      <div className="grid grid-cols-2 gap-1.5">
                                           <input
                                               type="text"
                                               value={p.group || ''}
@@ -21863,15 +21813,7 @@ ${html}
                                               value={p.catalogMOQ || ''}
                                               onChange={(e) => updateProduct(p.id, 'catalogMOQ', e.target.value)}
                                               className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white"
-                                              placeholder="MOQ"
-                                          />
-                                          <input
-                                              type="text"
-                                              value={p.origin || ''}
-                                              onChange={(e) => updateProduct(p.id, 'origin', e.target.value.toUpperCase().slice(0, 2))}
-                                              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white uppercase tracking-widest"
-                                              placeholder="Origin"
-                                              maxLength={2}
+                                              placeholder="MOQ text or empty"
                                           />
                                       </div>
                                       <textarea
