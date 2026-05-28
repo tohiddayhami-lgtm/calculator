@@ -65,6 +65,7 @@ import {
 import {
   Product,
   ProductColor,
+  ProductOrigin,
   Logistics,
   LogisticsItem,
   LogisticsPreset,
@@ -223,6 +224,12 @@ import {
 } from './invoiceCustomer';
 import { InvoiceAccentColorPicker, invoiceThemeStyle, normalizeInvoiceAccentColor } from './invoiceTheme';
 import { InvoiceBillToBlock, InvoiceCustomerEditor, InvoiceHeaderRow } from './invoiceShared';
+import {
+  PRODUCT_ORIGIN_COUNTRIES,
+  PRODUCT_ORIGIN_DATALIST_ID,
+  normalizeProductOrigin,
+  productOriginKey,
+} from './countryOrigins';
 
 type ProductTableColumnKey =
   | 'status'
@@ -3231,6 +3238,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'If the source says 24 packs and each pack contains 24 pcs, set qty to 576, itemsPerPack to 24, and packingQtyCartons to 24.',
     'Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.',
     'If a product has selectable/available colors, put them in availableColors as an array of objects: { "name": "Matte Black", "hex": "#111827" }. For two-tone or gradient products, add a second color as hex2, for example { "name": "Black to Gold", "hex": "#111827", "hex2": "#F59E0B" }.',
+    'If product origin is known, put it in origin as a country name or ISO code, for example "China" or { "code": "CN", "name": "China" }.',
   ],
   products: [
     {
@@ -3249,6 +3257,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
       group: 'Sample Category',
       catalogMOQ: '24 packs',
       catalogDescription: 'Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.',
+      origin: { code: 'CN', name: 'China', flagUrl: 'https://flagcdn.com/w40/cn.png' },
       availableColors: [
         { name: 'Matte Black', hex: '#111827' },
         { name: 'Pearl White', hex: '#F8FAFC' },
@@ -3362,6 +3371,19 @@ const renderProductColorSwatchesHtml = (value: unknown, label = 'Colors'): strin
     const colors = normalizeProductColors(value);
     if (!colors.length) return '';
     return `<div class="color-options" aria-label="${escapeAttr(label)}"><span class="color-label">${escapeHtml(label)}</span>${colors.map((color) => `<span class="color-chip" title="${escapeAttr(color.name)}">${(color.hex || color.hex2) ? `<i style="background:${escapeAttr(productColorSwatchStyle(color))}"></i>` : ''}<b>${escapeHtml(color.name)}</b></span>`).join('')}</div>`;
+};
+
+const productOriginDisplayName = (origin: ProductOrigin): string => (
+    origin.code ? `${origin.name} (${origin.code})` : origin.name
+);
+
+const renderProductOriginHtml = (value: unknown, label = 'Origin'): string => {
+    const origin = normalizeProductOrigin(value);
+    if (!origin) return '';
+    const flagHtml = origin.flagUrl
+        ? `<img src="${escapeAttr(origin.flagUrl)}" alt="${escapeAttr(`${origin.name} flag`)}" loading="lazy" />`
+        : '';
+    return `<div class="origin-options" aria-label="${escapeAttr(label)}"><span class="origin-label">${escapeHtml(label)}</span><span class="origin-chip" title="${escapeAttr(productOriginDisplayName(origin))}">${flagHtml}<b>${escapeHtml(origin.name)}</b></span></div>`;
 };
 
 type HtmlVideoPresetKey = 'story' | 'portrait' | 'landscape' | 'square';
@@ -4559,6 +4581,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         const descHtml = p.catalogDescription
             ? `<p class="description">${escapeHtml(p.catalogDescription)}</p>`
             : '';
+        const originHtml = renderProductOriginHtml(p.origin);
         const colorOptionsHtml = renderProductColorSwatchesHtml(p.availableColors);
 
         const groupBadge = p.group
@@ -4617,6 +4640,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                     <h3 class="product-name">${escapeHtml(cartName)}</h3>
                     <div class="badges">${skuBadge}${hsBadge}</div>
                     ${descHtml}
+                    ${originHtml}
                     ${colorOptionsHtml}
                     <div class="meta-grid">${packHtml}${moqHtml}</div>
                     ${(showPrices || targetRowHtml) ? `<div class="prices">${priceRows}${targetRowHtml}</div>` : ''}
@@ -5028,6 +5052,13 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .sku-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-weight: 700; padding: 2px 7px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 5px; }
         .hs-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; padding: 2px 7px; color: #64748b; }
         .description { font-size: 12px; color: #64748b; line-height: 1.5; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .origin-options { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+        .origin-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
+        .origin-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 999px; padding: 3px 8px 3px 4px; font-size: 10px; font-weight: 800; line-height: 1; }
+        .origin-chip img { width: 20px; height: 13px; border-radius: 2px; object-fit: cover; border: 1px solid rgba(15,23,42,.12); box-shadow: 0 1px 2px rgba(15,23,42,.08); flex-shrink: 0; }
+        .pd-info .origin-options { gap: 7px; }
+        .pd-info .origin-label, .pd-info .origin-chip { font-size: 12px; }
+        .pd-info .origin-chip img { width: 24px; height: 16px; }
         .color-options { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
         .color-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
         .color-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; border-radius: 999px; padding: 3px 7px 3px 4px; font-size: 10px; font-weight: 700; line-height: 1; }
@@ -11351,6 +11382,7 @@ function AppInner() {
         catalogMOQ: p.catalogMOQ,
         catalogDescription: p.catalogDescription,
         availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
+        origin: normalizeProductOrigin((p as Product).origin || (p as any).originCountry || (p as any).countryOfOrigin),
         customProfit: p.customProfit,
         group: p.group || '',
         supplierId: p.supplierId,
@@ -11975,6 +12007,7 @@ function AppInner() {
                           catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
                           catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
                           availableColors: normalizeProductColors(row.availableColors || row.catalogColors || row.colors || row.colours || row.productColors),
+                          origin: normalizeProductOrigin(row.origin || row.originCountry || row.countryOfOrigin || row.country_origin),
                           targetPrice: Number(row.targetPrice) > 0 ? Number(row.targetPrice) : undefined,
                           targetPriceCurrency: row.targetPriceCurrency
                               ? String(row.targetPriceCurrency).trim().toUpperCase()
@@ -12402,6 +12435,41 @@ function AppInner() {
                   <Plus className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
                   Add color
               </button>
+          </div>
+      );
+  };
+
+  const renderProductOriginEditor = (p: Product) => {
+      const origin = normalizeProductOrigin(p.origin);
+      const value = origin ? productOriginDisplayName(origin) : '';
+      return (
+          <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-100 bg-white/70 px-2 py-1">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Origin</span>
+              {origin?.flagUrl && (
+                  <img
+                      src={origin.flagUrl}
+                      alt={`${origin.name} flag`}
+                      className="h-3.5 w-5 rounded-[2px] border border-slate-200 object-cover shadow-sm"
+                      loading="lazy"
+                  />
+              )}
+              <input
+                  list={PRODUCT_ORIGIN_DATALIST_ID}
+                  value={value}
+                  onChange={(e) => updateProduct(p.id, 'origin', normalizeProductOrigin(e.target.value))}
+                  className="min-w-[120px] flex-1 border-0 bg-transparent px-0 text-[10px] font-semibold text-slate-600 outline-none placeholder:text-slate-300"
+                  placeholder="Country"
+              />
+              {origin && (
+                  <button
+                      type="button"
+                      onClick={() => updateProduct(p.id, 'origin', undefined)}
+                      className="rounded-full p-0.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+                      title="Clear origin"
+                  >
+                      <X className="h-3 w-3" />
+                  </button>
+              )}
           </div>
       );
   };
@@ -15086,6 +15154,11 @@ function AppInner() {
       </details>
 
       {/* 2. PRODUCT INPUT */}
+      <datalist id={PRODUCT_ORIGIN_DATALIST_ID}>
+        {PRODUCT_ORIGIN_COUNTRIES.map((country) => (
+          <option key={productOriginKey(country)} value={productOriginDisplayName(country)} />
+        ))}
+      </datalist>
       {(() => {
         const productColumnDefs: Record<ProductTableColumnKey, {
           defaultLabel: string;
@@ -15148,6 +15221,7 @@ function AppInner() {
                     className="w-full resize-y min-h-[42px] rounded-md border border-slate-100 bg-slate-50/70 px-2 py-1 text-[11px] leading-snug text-slate-600 placeholder:text-slate-400 outline-none focus:border-blue-300 focus:bg-white focus:ring-1 focus:ring-blue-100"
                     placeholder="Details / ویژگی‌ها، کاربرد، گرید، مشخصات محصول..."
                   />
+                  {renderProductOriginEditor(p)}
                   {renderProductColorsEditor(p, true)}
                 </div>
               </td>
@@ -24141,7 +24215,9 @@ ${html}
               const displayQty = isInvoiceEditable ? (override.qty ?? p.qty) : p.qty;
               const lineNet = lineNetAfterLineDisc(p, welteTerm);
               const uPrice = welteDisplayUnitPrice(p);
-              const originDisp = (override.origin ?? wt.countryOfOriginDefault ?? '').trim() || '—';
+              const productOrigin = normalizeProductOrigin(p.origin);
+              const originInfo = normalizeProductOrigin(override.origin || productOrigin || wt.countryOfOriginDefault);
+              const originDisp = (originInfo?.name || String(override.origin || productOrigin?.name || wt.countryOfOriginDefault || '')).trim() || '—';
               const nw = override.netWeightKg;
               return (
                 <tr key={p.id}>
@@ -24161,7 +24237,16 @@ ${html}
                         className="welte-inline-inp"
                       />
                     ) : (
-                      originDisp
+                      originInfo?.flagUrl ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <img
+                            src={originInfo.flagUrl}
+                            alt=""
+                            style={{ width: 22, height: 14, objectFit: 'cover', border: '1px solid #cbd5e1', borderRadius: 2 }}
+                          />
+                          <span>{originDisp}</span>
+                        </span>
+                      ) : originDisp
                     )}
                   </td>
                   <td>{p.hsCode || '—'}</td>

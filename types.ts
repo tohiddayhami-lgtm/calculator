@@ -56,6 +56,13 @@ export interface ProductColor {
   hex2?: string;
 }
 
+export interface ProductOrigin {
+  code: string;
+  name: string;
+  /** Small rectangular flag image URL used in dashboard and catalog displays. */
+  flagUrl: string;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -79,6 +86,7 @@ export interface Product {
   catalogMOQ?: string; // Editable MOQ string just for catalog
   catalogDescription?: string; // New: Detailed features/description for catalog
   availableColors?: ProductColor[]; // Optional color options shown in online/PDF catalog
+  origin?: ProductOrigin; // Optional country of origin shown with a small flag
   // New: Logistics Info for Catalog
   logisticsDetails?: {
       qtyPerBox?: number;
