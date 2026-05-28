@@ -12,7 +12,9 @@
     "qty means total units/pieces, not number of packs.",
     "itemsPerPack means how many units/pieces are inside each pack/carton.",
     "If the source says 24 packs and each pack contains 24 pcs, set qty to 576, itemsPerPack to 24, and packingQtyCartons to 24.",
-    "Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY."
+    "Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.",
+    "If product origin is known, put it in origin as a country name, ISO code, or object, for example \"China\", \"CN\", or { \"code\": \"CN\", \"name\": \"China\" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.",
+    "If a product has selectable/available colors, put them in availableColors as an array of objects: { \"name\": \"Matte Black\", \"hex\": \"#111827\" }. For two-tone or gradient products, add hex2."
   ],
   "products": [
     {
@@ -31,6 +33,25 @@
       "group": "Sample Category",
       "catalogMOQ": "24 packs",
       "catalogDescription": "Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.",
+      "origin": {
+        "code": "CN",
+        "name": "China"
+      },
+      "availableColors": [
+        {
+          "name": "Matte Black",
+          "hex": "#111827"
+        },
+        {
+          "name": "Pearl White",
+          "hex": "#F8FAFC"
+        },
+        {
+          "name": "Black / Gold Gradient",
+          "hex": "#111827",
+          "hex2": "#F59E0B"
+        }
+      ],
       "scenarioManualUnitSellPrices": {
         "EXW": 3.1,
         "FOB": 3.45
@@ -81,6 +102,17 @@
       "group": "Sample Category",
       "catalogMOQ": "1 container",
       "catalogDescription": "Another example where AI must fill both EXW and FOB direct prices.",
+      "origin": "India",
+      "availableColors": [
+        {
+          "name": "Natural",
+          "hex": "#F5E6C8"
+        },
+        {
+          "name": "Premium Gold",
+          "hex": "#D97706"
+        }
+      ],
       "scenarioManualUnitSellPrices": {
         "EXW": 950,
         "FOB": 1030

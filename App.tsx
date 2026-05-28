@@ -3238,7 +3238,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'If the source says 24 packs and each pack contains 24 pcs, set qty to 576, itemsPerPack to 24, and packingQtyCartons to 24.',
     'Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.',
     'If a product has selectable/available colors, put them in availableColors as an array of objects: { "name": "Matte Black", "hex": "#111827" }. For two-tone or gradient products, add a second color as hex2, for example { "name": "Black to Gold", "hex": "#111827", "hex2": "#F59E0B" }.',
-    'If product origin is known, put it in origin as a country name or ISO code, for example "China" or { "code": "CN", "name": "China" }.',
+    'If product origin is known, put it in origin as a country name, ISO code, or object, for example "China", "CN", or { "code": "CN", "name": "China" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.',
   ],
   products: [
     {
@@ -3385,6 +3385,18 @@ const renderProductOriginHtml = (value: unknown, label = 'Origin'): string => {
         : '';
     return `<div class="origin-options" aria-label="${escapeAttr(label)}"><span class="origin-label">${escapeHtml(label)}</span><span class="origin-chip" title="${escapeAttr(productOriginDisplayName(origin))}">${flagHtml}<b>${escapeHtml(origin.name)}</b></span></div>`;
 };
+
+const productOriginFromRow = (row: Record<string, unknown>): ProductOrigin | undefined => normalizeProductOrigin(
+    row.origin ||
+    row.origine ||
+    row.originCountry ||
+    row.countryOfOrigin ||
+    row.country_origin ||
+    row.country ||
+    row.madeIn ||
+    row.madeInCountry ||
+    row.countryOfManufacture
+);
 
 type HtmlVideoPresetKey = 'story' | 'portrait' | 'landscape' | 'square';
 
@@ -11382,7 +11394,7 @@ function AppInner() {
         catalogMOQ: p.catalogMOQ,
         catalogDescription: p.catalogDescription,
         availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
-        origin: normalizeProductOrigin((p as Product).origin || (p as any).originCountry || (p as any).countryOfOrigin),
+        origin: productOriginFromRow(p as unknown as Record<string, unknown>),
         customProfit: p.customProfit,
         group: p.group || '',
         supplierId: p.supplierId,
@@ -11787,8 +11799,8 @@ function AppInner() {
 
   const downloadProjectJsonSample = () => {
       const sampleProject: SavedProject = {
-          id: 'sample_catalog_project_with_colors',
-          name: 'Sample Catalog Project With Product Colors',
+          id: 'sample_catalog_project_with_colors_and_origin',
+          name: 'Sample Catalog Project With Product Colors and Origin',
           folder: 'JSON Samples',
           createdAt: { seconds: Math.floor(Date.now() / 1000) },
           data: {
@@ -11801,10 +11813,10 @@ function AppInner() {
               selectedTerms,
               visibleScenarioTerms,
               invoiceTerms,
-              notes: 'Sample project JSON. Products may include availableColors for online/PDF catalog color swatches.',
+              notes: 'Sample project JSON. Products may include availableColors and origin for online/PDF catalog color swatches and country-of-origin badges.',
               catalogConfig: {
                   ...catalogConfig,
-                  title: catalogConfig.title || 'Sample Catalog With Colors',
+                  title: catalogConfig.title || 'Sample Catalog With Colors and Origin',
               },
               products: (AI_PRODUCT_INPUT_SAMPLE.products as any[]).map((p, idx) => ({
                   ...p,
@@ -12007,7 +12019,7 @@ function AppInner() {
                           catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
                           catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
                           availableColors: normalizeProductColors(row.availableColors || row.catalogColors || row.colors || row.colours || row.productColors),
-                          origin: normalizeProductOrigin(row.origin || row.originCountry || row.countryOfOrigin || row.country_origin),
+                          origin: productOriginFromRow(row),
                           targetPrice: Number(row.targetPrice) > 0 ? Number(row.targetPrice) : undefined,
                           targetPriceCurrency: row.targetPriceCurrency
                               ? String(row.targetPriceCurrency).trim().toUpperCase()
@@ -33268,7 +33280,7 @@ ${html}
                                    type="button"
                                    onClick={downloadProjectJsonSample}
                                    className="flex items-center gap-2 px-3 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50 rounded"
-                                   title="Download project JSON sample with availableColors"
+                                  title="Download project JSON sample with availableColors and origin"
                                >
                                    <Download className="w-4 h-4" />
                                    Sample JSON
