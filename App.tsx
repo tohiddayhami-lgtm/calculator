@@ -11708,8 +11708,20 @@ function AppInner() {
                   throw new Error("Invalid project file format");
               }
 
+              const normalizedProjectData = {
+                  ...importedProject.data,
+                  products: Array.isArray(importedProject.data.products)
+                      ? importedProject.data.products.map((p) => ({
+                          ...p,
+                          availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
+                          origin: productOriginFromRow(p as unknown as Record<string, unknown>),
+                      }))
+                      : importedProject.data.products,
+              };
+
               const newProject: SavedProject = {
                   ...importedProject,
+                  data: normalizedProjectData,
                   id: `imported_${Date.now()}`,
                   name: `${importedProject.name} (Imported)`,
                   createdAt: { seconds: Math.floor(Date.now() / 1000) }
@@ -11773,7 +11785,9 @@ function AppInner() {
       const newProducts = productsToImport.map((p, idx) => ({
           ...p,
           id: Date.now() + Math.random() + idx, 
-          active: true
+          active: true,
+          availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
+          origin: productOriginFromRow(p as unknown as Record<string, unknown>),
       }));
 
       setProducts(prev => [...prev, ...newProducts]);
@@ -11823,6 +11837,7 @@ function AppInner() {
                   id: idx + 1,
                   active: true,
                   availableColors: normalizeProductColors(p.availableColors),
+                  origin: productOriginFromRow(p),
               })),
           },
       } as SavedProject;
