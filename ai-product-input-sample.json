@@ -16,6 +16,7 @@
     "If product origin is known, put it in origin as a country name, ISO code, or object, for example \"China\", \"CN\", or { \"code\": \"CN\", \"name\": \"China\" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.",
     "Optional: put product subcategory in subcategory, for example \"Skincare\", \"Powder\", or \"Spare Parts\". Subcategories appear under the main group/category tab in the electronic catalog link.",
     "Optional: put stock availability text in stockLabel, for example \"In stock in Muscat\" or \"Available in stock in Oman\". Leave it empty or omit it when no stock badge should be shown.",
+    "Optional: override catalog delivery/Incoterm labels per product in catalogTermDisplayNames, for example { \"FOB\": \"FOB Bandar Abbas\", \"EXW\": \"Factory gate\" }. Empty/missing values fall back to the catalog-wide label or the raw term code.",
     "If a product has selectable/available colors, put them in availableColors as an array of objects: { \"name\": \"Matte Black\", \"hex\": \"#111827\" }. For two-tone or gradient products, add hex2."
   ],
   "products": [
@@ -37,6 +38,10 @@
       "catalogMOQ": "24 packs",
       "catalogDescription": "Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.",
       "stockLabel": "In stock in Muscat",
+      "catalogTermDisplayNames": {
+        "EXW": "Factory gate",
+        "FOB": "FOB Bandar Abbas"
+      },
       "origin": {
         "code": "CN",
         "name": "China"
@@ -108,6 +113,9 @@
       "catalogMOQ": "1 container",
       "catalogDescription": "Another example where AI must fill both EXW and FOB direct prices.",
       "stockLabel": "Available in stock in Oman",
+      "catalogTermDisplayNames": {
+        "FOB": "FOB Jask Port"
+      },
       "origin": "India",
       "availableColors": [
         {

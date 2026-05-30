@@ -3241,6 +3241,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'If product origin is known, put it in origin as a country name, ISO code, or object, for example "China", "CN", or { "code": "CN", "name": "China" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.',
     'Optional: put product subcategory in subcategory, for example "Skincare", "Powder", or "Spare Parts". Subcategories appear under the main group/category tab in the electronic catalog link.',
     'Optional: put stock availability text in stockLabel, for example "In stock in Muscat" or "Available in stock in Oman". Leave it empty or omit it when no stock badge should be shown.',
+    'Optional: override catalog delivery/Incoterm labels per product in catalogTermDisplayNames, for example { "FOB": "FOB Bandar Abbas", "EXW": "Factory gate" }. Empty/missing values fall back to the catalog-wide label or the raw term code.',
   ],
   products: [
     {
@@ -3261,6 +3262,10 @@ const AI_PRODUCT_INPUT_SAMPLE = {
       catalogMOQ: '24 packs',
       catalogDescription: 'Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.',
       stockLabel: 'In stock in Muscat',
+      catalogTermDisplayNames: {
+        EXW: 'Factory gate',
+        FOB: 'FOB Bandar Abbas',
+      },
       origin: { code: 'CN', name: 'China', flagUrl: 'https://flagcdn.com/w40/cn.png' },
       availableColors: [
         { name: 'Matte Black', hex: '#111827' },
@@ -3423,6 +3428,18 @@ const productStockLabelFromRow = (row: Record<string, unknown>): string => Strin
     row.inStock ??
     ''
 ).trim();
+
+const productTermDisplayNamesFromRow = (row: Record<string, unknown>): Record<string, string> | undefined => {
+    const raw = row.catalogTermDisplayNames ?? row.productTermDisplayNames ?? row.termDisplayNames ?? row.incotermDisplayNames;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const out: Record<string, string> = {};
+    Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+        const term = key.trim().toUpperCase();
+        const label = String(value ?? '').trim();
+        if (term && label) out[term] = label;
+    });
+    return Object.keys(out).length ? out : undefined;
+};
 
 type HtmlVideoPresetKey = 'story' | 'portrait' | 'landscape' | 'square';
 
@@ -4484,6 +4501,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const destinationLabel = (cc.catalogDestinationLabel || 'Destination Port / City').trim() || 'Destination Port / City';
     const destinationPlaceholder = (cc.catalogDestinationPlaceholder || 'e.g. Hamburg, DE').trim() || 'e.g. Hamburg, DE';
     const displayTerm = (term: string) => (termDisplayNames[term] || '').trim() || term;
+    const displayProductTerm = (p: any, term: string) => {
+        const productLabels = p?.catalogTermDisplayNames && typeof p.catalogTermDisplayNames === 'object'
+            ? p.catalogTermDisplayNames as Record<string, string>
+            : {};
+        return (productLabels[term] || '').trim() || displayTerm(term);
+    };
     const showVolumeTiers = cc.catalogShowVolumeTiers === true && volumeTiers.length > 0;
     const volumeTierTerm = (cc.catalogVolumeTierTerm || priceTerms[0] || incoterms[0] || 'FOB').trim();
     const volumeTierTitle = (cc.catalogVolumeTierTitle || 'Volume Pricing').trim() || 'Volume Pricing';
@@ -4530,7 +4553,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                     : '';
                 return `
                     <div class="price-row">
-                        <span class="term-badge" style="background:${primary}" title="${escapeAttr(term)}">${escapeHtml(displayTerm(term))}</span>
+                        <span class="term-badge" style="background:${primary}" title="${escapeAttr(term)}">${escapeHtml(displayProductTerm(p, term))}</span>
                         <div class="price-values">${unitDisplay}${packDisplay}</div>
                     </div>
                 `;
@@ -4576,7 +4599,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                     <div class="volume-tiers">
                         <div class="volume-tier-head">
                             <span>${escapeHtml(volumeTierTitle)}</span>
-                            <em>${escapeHtml(displayTerm(volumeTierTerm))}</em>
+                            <em>${escapeHtml(displayProductTerm(p, volumeTierTerm))}</em>
                         </div>
                         ${rows}
                         ${volumeTierNote ? `<p class="volume-note">${escapeHtml(volumeTierNote)}</p>` : ''}
@@ -4639,6 +4662,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             origin?.name,
             origin?.code,
             colorNames,
+            ...Object.values((p.catalogTermDisplayNames || {}) as Record<string, string>),
         ].filter(Boolean).join(' ');
 
         const groupBadge = p.group
@@ -11562,6 +11586,7 @@ function AppInner() {
         group: p.group || '',
         subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
         stockLabel: productStockLabelFromRow(p as unknown as Record<string, unknown>),
+        catalogTermDisplayNames: productTermDisplayNamesFromRow(p as unknown as Record<string, unknown>),
         supplierId: p.supplierId,
         measurementUnit: p.measurementUnit,
         targetPrice: p.targetPrice,
@@ -11882,6 +11907,7 @@ function AppInner() {
                           origin: productOriginFromRow(p as unknown as Record<string, unknown>),
                           subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
                           stockLabel: productStockLabelFromRow(p as unknown as Record<string, unknown>),
+                          catalogTermDisplayNames: productTermDisplayNamesFromRow(p as unknown as Record<string, unknown>),
                       }))
                       : importedProject.data.products,
               };
@@ -11957,6 +11983,7 @@ function AppInner() {
           origin: productOriginFromRow(p as unknown as Record<string, unknown>),
           subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
           stockLabel: productStockLabelFromRow(p as unknown as Record<string, unknown>),
+          catalogTermDisplayNames: productTermDisplayNamesFromRow(p as unknown as Record<string, unknown>),
       }));
 
       setProducts(prev => [...prev, ...newProducts]);
@@ -12009,6 +12036,7 @@ function AppInner() {
                   origin: productOriginFromRow(p),
                   subcategory: productSubcategoryFromRow(p),
                   stockLabel: productStockLabelFromRow(p),
+                  catalogTermDisplayNames: productTermDisplayNamesFromRow(p),
               })),
           },
       } as SavedProject;
@@ -12203,6 +12231,7 @@ function AppInner() {
                           group: row.group ? String(row.group) : '',
                           subcategory: productSubcategoryFromRow(row),
                           stockLabel: productStockLabelFromRow(row),
+                          catalogTermDisplayNames: productTermDisplayNamesFromRow(row),
                           catalogName: row.catalogName ? String(row.catalogName) : undefined,
                           catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
                           catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
@@ -12683,6 +12712,48 @@ function AppInner() {
           placeholder="Stock badge (optional) مثل In stock in Muscat"
       />
   );
+
+  const updateProductTermDisplayName = (productId: number, term: string, label: string) => {
+      setProducts(prev => prev.map(p => {
+          if (p.id !== productId) return p;
+          const next = { ...(p.catalogTermDisplayNames || {}) };
+          const clean = label.trim();
+          if (clean) {
+              next[term] = label;
+          } else {
+              delete next[term];
+          }
+          return {
+              ...p,
+              catalogTermDisplayNames: Object.keys(next).length ? next : undefined,
+          };
+      }));
+  };
+
+  const renderProductTermLabelsEditor = (p: Product, compact = false) => {
+      const terms = (catalogConfig.priceTerms?.length ? catalogConfig.priceTerms : SCENARIO_TERMS) as string[];
+      return (
+          <details className={compact ? 'rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1' : 'rounded-xl border border-slate-200 bg-white p-2'}>
+              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  Product term labels
+              </summary>
+              <div className="mt-2 space-y-1">
+                  {terms.map((term) => (
+                      <div key={`product-term-${p.id}-${term}`} className="grid grid-cols-[2.75rem,1fr] gap-2 items-center">
+                          <span className="text-[10px] font-black text-slate-500">{term}</span>
+                          <input
+                              type="text"
+                              value={p.catalogTermDisplayNames?.[term] || ''}
+                              onChange={(e) => updateProductTermDisplayName(p.id, term, e.target.value)}
+                              className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 outline-none focus:border-blue-400"
+                              placeholder={(catalogConfig.catalogTermDisplayNames?.[term] || term) + ' (optional)'}
+                          />
+                      </div>
+                  ))}
+              </div>
+          </details>
+      );
+  };
 
   const addServiceRetailItem = () => {
       const sku = formatSku(nextSkuNumber(products));
@@ -15436,6 +15507,7 @@ function AppInner() {
                   />
                   {renderProductOriginEditor(p)}
                   {renderProductStockLabelEditor(p)}
+                  {renderProductTermLabelsEditor(p, true)}
                   {renderProductColorsEditor(p, true)}
                 </div>
               </td>
@@ -21052,7 +21124,7 @@ ${html}
                                                                 
                                                                 return (
                                                                     <div key={term} className="flex justify-between items-end py-0.5">
-                                                                        <span className="font-bold text-[10px] px-2 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: catalogConfig.primaryColor }}>{catalogConfig.catalogTermDisplayNames?.[term] || term}</span>
+                                                                        <span className="font-bold text-[10px] px-2 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: catalogConfig.primaryColor }}>{p.catalogTermDisplayNames?.[term] || catalogConfig.catalogTermDisplayNames?.[term] || term}</span>
                                                                         <div className="text-right">
                                                                             {(catalogConfig.priceBasis === 'unit' || catalogConfig.priceBasis === 'both') && (
                                                                                 <span className="font-bold block text-xs md:text-sm text-slate-800">{uPrice} <span className="text-[9px] font-normal text-slate-400 uppercase">/{displayUnit}</span></span>
@@ -21103,7 +21175,7 @@ ${html}
                                                             <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
                                                                 <div className="flex justify-between items-center px-2 py-1 bg-amber-100/70 text-[10px] font-black text-amber-900">
                                                                     <span>{catalogConfig.catalogVolumeTierTitle || 'Volume Pricing'}</span>
-                                                                    <span>{catalogConfig.catalogTermDisplayNames?.[tierTerm] || tierTerm}</span>
+                                                                    <span>{p.catalogTermDisplayNames?.[tierTerm] || catalogConfig.catalogTermDisplayNames?.[tierTerm] || tierTerm}</span>
                                                                 </div>
                                                                 {volumeTiers.slice(0, 3).map((tier) => {
                                                                     const adjusted = Math.max(0, basePrice * (1 + (tier.adjustment || 0) / 100));
@@ -22163,6 +22235,7 @@ ${html}
                                           className="w-full text-xs border border-emerald-100 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white text-emerald-800"
                                           placeholder="Stock badge optional, e.g. In stock in Muscat"
                                       />
+                                      {renderProductTermLabelsEditor(p)}
                                       <textarea
                                           rows={2}
                                           value={p.catalogDescription || ''}

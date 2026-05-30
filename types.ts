@@ -97,6 +97,7 @@ export interface Product {
   group?: string; // New: Group/Category name
   subcategory?: string; // Optional subcategory shown under the main catalog category/tab
   stockLabel?: string; // Optional catalog badge, e.g. "In stock in Muscat"
+  catalogTermDisplayNames?: Record<string, string>; // Optional per-product labels, e.g. FOB Bandar Abbas
   supplierId?: number; // New: Link to a specific supplier
   // Optional: Target price (per unit) requested by buyer / target market
   targetPrice?: number;
