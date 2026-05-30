@@ -15,6 +15,7 @@
     "Use numbers without commas and ISO currency codes such as USD, EUR, OMR, AED, IRR, CNY.",
     "If product origin is known, put it in origin as a country name, ISO code, or object, for example \"China\", \"CN\", or { \"code\": \"CN\", \"name\": \"China\" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.",
     "Optional: put product subcategory in subcategory, for example \"Skincare\", \"Powder\", or \"Spare Parts\". Subcategories appear under the main group/category tab in the electronic catalog link.",
+    "Optional: put stock availability text in stockLabel, for example \"In stock in Muscat\" or \"Available in stock in Oman\". Leave it empty or omit it when no stock badge should be shown.",
     "If a product has selectable/available colors, put them in availableColors as an array of objects: { \"name\": \"Matte Black\", \"hex\": \"#111827\" }. For two-tone or gradient products, add hex2."
   ],
   "products": [
@@ -35,6 +36,7 @@
       "subcategory": "Sample Subcategory",
       "catalogMOQ": "24 packs",
       "catalogDescription": "Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.",
+      "stockLabel": "In stock in Muscat",
       "origin": {
         "code": "CN",
         "name": "China"
@@ -105,6 +107,7 @@
       "subcategory": "Bulk Commodity",
       "catalogMOQ": "1 container",
       "catalogDescription": "Another example where AI must fill both EXW and FOB direct prices.",
+      "stockLabel": "Available in stock in Oman",
       "origin": "India",
       "availableColors": [
         {

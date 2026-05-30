@@ -3240,6 +3240,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'If a product has selectable/available colors, put them in availableColors as an array of objects: { "name": "Matte Black", "hex": "#111827" }. For two-tone or gradient products, add a second color as hex2, for example { "name": "Black to Gold", "hex": "#111827", "hex2": "#F59E0B" }.',
     'If product origin is known, put it in origin as a country name, ISO code, or object, for example "China", "CN", or { "code": "CN", "name": "China" }. The app also accepts originCountry, countryOfOrigin, country, madeIn, madeInCountry, and origine.',
     'Optional: put product subcategory in subcategory, for example "Skincare", "Powder", or "Spare Parts". Subcategories appear under the main group/category tab in the electronic catalog link.',
+    'Optional: put stock availability text in stockLabel, for example "In stock in Muscat" or "Available in stock in Oman". Leave it empty or omit it when no stock badge should be shown.',
   ],
   products: [
     {
@@ -3259,6 +3260,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
       subcategory: 'Sample Subcategory',
       catalogMOQ: '24 packs',
       catalogDescription: 'Short product description for catalog and quotation. Packed 24 pcs inside each pack/carton.',
+      stockLabel: 'In stock in Muscat',
       origin: { code: 'CN', name: 'China', flagUrl: 'https://flagcdn.com/w40/cn.png' },
       availableColors: [
         { name: 'Matte Black', hex: '#111827' },
@@ -3408,6 +3410,17 @@ const productSubcategoryFromRow = (row: Record<string, unknown>): string => Stri
     row.catalogSubcategory ??
     row.catalogSubCategory ??
     row.childCategory ??
+    ''
+).trim();
+
+const productStockLabelFromRow = (row: Record<string, unknown>): string => String(
+    row.stockLabel ??
+    row.stockStatus ??
+    row.availabilityLabel ??
+    row.availability ??
+    row.inStockLabel ??
+    row.inStocks ??
+    row.inStock ??
     ''
 ).trim();
 
@@ -4611,6 +4624,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         const origin = normalizeProductOrigin(p.origin);
         const colorNames = normalizeProductColors(p.availableColors).map((color) => color.name).join(' ');
         const subcategory = String(p.subcategory || '').trim();
+        const stockLabel = String(p.stockLabel || '').trim();
         const productSearchText = [
             p.catalogName,
             p.name,
@@ -4620,6 +4634,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             subcategory,
             p.catalogDescription,
             p.catalogMOQ,
+            stockLabel,
             p.measurementUnit,
             origin?.name,
             origin?.code,
@@ -4638,6 +4653,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             : '';
         const subcategoryBadge = subcategory
             ? `<span class="subcat-badge">${escapeHtml(subcategory)}</span>`
+            : '';
+        const stockBadge = stockLabel
+            ? `<span class="stock-badge">${escapeHtml(stockLabel)}</span>`
             : '';
 
         const cartName = p.catalogName || p.name || 'Item';
@@ -4683,7 +4701,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 </div>
                 <div class="card-body">
                     <h3 class="product-name">${escapeHtml(cartName)}</h3>
-                    <div class="badges">${skuBadge}${hsBadge}${subcategoryBadge}</div>
+                    <div class="badges">${skuBadge}${hsBadge}${subcategoryBadge}${stockBadge}</div>
                     ${descHtml}
                     ${originHtml}
                     ${colorOptionsHtml}
@@ -5113,6 +5131,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .sku-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-weight: 700; padding: 2px 7px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 5px; }
         .hs-badge { font-size: 10px; font-family: ui-monospace, 'SF Mono', monospace; padding: 2px 7px; color: #64748b; }
         .subcat-badge { font-size: 10px; font-weight: 800; padding: 2px 7px; background: #ecfeff; color: #0e7490; border: 1px solid #cffafe; border-radius: 999px; }
+        .stock-badge { font-size: 10px; font-weight: 900; padding: 2px 8px; background: #ecfdf5; color: #047857; border: 1px solid #bbf7d0; border-radius: 999px; }
         .description { font-size: 12px; color: #64748b; line-height: 1.5; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .origin-options { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
         .origin-label { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
@@ -11525,6 +11544,7 @@ function AppInner() {
         customProfit: p.customProfit,
         group: p.group || '',
         subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
+        stockLabel: productStockLabelFromRow(p as unknown as Record<string, unknown>),
         supplierId: p.supplierId,
         measurementUnit: p.measurementUnit,
         targetPrice: p.targetPrice,
@@ -11844,6 +11864,7 @@ function AppInner() {
                           availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
                           origin: productOriginFromRow(p as unknown as Record<string, unknown>),
                           subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
+                          stockLabel: productStockLabelFromRow(p as unknown as Record<string, unknown>),
                       }))
                       : importedProject.data.products,
               };
@@ -11918,6 +11939,7 @@ function AppInner() {
           availableColors: normalizeProductColors((p as Product).availableColors || (p as any).catalogColors || (p as any).colors),
           origin: productOriginFromRow(p as unknown as Record<string, unknown>),
           subcategory: productSubcategoryFromRow(p as unknown as Record<string, unknown>),
+          stockLabel: productStockLabelFromRow(p as unknown as Record<string, unknown>),
       }));
 
       setProducts(prev => [...prev, ...newProducts]);
@@ -11934,7 +11956,7 @@ function AppInner() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ai-product-input-sample-exw-fob.json';
+      a.download = 'ai-product-input-sample-exw-fob-origin-stock.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -11943,8 +11965,8 @@ function AppInner() {
 
   const downloadProjectJsonSample = () => {
       const sampleProject: SavedProject = {
-          id: 'sample_catalog_project_with_colors_origin_subcategories',
-          name: 'Sample Catalog Project With Product Colors, Origin, and Subcategories',
+          id: 'sample_catalog_project_with_colors_origin_subcategories_stock',
+          name: 'Sample Catalog Project With Product Colors, Origin, Subcategories, and Stock',
           folder: 'JSON Samples',
           createdAt: { seconds: Math.floor(Date.now() / 1000) },
           data: {
@@ -11957,10 +11979,10 @@ function AppInner() {
               selectedTerms,
               visibleScenarioTerms,
               invoiceTerms,
-              notes: 'Sample project JSON. Products may include availableColors, origin, and optional subcategory for online/PDF catalog color swatches, country-of-origin badges, and catalog sub-tabs.',
+              notes: 'Sample project JSON. Products may include availableColors, origin, optional subcategory, and stockLabel for online/PDF catalog color swatches, country-of-origin badges, catalog sub-tabs, and in-stock badges.',
               catalogConfig: {
                   ...catalogConfig,
-                  title: catalogConfig.title || 'Sample Catalog With Colors, Origin, and Subcategories',
+                  title: catalogConfig.title || 'Sample Catalog With Colors, Origin, Subcategories, and Stock',
               },
               products: (AI_PRODUCT_INPUT_SAMPLE.products as any[]).map((p, idx) => ({
                   ...p,
@@ -11969,6 +11991,7 @@ function AppInner() {
                   availableColors: normalizeProductColors(p.availableColors),
                   origin: productOriginFromRow(p),
                   subcategory: productSubcategoryFromRow(p),
+                  stockLabel: productStockLabelFromRow(p),
               })),
           },
       } as SavedProject;
@@ -11978,7 +12001,7 @@ function AppInner() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sample-project-catalog-colors-origin-subcategories.json';
+      a.download = 'sample-project-catalog-colors-origin-subcategories-stock.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -12162,6 +12185,7 @@ function AppInner() {
                           hsCode: row.hsCode ? String(row.hsCode) : undefined,
                           group: row.group ? String(row.group) : '',
                           subcategory: productSubcategoryFromRow(row),
+                          stockLabel: productStockLabelFromRow(row),
                           catalogName: row.catalogName ? String(row.catalogName) : undefined,
                           catalogMOQ: row.catalogMOQ ? String(row.catalogMOQ) : undefined,
                           catalogDescription: row.catalogDescription ? String(row.catalogDescription) : undefined,
@@ -12632,6 +12656,16 @@ function AppInner() {
           </div>
       );
   };
+
+  const renderProductStockLabelEditor = (p: Product) => (
+      <input
+          type="text"
+          value={p.stockLabel || ''}
+          onChange={(e) => updateProduct(p.id, 'stockLabel', e.target.value)}
+          className="w-full rounded-lg border border-slate-100 bg-emerald-50/40 px-2 py-1 text-[10px] font-semibold text-emerald-800 outline-none placeholder:text-emerald-300 focus:border-emerald-300 focus:bg-white"
+          placeholder="Stock badge (optional) مثل In stock in Muscat"
+      />
+  );
 
   const addServiceRetailItem = () => {
       const sku = formatSku(nextSkuNumber(products));
@@ -15384,6 +15418,7 @@ function AppInner() {
                     placeholder="Details / ویژگی‌ها، کاربرد، گرید، مشخصات محصول..."
                   />
                   {renderProductOriginEditor(p)}
+                  {renderProductStockLabelEditor(p)}
                   {renderProductColorsEditor(p, true)}
                 </div>
               </td>
@@ -20922,6 +20957,7 @@ ${html}
                                                             {p.sku && <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{p.sku}</span>}
                                                             {p.hsCode && <span className="text-[10px] opacity-60 font-mono text-slate-500">HS: {p.hsCode}</span>}
                                                             {p.subcategory && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-100">{p.subcategory}</span>}
+                                                            {p.stockLabel && <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{p.stockLabel}</span>}
                                                         </div>
                                                     </div>
                                                     {/* Quick Edit Icon */}
@@ -22103,6 +22139,13 @@ ${html}
                                               placeholder="MOQ text or empty"
                                           />
                                       </div>
+                                      <input
+                                          type="text"
+                                          value={p.stockLabel || ''}
+                                          onChange={(e) => updateProduct(p.id, 'stockLabel', e.target.value)}
+                                          className="w-full text-xs border border-emerald-100 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 bg-white text-emerald-800"
+                                          placeholder="Stock badge optional, e.g. In stock in Muscat"
+                                      />
                                       <textarea
                                           rows={2}
                                           value={p.catalogDescription || ''}
@@ -33461,7 +33504,7 @@ ${html}
                                    type="button"
                                    onClick={downloadProjectJsonSample}
                                    className="flex items-center gap-2 px-3 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50 rounded"
-                                  title="Download project JSON sample with availableColors and origin"
+                                  title="Download project JSON sample with availableColors, origin, subcategory, and stockLabel"
                                >
                                    <Download className="w-4 h-4" />
                                    Sample JSON
