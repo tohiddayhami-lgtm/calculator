@@ -134,10 +134,19 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     if(got && got === cfg.passwordHash){ document.getElementById('lock').classList.add('hidden'); start(); }
     else setText('lockError', txt.wrong);
   }
+  function flipTo(page){
+    // Absolute navigation: correct index to spread-start (showCover spreads: 0, 1-2, 3-4...)
+    var idx = page - 1;
+    if(idx > 0 && idx % 2 === 0) idx--;
+    pageFlip.flip(idx);
+  }
   function go(page){
     page = Math.max(1, Math.min(pageCount, page));
     if(page === currentPage && !fallbackMode) return;
-    if(pageFlip && !fallbackMode){ pageFlip.flip(page - 1); }
+    if(pageFlip && !fallbackMode){
+      if(page > currentPage) pageFlip.flipNext();
+      else pageFlip.flipPrev();
+    }
     else {
       currentPage = page;
       fallbackPage.classList.add('turning');
@@ -183,7 +192,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
       await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
       var btn = document.createElement('button');
       btn.type = 'button'; btn.className = 'thumb'; btn.dataset.page = String(n); btn.appendChild(canvas);
-      btn.onclick = function(){ go(n); };
+      btn.onclick = function(){ if(pageFlip&&!fallbackMode) flipTo(n); else go(n); };
       document.getElementById('thumbs').appendChild(btn);
     } catch(e) {}
   }
@@ -223,7 +232,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
     var matches = [];
     for(var i=1;i<=pageCount;i++){ if((pageTexts[i] || '').toLowerCase().indexOf(q) >= 0) matches.push(i); }
     if(!matches.length){ var empty=document.createElement('div'); empty.className='result'; empty.textContent=txt.noResults; box.appendChild(empty); return; }
-    matches.slice(0,30).forEach(function(p){ var btn=document.createElement('button'); btn.type='button'; btn.className='result'; btn.textContent=txt.page + ' ' + p; btn.onclick=function(){go(p);}; box.appendChild(btn); });
+    matches.slice(0,30).forEach(function(p){ var btn=document.createElement('button'); btn.type='button'; btn.className='result'; btn.textContent=txt.page + ' ' + p; btn.onclick=function(){ if(pageFlip&&!fallbackMode) flipTo(p); else go(p); }; box.appendChild(btn); });
   }
   setText('bookTitle', cfg.title);
   setText('bookMeta', cfg.accessMode === 'private' ? txt.private : cfg.fileName);
@@ -234,7 +243,7 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   document.getElementById('searchInput').placeholder = txt.searchPh;
   document.getElementById('downloadBtn').href = cfg.pdfUrl;
   if(!cfg.allowDownload) document.getElementById('downloadBtn').classList.add('hidden');
-  document.getElementById('firstBtn').onclick=function(){go(1);}; document.getElementById('lastBtn').onclick=function(){go(pageCount);};
+  document.getElementById('firstBtn').onclick=function(){ if(pageFlip&&!fallbackMode) pageFlip.flip(0); else go(1); }; document.getElementById('lastBtn').onclick=function(){ if(pageFlip&&!fallbackMode) pageFlip.flip(pageCount-1); else go(pageCount); };
   document.getElementById('prevBtn').onclick=function(){go(currentPage-1);}; document.getElementById('nextBtn').onclick=function(){go(currentPage+1);};
   document.getElementById('hudPrev').onclick=function(){go(currentPage-1);}; document.getElementById('hudNext').onclick=function(){go(currentPage+1);};
   document.getElementById('edgePrev').onclick=function(){go(currentPage-1);}; document.getElementById('edgeNext').onclick=function(){go(currentPage+1);};
@@ -245,7 +254,11 @@ export const buildEbookFlipbookHtml = (args: EbookFlipbookBuildArgs): string => 
   document.getElementById('searchBtn').onclick=runSearch;
   document.getElementById('searchInput').onkeydown=function(e){ if(e.key === 'Enter') runSearch(); };
   notesBox.addEventListener('input', function(){ clearTimeout(notesBox._t); notesBox._t=setTimeout(saveNote, 450); });
-  document.addEventListener('keydown', function(e){ if(e.key==='ArrowLeft') go(cfg.direction==='rtl'?currentPage+1:currentPage-1); if(e.key==='ArrowRight') go(cfg.direction==='rtl'?currentPage-1:currentPage+1); if(e.key==='Escape') resetAz(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowLeft'){ if(pageFlip&&!fallbackMode){ if(cfg.direction==='rtl') pageFlip.flipNext(); else pageFlip.flipPrev(); } else go(cfg.direction==='rtl'?currentPage+1:currentPage-1); }
+    if(e.key==='ArrowRight'){ if(pageFlip&&!fallbackMode){ if(cfg.direction==='rtl') pageFlip.flipPrev(); else pageFlip.flipNext(); } else go(cfg.direction==='rtl'?currentPage-1:currentPage+1); }
+    if(e.key==='Escape') resetAz();
+  });
   // Area zoom
   var stageEl = document.getElementById('stage');
   var zoomWrapEl = document.getElementById('zoomWrap');
