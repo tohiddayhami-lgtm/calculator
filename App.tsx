@@ -2577,6 +2577,8 @@ function createDefaultCatalogConfig(): CatalogConfig {
     catalogCartSavingsLabel: 'Your savings from this purchase',
     showCompanyPhotos: false,
     companyPhotos: [],
+    companyPhotoFrames: [],
+    companyPhotoFits: [],
     sections: [],
     customPages: [],
   };
@@ -4859,6 +4861,33 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             };
         });
 
+    const companyGalleryPhotos = cc.showCompanyPhotos
+        ? ((cc.companyPhotos || []) as string[]).filter(Boolean)
+        : [];
+    const companyGalleryTab = companyGalleryPhotos.length
+        ? {
+            id: 'company-gallery',
+            label: 'Company Gallery',
+            html: `
+            <section class="company-gallery-section">
+                <h2 class="section-title">Company Gallery</h2>
+                <div class="company-gallery-grid">
+                    ${companyGalleryPhotos.map((img, index) => {
+                        const frameRaw = String((cc.companyPhotoFrames || [])[index] || 'square');
+                        const fitRaw = String((cc.companyPhotoFits || [])[index] || 'cover');
+                        const frame = ['square', 'landscape', 'portrait'].includes(frameRaw) ? frameRaw : 'square';
+                        const fit = fitRaw === 'contain' ? 'contain' : 'cover';
+                        const ratio = frame === 'portrait' ? '3 / 4' : frame === 'landscape' ? '4 / 3' : '1 / 1';
+                        return `
+                        <figure class="company-gallery-photo company-gallery-photo--${escapeAttr(frame)}" style="${escapeAttr(`--photo-fit:${fit};--photo-ratio:${ratio};`)}">
+                            <img src="${escapeAttr(img)}" alt="Company gallery photo ${index + 1}" loading="lazy" />
+                        </figure>`;
+                    }).join('')}
+                </div>
+            </section>`,
+        }
+        : null;
+
     const ctaHtml = formUrl
         ? `
             <section class="cta-section">
@@ -5062,6 +5091,18 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             .custom-page .img-grid-2, .custom-page .img-grid-3 { grid-template-columns: 1fr; }
         }
         .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 18px; box-shadow: 0 18px 50px rgba(15,23,42,0.10); border: 1px solid #f1f5f9; background: #fafafa; }
+
+        /* Company Gallery */
+        .company-gallery-section { margin: 64px auto; padding: 0; max-width: 1040px; }
+        .company-gallery-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: start; }
+        .company-gallery-photo { margin: 0; aspect-ratio: var(--photo-ratio, 1 / 1); border-radius: 20px; overflow: hidden; background: #f8fafc; border: 1px solid #e2e8f0; box-shadow: 0 18px 50px rgba(15,23,42,0.10); }
+        .company-gallery-photo img { display: block; width: 100%; height: 100%; object-fit: var(--photo-fit, cover); }
+        @media (min-width: 780px) {
+            .company-gallery-photo--landscape { grid-column: span 2; }
+        }
+        @media (max-width: 640px) {
+            .company-gallery-grid { grid-template-columns: 1fr; }
+        }
 
         /* Custom Pages - item card grid (partners, certifications, etc.) */
         .cp-section { margin: 64px auto; padding: 0; background: transparent; border: 0; box-shadow: none; max-width: 980px; }
@@ -6239,6 +6280,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const websiteTabs = [
         { id: 'products', label: cc.productTabLabel || tCombined('productList') || 'Products', html: productsPanelHtml },
         ...(aboutUsHtml ? [{ id: 'about', label: cc.aboutUsTabLabel || 'About Us', html: aboutUsHtml }] : []),
+        ...(companyGalleryTab ? [companyGalleryTab] : []),
         ...customSectionTabs,
         ...structuredPageTabs,
     ];
@@ -11814,6 +11856,8 @@ function AppInner() {
             targetProfitLabel: project.data.catalogConfig.targetProfitLabel || 'Your profit on this deal',
             showCompanyPhotos: project.data.catalogConfig.showCompanyPhotos || false,
             companyPhotos: project.data.catalogConfig.companyPhotos || [],
+            companyPhotoFrames: project.data.catalogConfig.companyPhotoFrames || [],
+            companyPhotoFits: project.data.catalogConfig.companyPhotoFits || [],
             website: project.data.catalogConfig.website || '',
             sections: (project.data.catalogConfig.sections || []).filter(
                 (s: any) => s.content !== undefined || s.position !== undefined
@@ -12327,12 +12371,28 @@ function AppInner() {
                  const compressed = await compressImage(raw, 800, 0.7); 
                  setCatalogConfig(prev => ({
                      ...prev,
-                     companyPhotos: [...(prev.companyPhotos || []), compressed]
+                     companyPhotos: [...(prev.companyPhotos || []), compressed],
+                     companyPhotoFrames: [...(prev.companyPhotoFrames || []), 'square'],
+                     companyPhotoFits: [...(prev.companyPhotoFits || []), 'cover'],
                  }));
              };
              reader.readAsDataURL(file);
         });
     }
+  };
+
+  const moveCompanyPhoto = (index: number, direction: -1 | 1) => {
+      setCatalogConfig(prev => {
+          const photos = [...(prev.companyPhotos || [])];
+          const target = index + direction;
+          if (target < 0 || target >= photos.length) return prev;
+          const frames = photos.map((_, idx) => prev.companyPhotoFrames?.[idx] || 'square') as NonNullable<CatalogConfig['companyPhotoFrames']>;
+          const fits = photos.map((_, idx) => prev.companyPhotoFits?.[idx] || 'cover') as NonNullable<CatalogConfig['companyPhotoFits']>;
+          [photos[index], photos[target]] = [photos[target], photos[index]];
+          [frames[index], frames[target]] = [frames[target], frames[index]];
+          [fits[index], fits[target]] = [fits[target], fits[index]];
+          return { ...prev, companyPhotos: photos, companyPhotoFrames: frames, companyPhotoFits: fits };
+      });
   };
 
   const handleGalleryUpload = async (productId: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -20237,16 +20297,76 @@ ${html}
                                   </label>
                                   {catalogConfig.showCompanyPhotos && (
                                       <div>
-                                          <div className="flex flex-wrap gap-2 mb-2">
-                                              {(catalogConfig.companyPhotos || []).map((img, i) => (
-                                                  <div key={i} className="w-12 h-12 relative group/del">
-                                                      <img src={img} className="w-full h-full object-cover rounded border" alt=""/>
-                                                      <button 
-                                                        onClick={() => setCatalogConfig({...catalogConfig, companyPhotos: (catalogConfig.companyPhotos || []).filter((_, idx) => idx !== i)})}
-                                                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/del:opacity-100 transition-opacity"
-                                                      ><X className="w-2 h-2"/></button>
+                                          <p className="mb-2 text-[10px] leading-snug text-slate-500">
+                                              Use Prev/Next to change placement. Use Wide/Tall for horizontal or vertical photos and Fit to avoid cropping.
+                                          </p>
+                                          <div className="flex flex-wrap gap-3 mb-2">
+                                              {(catalogConfig.companyPhotos || []).map((img, i) => {
+                                                  const frame = catalogConfig.companyPhotoFrames?.[i] || 'square';
+                                                  const fit = catalogConfig.companyPhotoFits?.[i] || 'cover';
+                                                  const aspectRatio = frame === 'portrait' ? '3 / 4' : frame === 'landscape' ? '4 / 3' : '1 / 1';
+                                                  return (
+                                                  <div key={i} className="w-28 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
+                                                      <div className="relative group/del overflow-hidden rounded-lg bg-slate-50" style={{ aspectRatio }}>
+                                                          <img src={img} className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`} alt=""/>
+                                                          <button 
+                                                            onClick={() => setCatalogConfig(prev => ({
+                                                              ...prev,
+                                                              companyPhotos: (prev.companyPhotos || []).filter((_, idx) => idx !== i),
+                                                              companyPhotoFrames: (prev.companyPhotoFrames || []).filter((_, idx) => idx !== i),
+                                                              companyPhotoFits: (prev.companyPhotoFits || []).filter((_, idx) => idx !== i),
+                                                            }))}
+                                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/del:opacity-100 transition-opacity"
+                                                          ><X className="w-2 h-2"/></button>
+                                                      </div>
+                                                      <div className="mt-1 grid grid-cols-2 gap-1">
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => moveCompanyPhoto(i, -1)}
+                                                              disabled={i === 0}
+                                                              className="rounded border border-slate-200 bg-slate-50 px-1 py-0.5 text-[9px] font-bold text-slate-600 disabled:opacity-30"
+                                                          >
+                                                              Prev
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => moveCompanyPhoto(i, 1)}
+                                                              disabled={i === (catalogConfig.companyPhotos || []).length - 1}
+                                                              className="rounded border border-slate-200 bg-slate-50 px-1 py-0.5 text-[9px] font-bold text-slate-600 disabled:opacity-30"
+                                                          >
+                                                              Next
+                                                          </button>
+                                                      </div>
+                                                      <div className="mt-1 grid grid-cols-2 gap-1">
+                                                          <select
+                                                              value={frame}
+                                                              onChange={(e) => setCatalogConfig(prev => {
+                                                                  const next = [...(prev.companyPhotoFrames || [])];
+                                                                  next[i] = e.target.value as 'square' | 'landscape' | 'portrait';
+                                                                  return { ...prev, companyPhotoFrames: next };
+                                                              })}
+                                                              className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[9px] font-semibold text-slate-600 outline-none"
+                                                          >
+                                                              <option value="square">Square</option>
+                                                              <option value="landscape">Wide</option>
+                                                              <option value="portrait">Tall</option>
+                                                          </select>
+                                                          <select
+                                                              value={fit}
+                                                              onChange={(e) => setCatalogConfig(prev => {
+                                                                  const next = [...(prev.companyPhotoFits || [])];
+                                                                  next[i] = e.target.value as 'cover' | 'contain';
+                                                                  return { ...prev, companyPhotoFits: next };
+                                                              })}
+                                                              className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[9px] font-semibold text-slate-600 outline-none"
+                                                          >
+                                                              <option value="cover">Cover</option>
+                                                              <option value="contain">Fit</option>
+                                                          </select>
+                                                      </div>
                                                   </div>
-                                              ))}
+                                                  );
+                                              })}
                                           </div>
                                           <label className="cursor-pointer text-blue-600 hover:underline text-xs flex items-center gap-1">
                                               <Plus className="w-3 h-3"/> Add Photos
@@ -21274,12 +21394,17 @@ ${html}
                   {catalogConfig.showCompanyPhotos && (catalogConfig.companyPhotos || []).length > 0 && (
                       <div className="w-full h-[297mm] print-page p-8 flex flex-col relative overflow-hidden bg-white">
                            <h2 className="text-2xl font-bold uppercase tracking-wider mb-6 pb-4 border-b" style={{ borderColor: catalogConfig.primaryColor, color: catalogConfig.headingColor || catalogConfig.primaryColor }}>Gallery</h2>
-                           <div className="grid grid-cols-2 gap-4 auto-rows-fr h-full">
-                               {(catalogConfig.companyPhotos || []).slice(0, 4).map((img, i) => (
-                                   <div key={i} className="rounded-xl overflow-hidden shadow-sm border border-slate-100">
-                                       <img src={img} className="w-full h-full object-cover" alt="" />
+                           <div className="grid grid-cols-2 gap-4 content-start">
+                               {(catalogConfig.companyPhotos || []).slice(0, 4).map((img, i) => {
+                                   const frame = catalogConfig.companyPhotoFrames?.[i] || 'square';
+                                   const fit = catalogConfig.companyPhotoFits?.[i] || 'cover';
+                                   const aspectRatio = frame === 'portrait' ? '3 / 4' : frame === 'landscape' ? '4 / 3' : '1 / 1';
+                                   return (
+                                   <div key={i} className="rounded-xl overflow-hidden shadow-sm border border-slate-100 bg-slate-50" style={{ aspectRatio }}>
+                                       <img src={img} className="w-full h-full" style={{ objectFit: fit }} alt="" />
                                    </div>
-                               ))}
+                                   );
+                               })}
                            </div>
                       </div>
                   )}

@@ -565,6 +565,8 @@ export interface CatalogConfig {
   partnerLogos?: string[]; // List of Base64 strings
   showCompanyPhotos?: boolean;
   companyPhotos?: string[]; // List of Base64 strings
+  companyPhotoFrames?: Array<'square' | 'landscape' | 'portrait'>;
+  companyPhotoFits?: Array<'cover' | 'contain'>;
   
   // Dynamic Sections
   sections?: CatalogSection[]; // New: Unlimited custom sections
