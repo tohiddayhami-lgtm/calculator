@@ -70,15 +70,66 @@
           else { document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(el); }); }
         }
 
-        // --- ?form= / ?iso= : just show overlay; React will remove it when it mounts ---
+        // --- ?form= / ?iso= : show overlay + pre-fetch form data before React mounts ---
         if (isPublicDoc) {
           var docOverlay = makeOverlay('Loading…');
           mountEl(docOverlay);
-          // React removes this via the __removeCatalogOverlay flag below
           window.__removeCatalogOverlay = function () {
             var o = document.getElementById('__cat_overlay');
             if (o) o.remove();
           };
+
+          // Pre-fetch ?form= data via REST API so React can use it immediately on mount
+          // (saves a full SDK round-trip that would otherwise only start after bundle parses)
+          if (form) {
+            try {
+              var cfg2 = JSON.parse(window.__firebase_config || '{}');
+              var pid2 = cfg2.projectId;
+              var apiKey2 = cfg2.apiKey;
+              if (pid2 && pid2.indexOf('%VITE_') === -1 && apiKey2 && apiKey2.indexOf('%VITE_') === -1) {
+                var baseUrl2 = 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(pid2) + '/databases/(default)/documents/';
+                var auth2 = '?key=' + encodeURIComponent(apiKey2);
+
+                function fsVal(v) {
+                  if (v == null || typeof v !== 'object') return v;
+                  if ('stringValue' in v) return v.stringValue;
+                  if ('integerValue' in v) return parseInt(v.integerValue, 10);
+                  if ('doubleValue' in v) return v.doubleValue;
+                  if ('booleanValue' in v) return v.booleanValue;
+                  if ('nullValue' in v) return null;
+                  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fsVal);
+                  if ('mapValue' in v) {
+                    var r = {};
+                    Object.keys(v.mapValue.fields || {}).forEach(function (f) { r[f] = fsVal(v.mapValue.fields[f]); });
+                    return r;
+                  }
+                  if ('timestampValue' in v) return v.timestampValue;
+                  return v;
+                }
+                function fsDoc(d) {
+                  if (!d || !d.fields) return null;
+                  var r = {};
+                  Object.keys(d.fields).forEach(function (f) { r[f] = fsVal(d.fields[f]); });
+                  return r;
+                }
+
+                var fk2 = form;
+                var p1 = fetch(baseUrl2 + 'publicForms/' + encodeURIComponent(fk2) + auth2)
+                  .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+                var p2 = fetch(baseUrl2 + 'publicFormAssets/' + encodeURIComponent(fk2) + auth2)
+                  .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+
+                window.__prefetchedPublicForm = {
+                  key: fk2,
+                  promise: Promise.all([p1, p2]).then(function (res) {
+                    var formDoc = res[0] && fsDoc(res[0]);
+                    var assetsDoc = res[1] && fsDoc(res[1]);
+                    return { key: fk2, form: formDoc, assets: assetsDoc };
+                  })
+                };
+              }
+            } catch (e2) { /* prefetch failed, React falls back to SDK */ }
+          }
           return;
         }
 

@@ -8712,31 +8712,48 @@ function AppInner() {
     setPublicFormAssetsLoading(false);
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'publicForms', fKey));
-        if (cancelled) return;
-        if (snap.exists() && snap.data()?.isActive !== false) {
-          setPublicFormView({ key: fKey, form: snap.data() });
-          setPublicFormLoading(false);
+        let formData: any = null;
+        let assetsData: any = null;
 
-          // Load heavy media separately so text fields paint first.
-          setPublicFormAssetsLoading(true);
-          getDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, fKey))
-            .then((assetSnap: any) => {
-              if (cancelled || !assetSnap.exists()) return;
-              setPublicFormView((prev) => {
-                if (!prev || prev.key !== fKey) return prev;
-                return { ...prev, form: mergePublicFormAssets(prev.form, assetSnap.data()) };
-              });
-            })
-            .catch((e: any) => console.error('Public form assets fetch failed:', e))
-            .finally(() => {
-              if (!cancelled) setPublicFormAssetsLoading(false);
-            });
-        } else {
+        // Use data pre-fetched in index.html (starts before React bundle parses)
+        const prefetched = (window as any).__prefetchedPublicForm;
+        if (prefetched?.key === fKey && prefetched?.promise) {
+          try {
+            const result = await prefetched.promise;
+            if (result?.key === fKey && result?.form) {
+              formData = result.form;
+              assetsData = result.assets ?? null;
+            }
+          } catch (_) { /* fall through to SDK fetch */ }
+        }
+
+        // Fallback: parallel SDK fetch if prefetch unavailable or failed
+        if (!formData) {
+          const [formSnap, assetsSnap] = await Promise.all([
+            getDoc(doc(db, 'publicForms', fKey)),
+            getDoc(doc(db, PUBLIC_FORM_ASSETS_COLLECTION, fKey)),
+          ]);
+          if (cancelled) return;
+          if (!formSnap.exists() || formSnap.data()?.isActive === false) {
+            setPublicFormView(null);
+            setPublicFormLoading(false);
+            return;
+          }
+          formData = formSnap.data();
+          assetsData = assetsSnap.exists() ? assetsSnap.data() : null;
+        }
+
+        if (cancelled) return;
+        if (formData?.isActive === false) {
           setPublicFormView(null);
           setPublicFormLoading(false);
-          setPublicFormAssetsLoading(false);
+          return;
         }
+
+        // Merge assets upfront — no secondary loading state needed
+        const mergedForm = mergePublicFormAssets(formData, assetsData);
+        setPublicFormView({ key: fKey, form: mergedForm });
+        setPublicFormLoading(false);
       } catch (e: any) {
         console.error('Public form fetch failed:', e);
         if (!cancelled) {
@@ -8804,7 +8821,7 @@ function AppInner() {
       return;
     }
     setPublicFormMediaReady(false);
-    const timer = window.setTimeout(() => setPublicFormMediaReady(true), 350);
+    const timer = window.setTimeout(() => setPublicFormMediaReady(true), 0);
     return () => window.clearTimeout(timer);
   }, [publicFormView?.key]);
 
