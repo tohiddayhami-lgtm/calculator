@@ -19619,6 +19619,36 @@ ${html}
                               ))}
                           </div>
 
+                          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50/70 p-2 space-y-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Custom term labels</p>
+                                  <span className="text-[9px] text-slate-400">Optional</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 leading-snug">
+                                  برای نمایش فارسی در کاتالوگ، نام دلخواه را وارد کن؛ اگر خالی باشد همان کد اصلی نمایش داده می‌شود.
+                              </p>
+                              <div className="space-y-1">
+                                  {SCENARIO_TERMS.map((term) => (
+                                      <div key={`catalog-term-label-${term}`} className="grid grid-cols-[2.75rem,1fr] gap-2 items-center">
+                                          <span className="text-[10px] font-black text-slate-500">{term}</span>
+                                          <input
+                                              type="text"
+                                              value={catalogConfig.catalogTermDisplayNames?.[term] || ''}
+                                              onChange={(e) => setCatalogConfig({
+                                                  ...catalogConfig,
+                                                  catalogTermDisplayNames: {
+                                                      ...(catalogConfig.catalogTermDisplayNames || {}),
+                                                      [term]: e.target.value,
+                                                  },
+                                              })}
+                                              className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-[11px] outline-none focus:border-blue-400"
+                                              placeholder={term === 'EXW' ? 'مثلاً درب کارخانه' : `Display name for ${term}`}
+                                          />
+                                      </div>
+                                  ))}
+                              </div>
+                          </div>
+
                           <div className="mt-3 space-y-2 bg-amber-50/40 border border-amber-100 rounded-md p-2">
                               <label className="flex items-center gap-2 cursor-pointer">
                                   <input
