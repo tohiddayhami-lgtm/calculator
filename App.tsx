@@ -7148,6 +7148,8 @@ function AppInner() {
   // -- STATE: VIEW & UI --
   const [view, setView] = useState<AppView>('dashboard');
   const [showRateSettings, setShowRateSettings] = useState(false);
+  const [rateAutoStatus, setRateAutoStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [rateAutoMessage, setRateAutoMessage] = useState('');
   const [isDemoMode, setIsDemoMode] = useState(false);
   
   // -- STATE: AUTH & PERSISTENCE --
@@ -12776,14 +12778,54 @@ function AppInner() {
   const toOutput = (amountInIRR: number) => (amountInIRR / (rates[config.outputCurrency] || 1));
   const convert = (amount: number, curr: string) => toOutput(toBase(amount, curr));
 
-  const applyCostInputCurrency = (currency: string) => {
-      const nextCurrency = Object.prototype.hasOwnProperty.call(rates, currency)
+  const buildGlobalRateMap = (baseRates: RateMap, usdQuotes: Record<string, unknown>): RateMap => {
+      const fallbackUsdAnchor = createDefaultRates().USD;
+      const usdAnchor = Number(baseRates.USD) > 0 ? Number(baseRates.USD) : fallbackUsdAnchor;
+      const nextRates: RateMap = { ...baseRates, IRR: 1, USD: usdAnchor };
+      Object.keys(baseRates).forEach((currency) => {
+          if (currency === 'IRR' || currency === 'USD') return;
+          const quote = Number(usdQuotes[currency]);
+          if (Number.isFinite(quote) && quote > 0) {
+              nextRates[currency] = usdAnchor / quote;
+          }
+      });
+      return nextRates;
+  };
+
+  const refreshGlobalExchangeRates = async (baseRates: RateMap = rates): Promise<RateMap | null> => {
+      setRateAutoStatus('loading');
+      setRateAutoMessage('Updating global currency pairs...');
+      try {
+          const response = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json() as {
+              result?: string;
+              rates?: Record<string, unknown>;
+              time_last_update_utc?: string;
+          };
+          if (!data.rates || (data.result && data.result !== 'success')) {
+              throw new Error('Exchange rate response was not usable');
+          }
+          const nextRates = buildGlobalRateMap(baseRates, data.rates);
+          setRates(nextRates);
+          setRateAutoStatus('success');
+          setRateAutoMessage(`Global pairs updated. USD anchor kept; edit any rate manually if needed.`);
+          return nextRates;
+      } catch (error) {
+          setRateAutoStatus('error');
+          setRateAutoMessage('Could not update global rates. Manual rates are still available.');
+          return null;
+      }
+  };
+
+  const applyCostInputCurrency = (currency: string, rateMap: RateMap = rates) => {
+      const nextCurrency = Object.prototype.hasOwnProperty.call(rateMap, currency)
           ? currency
           : (config.costInputCurrency || config.outputCurrency || 'USD');
       const convertCostAmount = (amount: number, fromCurrency: string) => {
           if (fromCurrency === nextCurrency) return amount || 0;
-          const fromRate = rates[fromCurrency];
-          const nextRate = rates[nextCurrency];
+          const fromRate = rateMap[fromCurrency];
+          const nextRate = rateMap[nextCurrency];
           if (!fromRate || !nextRate) return amount || 0;
           return ((amount || 0) * fromRate) / nextRate;
       };
@@ -12809,6 +12851,16 @@ function AppInner() {
           exwExtras: (prev.exwExtras || []).map(item => ({ ...item, val: convertCostAmount(item.val, item.curr), curr: nextCurrency })),
           extras: (prev.extras || []).map(item => ({ ...item, val: convertCostAmount(item.val, item.curr), curr: nextCurrency })),
       }));
+  };
+
+  const handleCostInputCurrencyChange = async (currency: string) => {
+      const nextRates = await refreshGlobalExchangeRates();
+      applyCostInputCurrency(currency, nextRates || rates);
+  };
+
+  const handleOutputCurrencyChange = async (currency: string) => {
+      await refreshGlobalExchangeRates();
+      setConfig(prev => ({ ...prev, outputCurrency: currency }));
   };
 
   const updateProduct = useCallback((id: number, field: keyof Product, val: any) => {
@@ -15453,7 +15505,7 @@ function AppInner() {
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Output Currency</label>
                     <select 
                         value={config.outputCurrency}
-                        onChange={(e) => setConfig({...config, outputCurrency: e.target.value})}
+                        onChange={(e) => void handleOutputCurrencyChange(e.target.value)}
                         className="w-full md:w-32 text-sm bg-slate-50 border border-slate-300 rounded px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                         {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
@@ -15463,7 +15515,7 @@ function AppInner() {
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Cost Input</label>
                     <select
                         value={config.costInputCurrency || config.outputCurrency || 'USD'}
-                        onChange={(e) => applyCostInputCurrency(e.target.value)}
+                        onChange={(e) => void handleCostInputCurrencyChange(e.target.value)}
                         className="w-full md:w-32 text-sm bg-emerald-50 border border-emerald-200 rounded px-3 py-2 font-medium text-emerald-800 focus:ring-2 focus:ring-emerald-500 outline-none"
                         title="Set one currency for product cost inputs and logistics costs"
                     >
@@ -15515,17 +15567,42 @@ function AppInner() {
         </div>
         
         {showRateSettings && (
-            <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in fade-in slide-in-from-top-2">
-                {Object.entries(rates).map(([curr, rate]) => (
-                    <div key={curr} className="relative group">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">{curr} Rate</label>
-                        <FormattedNumberInput
-                            value={rate as number}
-                            onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
-                            className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                        />
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 animate-in fade-in slide-in-from-top-2">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2">
+                    <div>
+                        <p className="text-xs font-bold text-blue-900">Global rate helper</p>
+                        <p className="text-[11px] text-blue-700">
+                            Cost Input / Output selection updates global currency pairs automatically. You can still edit any rate below.
+                        </p>
                     </div>
-                ))}
+                    <div className="flex flex-col md:items-end gap-1">
+                        <button
+                            type="button"
+                            onClick={() => void refreshGlobalExchangeRates()}
+                            disabled={rateAutoStatus === 'loading'}
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+                        >
+                            {rateAutoStatus === 'loading' ? 'Updating...' : 'Update global rates'}
+                        </button>
+                        {rateAutoMessage ? (
+                            <p className={`text-[10px] ${rateAutoStatus === 'error' ? 'text-rose-600' : rateAutoStatus === 'success' ? 'text-emerald-700' : 'text-blue-600'}`}>
+                                {rateAutoMessage}
+                            </p>
+                        ) : null}
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {Object.entries(rates).map(([curr, rate]) => (
+                        <div key={curr} className="relative group">
+                            <label className="block text-xs font-medium text-slate-500 mb-1">{curr} Rate</label>
+                            <FormattedNumberInput
+                                value={rate as number}
+                                onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
+                                className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                            />
+                        </div>
+                    ))}
+                </div>
             </div>
         )}
       </div>
