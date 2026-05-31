@@ -15408,77 +15408,107 @@ function AppInner() {
       ) : canUseDashboardWorkspace ? (
       <>
       {/* 1. CONFIG BAR */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-        {/* ... (existing dashboard code) ... */}
-        <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
-            <div className="flex items-center gap-4 w-full md:w-auto">
-                <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Output Currency</label>
-                    <select 
-                        value={config.outputCurrency}
-                        onChange={(e) => setConfig({...config, outputCurrency: e.target.value})}
-                        className="w-full md:w-32 text-sm bg-slate-50 border border-slate-300 rounded px-3 py-2 font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                    >
-                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                </div>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        {/* ردیف ۱: تنظیمات اصلی */}
+        <div className="px-4 py-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between border-b border-slate-100 bg-white">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* ارز خروجی */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">ارز خروجی گزارش</label>
+              <select
+                value={config.outputCurrency}
+                onChange={(e) => setConfig({...config, outputCurrency: e.target.value})}
+                className="w-28 text-sm bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 font-bold text-blue-800 focus:ring-2 focus:ring-blue-400 outline-none"
+              >
+                {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-            <div className="flex gap-2 w-full md:w-auto items-end">
-                 
-                 <div className="flex items-center border border-slate-300 rounded-md overflow-hidden bg-white">
-                    {(['unit', 'pack', 'both'] as const).map((mode, index) => (
-                        <React.Fragment key={mode}>
-                            {index > 0 ? <div className="w-px h-4 bg-slate-200" /> : null}
-                            <button
-                                onClick={() => setBasis(mode)}
-                                className={`px-3 py-2 text-sm font-medium capitalize transition-colors ${basis === mode ? 'bg-slate-100 text-slate-900 shadow-inner' : 'text-slate-500 hover:bg-slate-50'}`}
-                            >
-                                {mode}
-                            </button>
-                        </React.Fragment>
-                    ))}
-                 </div>
 
-                 <button 
-                    onClick={() => setShowPackInfo(!showPackInfo)}
-                    className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto ${showPackInfo ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
-                >
-                    <Package className="w-4 h-4" />
-                    Pack Info
-                </button>
-                 <button 
-                    onClick={() => setShowRateSettings(!showRateSettings)}
-                    className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto ${showRateSettings ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
-                >
-                    <Settings className="w-4 h-4" />
-                    Rates
-                </button>
-                 <button
-                    type="button"
-                    onClick={handleStartNewProject}
-                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto bg-white border-amber-200 text-amber-800 hover:bg-amber-50"
-                    title="Clear workspace and start entering a new project from scratch"
-                >
-                    <FolderPlus className="w-4 h-4" />
-                    New project
-                </button>
+            {/* مبنای نمایش قیمت */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">مبنای نمایش قیمت</label>
+              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
+                {(['unit', 'pack', 'both'] as const).map((mode) => {
+                  const basisLabels: Record<string, string> = { unit: 'واحد', pack: 'پک', both: 'هر دو' };
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => setBasis(mode)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${basis === mode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      {basisLabels[mode]}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowPackInfo(!showPackInfo)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-colors ${showPackInfo ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              اطلاعات پک
+            </button>
+            <button
+              type="button"
+              onClick={handleStartNewProject}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold bg-white border-amber-200 text-amber-800 hover:bg-amber-50"
+              title="پاک کردن فضای کاری و شروع پروژه جدید"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+              پروژه جدید
+            </button>
+          </div>
         </div>
-        
-        {showRateSettings && (
-            <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in fade-in slide-in-from-top-2">
-                {Object.entries(rates).map(([curr, rate]) => (
-                    <div key={curr} className="relative group">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">{curr} Rate</label>
-                        <FormattedNumberInput
-                            value={rate as number}
-                            onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
-                            className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                        />
-                    </div>
-                ))}
-            </div>
-        )}
+
+        {/* ردیف ۲: نرخ تبدیل ارز — همیشه قابل مشاهده */}
+        <div className="px-4 py-3 bg-gradient-to-b from-slate-50/80 to-white">
+          <div className="flex items-center gap-2 mb-3">
+            <DollarSign className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+            <span className="text-xs font-bold text-slate-700">نرخ تبدیل ارز</span>
+            <span className="text-[10px] text-slate-400 hidden sm:inline">— هر واحد ارز برابر چند ریال است؟ (IRR = پایه)</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {Object.entries(rates).map(([curr, rate]) => {
+              const isBase = curr === 'IRR';
+              const currencyNames: Record<string, string> = {
+                IRR: 'ریال ایران',
+                USD: 'دلار آمریکا',
+                EUR: 'یورو',
+                AED: 'درهم امارات',
+                CNY: 'یوان چین',
+                OMR: 'ریال عمان',
+              };
+              return (
+                <div
+                  key={curr}
+                  className={`rounded-lg border px-3 py-2 ${isBase ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-200 hover:border-blue-300 transition-colors'}`}
+                >
+                  <div className="flex items-baseline justify-between gap-1 mb-1">
+                    <span className={`text-[11px] font-black ${isBase ? 'text-slate-400' : 'text-blue-700'}`}>
+                      {isBase ? curr : `۱ ${curr}`}
+                    </span>
+                    {!isBase && <span className="text-[9px] text-slate-400 shrink-0">= ? ریال</span>}
+                  </div>
+                  {isBase ? (
+                    <div className="text-sm font-black text-slate-400 py-0.5 leading-none">پایه</div>
+                  ) : (
+                    <FormattedNumberInput
+                      value={rate as number}
+                      onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
+                      className="w-full text-sm font-bold text-slate-900 border-none bg-transparent outline-none p-0 focus:ring-0 leading-none"
+                      placeholder="0"
+                    />
+                  )}
+                  <div className="text-[9px] text-slate-400 mt-1 truncate">{currencyNames[curr] || curr}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* 1b. Linear tasks — compact, collapsed by default */}
@@ -15486,13 +15516,13 @@ function AppInner() {
         <summary className="flex items-center justify-between gap-3 px-3 py-2 cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden hover:bg-slate-50/90 rounded-lg">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <ListTodo className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden />
-            <span className="text-sm font-semibold text-slate-800">Tasks</span>
+            <span className="text-sm font-semibold text-slate-800">وظایف پروژه</span>
             <span className="text-[11px] text-slate-500 truncate">
-              {dashboardTodos.filter((x) => !x.done).length} open
+              {dashboardTodos.filter((x) => !x.done).length} باز
               {(() => {
                 const upcoming = dashboardTodos.filter((x) => !x.done).sort((a, b) => a.dueAtMs - b.dueAtMs)[0];
                 if (!upcoming) return '';
-                return ` · next ${todoDueBadge(upcoming.dueAtMs).label}`;
+                return ` · بعدی ${todoDueBadge(upcoming.dueAtMs).label}`;
               })()}
             </span>
           </div>
@@ -15506,17 +15536,17 @@ function AppInner() {
           ) : null}
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex-1 min-w-[8rem]">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Title</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">عنوان وظیفه</span>
               <input
                 type="text"
                 value={dashboardTodoDraft.label}
                 onChange={(e) => setDashboardTodoDraft((d) => ({ ...d, label: e.target.value }))}
-                placeholder="Short task name"
+                placeholder="نام کوتاه وظیفه"
                 className="w-full text-xs border border-slate-200 rounded-md px-2 py-1.5"
               />
             </label>
             <label className="min-w-[10.5rem]">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Start</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">شروع</span>
               <input
                 type="datetime-local"
                 value={dashboardTodoDraft.start}
@@ -15525,7 +15555,7 @@ function AppInner() {
               />
             </label>
             <label className="min-w-[10.5rem]">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">Due</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase block mb-0.5">موعد تحویل</span>
               <input
                 type="datetime-local"
                 value={dashboardTodoDraft.due}
@@ -15538,11 +15568,11 @@ function AppInner() {
               onClick={addDashboardTodo}
               className="text-xs font-semibold bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700 shrink-0"
             >
-              Add
+              افزودن
             </button>
           </div>
           {dashboardTodos.length === 0 ? (
-            <p className="text-[11px] text-slate-400 italic text-center py-2">No tasks yet.</p>
+            <p className="text-[11px] text-slate-400 italic text-center py-2">هنوز وظیفه‌ای ثبت نشده است.</p>
           ) : (
             <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
               {dashboardTodos.map((t) => {
@@ -15936,10 +15966,14 @@ function AppInner() {
         return (
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center">
-              <h2 className="font-semibold text-slate-700 flex items-center gap-2">
-                <Package className="w-4 h-4 text-blue-500" />
-                Products
-              </h2>
+              <div>
+                <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-blue-500" />
+                  محصولات
+                  <span className="text-[10px] font-normal text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 hidden sm:inline">Products</span>
+                </h2>
+                <p className="text-[10px] text-slate-400 mt-0.5">نام، تعداد، قیمت تمام‌شده و ارز هر محصول را وارد کنید</p>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <input
                   ref={productJsonInputRef}
@@ -15952,29 +15986,29 @@ function AppInner() {
                   type="button"
                   onClick={downloadAiProductJsonSample}
                   className="text-sm bg-white border border-blue-200 text-blue-700 px-3 py-1.5 rounded-lg font-medium hover:bg-blue-50 flex items-center gap-2 shadow-sm"
-                  title="Download sample JSON for AI product input"
+                  title="دانلود نمونه JSON برای ورود محصول با AI"
                 >
-                  <Download className="w-4 h-4" /> AI JSON Sample
+                  <Download className="w-4 h-4" /> نمونه AI JSON
                 </button>
                 <button
                   type="button"
                   onClick={() => productJsonInputRef.current?.click()}
                   className="text-sm bg-white border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-lg font-medium hover:bg-emerald-50 flex items-center gap-2 shadow-sm"
-                  title="Import products from AI JSON"
+                  title="ورود محصولات از فایل JSON"
                 >
-                  <FileUp className="w-4 h-4" /> Import AI JSON
+                  <FileUp className="w-4 h-4" /> ورود JSON
                 </button>
                 <button onClick={() => setShowProductColumnSettings((open) => !open)} className={`text-sm border px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 shadow-sm ${showProductColumnSettings ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
-                  <Settings className="w-4 h-4" /> Columns
+                  <Settings className="w-4 h-4" /> ستون‌ها
                 </button>
                 <button onClick={() => setShowImportProductsModal(true)} className="text-sm bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
-                  <FolderOpen className="w-4 h-4" /> Import from Project
+                  <FolderOpen className="w-4 h-4" /> ورود از پروژه
                 </button>
                 <button onClick={() => {
                   const sku = formatSku(nextSkuNumber(products));
                   setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
                 }} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm">
-                  <Plus className="w-4 h-4" /> Add Product
+                  <Plus className="w-4 h-4" /> افزودن محصول
                 </button>
               </div>
             </div>
@@ -16045,7 +16079,7 @@ function AppInner() {
                   })}
                   {products.length === 0 && (
                     <tr>
-                      <td colSpan={Math.max(visibleProductColumns.length, 1)} className="px-4 py-8 text-center text-slate-400 italic">No products added. Click "Add Product" to start.</td>
+                      <td colSpan={Math.max(visibleProductColumns.length, 1)} className="px-4 py-8 text-center text-slate-400 italic">هنوز محصولی اضافه نشده — روی «افزودن محصول» کلیک کنید.</td>
                     </tr>
                   )}
                 </tbody>
@@ -16061,9 +16095,10 @@ function AppInner() {
               <div className="shrink-0 px-4 pt-3 pb-2 border-b border-slate-100 bg-slate-50/60">
                   <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                       <Truck className="w-4 h-4 text-amber-500" />
-                      Logistics &amp; transport
+                      هزینه‌های لجستیک
+                      <span className="text-[10px] font-normal text-slate-400 bg-slate-100 rounded px-1.5 py-0.5">EXW → DDP</span>
                   </h2>
-                  <p className="text-[10px] text-slate-500 mt-1">Stack EXW→DDP · per-unit share of shipment — <span className="text-slate-400">scroll below</span></p>
+                  <p className="text-[10px] text-slate-500 mt-1">هزینه‌ها به صورت تجمعی از EXW تا DDP محاسبه می‌شوند — سهم هر واحد محصول — <span className="text-slate-400">برای دیدن بیشتر اسکرول کنید</span></p>
                   <div
                       className="mt-2 flex flex-wrap items-stretch gap-2 pt-2 border-t border-slate-200/80"
                       title="الگوها در حافظهٔ همین مرورگر ذخیره می‌شوند (جدا از پروژهٔ ابری)."
@@ -16393,22 +16428,24 @@ function AppInner() {
           </div>
           </div>
 
-          {/* --- TRANSPORT & LOGISTICS COST CARD --- */}
+          {/* --- هزینه حمل فیکس یا درصدی (جدا از Incoterms) --- */}
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col">
               <div className="shrink-0 px-4 pt-3 pb-2 border-b border-slate-100 bg-slate-50/60">
                   <div className="flex items-center justify-between">
                       <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                           <Truck className="w-4 h-4 text-orange-500" />
-                          Transport &amp; Logistics
+                          هزینه حمل اضافی
+                          <span className="text-[10px] font-normal text-slate-400 bg-orange-50 border border-orange-100 rounded px-1.5 py-0.5">Per Unit</span>
                       </h2>
                       <button
                           onClick={() => setConfig({ ...config, transportCostEnabled: !config.transportCostEnabled })}
                           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${config.transportCostEnabled ? 'bg-orange-500' : 'bg-slate-200'}`}
+                          title={config.transportCostEnabled ? 'غیرفعال کردن' : 'فعال کردن'}
                       >
                           <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${config.transportCostEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
                       </button>
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">هزینه حمل و نقل روی هر واحد محصول — به کل محصولات اعمال می‌شود</p>
+                  <p className="text-[10px] text-slate-500 mt-1">هزینه حمل ثابت یا درصدی روی هر واحد محصول — <strong className="text-orange-700">مستقل از بخش لجستیک چپ</strong></p>
               </div>
 
               <div className="px-4 py-3 space-y-3">
@@ -16513,139 +16550,143 @@ function AppInner() {
 
       {/* 4. EXPORT PROFIT CALCULATOR */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-0 max-h-[min(34rem,72vh)]">
-          <div className="shrink-0 px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-              <div className="min-w-0 xl:max-w-sm">
-                  <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-emerald-600 shrink-0" />
-                      Export profit calculator
-                  </h2>
-                  <p className="text-[10px] text-emerald-800/75 mt-1 leading-snug">
-                      Set per-term selling rules, or type a direct quoted EXW/FOB/CIF/DDP price without entering logistics.
-                  </p>
+          <div className="shrink-0 border-b border-emerald-100">
+            {/* ردیف اول: عنوان + انتخاب ترم‌های نمایشی */}
+            <div className="px-4 py-3 bg-emerald-50 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-emerald-600 shrink-0" />
+                  محاسبه سود صادراتی
+                  <span className="text-[10px] font-normal text-emerald-700 bg-emerald-100 rounded px-1.5 py-0.5 hidden sm:inline">Export Profit</span>
+                </h2>
+                <p className="text-[10px] text-emerald-800/70 mt-0.5 leading-snug">
+                  برای هر محصول و هر ترم (EXW/FOB/CIF/DDP) قیمت فروش و سود تعیین کنید — یا مستقیم قیمت وارد کنید.
+                </p>
+              </div>
+              <div className="shrink-0">
+                <label className="text-[10px] font-bold text-emerald-800 block mb-1">ترم‌های نمایشی</label>
+                <div className="flex flex-wrap gap-1">
+                  {SCENARIO_TERMS.map(term => (
+                    <button
+                      key={`export-display-${term}`}
+                      type="button"
+                      onClick={() => toggleScenarioTerm(term)}
+                      className={`px-2 py-1 text-[10px] font-bold rounded border ${visibleScenarioTerms.includes(term) ? 'bg-white border-emerald-300 text-emerald-700 ring-1 ring-emerald-200' : 'bg-emerald-50/50 border-emerald-100 text-emerald-300'}`}
+                    >
+                      {term}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ردیف دوم: تنظیم دسته‌جمعی سود */}
+            <div className="px-4 py-2.5 bg-white border-t border-emerald-50 flex flex-wrap items-end gap-3">
+              <div className="shrink-0">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">نوع سود دسته‌جمعی</label>
+                <div className="flex bg-slate-100 rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setBulkExportProfitMode('percent')}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${bulkExportProfitMode === 'percent' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    درصدی
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkExportProfitMode('fixed')}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${bulkExportProfitMode === 'fixed' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    مبلغ ثابت
+                  </button>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-end gap-2">
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-emerald-800 block">Display terms</label>
-                      <div className="flex flex-wrap gap-1 max-w-[260px]">
-                          {SCENARIO_TERMS.map(term => (
-                              <button
-                                  key={`export-display-${term}`}
-                                  type="button"
-                                  onClick={() => toggleScenarioTerm(term)}
-                                  className={`px-2 py-1 text-[10px] font-bold rounded border ${visibleScenarioTerms.includes(term) ? 'bg-white border-emerald-300 text-emerald-700 ring-1 ring-emerald-200' : 'bg-emerald-50/50 border-emerald-100 text-emerald-300'}`}
-                              >
-                                  {term}
-                              </button>
-                          ))}
-                      </div>
-                  </div>
-
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-emerald-800 block">Bulk mode</label>
-                      <div className="flex bg-white border border-emerald-100 rounded-lg p-1">
-                          <button
-                              type="button"
-                              onClick={() => setBulkExportProfitMode('percent')}
-                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${bulkExportProfitMode === 'percent' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-700 hover:bg-emerald-50'}`}
-                          >
-                              Percent
-                          </button>
-                          <button
-                              type="button"
-                              onClick={() => setBulkExportProfitMode('fixed')}
-                              className={`px-2.5 py-1 text-[10px] font-bold rounded-md ${bulkExportProfitMode === 'fixed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-700 hover:bg-emerald-50'}`}
-                          >
-                              Fixed amount
-                          </button>
-                      </div>
-                  </div>
-
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-emerald-800 block">Bulk terms</label>
-                      <div className="flex flex-wrap gap-1 max-w-[260px]">
-                          {SCENARIO_TERMS.filter(term => visibleScenarioTerms.includes(term)).map(term => (
-                              <button
-                                  key={`export-bulk-${term}`}
-                                  type="button"
-                                  onClick={() => toggleBulkExportProfitTerm(term)}
-                                  className={`px-2 py-1 text-[10px] font-bold rounded border ${bulkExportProfitTerms.includes(term) ? 'bg-white border-emerald-300 text-emerald-700 ring-1 ring-emerald-200' : 'bg-emerald-50/50 border-emerald-100 text-emerald-300'}`}
-                              >
-                                  {term}
-                              </button>
-                          ))}
-                      </div>
-                  </div>
-
-                  {bulkExportProfitMode === 'percent' ? (
-                      <>
-                          <div className="space-y-1">
-                              <label className="text-[10px] font-semibold text-emerald-800 block">Profit %</label>
-                              <div className="flex items-center gap-1 bg-white border border-emerald-100 rounded-lg px-2">
-                                  <FormattedNumberInput
-                                      optional
-                                      value={bulkExportProfitPercent}
-                                      onChange={(val) => setBulkExportProfitPercent(val !== undefined && val >= 0 ? val : undefined)}
-                                      className="w-20 py-1.5 text-sm outline-none font-bold text-slate-700 text-right"
-                                      placeholder="20"
-                                  />
-                                  <span className="text-xs font-bold text-emerald-500">%</span>
-                              </div>
-                          </div>
-                          <div className="space-y-1">
-                              <label className="text-[10px] font-semibold text-emerald-800 block">Formula</label>
-                              <select
-                                  value={bulkExportProfitType}
-                                  onChange={(e) => setBulkExportProfitType(e.target.value as 'markup' | 'margin')}
-                                  className="h-8 text-xs bg-white border border-emerald-100 rounded-lg px-2 text-slate-700"
-                              >
-                                  <option value="markup">Markup</option>
-                                  <option value="margin">Margin</option>
-                              </select>
-                          </div>
-                      </>
-                  ) : (
-                      <>
-                          <div className="space-y-1">
-                              <label className="text-[10px] font-semibold text-emerald-800 block">Unit profit</label>
-                              <FormattedNumberInput
-                                  optional
-                                  value={bulkExportFixedProfit}
-                                  onChange={(val) => setBulkExportFixedProfit(val !== undefined && val > 0 ? val : undefined)}
-                                  className="w-24 h-8 border border-emerald-100 rounded-lg px-2 text-sm text-right font-bold text-slate-700 bg-white"
-                                  placeholder="0.200"
-                              />
-                          </div>
-                          <div className="space-y-1">
-                              <label className="text-[10px] font-semibold text-emerald-800 block">Currency</label>
-                              <select
-                                  value={bulkExportFixedCurrency}
-                                  onChange={(e) => setBulkExportFixedCurrency(e.target.value)}
-                                  className="h-8 text-xs bg-white border border-emerald-100 rounded-lg px-2 text-slate-700"
-                              >
-                                  {Object.keys(rates).map(c => <option key={`export-bulk-curr-${c}`} value={c}>{c}</option>)}
-                              </select>
-                          </div>
-                      </>
-                  )}
-
-                  <div className="flex gap-1">
-                      <button
-                          type="button"
-                          onClick={applyBulkExportProfitPricing}
-                          className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-sm hover:bg-emerald-700"
-                      >
-                          Apply to all lines
-                      </button>
-                      <button
-                          type="button"
-                          onClick={clearBulkExportProfitPricing}
-                          className="h-8 px-3 rounded-lg bg-white border border-emerald-100 text-emerald-700 text-xs font-bold hover:bg-emerald-50"
-                      >
-                          Clear selected terms
-                      </button>
-                  </div>
+              <div className="shrink-0">
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">اعمال روی ترم‌ها</label>
+                <div className="flex flex-wrap gap-1">
+                  {SCENARIO_TERMS.filter(term => visibleScenarioTerms.includes(term)).map(term => (
+                    <button
+                      key={`export-bulk-${term}`}
+                      type="button"
+                      onClick={() => toggleBulkExportProfitTerm(term)}
+                      className={`px-2 py-1 text-[10px] font-bold rounded border ${bulkExportProfitTerms.includes(term) ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-400'}`}
+                    >
+                      {term}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {bulkExportProfitMode === 'percent' ? (
+                <>
+                  <div className="shrink-0">
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">درصد سود</label>
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2">
+                      <FormattedNumberInput
+                        optional
+                        value={bulkExportProfitPercent}
+                        onChange={(val) => setBulkExportProfitPercent(val !== undefined && val >= 0 ? val : undefined)}
+                        className="w-16 py-1.5 text-sm outline-none font-bold text-slate-700 text-right"
+                        placeholder="20"
+                      />
+                      <span className="text-xs font-bold text-emerald-500">%</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0">
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">فرمول</label>
+                    <select
+                      value={bulkExportProfitType}
+                      onChange={(e) => setBulkExportProfitType(e.target.value as 'markup' | 'margin')}
+                      className="h-8 text-xs bg-white border border-slate-200 rounded-lg px-2 text-slate-700"
+                    >
+                      <option value="markup">Markup (روی قیمت تمام‌شده)</option>
+                      <option value="margin">Margin (از قیمت فروش)</option>
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="shrink-0">
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">سود هر واحد</label>
+                    <FormattedNumberInput
+                      optional
+                      value={bulkExportFixedProfit}
+                      onChange={(val) => setBulkExportFixedProfit(val !== undefined && val > 0 ? val : undefined)}
+                      className="w-24 h-8 border border-slate-200 rounded-lg px-2 text-sm text-right font-bold text-slate-700 bg-white"
+                      placeholder="0.200"
+                    />
+                  </div>
+                  <div className="shrink-0">
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">ارز</label>
+                    <select
+                      value={bulkExportFixedCurrency}
+                      onChange={(e) => setBulkExportFixedCurrency(e.target.value)}
+                      className="h-8 text-xs bg-white border border-slate-200 rounded-lg px-2 text-slate-700"
+                    >
+                      {Object.keys(rates).map(c => <option key={`export-bulk-curr-${c}`} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-1.5 shrink-0 pb-0.5">
+                <button
+                  type="button"
+                  onClick={applyBulkExportProfitPricing}
+                  className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-sm hover:bg-emerald-700"
+                >
+                  اعمال روی همه
+                </button>
+                <button
+                  type="button"
+                  onClick={clearBulkExportProfitPricing}
+                  className="h-8 px-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50"
+                >
+                  پاک‌کردن
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain divide-y divide-slate-100 [scrollbar-gutter:stable]">
@@ -16824,16 +16865,17 @@ function AppInner() {
               <div className="min-w-0">
                   <h2 className="font-semibold text-slate-700 flex items-center gap-2">
                       <BarChart3 className="w-4 h-4 text-indigo-500 shrink-0" />
-                      Scenario analysis
+                      تحلیل سناریو
+                      <span className="text-[10px] font-normal text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 hidden sm:inline">Scenario Analysis</span>
                   </h2>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug line-clamp-2 sm:line-clamp-none max-w-2xl">
-                      Per active line: unit cost, sell &amp; margin by term. Shipment row = sums. <span className="text-slate-400">Scroll products below.</span>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug max-w-2xl">
+                      هزینه، قیمت فروش و مارجین هر محصول به تفکیک ترم — خلاصه کل محموله در پایین. <span className="text-slate-400">برای محصولات بیشتر اسکرول کنید.</span>
                   </p>
               </div>
               <div className="flex flex-wrap gap-1 shrink-0">
                    {SCENARIO_TERMS.map(term => (
-                       <button 
-                        key={term} 
+                       <button
+                        key={term}
                         type="button"
                         onClick={() => toggleScenarioTerm(term)}
                         className={`text-xs px-2 py-1 rounded border ${visibleScenarioTerms.includes(term) ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-400'}`}
@@ -16904,7 +16946,7 @@ function AppInner() {
           </div>
 
           <div className="shrink-0 px-4 py-2 bg-slate-50/90 border-t border-slate-200">
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Shipment summary (all active lines)</h3>
+              <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">خلاصه کل محموله (همه محصولات فعال)</h3>
               <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
                   <table className="w-full text-sm text-left min-w-[720px]">
                       <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200 text-xs">
