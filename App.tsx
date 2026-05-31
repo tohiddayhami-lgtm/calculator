@@ -18255,6 +18255,26 @@ function AppInner() {
     const coverTitleSubtitleGapPx = clampCatalogNumber(catalogConfig.coverTitleSubtitleGapPx, 6, -120, 260);
     const coverTitleBoxHeightPx = clampCatalogNumber(catalogConfig.coverTitleBoxHeightPx, 132, 20, 700);
     const coverContactOffsetYPx = clampCatalogNumber(catalogConfig.coverContactOffsetYPx, 32, -260, 520);
+    const coverImageZoomPct = clampCatalogNumber(catalogConfig.coverImageZoomPct, 115, 50, 300);
+    const coverImagePositionX = clampCatalogNumber(catalogConfig.coverImagePositionX, 50, 0, 100);
+    const coverImagePositionY = clampCatalogNumber(catalogConfig.coverImagePositionY, 50, 0, 100);
+    const backCoverImageZoomPct = clampCatalogNumber(catalogConfig.backCoverImageZoomPct, 115, 50, 300);
+    const backCoverImagePositionX = clampCatalogNumber(catalogConfig.backCoverImagePositionX, 50, 0, 100);
+    const backCoverImagePositionY = clampCatalogNumber(catalogConfig.backCoverImagePositionY, 50, 0, 100);
+    const aboutUsFullPageImageZoomPct = clampCatalogNumber(catalogConfig.aboutUsFullPageImageZoomPct, 115, 50, 300);
+    const aboutUsFullPageImagePositionX = clampCatalogNumber(catalogConfig.aboutUsFullPageImagePositionX, 50, 0, 100);
+    const aboutUsFullPageImagePositionY = clampCatalogNumber(catalogConfig.aboutUsFullPageImagePositionY, 50, 0, 100);
+    const fullPageImageObjectStyle = (
+        fit: 'cover' | 'contain' | 'custom',
+        zoomPct = 115,
+        positionX = 50,
+        positionY = 50,
+    ): React.CSSProperties => ({
+        objectFit: fit === 'custom' ? 'contain' : fit,
+        objectPosition: `${positionX}% ${positionY}%`,
+        transform: fit === 'custom' ? `scale(${zoomPct / 100})` : undefined,
+        transformOrigin: `${positionX}% ${positionY}%`,
+    });
 
     // Toggle Language Helper
     const toggleLanguage = (lang: 'en' | 'fa' | 'ar') => {
