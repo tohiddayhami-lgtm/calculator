@@ -3230,6 +3230,21 @@ const ensureSkus = <T extends { sku?: string }>(products: T[]): T[] => {
 const AI_PRODUCT_INPUT_SAMPLE = {
   formatName: 'CloudExport Product Input for AI',
   version: 1,
+  catalogConfig: {
+    coverImageOnly: true,
+    backCoverImageOnly: true,
+    aboutUsImageLayout: 'full-page',
+    sections: [
+      {
+        title: 'Image Focus Page',
+        content: '',
+        alignment: 'center',
+        position: 'before',
+        images: [],
+        imageLayout: 'full-page',
+      },
+    ],
+  },
   instructionsForAI: [
     'Return valid JSON only. Do not wrap it in markdown.',
     'Keep the top-level key named products.',
@@ -3246,6 +3261,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'Optional: put product subcategory in subcategory, for example "Skincare", "Powder", or "Spare Parts". Subcategories appear under the main group/category tab in the electronic catalog link.',
     'Optional: put stock availability text in stockLabel, for example "In stock in Muscat" or "Available in stock in Oman". Leave it empty or omit it when no stock badge should be shown.',
     'Optional: override catalog delivery/Incoterm labels per product in catalogTermDisplayNames, for example { "FOB": "FOB Bandar Abbas", "EXW": "Factory gate" }. Empty/missing values fall back to the catalog-wide label or the raw term code.',
+    'Optional catalog/page design sample: catalogConfig.coverImageOnly and catalogConfig.backCoverImageOnly make cover/back-cover images display as clean full-page photos with no text or dark overlay. For About Us or custom image-first pages, use aboutUsImageLayout or section.imageLayout = "full-page".',
   ],
   products: [
     {
@@ -12071,7 +12087,7 @@ function AppInner() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ai-product-input-sample-exw-fob-origin-stock.json';
+      a.download = 'ai-product-input-sample-exw-fob-origin-stock-full-page-images.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -12080,8 +12096,8 @@ function AppInner() {
 
   const downloadProjectJsonSample = () => {
       const sampleProject: SavedProject = {
-          id: 'sample_catalog_project_with_colors_origin_subcategories_stock',
-          name: 'Sample Catalog Project With Product Colors, Origin, Subcategories, and Stock',
+          id: 'sample_catalog_project_with_colors_origin_subcategories_stock_full_page_images',
+          name: 'Sample Catalog Project With Colors, Origin, Subcategories, Stock, and Full-Page Images',
           folder: 'JSON Samples',
           createdAt: { seconds: Math.floor(Date.now() / 1000) },
           data: {
@@ -12094,10 +12110,26 @@ function AppInner() {
               selectedTerms,
               visibleScenarioTerms,
               invoiceTerms,
-              notes: 'Sample project JSON. Products may include availableColors, origin, optional subcategory, and stockLabel for online/PDF catalog color swatches, country-of-origin badges, catalog sub-tabs, and in-stock badges.',
+              notes: 'Sample project JSON. Products may include availableColors, origin, optional subcategory, and stockLabel. Catalog settings may include coverImageOnly, backCoverImageOnly, aboutUsImageLayout: "full-page", and section.imageLayout: "full-page" for clean full-page image-only catalog pages with no text or dark overlay.',
               catalogConfig: {
                   ...catalogConfig,
-                  title: catalogConfig.title || 'Sample Catalog With Colors, Origin, Subcategories, and Stock',
+                  title: catalogConfig.title || 'Sample Catalog With Colors, Origin, Subcategories, Stock, and Full-Page Images',
+                  coverImageOnly: true,
+                  backCoverImageOnly: true,
+                  aboutUsImageLayout: 'full-page',
+                  sections: (catalogConfig.sections && catalogConfig.sections.length > 0)
+                      ? catalogConfig.sections
+                      : [
+                          {
+                              id: 9001,
+                              title: 'Image Focus Page',
+                              content: '',
+                              alignment: 'center',
+                              position: 'before',
+                              images: [],
+                              imageLayout: 'full-page',
+                          },
+                      ],
               },
               products: (AI_PRODUCT_INPUT_SAMPLE.products as any[]).map((p, idx) => ({
                   ...p,
@@ -12117,7 +12149,7 @@ function AppInner() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sample-project-catalog-colors-origin-subcategories-stock.json';
+      a.download = 'sample-project-catalog-colors-origin-subcategories-stock-full-page-images.json';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -33798,7 +33830,7 @@ ${html}
                                    type="button"
                                    onClick={downloadProjectJsonSample}
                                    className="flex items-center gap-2 px-3 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50 rounded"
-                                  title="Download project JSON sample with availableColors, origin, subcategory, and stockLabel"
+                                  title="Download project JSON sample with availableColors, origin, subcategory, stockLabel, and full-page image-only catalog settings"
                                >
                                    <Download className="w-4 h-4" />
                                    Sample JSON

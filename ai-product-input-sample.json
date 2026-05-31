@@ -1,6 +1,21 @@
 {
   "formatName": "CloudExport Product Input for AI",
   "version": 1,
+  "catalogConfig": {
+    "coverImageOnly": true,
+    "backCoverImageOnly": true,
+    "aboutUsImageLayout": "full-page",
+    "sections": [
+      {
+        "title": "Image Focus Page",
+        "content": "",
+        "alignment": "center",
+        "position": "before",
+        "images": [],
+        "imageLayout": "full-page"
+      }
+    ]
+  },
   "instructionsForAI": [
     "Return valid JSON only. Do not wrap it in markdown.",
     "Keep the top-level key named products.",
@@ -17,6 +32,7 @@
     "Optional: put product subcategory in subcategory, for example \"Skincare\", \"Powder\", or \"Spare Parts\". Subcategories appear under the main group/category tab in the electronic catalog link.",
     "Optional: put stock availability text in stockLabel, for example \"In stock in Muscat\" or \"Available in stock in Oman\". Leave it empty or omit it when no stock badge should be shown.",
     "Optional: override catalog delivery/Incoterm labels per product in catalogTermDisplayNames, for example { \"FOB\": \"FOB Bandar Abbas\", \"EXW\": \"Factory gate\" }. Empty/missing values fall back to the catalog-wide label or the raw term code.",
+    "Optional catalog/page design sample: catalogConfig.coverImageOnly and catalogConfig.backCoverImageOnly make cover/back-cover images display as clean full-page photos with no text or dark overlay. For About Us or custom image-first pages, use aboutUsImageLayout or section.imageLayout = \"full-page\".",
     "If a product has selectable/available colors, put them in availableColors as an array of objects: { \"name\": \"Matte Black\", \"hex\": \"#111827\" }. For two-tone or gradient products, add hex2."
   ],
   "products": [
