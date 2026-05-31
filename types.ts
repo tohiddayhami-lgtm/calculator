@@ -346,7 +346,7 @@ export interface CatalogSection {
   alignment: 'left' | 'center' | 'right' | 'justify';
   image?: string; // Base64 string (Legacy single image)
   images?: string[]; // New: Multiple images
-  imageLayout?: 'single' | 'two-column' | 'three-column' | 'grid'; // New: Layout mode
+  imageLayout?: 'single' | 'two-column' | 'three-column' | 'grid' | 'full-page'; // New: Layout mode
   position: 'before' | 'after'; // Position relative to product list
 }
 
@@ -392,6 +392,7 @@ export interface CatalogConfig {
   coverContactTitle?: string; // New: Editable "Contact Us" title on cover
   baseUnit?: string; // New: Global default unit (e.g. "kg")
   coverOverlayOpacity?: number; // New: Opacity of the cover overlay (0-100)
+  coverImageOnly?: boolean; // Use uploaded cover image as a clean full-page image without text/overlay
   
   // Extra Company Pages
   showAboutUs?: boolean;
@@ -406,7 +407,7 @@ export interface CatalogConfig {
   extraPageTextDirection?: 'auto' | 'ltr' | 'rtl';
   aboutUsText?: string;
   aboutUsImages?: string[];
-  aboutUsImageLayout?: 'top' | 'bottom' | 'side-right' | 'side-left' | 'grid';
+  aboutUsImageLayout?: 'top' | 'bottom' | 'side-right' | 'side-left' | 'grid' | 'full-page';
 
   // Brand Logo (cover)
   logoImage?: string;
@@ -450,6 +451,7 @@ export interface CatalogConfig {
   // Back Cover background image + overlay
   backCoverImage?: string;
   backCoverOverlayOpacity?: number; // 0-100
+  backCoverImageOnly?: boolean; // Use uploaded back cover image as a clean full-page image without text/overlay
   backCoverTitleFontSizePx?: number;
   backCoverTitleLineHeight?: number;
   backCoverTitleUppercase?: boolean;

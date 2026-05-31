@@ -2420,6 +2420,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     coverContactTitle: '',
     baseUnit: '',
     coverOverlayOpacity: 60,
+    coverImageOnly: false,
     showAboutUs: false,
     productTabLabel: 'Product List',
     aboutUsTabLabel: 'About Us',
@@ -2469,6 +2470,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     coverContactBodyUppercase: false,
     backCoverImage: '',
     backCoverOverlayOpacity: 60,
+    backCoverImageOnly: false,
     backCoverTitleFontSizePx: 36,
     backCoverTitleLineHeight: 1.2,
     backCoverTitleUppercase: false,
@@ -4741,10 +4743,17 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         `;
     }).join('');
 
-    const aboutUsHtml = cc.showAboutUs && cc.aboutUsText
+    const aboutUsImagesForTab: string[] = (cc.aboutUsImages || []).filter(Boolean);
+    const aboutUsHtml = cc.showAboutUs && (cc.aboutUsText || aboutUsImagesForTab.length > 0)
         ? (() => {
-            const imgs: string[] = (cc.aboutUsImages || []).slice(0, 4).filter(Boolean);
-            const rawParas: string[] = cc.aboutUsText.split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean);
+            const imgs: string[] = aboutUsImagesForTab.slice(0, 4);
+            if ((cc.aboutUsImageLayout || 'side-right') === 'full-page' && imgs[0]) {
+                return `
+            <section class="about about-full-image">
+                <img src="${escapeAttr(imgs[0])}" alt="${escapeAttr(cc.aboutUsTabLabel || 'About Us')}" loading="lazy" />
+            </section>`;
+            }
+            const rawParas: string[] = String(cc.aboutUsText || '').split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean);
             const isFarsiPara = (p: string) => /[؀-ۿ]/.test(p);
 
             const parasHtml = rawParas
@@ -4803,6 +4812,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 ? [section.image]
                 : [];
         const layout = section.imageLayout || 'single';
+        if (layout === 'full-page' && imgs[0]) {
+            return `
+        <section class="custom-page-full-image" aria-label="${escapeAttr(section.title || 'Page')}">
+            <img src="${escapeAttr(imgs[0])}" alt="${escapeAttr(section.title || '')}" loading="lazy" />
+        </section>`;
+        }
         let gridClass = 'img-grid img-grid-single';
         if (layout === 'two-column') gridClass = 'img-grid img-grid-2';
         else if (layout === 'three-column') gridClass = 'img-grid img-grid-3';
@@ -5012,6 +5027,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .cover { background: var(--cover); color: var(--cover-text); padding: ${coverPagePaddingPx}px 24px; text-align: center; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
         .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: cover; background-position: center;` : ''} z-index: 0; }
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,${(coverOverlayAlpha * 0.65).toFixed(2)}) 0%, rgba(0,0,0,${coverOverlayAlpha.toFixed(2)}) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
+        .cover.cover-image-only { min-height: 100vh; padding: 0; }
+        .cover.cover-image-only::after { display: none; }
+        .cover.cover-image-only .cover-inner { display: none; }
         .cover-inner { position: relative; z-index: 2; max-width: 740px; margin: 0 auto; transform: translateY(${coverTitleBlockOffsetYPx}px); }
         .logo { max-height: 72px; margin: 0 auto 22px; filter: drop-shadow(0 4px 16px rgba(0,0,0,0.35)); }
         .cover h1 { font-size: clamp(${coverTitleClampMin}px, 6vw, ${coverTitlePx}px); font-weight: 900; letter-spacing: -0.03em; line-height: ${coverTitleLineHeight}; text-transform: ${catalogTextTransform(cc.coverTitleUppercase, false)}; margin-bottom: ${coverTitleSubtitleGapPx}px; }
@@ -5070,6 +5088,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .about-img-panel { display: grid; gap: 10px; }
         .about-img-panel img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; }
         .about-img-panel img:only-child { aspect-ratio: 3/2; }
+        .about-full-image { margin: 0 auto; max-width: 1040px; min-height: min(100vh, 920px); border-radius: 24px; overflow: hidden; background: #f8fafc; }
+        .about-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: cover; }
         .about-text-panel { display: flex; flex-direction: column; justify-content: center; }
         .about-para { font-size: 16px; line-height: 1.85; color: var(--text); margin-bottom: 18px; }
         .about-para:first-child { font-size: clamp(18px, 2.5vw, 22px); font-weight: 600; color: var(--heading); line-height: 1.55; margin-bottom: 22px; }
@@ -5091,6 +5111,8 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             .custom-page .img-grid-2, .custom-page .img-grid-3 { grid-template-columns: 1fr; }
         }
         .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 18px; box-shadow: 0 18px 50px rgba(15,23,42,0.10); border: 1px solid #f1f5f9; background: #fafafa; }
+        .custom-page-full-image { margin: 64px auto; max-width: 1040px; min-height: min(100vh, 920px); border-radius: 24px; overflow: hidden; background: #f8fafc; box-shadow: 0 18px 50px rgba(15,23,42,0.10); }
+        .custom-page-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: cover; }
 
         /* Company Gallery */
         .company-gallery-section { margin: 64px auto; padding: 0; max-width: 1040px; }
@@ -5260,6 +5282,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         footer { background: var(--primary); color: #fff; padding: 56px 24px 40px; text-align: center; position: relative; overflow: hidden; }
         footer::before { content: ''; position: absolute; inset: 0; ${cc.backCoverImage ? `background-image: url('${escapeAttr(cc.backCoverImage)}'); background-size: cover; background-position: center;` : ''} opacity: ${cc.backCoverImage ? '1' : '0'}; z-index: 0; }
         footer::after { content: ''; position: absolute; inset: 0; background: rgba(15,23,42,${backCoverOverlayAlpha.toFixed(2)}); z-index: 1; ${cc.backCoverImage ? '' : 'display:none;'} }
+        footer.back-cover-image-only { min-height: 100vh; padding: 0; }
+        footer.back-cover-image-only::after { display: none; }
+        footer.back-cover-image-only > * { display: none !important; }
         footer > * { position: relative; z-index: 2; }
         footer h3 { font-size: ${backCoverTitleFontSizePx}px; font-weight: 700; letter-spacing: 0.2em; text-transform: ${catalogTextTransform(cc.backCoverTitleUppercase, false)}; line-height: ${backCoverTitleLineHeight}; opacity: 0.7; margin-bottom: 10px; }
         footer .contact-grid { display: grid; gap: 10px; max-width: 480px; margin: 0 auto 32px; }
@@ -6428,7 +6453,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
 </head>
 <body>
 ${topbarHtml}
-<header class="cover">
+<header class="cover${cc.coverImage && cc.coverImageOnly ? ' cover-image-only' : ''}">
     <div class="cover-inner">
         ${logoHtml}
         ${cc.collectionText ? `<p class="collection">${escapeHtml(cc.collectionText)}</p>` : ''}
@@ -6442,7 +6467,7 @@ ${topbarHtml}
     ${websitePanelsHtml}
 </main>
 
-<footer>
+<footer class="${cc.backCoverImage && cc.backCoverImageOnly ? 'back-cover-image-only' : ''}">
     <h3>${escapeHtml(tCombined('contact') || 'Contact')}</h3>
     <div class="contact-grid">
         ${cc.contactPhone ? `<div class="row"><strong>${escapeHtml(tCombined('phone') || 'Phone')}:</strong> ${escapeHtml(cc.contactPhone)}</div>` : ''}
@@ -11804,6 +11829,7 @@ function AppInner() {
             coverContactTitle: project.data.catalogConfig.coverContactTitle || '',
             baseUnit: project.data.catalogConfig.baseUnit || '',
             coverOverlayOpacity: project.data.catalogConfig.coverOverlayOpacity !== undefined ? project.data.catalogConfig.coverOverlayOpacity : 60,
+            coverImageOnly: project.data.catalogConfig.coverImageOnly === true,
             moqLabel: project.data.catalogConfig.moqLabel || '',
             showAboutUs: project.data.catalogConfig.showAboutUs || false,
             aboutUsText: project.data.catalogConfig.aboutUsText || '',
@@ -11828,6 +11854,7 @@ function AppInner() {
                     : 56,
             backCoverImage: project.data.catalogConfig.backCoverImage || '',
             backCoverOverlayOpacity: project.data.catalogConfig.backCoverOverlayOpacity !== undefined ? project.data.catalogConfig.backCoverOverlayOpacity : 60,
+            backCoverImageOnly: project.data.catalogConfig.backCoverImageOnly === true,
             showQrCode: project.data.catalogConfig.showQrCode || false,
             qrCodeValue: project.data.catalogConfig.qrCodeValue || '',
             qrCodeLabel: project.data.catalogConfig.qrCodeLabel || 'Scan to visit',
@@ -19352,6 +19379,52 @@ ${html}
         { id: 'shabnam', label: 'Shabnam فارسی' },
     ];
 
+    const renderPrintCustomSection = (section: CatalogSection) => {
+        const sectionImages = section.images && section.images.length > 0
+            ? section.images.filter(Boolean)
+            : section.image
+            ? [section.image]
+            : [];
+
+        if (section.imageLayout === 'full-page' && sectionImages[0]) {
+            return (
+                <div key={section.id} className="w-full h-[297mm] print-page relative overflow-hidden bg-white">
+                    <img src={sectionImages[0]} className="absolute inset-0 w-full h-full object-cover" alt={section.title || ''} />
+                </div>
+            );
+        }
+
+        return (
+            <div key={section.id} className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
+                <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>{section.title}</h2>
+
+                <div style={{ textAlign: section.alignment, whiteSpace: 'pre-wrap' }} className="text-lg leading-relaxed text-slate-600">
+                    {section.content}
+                </div>
+
+                {sectionImages.length > 0 ? (
+                    <div className={`mt-8 grid gap-4 ${
+                        section.imageLayout === 'two-column' ?
+                            'grid-cols-2' :
+                            section.imageLayout === 'three-column' ?
+                                'grid-cols-3' :
+                                section.imageLayout === 'grid' ?
+                                    'grid-cols-2 md:grid-cols-3' :
+                                    'grid-cols-1'
+                    }`}>
+                        {sectionImages.map((img, idx) => (
+                            <div key={idx} className="flex justify-center">
+                                <img src={img} className="w-full object-contain rounded-lg shadow-sm max-h-[40vh]" alt="" />
+                            </div>
+                        ))}
+                    </div>
+                ) : null}
+
+                <div className="absolute bottom-0 right-0 w-64 h-64 opacity-10" style={{ backgroundColor: catalogConfig.primaryColor, borderRadius: '100% 0 0 0' }}></div>
+            </div>
+        );
+    };
+
     return (
       <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 8rem)' }}>
           {/* ── TAB BAR ────────────────────────────────────────────────── */}
@@ -20105,6 +20178,20 @@ ${html}
                                   </p>
                               </div>
                           )}
+                          {catalogConfig.coverImage && (
+                              <label className="mt-2 flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 p-2 text-xs cursor-pointer">
+                                  <input
+                                      type="checkbox"
+                                      checked={catalogConfig.coverImageOnly === true}
+                                      onChange={(e) => setCatalogConfig({...catalogConfig, coverImageOnly: e.target.checked})}
+                                      className="mt-0.5 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span>
+                                      <span className="block font-bold text-blue-900">Full-page image only</span>
+                                      <span className="block text-[10px] text-blue-800/80 leading-snug">No title, no contact text, no dark overlay. The uploaded image fills the whole cover.</span>
+                                  </span>
+                              </label>
+                          )}
                       </div>
 
                       {/* Back Cover Image */}
@@ -20140,19 +20227,35 @@ ${html}
                               </div>
                           )}
                           {catalogConfig.backCoverImage && (
-                              <div className="mt-2">
-                                  <label className="text-[10px] text-slate-400 mb-1 block flex items-center justify-between">
-                                      <span>Dark Overlay Opacity</span>
-                                      <span>{catalogConfig.backCoverOverlayOpacity ?? 60}%</span>
+                              <div className="mt-2 space-y-2">
+                                  <label className="flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-2 text-xs cursor-pointer">
+                                      <input
+                                          type="checkbox"
+                                          checked={catalogConfig.backCoverImageOnly === true}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, backCoverImageOnly: e.target.checked})}
+                                          className="mt-0.5 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span>
+                                          <span className="block font-bold text-indigo-900">Full-page image only</span>
+                                          <span className="block text-[10px] text-indigo-800/80 leading-snug">No contact text, no QR, no dark overlay. The uploaded image fills the whole back page.</span>
+                                      </span>
                                   </label>
-                                  <input
-                                      type="range"
-                                      min={0}
-                                      max={90}
-                                      value={catalogConfig.backCoverOverlayOpacity ?? 60}
-                                      onChange={(e) => setCatalogConfig({...catalogConfig, backCoverOverlayOpacity: Number(e.target.value)})}
-                                      className="w-full"
-                                  />
+                                  {catalogConfig.backCoverImageOnly !== true && (
+                                      <div>
+                                          <label className="text-[10px] text-slate-400 mb-1 block flex items-center justify-between">
+                                              <span>Dark Overlay Opacity</span>
+                                              <span>{catalogConfig.backCoverOverlayOpacity ?? 60}%</span>
+                                          </label>
+                                          <input
+                                              type="range"
+                                              min={0}
+                                              max={90}
+                                              value={catalogConfig.backCoverOverlayOpacity ?? 60}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, backCoverOverlayOpacity: Number(e.target.value)})}
+                                              className="w-full"
+                                          />
+                                      </div>
+                                  )}
                               </div>
                           )}
                           <details className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-2">
@@ -20283,7 +20386,13 @@ ${html}
                                                   <option value="top">Banner on top, text below</option>
                                                   <option value="bottom">Text on top, gallery below</option>
                                                   <option value="grid">Full image grid (text on top)</option>
+                                                  <option value="full-page">Full-page image only</option>
                                               </select>
+                                              {catalogConfig.aboutUsImageLayout === 'full-page' && (
+                                                  <p className="mt-1 text-[10px] leading-snug text-blue-700">
+                                                      Uses the first About Us image as a clean full-page photo with no heading, text, or overlay.
+                                                  </p>
+                                              )}
                                           </div>
                                       </div>
                                   )}
@@ -20815,10 +20924,12 @@ ${html}
                       {catalogConfig.coverImage ? (
                           <div className="absolute inset-0 z-0">
                               <img src={catalogConfig.coverImage} className="w-full h-full object-cover" alt="Cover" />
-                              <div 
-                                className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" 
-                                style={{ opacity: (catalogConfig.coverOverlayOpacity !== undefined ? catalogConfig.coverOverlayOpacity : 60) / 100 }}
-                              ></div>
+                              {!catalogConfig.coverImageOnly && (
+                                <div 
+                                  className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" 
+                                  style={{ opacity: (catalogConfig.coverOverlayOpacity !== undefined ? catalogConfig.coverOverlayOpacity : 60) / 100 }}
+                                ></div>
+                              )}
                           </div>
                       ) : (
                           <div 
@@ -20832,7 +20943,7 @@ ${html}
                           </div>
                       )}
                       
-                      {catalogConfig.logoImage && (() => {
+                      {!(catalogConfig.coverImage && catalogConfig.coverImageOnly) && catalogConfig.logoImage && (() => {
                           const sizeMap: Record<string, string> = { sm: 'h-12', md: 'h-16', lg: 'h-24' };
                           const posMap: Record<string, string> = {
                               'top-left': 'top-6 left-6',
@@ -20857,6 +20968,7 @@ ${html}
                           );
                       })()}
 
+                      {!(catalogConfig.coverImage && catalogConfig.coverImageOnly) && (
                       <div
                           className="relative z-10 h-full flex flex-col justify-between"
                           style={{
@@ -20943,6 +21055,7 @@ ${html}
                             </div>
                           )}
                       </div>
+                      )}
                   </div>
                   
                   {/* --- EXTRA PAGE: ABOUT US --- */}
@@ -20951,6 +21064,14 @@ ${html}
                       const layout = catalogConfig.aboutUsImageLayout || 'side-right';
                       const aboutText = catalogConfig.aboutUsText || 'Company description goes here...';
                       const headingStyle = { color: catalogConfig.headingColor || catalogConfig.primaryColor };
+
+                      if (layout === 'full-page' && aboutImages[0]) {
+                          return (
+                              <div className="w-full h-[297mm] print-page relative overflow-hidden bg-white">
+                                  <img src={aboutImages[0]} alt="About Us" className="absolute inset-0 w-full h-full object-cover" />
+                              </div>
+                          );
+                      }
 
                       const renderHeading = (
                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-6" style={headingStyle}>About Us</h2>
@@ -21039,34 +21160,7 @@ ${html}
                   })()}
 
                   {/* --- CUSTOM SECTIONS (BEFORE PRODUCTS) --- */}
-                  {(catalogConfig.sections || []).filter(s => s.position === 'before').map((section) => (
-                       <div key={section.id} className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
-                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>{section.title}</h2>
-                           
-                           <div style={{ textAlign: section.alignment, whiteSpace: 'pre-wrap' }} className="text-lg leading-relaxed text-slate-600">
-                               {section.content}
-                           </div>
-                           
-                           {/* Render Images based on Layout */}
-                           {(section.images && section.images.length > 0) || section.image ? (
-                               <div className={`mt-8 grid gap-4 ${
-                                   section.imageLayout === 'two-column' ? 'grid-cols-2' : 
-                                   section.imageLayout === 'three-column' ? 'grid-cols-3' : 
-                                   section.imageLayout === 'grid' ? 'grid-cols-2 md:grid-cols-3' : 
-                                   'grid-cols-1'
-                               }`}>
-                                   {/* Backward Compatibility: render 'image' if 'images' is empty */}
-                                   {(section.images || [section.image!]).map((img, idx) => (
-                                       <div key={idx} className="flex justify-center">
-                                            <img src={img} className="w-full object-contain rounded-lg shadow-sm max-h-[40vh]" alt="" />
-                                       </div>
-                                   ))}
-                               </div>
-                           ) : null}
-
-                           <div className="absolute bottom-0 right-0 w-64 h-64 opacity-10" style={{ backgroundColor: catalogConfig.primaryColor, borderRadius: '100% 0 0 0' }}></div>
-                       </div>
-                  ))}
+                  {(catalogConfig.sections || []).filter(s => s.position === 'before').map(renderPrintCustomSection)}
 
 
                   {/* --- PRODUCTS LOOP --- */}
@@ -21325,34 +21419,7 @@ ${html}
                   ))}
                   
                   {/* --- CUSTOM SECTIONS (AFTER PRODUCTS) --- */}
-                  {(catalogConfig.sections || []).filter(s => s.position === 'after').map((section) => (
-                       <div key={section.id} className="w-full h-[297mm] print-page p-16 flex flex-col relative overflow-hidden bg-white text-slate-800">
-                           <h2 className="text-4xl font-bold uppercase tracking-wider mb-8" style={{ color: catalogConfig.headingColor || catalogConfig.primaryColor }}>{section.title}</h2>
-                           
-                           <div style={{ textAlign: section.alignment, whiteSpace: 'pre-wrap' }} className="text-lg leading-relaxed text-slate-600">
-                               {section.content}
-                           </div>
-                           
-                           {/* Render Images based on Layout */}
-                           {(section.images && section.images.length > 0) || section.image ? (
-                               <div className={`mt-8 grid gap-4 ${
-                                   section.imageLayout === 'two-column' ? 'grid-cols-2' : 
-                                   section.imageLayout === 'three-column' ? 'grid-cols-3' : 
-                                   section.imageLayout === 'grid' ? 'grid-cols-2 md:grid-cols-3' : 
-                                   'grid-cols-1'
-                               }`}>
-                                   {/* Backward Compatibility: render 'image' if 'images' is empty */}
-                                   {(section.images || [section.image!]).map((img, idx) => (
-                                       <div key={idx} className="flex justify-center">
-                                            <img src={img} className="w-full object-contain rounded-lg shadow-sm max-h-[40vh]" alt="" />
-                                       </div>
-                                   ))}
-                               </div>
-                           ) : null}
-
-                           <div className="absolute bottom-0 right-0 w-64 h-64 opacity-10" style={{ backgroundColor: catalogConfig.primaryColor, borderRadius: '100% 0 0 0' }}></div>
-                       </div>
-                  ))}
+                  {(catalogConfig.sections || []).filter(s => s.position === 'after').map(renderPrintCustomSection)}
 
                   {/* --- CUSTOM PAGES (partners, certifications, etc.) --- */}
                   {(catalogConfig.customPages || []).filter((p: any) => p.active !== false).map((page: any) => {
@@ -21420,12 +21487,16 @@ ${html}
                       {catalogConfig.backCoverImage && (
                           <div className="absolute inset-0 z-0">
                               <img src={catalogConfig.backCoverImage} className="w-full h-full object-cover" alt="Back Cover" />
-                              <div
-                                  className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70"
-                                  style={{ opacity: (catalogConfig.backCoverOverlayOpacity ?? 60) / 100 }}
-                              ></div>
+                              {!catalogConfig.backCoverImageOnly && (
+                                  <div
+                                      className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70"
+                                      style={{ opacity: (catalogConfig.backCoverOverlayOpacity ?? 60) / 100 }}
+                                  ></div>
+                              )}
                           </div>
                       )}
+                      {!(catalogConfig.backCoverImage && catalogConfig.backCoverImageOnly) && (
+                      <>
                       <div className="relative z-10 w-full flex flex-col items-center">
                       <h2 className="font-bold mb-8" style={backCoverTitleStyle}>{tCombined('contact')}</h2>
                       
@@ -21478,6 +21549,8 @@ ${html}
                       <div className="absolute bottom-12 opacity-40 z-10" style={backCoverFooterStyle}>
                           {catalogConfig.footerText}
                       </div>
+                      </>
+                      )}
                   </div>
               </div>
           </div>
@@ -21875,8 +21948,14 @@ ${html}
                                    <option value="two-column">2 Columns</option>
                                    <option value="three-column">3 Columns</option>
                                    <option value="grid">Grid (Auto)</option>
+                                   <option value="full-page">Full-page image only</option>
                                </select>
                           </div>
+                          {editingSection.imageLayout === 'full-page' && (
+                              <p className="mb-2 rounded-lg border border-blue-100 bg-blue-50/70 p-2 text-[10px] leading-snug text-blue-800">
+                                  Uses the first photo as a full-page image with no page title, body text, decoration, or dark overlay.
+                              </p>
+                          )}
                           
                           {/* Image Gallery */}
                           <div className="grid grid-cols-4 gap-2 mb-2">
