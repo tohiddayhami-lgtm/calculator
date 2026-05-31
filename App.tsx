@@ -2421,6 +2421,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     baseUnit: '',
     coverOverlayOpacity: 60,
     coverImageOnly: false,
+    coverImageFit: 'cover',
     showAboutUs: false,
     productTabLabel: 'Product List',
     aboutUsTabLabel: 'About Us',
@@ -2434,6 +2435,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     aboutUsText: '',
     aboutUsImages: [],
     aboutUsImageLayout: 'side-right',
+    aboutUsFullPageImageFit: 'cover',
     logoImage: '',
     logoSize: 'md',
     logoPosition: 'top-left',
@@ -2471,6 +2473,7 @@ function createDefaultCatalogConfig(): CatalogConfig {
     backCoverImage: '',
     backCoverOverlayOpacity: 60,
     backCoverImageOnly: false,
+    backCoverImageFit: 'cover',
     backCoverTitleFontSizePx: 36,
     backCoverTitleLineHeight: 1.2,
     backCoverTitleUppercase: false,
@@ -3232,8 +3235,11 @@ const AI_PRODUCT_INPUT_SAMPLE = {
   version: 1,
   catalogConfig: {
     coverImageOnly: true,
+    coverImageFit: 'contain',
     backCoverImageOnly: true,
+    backCoverImageFit: 'contain',
     aboutUsImageLayout: 'full-page',
+    aboutUsFullPageImageFit: 'contain',
     sections: [
       {
         title: 'Image Focus Page',
@@ -3242,6 +3248,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
         position: 'before',
         images: [],
         imageLayout: 'full-page',
+        fullPageImageFit: 'contain',
       },
     ],
   },
@@ -3261,7 +3268,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'Optional: put product subcategory in subcategory, for example "Skincare", "Powder", or "Spare Parts". Subcategories appear under the main group/category tab in the electronic catalog link.',
     'Optional: put stock availability text in stockLabel, for example "In stock in Muscat" or "Available in stock in Oman". Leave it empty or omit it when no stock badge should be shown.',
     'Optional: override catalog delivery/Incoterm labels per product in catalogTermDisplayNames, for example { "FOB": "FOB Bandar Abbas", "EXW": "Factory gate" }. Empty/missing values fall back to the catalog-wide label or the raw term code.',
-    'Optional catalog/page design sample: catalogConfig.coverImageOnly and catalogConfig.backCoverImageOnly make cover/back-cover images display as clean full-page photos with no text or dark overlay. For About Us or custom image-first pages, use aboutUsImageLayout or section.imageLayout = "full-page".',
+    'Optional catalog/page design sample: catalogConfig.coverImageOnly and catalogConfig.backCoverImageOnly make cover/back-cover images display as clean full-page photos with no text or dark overlay. Use coverImageFit/backCoverImageFit/aboutUsFullPageImageFit or section.fullPageImageFit = "contain" to fit the whole image without cropping, or "cover" to fill the page.',
   ],
   products: [
     {
@@ -4462,6 +4469,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const backCoverFooterLineHeight = clampCatalogNumber(cc.backCoverFooterLineHeight, 1.35, 0.2, 10);
     const coverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.coverOverlayOpacity ?? 60) || 0) / 100));
     const backCoverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.backCoverOverlayOpacity ?? 60) || 0) / 100));
+    const coverImageFit = cc.coverImageFit === 'contain' ? 'contain' : 'cover';
+    const backCoverImageFit = cc.backCoverImageFit === 'contain' ? 'contain' : 'cover';
+    const aboutUsFullPageImageFit = cc.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover';
     const normalizeExtraAlign = (value: any, fallback: 'left' | 'center' | 'right' | 'justify') =>
         ['left', 'center', 'right', 'justify'].includes(value) ? value : fallback;
     const extraTitleAlign = normalizeExtraAlign(cc.extraPageTitleAlign, 'center');
@@ -4765,7 +4775,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             const imgs: string[] = aboutUsImagesForTab.slice(0, 4);
             if ((cc.aboutUsImageLayout || 'side-right') === 'full-page' && imgs[0]) {
                 return `
-            <section class="about about-full-image">
+            <section class="about about-full-image" style="${escapeAttr(`--page-image-fit:${aboutUsFullPageImageFit};`)}">
                 <img src="${escapeAttr(imgs[0])}" alt="${escapeAttr(cc.aboutUsTabLabel || 'About Us')}" loading="lazy" />
             </section>`;
             }
@@ -4829,8 +4839,9 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 : [];
         const layout = section.imageLayout || 'single';
         if (layout === 'full-page' && imgs[0]) {
+            const sectionFullPageFit = section.fullPageImageFit === 'contain' ? 'contain' : 'cover';
             return `
-        <section class="custom-page-full-image" aria-label="${escapeAttr(section.title || 'Page')}">
+        <section class="custom-page-full-image" aria-label="${escapeAttr(section.title || 'Page')}" style="${escapeAttr(`--page-image-fit:${sectionFullPageFit};`)}">
             <img src="${escapeAttr(imgs[0])}" alt="${escapeAttr(section.title || '')}" loading="lazy" />
         </section>`;
         }
@@ -5041,7 +5052,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
 
         /* ── Cover / Hero ── */
         .cover { background: var(--cover); color: var(--cover-text); padding: ${coverPagePaddingPx}px 24px; text-align: center; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
-        .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: cover; background-position: center;` : ''} z-index: 0; }
+        .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: ${cc.coverImageOnly ? coverImageFit : 'cover'}; background-position: center; background-repeat: no-repeat;` : ''} z-index: 0; }
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,${(coverOverlayAlpha * 0.65).toFixed(2)}) 0%, rgba(0,0,0,${coverOverlayAlpha.toFixed(2)}) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover.cover-image-only { min-height: 100vh; padding: 0; }
         .cover.cover-image-only::after { display: none; }
@@ -5105,7 +5116,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .about-img-panel img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; }
         .about-img-panel img:only-child { aspect-ratio: 3/2; }
         .about-full-image { margin: 0 auto; max-width: 1040px; min-height: min(100vh, 920px); border-radius: 24px; overflow: hidden; background: #f8fafc; }
-        .about-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: cover; }
+        .about-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: var(--page-image-fit, cover); }
         .about-text-panel { display: flex; flex-direction: column; justify-content: center; }
         .about-para { font-size: 16px; line-height: 1.85; color: var(--text); margin-bottom: 18px; }
         .about-para:first-child { font-size: clamp(18px, 2.5vw, 22px); font-weight: 600; color: var(--heading); line-height: 1.55; margin-bottom: 22px; }
@@ -5128,7 +5139,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         }
         .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 18px; box-shadow: 0 18px 50px rgba(15,23,42,0.10); border: 1px solid #f1f5f9; background: #fafafa; }
         .custom-page-full-image { margin: 64px auto; max-width: 1040px; min-height: min(100vh, 920px); border-radius: 24px; overflow: hidden; background: #f8fafc; box-shadow: 0 18px 50px rgba(15,23,42,0.10); }
-        .custom-page-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: cover; }
+        .custom-page-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: var(--page-image-fit, cover); }
 
         /* Company Gallery */
         .company-gallery-section { margin: 64px auto; padding: 0; max-width: 1040px; }
@@ -5296,7 +5307,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
 
         /* ── Footer ── */
         footer { background: var(--primary); color: #fff; padding: 56px 24px 40px; text-align: center; position: relative; overflow: hidden; }
-        footer::before { content: ''; position: absolute; inset: 0; ${cc.backCoverImage ? `background-image: url('${escapeAttr(cc.backCoverImage)}'); background-size: cover; background-position: center;` : ''} opacity: ${cc.backCoverImage ? '1' : '0'}; z-index: 0; }
+        footer::before { content: ''; position: absolute; inset: 0; ${cc.backCoverImage ? `background-image: url('${escapeAttr(cc.backCoverImage)}'); background-size: ${cc.backCoverImageOnly ? backCoverImageFit : 'cover'}; background-position: center; background-repeat: no-repeat;` : ''} opacity: ${cc.backCoverImage ? '1' : '0'}; z-index: 0; }
         footer::after { content: ''; position: absolute; inset: 0; background: rgba(15,23,42,${backCoverOverlayAlpha.toFixed(2)}); z-index: 1; ${cc.backCoverImage ? '' : 'display:none;'} }
         footer.back-cover-image-only { min-height: 100vh; padding: 0; }
         footer.back-cover-image-only::after { display: none; }
@@ -11846,11 +11857,13 @@ function AppInner() {
             baseUnit: project.data.catalogConfig.baseUnit || '',
             coverOverlayOpacity: project.data.catalogConfig.coverOverlayOpacity !== undefined ? project.data.catalogConfig.coverOverlayOpacity : 60,
             coverImageOnly: project.data.catalogConfig.coverImageOnly === true,
+            coverImageFit: project.data.catalogConfig.coverImageFit === 'contain' ? 'contain' : 'cover',
             moqLabel: project.data.catalogConfig.moqLabel || '',
             showAboutUs: project.data.catalogConfig.showAboutUs || false,
             aboutUsText: project.data.catalogConfig.aboutUsText || '',
             aboutUsImages: project.data.catalogConfig.aboutUsImages || [],
             aboutUsImageLayout: project.data.catalogConfig.aboutUsImageLayout || 'side-right',
+            aboutUsFullPageImageFit: project.data.catalogConfig.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover',
             logoImage: project.data.catalogConfig.logoImage || '',
             logoSize: project.data.catalogConfig.logoSize || 'md',
             logoPosition: project.data.catalogConfig.logoPosition || 'top-left',
@@ -11871,6 +11884,7 @@ function AppInner() {
             backCoverImage: project.data.catalogConfig.backCoverImage || '',
             backCoverOverlayOpacity: project.data.catalogConfig.backCoverOverlayOpacity !== undefined ? project.data.catalogConfig.backCoverOverlayOpacity : 60,
             backCoverImageOnly: project.data.catalogConfig.backCoverImageOnly === true,
+            backCoverImageFit: project.data.catalogConfig.backCoverImageFit === 'contain' ? 'contain' : 'cover',
             showQrCode: project.data.catalogConfig.showQrCode || false,
             qrCodeValue: project.data.catalogConfig.qrCodeValue || '',
             qrCodeLabel: project.data.catalogConfig.qrCodeLabel || 'Scan to visit',
@@ -12115,8 +12129,11 @@ function AppInner() {
                   ...catalogConfig,
                   title: catalogConfig.title || 'Sample Catalog With Colors, Origin, Subcategories, Stock, and Full-Page Images',
                   coverImageOnly: true,
+                  coverImageFit: 'contain',
                   backCoverImageOnly: true,
+                  backCoverImageFit: 'contain',
                   aboutUsImageLayout: 'full-page',
+                  aboutUsFullPageImageFit: 'contain',
                   sections: (catalogConfig.sections && catalogConfig.sections.length > 0)
                       ? catalogConfig.sections
                       : [
@@ -12128,6 +12145,7 @@ function AppInner() {
                               position: 'before',
                               images: [],
                               imageLayout: 'full-page',
+                              fullPageImageFit: 'contain',
                           },
                       ],
               },
@@ -12613,7 +12631,8 @@ function AppInner() {
       alignment: 'left',
       position: 'after',
       images: [],
-      imageLayout: 'single'
+      imageLayout: 'single',
+      fullPageImageFit: 'cover'
     };
     setCatalogConfig(prev => ({
       ...prev,
@@ -19419,9 +19438,10 @@ ${html}
             : [];
 
         if (section.imageLayout === 'full-page' && sectionImages[0]) {
+            const sectionFullPageFit = section.fullPageImageFit === 'contain' ? 'contain' : 'cover';
             return (
                 <div key={section.id} className="w-full h-[297mm] print-page relative overflow-hidden bg-white">
-                    <img src={sectionImages[0]} className="absolute inset-0 w-full h-full object-cover" alt={section.title || ''} />
+                    <img src={sectionImages[0]} className="absolute inset-0 w-full h-full" style={{ objectFit: sectionFullPageFit }} alt={section.title || ''} />
                 </div>
             );
         }
@@ -20211,6 +20231,7 @@ ${html}
                               </div>
                           )}
                           {catalogConfig.coverImage && (
+                              <div className="mt-2 space-y-2">
                               <label className="mt-2 flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 p-2 text-xs cursor-pointer">
                                   <input
                                       type="checkbox"
@@ -20223,6 +20244,20 @@ ${html}
                                       <span className="block text-[10px] text-blue-800/80 leading-snug">No title, no contact text, no dark overlay. The uploaded image fills the whole cover.</span>
                                   </span>
                               </label>
+                              {catalogConfig.coverImageOnly === true && (
+                                  <div>
+                                      <label className="text-[10px] text-slate-400 mb-1 block">Full-page image fit</label>
+                                      <select
+                                          value={catalogConfig.coverImageFit || 'cover'}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, coverImageFit: e.target.value as 'cover' | 'contain'})}
+                                          className="w-full text-xs border border-blue-100 rounded px-2 py-1.5 bg-white"
+                                      >
+                                          <option value="cover">Cover page (crop edges if needed)</option>
+                                          <option value="contain">Fit whole image (no crop)</option>
+                                      </select>
+                                  </div>
+                              )}
+                              </div>
                           )}
                       </div>
 
@@ -20272,6 +20307,19 @@ ${html}
                                           <span className="block text-[10px] text-indigo-800/80 leading-snug">No contact text, no QR, no dark overlay. The uploaded image fills the whole back page.</span>
                                       </span>
                                   </label>
+                                  {catalogConfig.backCoverImageOnly === true && (
+                                      <div>
+                                          <label className="text-[10px] text-slate-400 mb-1 block">Full-page image fit</label>
+                                          <select
+                                              value={catalogConfig.backCoverImageFit || 'cover'}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, backCoverImageFit: e.target.value as 'cover' | 'contain'})}
+                                              className="w-full text-xs border border-indigo-100 rounded px-2 py-1.5 bg-white"
+                                          >
+                                              <option value="cover">Cover page (crop edges if needed)</option>
+                                              <option value="contain">Fit whole image (no crop)</option>
+                                          </select>
+                                      </div>
+                                  )}
                                   {catalogConfig.backCoverImageOnly !== true && (
                                       <div>
                                           <label className="text-[10px] text-slate-400 mb-1 block flex items-center justify-between">
@@ -20421,9 +20469,19 @@ ${html}
                                                   <option value="full-page">Full-page image only</option>
                                               </select>
                                               {catalogConfig.aboutUsImageLayout === 'full-page' && (
+                                                  <div className="mt-1 space-y-1">
                                                   <p className="mt-1 text-[10px] leading-snug text-blue-700">
                                                       Uses the first About Us image as a clean full-page photo with no heading, text, or overlay.
                                                   </p>
+                                                  <select
+                                                      value={catalogConfig.aboutUsFullPageImageFit || 'cover'}
+                                                      onChange={(e) => setCatalogConfig({...catalogConfig, aboutUsFullPageImageFit: e.target.value as 'cover' | 'contain'})}
+                                                      className="w-full text-xs border border-blue-100 rounded px-2 py-1.5 bg-white"
+                                                  >
+                                                      <option value="cover">Cover page (crop edges if needed)</option>
+                                                      <option value="contain">Fit whole image (no crop)</option>
+                                                  </select>
+                                                  </div>
                                               )}
                                           </div>
                                       </div>
@@ -20955,7 +21013,12 @@ ${html}
                   <div className="w-full h-[297mm] relative flex flex-col print-page overflow-hidden">
                       {catalogConfig.coverImage ? (
                           <div className="absolute inset-0 z-0">
-                              <img src={catalogConfig.coverImage} className="w-full h-full object-cover" alt="Cover" />
+                              <img
+                                  src={catalogConfig.coverImage}
+                                  className="w-full h-full"
+                                  style={{ objectFit: catalogConfig.coverImageOnly && catalogConfig.coverImageFit === 'contain' ? 'contain' : 'cover' }}
+                                  alt="Cover"
+                              />
                               {!catalogConfig.coverImageOnly && (
                                 <div 
                                   className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" 
@@ -21100,7 +21163,12 @@ ${html}
                       if (layout === 'full-page' && aboutImages[0]) {
                           return (
                               <div className="w-full h-[297mm] print-page relative overflow-hidden bg-white">
-                                  <img src={aboutImages[0]} alt="About Us" className="absolute inset-0 w-full h-full object-cover" />
+                                  <img
+                                      src={aboutImages[0]}
+                                      alt="About Us"
+                                      className="absolute inset-0 w-full h-full"
+                                      style={{ objectFit: catalogConfig.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover' }}
+                                  />
                               </div>
                           );
                       }
@@ -21518,7 +21586,12 @@ ${html}
                   >
                       {catalogConfig.backCoverImage && (
                           <div className="absolute inset-0 z-0">
-                              <img src={catalogConfig.backCoverImage} className="w-full h-full object-cover" alt="Back Cover" />
+                              <img
+                                  src={catalogConfig.backCoverImage}
+                                  className="w-full h-full"
+                                  style={{ objectFit: catalogConfig.backCoverImageOnly && catalogConfig.backCoverImageFit === 'contain' ? 'contain' : 'cover' }}
+                                  alt="Back Cover"
+                              />
                               {!catalogConfig.backCoverImageOnly && (
                                   <div
                                       className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70"
@@ -21984,9 +22057,19 @@ ${html}
                                </select>
                           </div>
                           {editingSection.imageLayout === 'full-page' && (
+                              <div className="mb-2 space-y-2">
                               <p className="mb-2 rounded-lg border border-blue-100 bg-blue-50/70 p-2 text-[10px] leading-snug text-blue-800">
                                   Uses the first photo as a full-page image with no page title, body text, decoration, or dark overlay.
                               </p>
+                              <select
+                                  value={editingSection.fullPageImageFit || 'cover'}
+                                  onChange={(e) => setEditingSection({...editingSection, fullPageImageFit: e.target.value as 'cover' | 'contain'})}
+                                  className="w-full text-xs border border-blue-100 rounded px-2 py-1.5 bg-white"
+                              >
+                                  <option value="cover">Cover page (crop edges if needed)</option>
+                                  <option value="contain">Fit whole image (no crop)</option>
+                              </select>
+                              </div>
                           )}
                           
                           {/* Image Gallery */}
