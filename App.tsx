@@ -7150,6 +7150,10 @@ function AppInner() {
   const [rateCalcAmount, setRateCalcAmount] = useState(100);
   const [rateCalcFrom, setRateCalcFrom] = useState('USD');
   const [rateCalcTo, setRateCalcTo] = useState('OMR');
+  const [ratePairFromAmount, setRatePairFromAmount] = useState(1);
+  const [ratePairFromCurrency, setRatePairFromCurrency] = useState('CNY');
+  const [ratePairToAmount, setRatePairToAmount] = useState(0.13);
+  const [ratePairToCurrency, setRatePairToCurrency] = useState('EUR');
   const [isDemoMode, setIsDemoMode] = useState(false);
   
   // -- STATE: AUTH & PERSISTENCE --
@@ -15472,6 +15476,17 @@ function AppInner() {
             const currencyCodes = Object.keys(rates);
             const normalizedFrom = rates[rateCalcFrom] ? rateCalcFrom : (currencyCodes.find(c => c !== 'IRR') || 'USD');
             const normalizedTo = rates[rateCalcTo] ? rateCalcTo : (config.outputCurrency || 'OMR');
+            const pairFromCurrency = rates[ratePairFromCurrency] ? ratePairFromCurrency : (currencyCodes.includes('CNY') ? 'CNY' : normalizedFrom);
+            const pairToCurrency = rates[ratePairToCurrency] ? ratePairToCurrency : (currencyCodes.includes('EUR') ? 'EUR' : normalizedTo);
+            const pairFromAmount = Math.max(0, Number(ratePairFromAmount) || 0);
+            const pairToAmount = Math.max(0, Number(ratePairToAmount) || 0);
+            const canApplyPairRate = pairFromCurrency !== pairToCurrency && pairFromAmount > 0 && pairToAmount > 0;
+            const impliedFromRate = canApplyPairRate
+                ? (pairToAmount * (Number(rates[pairToCurrency]) || 1)) / pairFromAmount
+                : 0;
+            const impliedToRate = canApplyPairRate
+                ? (pairFromAmount * (Number(rates[pairFromCurrency]) || 1)) / pairToAmount
+                : 0;
             const outputRate = Math.max(0.000001, Number(rates[config.outputCurrency]) || 1);
             const calcBase = (Number(rateCalcAmount) || 0) * (Number(rates[normalizedFrom]) || 1);
             const calcResult = calcBase / Math.max(0.000001, Number(rates[normalizedTo]) || 1);
@@ -15479,14 +15494,14 @@ function AppInner() {
 
             return (
             <div className="mt-4 pt-4 border-t border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-2">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                     <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
                         <div className="text-[10px] font-black uppercase tracking-wide text-blue-700">How rates work</div>
                         <p className="mt-1 text-xs leading-relaxed text-blue-900">
-                            هر نرخ یعنی <b>ارزش 1 واحد ارز به IRR</b>. مثال: اگر USD = 650,000 باشد یعنی 1 دلار = 650,000 ریال.
+                            لازم نیست همه چیز را با ریال حساب کنی. هر تبدیل با یک نسبت ساده انجام می‌شود: مثلاً مستقیم بگو <b>1 CNY = 0.13 EUR</b>.
                         </p>
                         <div className="mt-2 rounded-lg bg-white/70 px-2 py-1.5 text-[11px] font-semibold text-blue-900">
-                            Formula: amount × source rate ÷ target rate
+                            برنامه فقط پشت صحنه یک مبنای مشترک نگه می‌دارد تا همه ارزها با هم سازگار بمانند.
                         </div>
                     </div>
 
@@ -15536,12 +15551,70 @@ function AppInner() {
                             {formatNumber(rateCalcAmount || 0)} × {formatNumber(rates[normalizedFrom] || 1)} ÷ {formatNumber(rates[normalizedTo] || 1)}
                         </p>
                     </div>
+
+                    <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-violet-700">Set by pair</div>
+                        <p className="mt-1 text-[11px] leading-snug text-violet-900">
+                            اگر نرخ بین دو ارز را می‌دانی، همین‌جا وارد کن. مثال: 1 CNY = 0.13 EUR.
+                        </p>
+                        <div className="mt-2 grid grid-cols-[1fr,72px] gap-2">
+                            <FormattedNumberInput
+                                value={ratePairFromAmount}
+                                onChange={(val) => setRatePairFromAmount(val ?? 0)}
+                                className="w-full rounded-lg border border-violet-100 px-2 py-1.5 text-sm font-bold outline-none focus:border-violet-400"
+                            />
+                            <select
+                                value={pairFromCurrency}
+                                onChange={(e) => setRatePairFromCurrency(e.target.value)}
+                                className="rounded-lg border border-violet-100 bg-white px-1 py-1.5 text-xs font-bold"
+                            >
+                                {currencyCodes.map(c => <option key={`pair-from-${c}`} value={c}>{c}</option>)}
+                            </select>
+                            <FormattedNumberInput
+                                value={ratePairToAmount}
+                                onChange={(val) => setRatePairToAmount(val ?? 0)}
+                                className="w-full rounded-lg border border-violet-100 px-2 py-1.5 text-sm font-bold outline-none focus:border-violet-400"
+                            />
+                            <select
+                                value={pairToCurrency}
+                                onChange={(e) => setRatePairToCurrency(e.target.value)}
+                                className="rounded-lg border border-violet-100 bg-white px-1 py-1.5 text-xs font-bold"
+                            >
+                                {currencyCodes.map(c => <option key={`pair-to-${c}`} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                disabled={!canApplyPairRate || pairFromCurrency === 'IRR'}
+                                onClick={() => setRates({ ...rates, [pairFromCurrency]: impliedFromRate })}
+                                className="rounded-lg bg-violet-600 px-2 py-1.5 text-[10px] font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                title={`Trust ${pairToCurrency}, update ${pairFromCurrency}`}
+                            >
+                                Set {pairFromCurrency}
+                            </button>
+                            <button
+                                type="button"
+                                disabled={!canApplyPairRate || pairToCurrency === 'IRR'}
+                                onClick={() => setRates({ ...rates, [pairToCurrency]: impliedToRate })}
+                                className="rounded-lg bg-white px-2 py-1.5 text-[10px] font-black text-violet-700 border border-violet-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                title={`Trust ${pairFromCurrency}, update ${pairToCurrency}`}
+                            >
+                                Set {pairToCurrency}
+                            </button>
+                        </div>
+                        <p className="mt-1 text-[10px] text-violet-800/80">
+                            {canApplyPairRate
+                                ? `Preview: ${pairFromAmount} ${pairFromCurrency} = ${pairToAmount} ${pairToCurrency}`
+                                : 'Choose two different currencies and positive amounts.'}
+                        </p>
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">Exchange rates</h3>
-                        <p className="text-[11px] text-slate-500">Enter each value as: 1 currency = how many IRR.</p>
+                        <p className="text-[11px] text-slate-500">Advanced internal reference values. For normal work, use Quick converter or Set by pair above.</p>
                     </div>
                     <button
                         type="button"
@@ -15563,7 +15636,7 @@ function AppInner() {
                                 <div className="mb-2 flex items-start justify-between gap-2">
                                     <div>
                                         <label className="block text-xs font-black text-slate-700">1 {curr} =</label>
-                                        <p className="text-[10px] text-slate-400">value in IRR</p>
+                                        <p className="text-[10px] text-slate-400">internal reference value</p>
                                     </div>
                                     {curr === config.outputCurrency && (
                                         <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">Output</span>
