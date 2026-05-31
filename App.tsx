@@ -7147,6 +7147,9 @@ function AppInner() {
   // -- STATE: VIEW & UI --
   const [view, setView] = useState<AppView>('dashboard');
   const [showRateSettings, setShowRateSettings] = useState(false);
+  const [rateCalcAmount, setRateCalcAmount] = useState(100);
+  const [rateCalcFrom, setRateCalcFrom] = useState('USD');
+  const [rateCalcTo, setRateCalcTo] = useState('OMR');
   const [isDemoMode, setIsDemoMode] = useState(false);
   
   // -- STATE: AUTH & PERSISTENCE --
@@ -15465,20 +15468,135 @@ function AppInner() {
             </div>
         </div>
         
-        {showRateSettings && (
-            <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in fade-in slide-in-from-top-2">
-                {Object.entries(rates).map(([curr, rate]) => (
-                    <div key={curr} className="relative group">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">{curr} Rate</label>
-                        <FormattedNumberInput
-                            value={rate as number}
-                            onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
-                            className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                        />
+        {showRateSettings && (() => {
+            const currencyCodes = Object.keys(rates);
+            const normalizedFrom = rates[rateCalcFrom] ? rateCalcFrom : (currencyCodes.find(c => c !== 'IRR') || 'USD');
+            const normalizedTo = rates[rateCalcTo] ? rateCalcTo : (config.outputCurrency || 'OMR');
+            const outputRate = Math.max(0.000001, Number(rates[config.outputCurrency]) || 1);
+            const calcBase = (Number(rateCalcAmount) || 0) * (Number(rates[normalizedFrom]) || 1);
+            const calcResult = calcBase / Math.max(0.000001, Number(rates[normalizedTo]) || 1);
+            const outputCurrencyPreview = (curr: string, rate: number) => rate / outputRate;
+
+            return (
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-2">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-blue-700">How rates work</div>
+                        <p className="mt-1 text-xs leading-relaxed text-blue-900">
+                            هر نرخ یعنی <b>ارزش 1 واحد ارز به IRR</b>. مثال: اگر USD = 650,000 باشد یعنی 1 دلار = 650,000 ریال.
+                        </p>
+                        <div className="mt-2 rounded-lg bg-white/70 px-2 py-1.5 text-[11px] font-semibold text-blue-900">
+                            Formula: amount × source rate ÷ target rate
+                        </div>
                     </div>
-                ))}
+
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Output currency</div>
+                                <div className="mt-1 text-lg font-black text-emerald-900">{config.outputCurrency}</div>
+                            </div>
+                            <div className="text-right text-xs text-emerald-800">
+                                <div>1 {config.outputCurrency}</div>
+                                <div className="font-black">{formatNumber(rates[config.outputCurrency] || 1)} IRR</div>
+                            </div>
+                        </div>
+                        <p className="mt-2 text-[11px] leading-snug text-emerald-800">
+                            همه هزینه‌ها و قیمت‌های خروجی با این ارز نمایش داده می‌شوند.
+                        </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Quick converter</div>
+                        <div className="mt-2 grid grid-cols-[1fr,78px,78px] gap-2">
+                            <FormattedNumberInput
+                                value={rateCalcAmount}
+                                onChange={(val) => setRateCalcAmount(val ?? 0)}
+                                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-bold outline-none focus:border-blue-400"
+                            />
+                            <select
+                                value={normalizedFrom}
+                                onChange={(e) => setRateCalcFrom(e.target.value)}
+                                className="rounded-lg border border-slate-200 bg-white px-1 py-1.5 text-xs font-bold"
+                            >
+                                {currencyCodes.map(c => <option key={`from-${c}`} value={c}>{c}</option>)}
+                            </select>
+                            <select
+                                value={normalizedTo}
+                                onChange={(e) => setRateCalcTo(e.target.value)}
+                                className="rounded-lg border border-slate-200 bg-white px-1 py-1.5 text-xs font-bold"
+                            >
+                                {currencyCodes.map(c => <option key={`to-${c}`} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="mt-2 rounded-lg bg-slate-50 px-2 py-2 text-sm font-black text-slate-900">
+                            = {formatNumber(calcResult)} {normalizedTo}
+                        </div>
+                        <p className="mt-1 text-[10px] text-slate-500">
+                            {formatNumber(rateCalcAmount || 0)} × {formatNumber(rates[normalizedFrom] || 1)} ÷ {formatNumber(rates[normalizedTo] || 1)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">Exchange rates</h3>
+                        <p className="text-[11px] text-slate-500">Enter each value as: 1 currency = how many IRR.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setRates(createDefaultRates())}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                        Reset default rates
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {Object.entries(rates).map(([curr, rate]) => {
+                        const rateValue = Number(rate) || 0;
+                        const outputPreview = curr === config.outputCurrency
+                            ? 1
+                            : outputCurrencyPreview(curr, rateValue);
+                        return (
+                            <div key={curr} className={`rounded-xl border p-3 ${curr === config.outputCurrency ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-white'}`}>
+                                <div className="mb-2 flex items-start justify-between gap-2">
+                                    <div>
+                                        <label className="block text-xs font-black text-slate-700">1 {curr} =</label>
+                                        <p className="text-[10px] text-slate-400">value in IRR</p>
+                                    </div>
+                                    {curr === config.outputCurrency && (
+                                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-700">Output</span>
+                                    )}
+                                    {curr === 'IRR' && (
+                                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500">Base</span>
+                                    )}
+                                </div>
+                                <FormattedNumberInput
+                                    value={curr === 'IRR' ? 1 : rateValue}
+                                    onChange={(val) => curr === 'IRR'
+                                        ? setRates({ ...rates, IRR: 1 })
+                                        : setRates({ ...rates, [curr]: Math.max(0, val ?? 0) })
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-bold outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                />
+                                <div className="mt-2 space-y-1 text-[11px] text-slate-500">
+                                    <div>
+                                        1 {curr} ≈ <b className="text-slate-800">{formatNumber(outputPreview)}</b> {config.outputCurrency}
+                                    </div>
+                                    {curr !== 'IRR' && (
+                                        <div>
+                                            100 {curr} ≈ <b className="text-slate-800">{formatNumber(outputPreview * 100)}</b> {config.outputCurrency}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
-        )}
+            );
+        })()}
       </div>
 
       {/* 1b. Linear tasks — compact, collapsed by default */}
