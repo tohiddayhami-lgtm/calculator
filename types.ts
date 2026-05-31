@@ -347,7 +347,10 @@ export interface CatalogSection {
   image?: string; // Base64 string (Legacy single image)
   images?: string[]; // New: Multiple images
   imageLayout?: 'single' | 'two-column' | 'three-column' | 'grid' | 'full-page'; // New: Layout mode
-  fullPageImageFit?: 'cover' | 'contain';
+  fullPageImageFit?: 'cover' | 'contain' | 'custom';
+  fullPageImageZoomPct?: number;
+  fullPageImagePositionX?: number;
+  fullPageImagePositionY?: number;
   position: 'before' | 'after'; // Position relative to product list
 }
 
@@ -394,7 +397,10 @@ export interface CatalogConfig {
   baseUnit?: string; // New: Global default unit (e.g. "kg")
   coverOverlayOpacity?: number; // New: Opacity of the cover overlay (0-100)
   coverImageOnly?: boolean; // Use uploaded cover image as a clean full-page image without text/overlay
-  coverImageFit?: 'cover' | 'contain';
+  coverImageFit?: 'cover' | 'contain' | 'custom';
+  coverImageZoomPct?: number;
+  coverImagePositionX?: number;
+  coverImagePositionY?: number;
   
   // Extra Company Pages
   showAboutUs?: boolean;
@@ -410,7 +416,10 @@ export interface CatalogConfig {
   aboutUsText?: string;
   aboutUsImages?: string[];
   aboutUsImageLayout?: 'top' | 'bottom' | 'side-right' | 'side-left' | 'grid' | 'full-page';
-  aboutUsFullPageImageFit?: 'cover' | 'contain';
+  aboutUsFullPageImageFit?: 'cover' | 'contain' | 'custom';
+  aboutUsFullPageImageZoomPct?: number;
+  aboutUsFullPageImagePositionX?: number;
+  aboutUsFullPageImagePositionY?: number;
 
   // Brand Logo (cover)
   logoImage?: string;
@@ -455,7 +464,10 @@ export interface CatalogConfig {
   backCoverImage?: string;
   backCoverOverlayOpacity?: number; // 0-100
   backCoverImageOnly?: boolean; // Use uploaded back cover image as a clean full-page image without text/overlay
-  backCoverImageFit?: 'cover' | 'contain';
+  backCoverImageFit?: 'cover' | 'contain' | 'custom';
+  backCoverImageZoomPct?: number;
+  backCoverImagePositionX?: number;
+  backCoverImagePositionY?: number;
   backCoverTitleFontSizePx?: number;
   backCoverTitleLineHeight?: number;
   backCoverTitleUppercase?: boolean;

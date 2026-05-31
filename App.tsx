@@ -2422,6 +2422,9 @@ function createDefaultCatalogConfig(): CatalogConfig {
     coverOverlayOpacity: 60,
     coverImageOnly: false,
     coverImageFit: 'cover',
+    coverImageZoomPct: 115,
+    coverImagePositionX: 50,
+    coverImagePositionY: 50,
     showAboutUs: false,
     productTabLabel: 'Product List',
     aboutUsTabLabel: 'About Us',
@@ -2436,6 +2439,9 @@ function createDefaultCatalogConfig(): CatalogConfig {
     aboutUsImages: [],
     aboutUsImageLayout: 'side-right',
     aboutUsFullPageImageFit: 'cover',
+    aboutUsFullPageImageZoomPct: 115,
+    aboutUsFullPageImagePositionX: 50,
+    aboutUsFullPageImagePositionY: 50,
     logoImage: '',
     logoSize: 'md',
     logoPosition: 'top-left',
@@ -2474,6 +2480,9 @@ function createDefaultCatalogConfig(): CatalogConfig {
     backCoverOverlayOpacity: 60,
     backCoverImageOnly: false,
     backCoverImageFit: 'cover',
+    backCoverImageZoomPct: 115,
+    backCoverImagePositionX: 50,
+    backCoverImagePositionY: 50,
     backCoverTitleFontSizePx: 36,
     backCoverTitleLineHeight: 1.2,
     backCoverTitleUppercase: false,
@@ -3235,11 +3244,20 @@ const AI_PRODUCT_INPUT_SAMPLE = {
   version: 1,
   catalogConfig: {
     coverImageOnly: true,
-    coverImageFit: 'contain',
+    coverImageFit: 'custom',
+    coverImageZoomPct: 120,
+    coverImagePositionX: 50,
+    coverImagePositionY: 50,
     backCoverImageOnly: true,
-    backCoverImageFit: 'contain',
+    backCoverImageFit: 'custom',
+    backCoverImageZoomPct: 120,
+    backCoverImagePositionX: 50,
+    backCoverImagePositionY: 50,
     aboutUsImageLayout: 'full-page',
-    aboutUsFullPageImageFit: 'contain',
+    aboutUsFullPageImageFit: 'custom',
+    aboutUsFullPageImageZoomPct: 120,
+    aboutUsFullPageImagePositionX: 50,
+    aboutUsFullPageImagePositionY: 50,
     sections: [
       {
         title: 'Image Focus Page',
@@ -3248,7 +3266,10 @@ const AI_PRODUCT_INPUT_SAMPLE = {
         position: 'before',
         images: [],
         imageLayout: 'full-page',
-        fullPageImageFit: 'contain',
+        fullPageImageFit: 'custom',
+        fullPageImageZoomPct: 120,
+        fullPageImagePositionX: 50,
+        fullPageImagePositionY: 50,
       },
     ],
   },
@@ -3268,7 +3289,7 @@ const AI_PRODUCT_INPUT_SAMPLE = {
     'Optional: put product subcategory in subcategory, for example "Skincare", "Powder", or "Spare Parts". Subcategories appear under the main group/category tab in the electronic catalog link.',
     'Optional: put stock availability text in stockLabel, for example "In stock in Muscat" or "Available in stock in Oman". Leave it empty or omit it when no stock badge should be shown.',
     'Optional: override catalog delivery/Incoterm labels per product in catalogTermDisplayNames, for example { "FOB": "FOB Bandar Abbas", "EXW": "Factory gate" }. Empty/missing values fall back to the catalog-wide label or the raw term code.',
-    'Optional catalog/page design sample: catalogConfig.coverImageOnly and catalogConfig.backCoverImageOnly make cover/back-cover images display as clean full-page photos with no text or dark overlay. Use coverImageFit/backCoverImageFit/aboutUsFullPageImageFit or section.fullPageImageFit = "contain" to fit the whole image without cropping, or "cover" to fill the page.',
+    'Optional catalog/page design sample: catalogConfig.coverImageOnly and catalogConfig.backCoverImageOnly make cover/back-cover images display as clean full-page photos with no text or dark overlay. Use coverImageFit/backCoverImageFit/aboutUsFullPageImageFit or section.fullPageImageFit = "contain" to fit the whole image without cropping, "cover" to fill the page, or "custom" with zoomPct/positionX/positionY fields for manual fitting.',
   ],
   products: [
     {
@@ -4469,9 +4490,50 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
     const backCoverFooterLineHeight = clampCatalogNumber(cc.backCoverFooterLineHeight, 1.35, 0.2, 10);
     const coverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.coverOverlayOpacity ?? 60) || 0) / 100));
     const backCoverOverlayAlpha = Math.min(0.9, Math.max(0, (Number(cc.backCoverOverlayOpacity ?? 60) || 0) / 100));
-    const coverImageFit = cc.coverImageFit === 'contain' ? 'contain' : 'cover';
-    const backCoverImageFit = cc.backCoverImageFit === 'contain' ? 'contain' : 'cover';
-    const aboutUsFullPageImageFit = cc.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover';
+    const coverImageFit = cc.coverImageFit === 'custom' ? 'custom' : cc.coverImageFit === 'contain' ? 'contain' : 'cover';
+    const backCoverImageFit = cc.backCoverImageFit === 'custom' ? 'custom' : cc.backCoverImageFit === 'contain' ? 'contain' : 'cover';
+    const aboutUsFullPageImageFit = cc.aboutUsFullPageImageFit === 'custom' ? 'custom' : cc.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover';
+    const coverImageZoomPct = clampCatalogNumber(cc.coverImageZoomPct, 115, 50, 300);
+    const coverImagePositionX = clampCatalogNumber(cc.coverImagePositionX, 50, 0, 100);
+    const coverImagePositionY = clampCatalogNumber(cc.coverImagePositionY, 50, 0, 100);
+    const backCoverImageZoomPct = clampCatalogNumber(cc.backCoverImageZoomPct, 115, 50, 300);
+    const backCoverImagePositionX = clampCatalogNumber(cc.backCoverImagePositionX, 50, 0, 100);
+    const backCoverImagePositionY = clampCatalogNumber(cc.backCoverImagePositionY, 50, 0, 100);
+    const aboutUsFullPageImageZoomPct = clampCatalogNumber(cc.aboutUsFullPageImageZoomPct, 115, 50, 300);
+    const aboutUsFullPageImagePositionX = clampCatalogNumber(cc.aboutUsFullPageImagePositionX, 50, 0, 100);
+    const aboutUsFullPageImagePositionY = clampCatalogNumber(cc.aboutUsFullPageImagePositionY, 50, 0, 100);
+    const fullPageImageObjectStyle = (
+        fit: 'cover' | 'contain' | 'custom',
+        zoomPct = 115,
+        positionX = 50,
+        positionY = 50,
+    ): React.CSSProperties => ({
+        objectFit: fit === 'custom' ? 'contain' : fit,
+        objectPosition: `${positionX}% ${positionY}%`,
+        transform: fit === 'custom' ? `scale(${zoomPct / 100})` : undefined,
+        transformOrigin: `${positionX}% ${positionY}%`,
+    });
+    const fullPageImageCssVars = (
+        fit: 'cover' | 'contain' | 'custom',
+        zoomPct = 115,
+        positionX = 50,
+        positionY = 50,
+    ) => [
+        `--page-image-fit:${fit === 'custom' ? 'contain' : fit}`,
+        `--page-image-scale:${fit === 'custom' ? zoomPct / 100 : 1}`,
+        `--page-image-x:${positionX}%`,
+        `--page-image-y:${positionY}%`,
+    ].join(';');
+    const fullPageBackgroundCss = (
+        fit: 'cover' | 'contain' | 'custom',
+        zoomPct = 115,
+        positionX = 50,
+        positionY = 50,
+    ) => [
+        `background-size:${fit === 'custom' ? `${zoomPct}% auto` : fit}`,
+        `background-position:${positionX}% ${positionY}%`,
+        'background-repeat:no-repeat',
+    ].join(';');
     const normalizeExtraAlign = (value: any, fallback: 'left' | 'center' | 'right' | 'justify') =>
         ['left', 'center', 'right', 'justify'].includes(value) ? value : fallback;
     const extraTitleAlign = normalizeExtraAlign(cc.extraPageTitleAlign, 'center');
@@ -4775,7 +4837,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
             const imgs: string[] = aboutUsImagesForTab.slice(0, 4);
             if ((cc.aboutUsImageLayout || 'side-right') === 'full-page' && imgs[0]) {
                 return `
-            <section class="about about-full-image" style="${escapeAttr(`--page-image-fit:${aboutUsFullPageImageFit};`)}">
+            <section class="about about-full-image" style="${escapeAttr(fullPageImageCssVars(aboutUsFullPageImageFit, aboutUsFullPageImageZoomPct, aboutUsFullPageImagePositionX, aboutUsFullPageImagePositionY))}">
                 <img src="${escapeAttr(imgs[0])}" alt="${escapeAttr(cc.aboutUsTabLabel || 'About Us')}" loading="lazy" />
             </section>`;
             }
@@ -4839,9 +4901,12 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
                 : [];
         const layout = section.imageLayout || 'single';
         if (layout === 'full-page' && imgs[0]) {
-            const sectionFullPageFit = section.fullPageImageFit === 'contain' ? 'contain' : 'cover';
+            const sectionFullPageFit = section.fullPageImageFit === 'custom' ? 'custom' : section.fullPageImageFit === 'contain' ? 'contain' : 'cover';
+            const sectionZoom = clampCatalogNumber(section.fullPageImageZoomPct, 115, 50, 300);
+            const sectionX = clampCatalogNumber(section.fullPageImagePositionX, 50, 0, 100);
+            const sectionY = clampCatalogNumber(section.fullPageImagePositionY, 50, 0, 100);
             return `
-        <section class="custom-page-full-image" aria-label="${escapeAttr(section.title || 'Page')}" style="${escapeAttr(`--page-image-fit:${sectionFullPageFit};`)}">
+        <section class="custom-page-full-image" aria-label="${escapeAttr(section.title || 'Page')}" style="${escapeAttr(fullPageImageCssVars(sectionFullPageFit, sectionZoom, sectionX, sectionY))}">
             <img src="${escapeAttr(imgs[0])}" alt="${escapeAttr(section.title || '')}" loading="lazy" />
         </section>`;
         }
@@ -5052,7 +5117,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
 
         /* ── Cover / Hero ── */
         .cover { background: var(--cover); color: var(--cover-text); padding: ${coverPagePaddingPx}px 24px; text-align: center; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
-        .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); background-size: ${cc.coverImageOnly ? coverImageFit : 'cover'}; background-position: center; background-repeat: no-repeat;` : ''} z-index: 0; }
+        .cover::before { content: ''; position: absolute; inset: 0; ${cc.coverImage ? `background-image: url('${escapeAttr(cc.coverImage)}'); ${cc.coverImageOnly ? fullPageBackgroundCss(coverImageFit, coverImageZoomPct, coverImagePositionX, coverImagePositionY) : 'background-size: cover; background-position: center; background-repeat: no-repeat;'};` : ''} z-index: 0; }
         .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(0,0,0,${(coverOverlayAlpha * 0.65).toFixed(2)}) 0%, rgba(0,0,0,${coverOverlayAlpha.toFixed(2)}) 100%); z-index: 1; ${cc.coverImage ? '' : 'display:none;'} }
         .cover.cover-image-only { min-height: 100vh; padding: 0; }
         .cover.cover-image-only::after { display: none; }
@@ -5116,7 +5181,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         .about-img-panel img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; }
         .about-img-panel img:only-child { aspect-ratio: 3/2; }
         .about-full-image { margin: 0 auto; max-width: 1040px; min-height: min(100vh, 920px); border-radius: 24px; overflow: hidden; background: #f8fafc; }
-        .about-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: var(--page-image-fit, cover); }
+        .about-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: var(--page-image-fit, cover); object-position: var(--page-image-x, 50%) var(--page-image-y, 50%); transform: scale(var(--page-image-scale, 1)); transform-origin: var(--page-image-x, 50%) var(--page-image-y, 50%); }
         .about-text-panel { display: flex; flex-direction: column; justify-content: center; }
         .about-para { font-size: 16px; line-height: 1.85; color: var(--text); margin-bottom: 18px; }
         .about-para:first-child { font-size: clamp(18px, 2.5vw, 22px); font-weight: 600; color: var(--heading); line-height: 1.55; margin-bottom: 22px; }
@@ -5139,7 +5204,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
         }
         .custom-page .img-cell img { width: 100%; max-height: 46vh; object-fit: contain; border-radius: 18px; box-shadow: 0 18px 50px rgba(15,23,42,0.10); border: 1px solid #f1f5f9; background: #fafafa; }
         .custom-page-full-image { margin: 64px auto; max-width: 1040px; min-height: min(100vh, 920px); border-radius: 24px; overflow: hidden; background: #f8fafc; box-shadow: 0 18px 50px rgba(15,23,42,0.10); }
-        .custom-page-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: var(--page-image-fit, cover); }
+        .custom-page-full-image img { display: block; width: 100%; height: 100%; min-height: min(100vh, 920px); object-fit: var(--page-image-fit, cover); object-position: var(--page-image-x, 50%) var(--page-image-y, 50%); transform: scale(var(--page-image-scale, 1)); transform-origin: var(--page-image-x, 50%) var(--page-image-y, 50%); }
 
         /* Company Gallery */
         .company-gallery-section { margin: 64px auto; padding: 0; max-width: 1040px; }
@@ -5307,7 +5372,7 @@ const buildCatalogHtml = ({ products, config, catalogConfig, volumeTiers = [], q
 
         /* ── Footer ── */
         footer { background: var(--primary); color: #fff; padding: 56px 24px 40px; text-align: center; position: relative; overflow: hidden; }
-        footer::before { content: ''; position: absolute; inset: 0; ${cc.backCoverImage ? `background-image: url('${escapeAttr(cc.backCoverImage)}'); background-size: ${cc.backCoverImageOnly ? backCoverImageFit : 'cover'}; background-position: center; background-repeat: no-repeat;` : ''} opacity: ${cc.backCoverImage ? '1' : '0'}; z-index: 0; }
+        footer::before { content: ''; position: absolute; inset: 0; ${cc.backCoverImage ? `background-image: url('${escapeAttr(cc.backCoverImage)}'); ${cc.backCoverImageOnly ? fullPageBackgroundCss(backCoverImageFit, backCoverImageZoomPct, backCoverImagePositionX, backCoverImagePositionY) : 'background-size: cover; background-position: center; background-repeat: no-repeat;'};` : ''} opacity: ${cc.backCoverImage ? '1' : '0'}; z-index: 0; }
         footer::after { content: ''; position: absolute; inset: 0; background: rgba(15,23,42,${backCoverOverlayAlpha.toFixed(2)}); z-index: 1; ${cc.backCoverImage ? '' : 'display:none;'} }
         footer.back-cover-image-only { min-height: 100vh; padding: 0; }
         footer.back-cover-image-only::after { display: none; }
@@ -11857,13 +11922,19 @@ function AppInner() {
             baseUnit: project.data.catalogConfig.baseUnit || '',
             coverOverlayOpacity: project.data.catalogConfig.coverOverlayOpacity !== undefined ? project.data.catalogConfig.coverOverlayOpacity : 60,
             coverImageOnly: project.data.catalogConfig.coverImageOnly === true,
-            coverImageFit: project.data.catalogConfig.coverImageFit === 'contain' ? 'contain' : 'cover',
+            coverImageFit: project.data.catalogConfig.coverImageFit === 'custom' ? 'custom' : project.data.catalogConfig.coverImageFit === 'contain' ? 'contain' : 'cover',
+            coverImageZoomPct: Number(project.data.catalogConfig.coverImageZoomPct) || 115,
+            coverImagePositionX: project.data.catalogConfig.coverImagePositionX !== undefined ? Number(project.data.catalogConfig.coverImagePositionX) : 50,
+            coverImagePositionY: project.data.catalogConfig.coverImagePositionY !== undefined ? Number(project.data.catalogConfig.coverImagePositionY) : 50,
             moqLabel: project.data.catalogConfig.moqLabel || '',
             showAboutUs: project.data.catalogConfig.showAboutUs || false,
             aboutUsText: project.data.catalogConfig.aboutUsText || '',
             aboutUsImages: project.data.catalogConfig.aboutUsImages || [],
             aboutUsImageLayout: project.data.catalogConfig.aboutUsImageLayout || 'side-right',
-            aboutUsFullPageImageFit: project.data.catalogConfig.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover',
+            aboutUsFullPageImageFit: project.data.catalogConfig.aboutUsFullPageImageFit === 'custom' ? 'custom' : project.data.catalogConfig.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover',
+            aboutUsFullPageImageZoomPct: Number(project.data.catalogConfig.aboutUsFullPageImageZoomPct) || 115,
+            aboutUsFullPageImagePositionX: project.data.catalogConfig.aboutUsFullPageImagePositionX !== undefined ? Number(project.data.catalogConfig.aboutUsFullPageImagePositionX) : 50,
+            aboutUsFullPageImagePositionY: project.data.catalogConfig.aboutUsFullPageImagePositionY !== undefined ? Number(project.data.catalogConfig.aboutUsFullPageImagePositionY) : 50,
             logoImage: project.data.catalogConfig.logoImage || '',
             logoSize: project.data.catalogConfig.logoSize || 'md',
             logoPosition: project.data.catalogConfig.logoPosition || 'top-left',
@@ -11884,7 +11955,10 @@ function AppInner() {
             backCoverImage: project.data.catalogConfig.backCoverImage || '',
             backCoverOverlayOpacity: project.data.catalogConfig.backCoverOverlayOpacity !== undefined ? project.data.catalogConfig.backCoverOverlayOpacity : 60,
             backCoverImageOnly: project.data.catalogConfig.backCoverImageOnly === true,
-            backCoverImageFit: project.data.catalogConfig.backCoverImageFit === 'contain' ? 'contain' : 'cover',
+            backCoverImageFit: project.data.catalogConfig.backCoverImageFit === 'custom' ? 'custom' : project.data.catalogConfig.backCoverImageFit === 'contain' ? 'contain' : 'cover',
+            backCoverImageZoomPct: Number(project.data.catalogConfig.backCoverImageZoomPct) || 115,
+            backCoverImagePositionX: project.data.catalogConfig.backCoverImagePositionX !== undefined ? Number(project.data.catalogConfig.backCoverImagePositionX) : 50,
+            backCoverImagePositionY: project.data.catalogConfig.backCoverImagePositionY !== undefined ? Number(project.data.catalogConfig.backCoverImagePositionY) : 50,
             showQrCode: project.data.catalogConfig.showQrCode || false,
             qrCodeValue: project.data.catalogConfig.qrCodeValue || '',
             qrCodeLabel: project.data.catalogConfig.qrCodeLabel || 'Scan to visit',
@@ -12129,11 +12203,20 @@ function AppInner() {
                   ...catalogConfig,
                   title: catalogConfig.title || 'Sample Catalog With Colors, Origin, Subcategories, Stock, and Full-Page Images',
                   coverImageOnly: true,
-                  coverImageFit: 'contain',
+                  coverImageFit: 'custom',
+                  coverImageZoomPct: 120,
+                  coverImagePositionX: 50,
+                  coverImagePositionY: 50,
                   backCoverImageOnly: true,
-                  backCoverImageFit: 'contain',
+                  backCoverImageFit: 'custom',
+                  backCoverImageZoomPct: 120,
+                  backCoverImagePositionX: 50,
+                  backCoverImagePositionY: 50,
                   aboutUsImageLayout: 'full-page',
-                  aboutUsFullPageImageFit: 'contain',
+                  aboutUsFullPageImageFit: 'custom',
+                  aboutUsFullPageImageZoomPct: 120,
+                  aboutUsFullPageImagePositionX: 50,
+                  aboutUsFullPageImagePositionY: 50,
                   sections: (catalogConfig.sections && catalogConfig.sections.length > 0)
                       ? catalogConfig.sections
                       : [
@@ -12145,7 +12228,10 @@ function AppInner() {
                               position: 'before',
                               images: [],
                               imageLayout: 'full-page',
-                              fullPageImageFit: 'contain',
+                              fullPageImageFit: 'custom',
+                              fullPageImageZoomPct: 120,
+                              fullPageImagePositionX: 50,
+                              fullPageImagePositionY: 50,
                           },
                       ],
               },
@@ -19438,10 +19524,13 @@ ${html}
             : [];
 
         if (section.imageLayout === 'full-page' && sectionImages[0]) {
-            const sectionFullPageFit = section.fullPageImageFit === 'contain' ? 'contain' : 'cover';
+            const sectionFullPageFit = section.fullPageImageFit === 'custom' ? 'custom' : section.fullPageImageFit === 'contain' ? 'contain' : 'cover';
+            const sectionZoom = clampCatalogNumber(section.fullPageImageZoomPct, 115, 50, 300);
+            const sectionX = clampCatalogNumber(section.fullPageImagePositionX, 50, 0, 100);
+            const sectionY = clampCatalogNumber(section.fullPageImagePositionY, 50, 0, 100);
             return (
                 <div key={section.id} className="w-full h-[297mm] print-page relative overflow-hidden bg-white">
-                    <img src={sectionImages[0]} className="absolute inset-0 w-full h-full" style={{ objectFit: sectionFullPageFit }} alt={section.title || ''} />
+                    <img src={sectionImages[0]} className="absolute inset-0 w-full h-full" style={fullPageImageObjectStyle(sectionFullPageFit, sectionZoom, sectionX, sectionY)} alt={section.title || ''} />
                 </div>
             );
         }
@@ -20249,12 +20338,37 @@ ${html}
                                       <label className="text-[10px] text-slate-400 mb-1 block">Full-page image fit</label>
                                       <select
                                           value={catalogConfig.coverImageFit || 'cover'}
-                                          onChange={(e) => setCatalogConfig({...catalogConfig, coverImageFit: e.target.value as 'cover' | 'contain'})}
+                                          onChange={(e) => setCatalogConfig({...catalogConfig, coverImageFit: e.target.value as 'cover' | 'contain' | 'custom'})}
                                           className="w-full text-xs border border-blue-100 rounded px-2 py-1.5 bg-white"
                                       >
                                           <option value="cover">Cover page (crop edges if needed)</option>
                                           <option value="contain">Fit whole image (no crop)</option>
+                                          <option value="custom">Manual fit (zoom and move)</option>
                                       </select>
+                                      {catalogConfig.coverImageFit === 'custom' && (
+                                          <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/40 p-2 space-y-2">
+                                              {[
+                                                  { label: 'Zoom', key: 'coverImageZoomPct', value: catalogConfig.coverImageZoomPct ?? 115, min: 50, max: 300 },
+                                                  { label: 'Move X', key: 'coverImagePositionX', value: catalogConfig.coverImagePositionX ?? 50, min: 0, max: 100 },
+                                                  { label: 'Move Y', key: 'coverImagePositionY', value: catalogConfig.coverImagePositionY ?? 50, min: 0, max: 100 },
+                                              ].map((control) => (
+                                                  <div key={control.key}>
+                                                      <label className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                                                          <span>{control.label}</span>
+                                                          <span>{control.value}%</span>
+                                                      </label>
+                                                      <input
+                                                          type="range"
+                                                          min={control.min}
+                                                          max={control.max}
+                                                          value={control.value}
+                                                          onChange={(e) => setCatalogConfig({...catalogConfig, [control.key]: Number(e.target.value)})}
+                                                          className="w-full"
+                                                      />
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      )}
                                   </div>
                               )}
                               </div>
@@ -20312,12 +20426,37 @@ ${html}
                                           <label className="text-[10px] text-slate-400 mb-1 block">Full-page image fit</label>
                                           <select
                                               value={catalogConfig.backCoverImageFit || 'cover'}
-                                              onChange={(e) => setCatalogConfig({...catalogConfig, backCoverImageFit: e.target.value as 'cover' | 'contain'})}
+                                              onChange={(e) => setCatalogConfig({...catalogConfig, backCoverImageFit: e.target.value as 'cover' | 'contain' | 'custom'})}
                                               className="w-full text-xs border border-indigo-100 rounded px-2 py-1.5 bg-white"
                                           >
                                               <option value="cover">Cover page (crop edges if needed)</option>
                                               <option value="contain">Fit whole image (no crop)</option>
+                                              <option value="custom">Manual fit (zoom and move)</option>
                                           </select>
+                                          {catalogConfig.backCoverImageFit === 'custom' && (
+                                              <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50/40 p-2 space-y-2">
+                                                  {[
+                                                      { label: 'Zoom', key: 'backCoverImageZoomPct', value: catalogConfig.backCoverImageZoomPct ?? 115, min: 50, max: 300 },
+                                                      { label: 'Move X', key: 'backCoverImagePositionX', value: catalogConfig.backCoverImagePositionX ?? 50, min: 0, max: 100 },
+                                                      { label: 'Move Y', key: 'backCoverImagePositionY', value: catalogConfig.backCoverImagePositionY ?? 50, min: 0, max: 100 },
+                                                  ].map((control) => (
+                                                      <div key={control.key}>
+                                                          <label className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                                                              <span>{control.label}</span>
+                                                              <span>{control.value}%</span>
+                                                          </label>
+                                                          <input
+                                                              type="range"
+                                                              min={control.min}
+                                                              max={control.max}
+                                                              value={control.value}
+                                                              onChange={(e) => setCatalogConfig({...catalogConfig, [control.key]: Number(e.target.value)})}
+                                                              className="w-full"
+                                                          />
+                                                      </div>
+                                                  ))}
+                                              </div>
+                                          )}
                                       </div>
                                   )}
                                   {catalogConfig.backCoverImageOnly !== true && (
@@ -20475,12 +20614,37 @@ ${html}
                                                   </p>
                                                   <select
                                                       value={catalogConfig.aboutUsFullPageImageFit || 'cover'}
-                                                      onChange={(e) => setCatalogConfig({...catalogConfig, aboutUsFullPageImageFit: e.target.value as 'cover' | 'contain'})}
+                                                      onChange={(e) => setCatalogConfig({...catalogConfig, aboutUsFullPageImageFit: e.target.value as 'cover' | 'contain' | 'custom'})}
                                                       className="w-full text-xs border border-blue-100 rounded px-2 py-1.5 bg-white"
                                                   >
                                                       <option value="cover">Cover page (crop edges if needed)</option>
                                                       <option value="contain">Fit whole image (no crop)</option>
+                                                      <option value="custom">Manual fit (zoom and move)</option>
                                                   </select>
+                                                  {catalogConfig.aboutUsFullPageImageFit === 'custom' && (
+                                                      <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-2 space-y-2">
+                                                          {[
+                                                              { label: 'Zoom', key: 'aboutUsFullPageImageZoomPct', value: catalogConfig.aboutUsFullPageImageZoomPct ?? 115, min: 50, max: 300 },
+                                                              { label: 'Move X', key: 'aboutUsFullPageImagePositionX', value: catalogConfig.aboutUsFullPageImagePositionX ?? 50, min: 0, max: 100 },
+                                                              { label: 'Move Y', key: 'aboutUsFullPageImagePositionY', value: catalogConfig.aboutUsFullPageImagePositionY ?? 50, min: 0, max: 100 },
+                                                          ].map((control) => (
+                                                              <div key={control.key}>
+                                                                  <label className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                                                                      <span>{control.label}</span>
+                                                                      <span>{control.value}%</span>
+                                                                  </label>
+                                                                  <input
+                                                                      type="range"
+                                                                      min={control.min}
+                                                                      max={control.max}
+                                                                      value={control.value}
+                                                                      onChange={(e) => setCatalogConfig({...catalogConfig, [control.key]: Number(e.target.value)})}
+                                                                      className="w-full"
+                                                                  />
+                                                              </div>
+                                                          ))}
+                                                      </div>
+                                                  )}
                                                   </div>
                                               )}
                                           </div>
@@ -21016,7 +21180,12 @@ ${html}
                               <img
                                   src={catalogConfig.coverImage}
                                   className="w-full h-full"
-                                  style={{ objectFit: catalogConfig.coverImageOnly && catalogConfig.coverImageFit === 'contain' ? 'contain' : 'cover' }}
+                                  style={fullPageImageObjectStyle(
+                                      catalogConfig.coverImageOnly ? (catalogConfig.coverImageFit === 'custom' ? 'custom' : catalogConfig.coverImageFit === 'contain' ? 'contain' : 'cover') : 'cover',
+                                      coverImageZoomPct,
+                                      coverImagePositionX,
+                                      coverImagePositionY,
+                                  )}
                                   alt="Cover"
                               />
                               {!catalogConfig.coverImageOnly && (
@@ -21167,7 +21336,12 @@ ${html}
                                       src={aboutImages[0]}
                                       alt="About Us"
                                       className="absolute inset-0 w-full h-full"
-                                      style={{ objectFit: catalogConfig.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover' }}
+                                      style={fullPageImageObjectStyle(
+                                          catalogConfig.aboutUsFullPageImageFit === 'custom' ? 'custom' : catalogConfig.aboutUsFullPageImageFit === 'contain' ? 'contain' : 'cover',
+                                          aboutUsFullPageImageZoomPct,
+                                          aboutUsFullPageImagePositionX,
+                                          aboutUsFullPageImagePositionY,
+                                      )}
                                   />
                               </div>
                           );
@@ -21589,7 +21763,12 @@ ${html}
                               <img
                                   src={catalogConfig.backCoverImage}
                                   className="w-full h-full"
-                                  style={{ objectFit: catalogConfig.backCoverImageOnly && catalogConfig.backCoverImageFit === 'contain' ? 'contain' : 'cover' }}
+                                  style={fullPageImageObjectStyle(
+                                      catalogConfig.backCoverImageOnly ? (catalogConfig.backCoverImageFit === 'custom' ? 'custom' : catalogConfig.backCoverImageFit === 'contain' ? 'contain' : 'cover') : 'cover',
+                                      backCoverImageZoomPct,
+                                      backCoverImagePositionX,
+                                      backCoverImagePositionY,
+                                  )}
                                   alt="Back Cover"
                               />
                               {!catalogConfig.backCoverImageOnly && (
@@ -22063,12 +22242,37 @@ ${html}
                               </p>
                               <select
                                   value={editingSection.fullPageImageFit || 'cover'}
-                                  onChange={(e) => setEditingSection({...editingSection, fullPageImageFit: e.target.value as 'cover' | 'contain'})}
+                                  onChange={(e) => setEditingSection({...editingSection, fullPageImageFit: e.target.value as 'cover' | 'contain' | 'custom'})}
                                   className="w-full text-xs border border-blue-100 rounded px-2 py-1.5 bg-white"
                               >
                                   <option value="cover">Cover page (crop edges if needed)</option>
                                   <option value="contain">Fit whole image (no crop)</option>
+                                  <option value="custom">Manual fit (zoom and move)</option>
                               </select>
+                              {editingSection.fullPageImageFit === 'custom' && (
+                                  <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-2 space-y-2">
+                                      {[
+                                          { label: 'Zoom', key: 'fullPageImageZoomPct', value: editingSection.fullPageImageZoomPct ?? 115, min: 50, max: 300 },
+                                          { label: 'Move X', key: 'fullPageImagePositionX', value: editingSection.fullPageImagePositionX ?? 50, min: 0, max: 100 },
+                                          { label: 'Move Y', key: 'fullPageImagePositionY', value: editingSection.fullPageImagePositionY ?? 50, min: 0, max: 100 },
+                                      ].map((control) => (
+                                          <div key={control.key}>
+                                              <label className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                                                  <span>{control.label}</span>
+                                                  <span>{control.value}%</span>
+                                              </label>
+                                              <input
+                                                  type="range"
+                                                  min={control.min}
+                                                  max={control.max}
+                                                  value={control.value}
+                                                  onChange={(e) => setEditingSection({...editingSection, [control.key]: Number(e.target.value)})}
+                                                  className="w-full"
+                                              />
+                                          </div>
+                                      ))}
+                                  </div>
+                              )}
                               </div>
                           )}
                           
