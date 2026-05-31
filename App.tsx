@@ -2294,6 +2294,7 @@ function todoDueBadge(dueMs: number): { className: string; label: string } {
 function createDefaultAppConfig(): AppConfig {
   return {
     outputCurrency: 'OMR',
+    costInputCurrency: 'USD',
     profitType: 'markup',
     profitPercent: 20,
     profitFlags: { exw: true, fob: true, cif: true, ddp: true },
@@ -2600,11 +2601,11 @@ function createDefaultCatalogConfig(): CatalogConfig {
 
 function defaultLogisticsSeed(): Logistics {
   return {
-    inland: { val: 0, curr: 'IRR' },
-    port: { val: 0, curr: 'IRR' },
+    inland: { val: 0, curr: 'USD' },
+    port: { val: 0, curr: 'USD' },
     freight: { val: 0, curr: 'USD' },
     insurance: { val: 0, curr: 'USD' },
-    destination: { val: 0, curr: 'OMR' },
+    destination: { val: 0, curr: 'USD' },
     dutyPercent: 0,
     exwExtras: [],
     extras: [],
@@ -7526,12 +7527,12 @@ function AppInner() {
   const [rates, setRates] = useState<RateMap>(() => createDefaultRates());
 
   const [products, setProducts] = useState<Product[]>([
-    { id: 1, name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }
+    { id: 1, name: '', qty: 0, unitPrice: 0, currency: 'USD', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }
   ]);
 
   // Debounced products for calculation engine — prevents recalculating on every keystroke
   const [productsForCalc, setProductsForCalc] = useState<Product[]>([
-    { id: 1, name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }
+    { id: 1, name: '', qty: 0, unitPrice: 0, currency: 'USD', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '' }
   ]);
   const _calcDebounceRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
@@ -7541,8 +7542,8 @@ function AppInner() {
   }, [products]);
 
   const [logistics, setLogistics] = useState<Logistics>({
-    inland: { val: 0, curr: 'IRR' },
-    port: { val: 0, curr: 'IRR' },
+    inland: { val: 0, curr: 'USD' },
+    port: { val: 0, curr: 'USD' },
     freight: { val: 0, curr: 'USD' },
     insurance: { val: 0, curr: 'USD' },
     destination: { val: 0, curr: 'OMR' },
@@ -11729,6 +11730,7 @@ function AppInner() {
     if (!loadedConfig.profitFlags) loadedConfig.profitFlags = { exw: true, fob: true, cif: true, ddp: true };
     if (!loadedConfig.pricingMethod) loadedConfig.pricingMethod = 'cost_plus';
     if (!loadedConfig.termMultipliers) loadedConfig.termMultipliers = { exw: 0, fob: 0, cif: 0, ddp: 0 };
+    if (!loadedConfig.costInputCurrency) loadedConfig.costInputCurrency = loadedConfig.outputCurrency || 'USD';
     setConfig(loadedConfig);
     
     setRates(project.data.rates || rates);
@@ -12427,7 +12429,7 @@ function AppInner() {
                           unitPrice: Math.max(0, Number(row.unitPrice) || 0),
                           currency: rates[String(row.currency || '').trim().toUpperCase()]
                               ? String(row.currency).trim().toUpperCase()
-                              : (config.outputCurrency || 'USD'),
+                              : (config.costInputCurrency || config.outputCurrency || 'USD'),
                           priceInputMode: row.priceInputMode === 'pack' ? 'pack' : 'unit',
                           measurementUnit: String(row.measurementUnit || '').trim(),
                           itemsPerPack: importedItemsPerPack,
@@ -12774,6 +12776,41 @@ function AppInner() {
   const toOutput = (amountInIRR: number) => (amountInIRR / (rates[config.outputCurrency] || 1));
   const convert = (amount: number, curr: string) => toOutput(toBase(amount, curr));
 
+  const applyCostInputCurrency = (currency: string) => {
+      const nextCurrency = Object.prototype.hasOwnProperty.call(rates, currency)
+          ? currency
+          : (config.costInputCurrency || config.outputCurrency || 'USD');
+      const convertCostAmount = (amount: number, fromCurrency: string) => {
+          if (fromCurrency === nextCurrency) return amount || 0;
+          const fromRate = rates[fromCurrency];
+          const nextRate = rates[nextCurrency];
+          if (!fromRate || !nextRate) return amount || 0;
+          return ((amount || 0) * fromRate) / nextRate;
+      };
+      setConfig(prev => ({
+          ...prev,
+          costInputCurrency: nextCurrency,
+          transportCostFixed: convertCostAmount(prev.transportCostFixed || 0, prev.transportCostCurrency || prev.costInputCurrency || prev.outputCurrency || nextCurrency),
+          transportCostCurrency: nextCurrency,
+      }));
+      setProducts(prev => prev.map(p => ({
+          ...p,
+          unitPrice: convertCostAmount(p.unitPrice || 0, p.currency || nextCurrency),
+          packPrice: convertCostAmount(p.packPrice || 0, p.currency || nextCurrency),
+          currency: nextCurrency,
+      })));
+      setLogistics(prev => ({
+          ...prev,
+          inland: { val: convertCostAmount(prev.inland.val, prev.inland.curr), curr: nextCurrency },
+          port: { val: convertCostAmount(prev.port.val, prev.port.curr), curr: nextCurrency },
+          freight: { val: convertCostAmount(prev.freight.val, prev.freight.curr), curr: nextCurrency },
+          insurance: { val: convertCostAmount(prev.insurance.val, prev.insurance.curr), curr: nextCurrency },
+          destination: { val: convertCostAmount(prev.destination.val, prev.destination.curr), curr: nextCurrency },
+          exwExtras: (prev.exwExtras || []).map(item => ({ ...item, val: convertCostAmount(item.val, item.curr), curr: nextCurrency })),
+          extras: (prev.extras || []).map(item => ({ ...item, val: convertCostAmount(item.val, item.curr), curr: nextCurrency })),
+      }));
+  };
+
   const updateProduct = useCallback((id: number, field: keyof Product, val: any) => {
       setProducts(prev => prev.map(p => p.id === id ? { ...p, [field]: val } : p));
   }, []);
@@ -12989,7 +13026,7 @@ function AppInner() {
               name: '',
               qty: 1,
               unitPrice: 0,
-              currency: config.outputCurrency || 'USD',
+              currency: config.costInputCurrency || config.outputCurrency || 'USD',
               itemsPerPack: 1,
               packPrice: 0,
               active: true,
@@ -13192,11 +13229,11 @@ function AppInner() {
       setLogisticsPresetPickerKey((k) => k + 1);
   };
 
-  const addExwExtraCost = () => setLogistics(prev => ({ ...prev, exwExtras: [...(prev.exwExtras || []), { id: Date.now(), name: '', val: 0, curr: 'IRR' }] }));
+  const addExwExtraCost = () => setLogistics(prev => ({ ...prev, exwExtras: [...(prev.exwExtras || []), { id: Date.now(), name: '', val: 0, curr: config.costInputCurrency || 'USD' }] }));
   const removeExwExtraCost = (id: number) => setLogistics(prev => ({ ...prev, exwExtras: (prev.exwExtras || []).filter(e => e.id !== id) }));
   const updateExwExtraCost = (id: number, field: keyof import('./types').ExtraCost, val: any) => setLogistics(prev => ({ ...prev, exwExtras: (prev.exwExtras || []).map(e => e.id === id ? { ...e, [field]: val } : e) }));
 
-  const addExtraCost = () => setLogistics(prev => ({ ...prev, extras: [...(prev.extras || []), { id: Date.now(), name: '', val: 0, curr: 'OMR' }] }));
+  const addExtraCost = () => setLogistics(prev => ({ ...prev, extras: [...(prev.extras || []), { id: Date.now(), name: '', val: 0, curr: config.costInputCurrency || 'USD' }] }));
   const removeExtraCost = (id: number) => setLogistics(prev => ({ ...prev, extras: (prev.extras || []).filter(e => e.id !== id) }));
   const updateExtraCost = (id: number, field: keyof import('./types').ExtraCost, val: any) => setLogistics(prev => ({ ...prev, extras: (prev.extras || []).map(e => e.id === id ? { ...e, [field]: val } : e) }));
   
@@ -14505,7 +14542,7 @@ function AppInner() {
           name: '',
           qty: 0,
           unitPrice: 0,
-          currency: 'IRR',
+          currency: 'USD',
           itemsPerPack: 0,
           packPrice: 0,
           active: true,
@@ -15422,6 +15459,18 @@ function AppInner() {
                         {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                 </div>
+                <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Cost Input</label>
+                    <select
+                        value={config.costInputCurrency || config.outputCurrency || 'USD'}
+                        onChange={(e) => applyCostInputCurrency(e.target.value)}
+                        className="w-full md:w-32 text-sm bg-emerald-50 border border-emerald-200 rounded px-3 py-2 font-medium text-emerald-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        title="Set one currency for product cost inputs and logistics costs"
+                    >
+                        {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <p className="mt-1 text-[10px] text-slate-400">Product + logistics inputs</p>
+                </div>
             </div>
             <div className="flex gap-2 w-full md:w-auto items-end">
                  
@@ -15972,7 +16021,7 @@ function AppInner() {
                 </button>
                 <button onClick={() => {
                   const sku = formatSku(nextSkuNumber(products));
-                  setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
+                  setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: config.costInputCurrency || config.outputCurrency || 'USD', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
                 }} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm">
                   <Plus className="w-4 h-4" /> Add Product
                 </button>
@@ -22731,7 +22780,7 @@ ${html}
                               <h4 className="text-xs font-black text-slate-800">ویرایش کارت محصولات</h4>
                               <button
                                   type="button"
-                                  onClick={() => setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: config.outputCurrency || 'USD', itemsPerPack: 1, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: 'unit', sku: formatSku(nextSkuNumber(products)), gallery: [], galleryVideos: [] }])}
+                                  onClick={() => setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: config.costInputCurrency || config.outputCurrency || 'USD', itemsPerPack: 1, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: 'unit', sku: formatSku(nextSkuNumber(products)), gallery: [], galleryVideos: [] }])}
                                   className="text-[10px] font-bold text-emerald-700 hover:underline"
                               >
                                   + Add
