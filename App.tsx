@@ -7601,6 +7601,7 @@ function AppInner() {
     rate?: number;
     name: string;
   }>({ from: 'CNY', to: 'EUR', rate: undefined, name: '' });
+  const [editingRateConversionPresetId, setEditingRateConversionPresetId] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -12918,6 +12919,22 @@ function AppInner() {
           alert('Please choose two different currencies and enter a valid conversion rate.');
           return;
       }
+      if (editingRateConversionPresetId) {
+          setRateConversionPresets(prev => prev.map((preset) => preset.id === editingRateConversionPresetId
+              ? {
+                  ...preset,
+                  name: (rateConversionDraft.name || `${from} → ${to}`).trim(),
+                  from,
+                  to,
+                  rate,
+                  updatedAt: Date.now(),
+              }
+              : preset,
+          ));
+          setEditingRateConversionPresetId('');
+          setRateConversionDraft(prev => ({ from, to, rate: undefined, name: '' }));
+          return;
+      }
       const entry: RateConversionPreset = {
           id: `rcp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           name: (rateConversionDraft.name || `${from} → ${to}`).trim(),
@@ -12932,6 +12949,20 @@ function AppInner() {
       ].slice(0, MAX_RATE_CONVERSION_PRESETS));
       setRateConversionDraft(prev => ({ ...prev, name: '' }));
   };
+  const startEditingRateConversionPreset = (preset: RateConversionPreset) => {
+      setEditingRateConversionPresetId(preset.id);
+      setRateConversionDraft({
+          from: preset.from,
+          to: preset.to,
+          rate: preset.rate,
+          name: preset.name,
+      });
+      setShowRateSettings(true);
+  };
+  const cancelEditingRateConversionPreset = () => {
+      setEditingRateConversionPresetId('');
+      setRateConversionDraft({ from: 'CNY', to: 'EUR', rate: undefined, name: '' });
+  };
   const applyRateConversionPreset = (preset: RateConversionPreset) => {
       const anchorRate = rates[preset.to];
       if (!anchorRate) {
@@ -12943,6 +12974,7 @@ function AppInner() {
       setConfig(prev => ({ ...prev, inputCurrency: preset.from }));
   };
   const deleteRateConversionPreset = (id: string) => {
+      if (editingRateConversionPresetId === id) cancelEditingRateConversionPreset();
       setRateConversionPresets(prev => prev.filter(p => p.id !== id));
   };
 
@@ -15669,7 +15701,9 @@ function AppInner() {
                 <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 space-y-3">
                     <div className="flex flex-col lg:flex-row lg:items-end gap-2">
                         <div className="flex-1 min-w-[8rem]">
-                            <label className="block text-[10px] font-bold uppercase tracking-wide text-emerald-800 mb-1">Save reusable conversion</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wide text-emerald-800 mb-1">
+                                {editingRateConversionPresetId ? 'Edit saved conversion' : 'Save reusable conversion'}
+                            </label>
                             <input
                                 type="text"
                                 value={rateConversionDraft.name}
@@ -15719,8 +15753,17 @@ function AppInner() {
                             onClick={saveRateConversionPreset}
                             className="text-xs font-bold rounded bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
                         >
-                            Save conversion
+                            {editingRateConversionPresetId ? 'Update conversion' : 'Save conversion'}
                         </button>
+                        {editingRateConversionPresetId && (
+                            <button
+                                type="button"
+                                onClick={cancelEditingRateConversionPreset}
+                                className="text-xs font-bold rounded border border-slate-200 bg-white px-3 py-1.5 text-slate-500 hover:bg-slate-50"
+                            >
+                                Cancel edit
+                            </button>
+                        )}
                     </div>
                     {rateConversionPresets.length > 0 && (
                         <div className="flex flex-wrap gap-2">
@@ -15733,6 +15776,14 @@ function AppInner() {
                                         title={`Apply: 1 ${preset.from} = ${preset.rate} ${preset.to}`}
                                     >
                                         {preset.name}: 1 {preset.from} = {formatNumber(preset.rate)} {preset.to}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => startEditingRateConversionPreset(preset)}
+                                        className="rounded-full p-0.5 text-slate-300 hover:bg-blue-50 hover:text-blue-600"
+                                        title="Edit saved conversion"
+                                    >
+                                        <Edit3 className="w-3 h-3" />
                                     </button>
                                     <button
                                         type="button"
