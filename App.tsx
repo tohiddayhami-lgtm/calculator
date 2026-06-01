@@ -1975,6 +1975,8 @@ function getSupplierDisplayName(s: Pick<Supplier, 'name' | 'firstName' | 'lastNa
 
 const LOGISTICS_PRESETS_STORAGE_KEY = 'exportcalc_logistics_presets_v1';
 const MAX_LOGISTICS_PRESETS = 30;
+const RATE_CONVERSION_PRESETS_STORAGE_KEY = 'exportcalc_rate_conversion_presets_v1';
+const MAX_RATE_CONVERSION_PRESETS = 40;
 
 const INVOICE_TEXT_PRESETS_STORAGE_KEY = 'exportcalc_invoice_text_presets_v1';
 const MAX_INVOICE_TEXT_PRESETS = 40;
@@ -2033,6 +2035,15 @@ const FORM_HEADER_PRESETS_STORAGE_KEY = 'exportcalc_form_header_presets_v1';
 const MAX_FORM_HEADER_PRESETS = 25;
 const CONTRACTS_STORAGE_KEY = 'exportcalc_contracts_v1';
 const PROPOSALS_STORAGE_KEY = 'exportcalc_proposals_v1';
+
+interface RateConversionPreset {
+  id: string;
+  name: string;
+  from: string;
+  to: string;
+  rate: number; // 1 from = rate to
+  updatedAt: number;
+}
 
 function parseFormHeaderPresetsFromStorage(raw: string | null): FormHeaderPreset[] {
   try {
@@ -2667,6 +2678,33 @@ function parseLogisticsPresetsFromStorage(raw: string | null): LogisticsPreset[]
         logistics: normalizeLogisticsSnapshot(x.logistics),
       }))
       .slice(0, MAX_LOGISTICS_PRESETS);
+  } catch {
+    return [];
+  }
+}
+
+function parseRateConversionPresetsFromStorage(raw: string | null): RateConversionPreset[] {
+  try {
+    const a = JSON.parse(raw || '[]');
+    if (!Array.isArray(a)) return [];
+    return a
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .map((x, i) => {
+        const from = String(x.from || '').trim().toUpperCase();
+        const to = String(x.to || '').trim().toUpperCase();
+        const rate = Number(x.rate);
+        if (!from || !to || from === to || !Number.isFinite(rate) || rate <= 0) return null;
+        return {
+          id: String(x.id || `rate-preset-${Date.now()}-${i}`),
+          name: String(x.name || `${from} → ${to}`).trim().slice(0, 96) || `${from} → ${to}`,
+          from,
+          to,
+          rate,
+          updatedAt: Number(x.updatedAt) || 0,
+        };
+      })
+      .filter((x): x is RateConversionPreset => !!x)
+      .slice(0, MAX_RATE_CONVERSION_PRESETS);
   } catch {
     return [];
   }
@@ -7555,6 +7593,14 @@ function AppInner() {
   const [logisticsPresets, setLogisticsPresets] = useState<LogisticsPreset[]>([]);
   const [logisticsPresetsReady, setLogisticsPresetsReady] = useState(false);
   const [logisticsPresetPickerKey, setLogisticsPresetPickerKey] = useState(0);
+  const [rateConversionPresets, setRateConversionPresets] = useState<RateConversionPreset[]>([]);
+  const [rateConversionPresetsReady, setRateConversionPresetsReady] = useState(false);
+  const [rateConversionDraft, setRateConversionDraft] = useState<{
+    from: string;
+    to: string;
+    rate?: number;
+    name: string;
+  }>({ from: 'CNY', to: 'EUR', rate: undefined, name: '' });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -7575,6 +7621,26 @@ function AppInner() {
       /* private mode / quota */
     }
   }, [logisticsPresets, logisticsPresetsReady]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(RATE_CONVERSION_PRESETS_STORAGE_KEY);
+      setRateConversionPresets(parseRateConversionPresetsFromStorage(raw));
+    } catch {
+      setRateConversionPresets([]);
+    }
+    setRateConversionPresetsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!rateConversionPresetsReady || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(RATE_CONVERSION_PRESETS_STORAGE_KEY, JSON.stringify(rateConversionPresets));
+    } catch {
+      /* ignore */
+    }
+  }, [rateConversionPresets, rateConversionPresetsReady]);
 
   const [invoiceTextPresets, setInvoiceTextPresets] = useState<InvoiceTextPreset[]>([]);
   const [invoiceTextPresetsReady, setInvoiceTextPresetsReady] = useState(false);
@@ -12838,6 +12904,47 @@ function AppInner() {
           };
       }));
   };
+  const currentRateBetween = (from: string, to: string) => {
+      const fromRate = rates[String(from || '').toUpperCase()];
+      const toRate = rates[String(to || '').toUpperCase()];
+      if (!fromRate || !toRate) return 0;
+      return Math.round((fromRate / toRate) * 1_000_000) / 1_000_000;
+  };
+  const saveRateConversionPreset = () => {
+      const from = String(rateConversionDraft.from || '').trim().toUpperCase();
+      const to = String(rateConversionDraft.to || '').trim().toUpperCase();
+      const rate = Number(rateConversionDraft.rate);
+      if (!from || !to || from === to || !Number.isFinite(rate) || rate <= 0) {
+          alert('Please choose two different currencies and enter a valid conversion rate.');
+          return;
+      }
+      const entry: RateConversionPreset = {
+          id: `rcp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: (rateConversionDraft.name || `${from} → ${to}`).trim(),
+          from,
+          to,
+          rate,
+          updatedAt: Date.now(),
+      };
+      setRateConversionPresets(prev => [
+          entry,
+          ...prev.filter(p => !(p.from === from && p.to === to)),
+      ].slice(0, MAX_RATE_CONVERSION_PRESETS));
+      setRateConversionDraft(prev => ({ ...prev, name: '' }));
+  };
+  const applyRateConversionPreset = (preset: RateConversionPreset) => {
+      const anchorRate = rates[preset.to];
+      if (!anchorRate) {
+          alert(`Set ${preset.to} rate first, because this preset uses it as the anchor.`);
+          return;
+      }
+      const nextFromRate = Math.round((preset.rate * anchorRate) * 1_000_000) / 1_000_000;
+      setRates(prev => ({ ...prev, [preset.from]: nextFromRate }));
+      setConfig(prev => ({ ...prev, inputCurrency: preset.from }));
+  };
+  const deleteRateConversionPreset = (id: string) => {
+      setRateConversionPresets(prev => prev.filter(p => p.id !== id));
+  };
 
   const updateProduct = useCallback((id: number, field: keyof Product, val: any) => {
       setProducts(prev => prev.map(p => p.id === id ? { ...p, [field]: val } : p));
@@ -15558,6 +15665,90 @@ function AppInner() {
                         Rates mean: <b>1 currency unit = how many IRR</b>. With current rates,
                         {' '}1 {config.inputCurrency || 'IRR'} = <b>{formatNumber(convertCurrencyAmount(1, config.inputCurrency || 'IRR', config.outputCurrency || 'OMR')) || '0'} {config.outputCurrency}</b>.
                     </div>
+                </div>
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 space-y-3">
+                    <div className="flex flex-col lg:flex-row lg:items-end gap-2">
+                        <div className="flex-1 min-w-[8rem]">
+                            <label className="block text-[10px] font-bold uppercase tracking-wide text-emerald-800 mb-1">Save reusable conversion</label>
+                            <input
+                                type="text"
+                                value={rateConversionDraft.name}
+                                onChange={(e) => setRateConversionDraft(prev => ({ ...prev, name: e.target.value }))}
+                                placeholder={`${rateConversionDraft.from} to ${rateConversionDraft.to}`}
+                                className="w-full text-xs border border-emerald-100 rounded px-2 py-1.5 bg-white outline-none focus:border-emerald-400"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">From</label>
+                            <select
+                                value={rateConversionDraft.from}
+                                onChange={(e) => setRateConversionDraft(prev => ({ ...prev, from: e.target.value }))}
+                                className="w-full text-xs border border-emerald-100 rounded px-2 py-1.5 bg-white"
+                            >
+                                {Object.keys(rates).map(c => <option key={`rc-from-${c}`} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex items-end gap-1">
+                            <div className="w-24">
+                                <label className="block text-[10px] font-semibold text-slate-500 mb-1">1 {rateConversionDraft.from} =</label>
+                                <FormattedNumberInput
+                                    value={rateConversionDraft.rate}
+                                    optional
+                                    onChange={(val) => setRateConversionDraft(prev => ({ ...prev, rate: val }))}
+                                    className="w-full text-xs border border-emerald-100 rounded px-2 py-1.5 bg-white outline-none focus:border-emerald-400"
+                                    placeholder="0.13"
+                                />
+                            </div>
+                            <select
+                                value={rateConversionDraft.to}
+                                onChange={(e) => setRateConversionDraft(prev => ({ ...prev, to: e.target.value }))}
+                                className="w-20 text-xs border border-emerald-100 rounded px-2 py-1.5 bg-white"
+                            >
+                                {Object.keys(rates).map(c => <option key={`rc-to-${c}`} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setRateConversionDraft(prev => ({ ...prev, rate: currentRateBetween(prev.from, prev.to) || prev.rate }))}
+                            className="text-xs font-bold rounded border border-emerald-200 bg-white px-3 py-1.5 text-emerald-700 hover:bg-emerald-50"
+                        >
+                            Use current
+                        </button>
+                        <button
+                            type="button"
+                            onClick={saveRateConversionPreset}
+                            className="text-xs font-bold rounded bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
+                        >
+                            Save conversion
+                        </button>
+                    </div>
+                    {rateConversionPresets.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {rateConversionPresets.map((preset) => (
+                                <div key={preset.id} className="flex items-center gap-2 rounded-full border border-emerald-100 bg-white px-2 py-1 text-[10px]">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyRateConversionPreset(preset)}
+                                        className="font-black text-emerald-800 hover:underline"
+                                        title={`Apply: 1 ${preset.from} = ${preset.rate} ${preset.to}`}
+                                    >
+                                        {preset.name}: 1 {preset.from} = {formatNumber(preset.rate)} {preset.to}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => deleteRateConversionPreset(preset.id)}
+                                        className="rounded-full p-0.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600"
+                                        title="Delete saved conversion"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <p className="text-[10px] leading-snug text-emerald-900/70">
+                        Apply uses the target currency as anchor. Example: if 1 CNY = 0.13 EUR, applying it sets the CNY IRR rate from the current EUR IRR rate.
+                    </p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     {Object.entries(rates).map(([curr, rate]) => (
