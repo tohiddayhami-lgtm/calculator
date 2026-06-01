@@ -2294,6 +2294,7 @@ function todoDueBadge(dueMs: number): { className: string; label: string } {
 function createDefaultAppConfig(): AppConfig {
   return {
     outputCurrency: 'OMR',
+    inputCurrency: 'IRR',
     profitType: 'markup',
     profitPercent: 20,
     profitFlags: { exw: true, fob: true, cif: true, ddp: true },
@@ -11727,6 +11728,7 @@ function AppInner() {
 
     const loadedConfig = project.data.config || config;
     if (!loadedConfig.profitFlags) loadedConfig.profitFlags = { exw: true, fob: true, cif: true, ddp: true };
+    if (!loadedConfig.inputCurrency) loadedConfig.inputCurrency = 'IRR';
     if (!loadedConfig.pricingMethod) loadedConfig.pricingMethod = 'cost_plus';
     if (!loadedConfig.termMultipliers) loadedConfig.termMultipliers = { exw: 0, fob: 0, cif: 0, ddp: 0 };
     setConfig(loadedConfig);
@@ -12427,7 +12429,7 @@ function AppInner() {
                           unitPrice: Math.max(0, Number(row.unitPrice) || 0),
                           currency: rates[String(row.currency || '').trim().toUpperCase()]
                               ? String(row.currency).trim().toUpperCase()
-                              : (config.outputCurrency || 'USD'),
+                              : (config.inputCurrency || config.outputCurrency || 'USD'),
                           priceInputMode: row.priceInputMode === 'pack' ? 'pack' : 'unit',
                           measurementUnit: String(row.measurementUnit || '').trim(),
                           itemsPerPack: importedItemsPerPack,
@@ -12773,6 +12775,69 @@ function AppInner() {
   const toBase = (amount: number, currency: string) => (amount * (rates[currency] || 1));
   const toOutput = (amountInIRR: number) => (amountInIRR / (rates[config.outputCurrency] || 1));
   const convert = (amount: number, curr: string) => toOutput(toBase(amount, curr));
+  const convertCurrencyAmount = (amount: number | undefined, fromCurrency: string | undefined, toCurrency: string | undefined) => {
+      const from = String(fromCurrency || '').trim().toUpperCase();
+      const to = String(toCurrency || '').trim().toUpperCase();
+      const n = Number(amount);
+      if (!Number.isFinite(n) || !from || !to || from === to) return n || 0;
+      const fromRate = rates[from];
+      const toRate = rates[to];
+      if (!fromRate || !toRate) return n || 0;
+      return Math.round((n * fromRate / toRate) * 1_000_000) / 1_000_000;
+  };
+  const convertCurrencyMap = (
+      values: Record<string, number> | undefined,
+      currencies: Record<string, string> | undefined,
+      targetCurrency: string,
+  ) => {
+      if (!values || typeof values !== 'object') return values;
+      return Object.fromEntries(
+          Object.entries(values).map(([term, value]) => [
+              term,
+              convertCurrencyAmount(value, currencies?.[term] || config.inputCurrency || config.outputCurrency, targetCurrency),
+          ]),
+      );
+  };
+  const convertAllProductPricesToInputCurrency = () => {
+      const target = config.inputCurrency || 'IRR';
+      if (!rates[target]) {
+          alert(`No rate is configured for ${target}.`);
+          return;
+      }
+      const ok = window.confirm(`Convert all product input prices to ${target}? This updates saved product price fields using the current Rates table.`);
+      if (!ok) return;
+      setProducts(prev => prev.map((p) => {
+          const productCurrency = p.currency || target;
+          const manualSellCurrency = p.manualSellCurrency || productCurrency;
+          const targetPriceCurrency = p.targetPriceCurrency || productCurrency;
+          return {
+              ...p,
+              unitPrice: convertCurrencyAmount(p.unitPrice, productCurrency, target),
+              packPrice: convertCurrencyAmount(p.packPrice, productCurrency, target),
+              currency: target,
+              manualUnitSellPrice: p.manualUnitSellPrice !== undefined
+                  ? convertCurrencyAmount(p.manualUnitSellPrice, manualSellCurrency, target)
+                  : p.manualUnitSellPrice,
+              manualSellCurrency: p.manualUnitSellPrice !== undefined ? target : p.manualSellCurrency,
+              targetPrice: p.targetPrice !== undefined
+                  ? convertCurrencyAmount(p.targetPrice, targetPriceCurrency, target)
+                  : p.targetPrice,
+              targetPriceCurrency: p.targetPrice !== undefined ? target : p.targetPriceCurrency,
+              scenarioManualUnitSellPrices: convertCurrencyMap(p.scenarioManualUnitSellPrices, p.scenarioManualUnitSellCurrencies, target),
+              scenarioManualUnitSellCurrencies: p.scenarioManualUnitSellPrices
+                  ? Object.fromEntries(Object.keys(p.scenarioManualUnitSellPrices).map(term => [term, target]))
+                  : p.scenarioManualUnitSellCurrencies,
+              scenarioManualUnitProfitAdds: convertCurrencyMap(p.scenarioManualUnitProfitAdds, p.scenarioManualUnitProfitCurrencies, target),
+              scenarioManualUnitProfitCurrencies: p.scenarioManualUnitProfitAdds
+                  ? Object.fromEntries(Object.keys(p.scenarioManualUnitProfitAdds).map(term => [term, target]))
+                  : p.scenarioManualUnitProfitCurrencies,
+              scenarioTargetPrices: convertCurrencyMap(p.scenarioTargetPrices, p.scenarioTargetCurrencies, target),
+              scenarioTargetCurrencies: p.scenarioTargetPrices
+                  ? Object.fromEntries(Object.keys(p.scenarioTargetPrices).map(term => [term, target]))
+                  : p.scenarioTargetCurrencies,
+          };
+      }));
+  };
 
   const updateProduct = useCallback((id: number, field: keyof Product, val: any) => {
       setProducts(prev => prev.map(p => p.id === id ? { ...p, [field]: val } : p));
@@ -15422,6 +15487,18 @@ function AppInner() {
                         {Object.keys(rates).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                 </div>
+                <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Input Currency</label>
+                    <select
+                        value={config.inputCurrency || 'IRR'}
+                        onChange={(e) => setConfig({...config, inputCurrency: e.target.value})}
+                        className="w-full md:w-32 text-sm bg-emerald-50 border border-emerald-200 rounded px-3 py-2 font-medium text-emerald-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        title="Default currency for entering product prices"
+                    >
+                        {Object.keys(rates).map(c => <option key={`input-currency-${c}`} value={c}>{c}</option>)}
+                    </select>
+                    <p className="mt-1 text-[10px] text-slate-400">Default for new prices</p>
+                </div>
             </div>
             <div className="flex gap-2 w-full md:w-auto items-end">
                  
@@ -15455,6 +15532,14 @@ function AppInner() {
                 </button>
                  <button
                     type="button"
+                    onClick={convertAllProductPricesToInputCurrency}
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
+                    title="Convert existing product input prices to the selected Input Currency"
+                >
+                    Convert to {config.inputCurrency || 'IRR'}
+                </button>
+                 <button
+                    type="button"
                     onClick={handleStartNewProject}
                     className="flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto bg-white border-amber-200 text-amber-800 hover:bg-amber-50"
                     title="Clear workspace and start entering a new project from scratch"
@@ -15466,17 +15551,27 @@ function AppInner() {
         </div>
         
         {showRateSettings && (
-            <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in fade-in slide-in-from-top-2">
-                {Object.entries(rates).map(([curr, rate]) => (
-                    <div key={curr} className="relative group">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">{curr} Rate</label>
-                        <FormattedNumberInput
-                            value={rate as number}
-                            onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
-                            className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-                        />
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 animate-in fade-in slide-in-from-top-2">
+                <div className="rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
+                    <div className="font-bold">Rate logic</div>
+                    <div className="mt-0.5 leading-snug">
+                        Rates mean: <b>1 currency unit = how many IRR</b>. With current rates,
+                        {' '}1 {config.inputCurrency || 'IRR'} = <b>{formatNumber(convertCurrencyAmount(1, config.inputCurrency || 'IRR', config.outputCurrency || 'OMR')) || '0'} {config.outputCurrency}</b>.
                     </div>
-                ))}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {Object.entries(rates).map(([curr, rate]) => (
+                        <div key={curr} className="relative group">
+                            <label className="block text-xs font-medium text-slate-500 mb-1">{curr} Rate</label>
+                            <FormattedNumberInput
+                                value={rate as number}
+                                onChange={(val) => setRates({ ...rates, [curr]: val ?? 0 })}
+                                className="w-full text-sm border border-slate-200 rounded px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                            />
+                            <p className="mt-1 text-[10px] text-slate-400">1 {curr} = {curr === 'IRR' ? 'base' : `${formatNumber(rate)} IRR`}</p>
+                        </div>
+                    ))}
+                </div>
             </div>
         )}
       </div>
@@ -15972,7 +16067,7 @@ function AppInner() {
                 </button>
                 <button onClick={() => {
                   const sku = formatSku(nextSkuNumber(products));
-                  setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
+                  setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: config.inputCurrency || 'IRR', itemsPerPack: 0, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: '', sku, gallery: [], galleryVideos: [] }]);
                 }} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm">
                   <Plus className="w-4 h-4" /> Add Product
                 </button>
@@ -22731,7 +22826,7 @@ ${html}
                               <h4 className="text-xs font-black text-slate-800">ویرایش کارت محصولات</h4>
                               <button
                                   type="button"
-                                  onClick={() => setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: config.outputCurrency || 'USD', itemsPerPack: 1, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: 'unit', sku: formatSku(nextSkuNumber(products)), gallery: [], galleryVideos: [] }])}
+                                  onClick={() => setProducts([...products, { id: Date.now(), name: '', qty: 0, unitPrice: 0, currency: config.inputCurrency || config.outputCurrency || 'USD', itemsPerPack: 1, packPrice: 0, active: true, priceInputMode: 'unit', group: '', measurementUnit: 'unit', sku: formatSku(nextSkuNumber(products)), gallery: [], galleryVideos: [] }])}
                                   className="text-[10px] font-bold text-emerald-700 hover:underline"
                               >
                                   + Add

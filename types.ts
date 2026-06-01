@@ -287,6 +287,7 @@ export interface ProfitFlags {
 
 export interface AppConfig {
   outputCurrency: string;
+  inputCurrency?: string;
   profitType: 'markup' | 'margin';
   profitPercent: number;
   profitFlags: ProfitFlags;
