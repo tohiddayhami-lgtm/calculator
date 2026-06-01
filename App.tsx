@@ -12852,58 +12852,10 @@ function AppInner() {
       if (!fromRate || !toRate) return n || 0;
       return Math.round((n * fromRate / toRate) * 1_000_000) / 1_000_000;
   };
-  const convertCurrencyMap = (
-      values: Record<string, number> | undefined,
-      currencies: Record<string, string> | undefined,
-      targetCurrency: string,
-  ) => {
-      if (!values || typeof values !== 'object') return values;
-      return Object.fromEntries(
-          Object.entries(values).map(([term, value]) => [
-              term,
-              convertCurrencyAmount(value, currencies?.[term] || config.inputCurrency || config.outputCurrency, targetCurrency),
-          ]),
-      );
-  };
-  const convertAllProductPricesToInputCurrency = () => {
-      const target = config.inputCurrency || 'IRR';
-      if (!rates[target]) {
-          alert(`No rate is configured for ${target}.`);
-          return;
-      }
-      const ok = window.confirm(`Convert all product input prices to ${target}? This updates saved product price fields using the current Rates table.`);
-      if (!ok) return;
-      setProducts(prev => prev.map((p) => {
-          const productCurrency = p.currency || target;
-          const manualSellCurrency = p.manualSellCurrency || productCurrency;
-          const targetPriceCurrency = p.targetPriceCurrency || productCurrency;
-          return {
-              ...p,
-              unitPrice: convertCurrencyAmount(p.unitPrice, productCurrency, target),
-              packPrice: convertCurrencyAmount(p.packPrice, productCurrency, target),
-              currency: target,
-              manualUnitSellPrice: p.manualUnitSellPrice !== undefined
-                  ? convertCurrencyAmount(p.manualUnitSellPrice, manualSellCurrency, target)
-                  : p.manualUnitSellPrice,
-              manualSellCurrency: p.manualUnitSellPrice !== undefined ? target : p.manualSellCurrency,
-              targetPrice: p.targetPrice !== undefined
-                  ? convertCurrencyAmount(p.targetPrice, targetPriceCurrency, target)
-                  : p.targetPrice,
-              targetPriceCurrency: p.targetPrice !== undefined ? target : p.targetPriceCurrency,
-              scenarioManualUnitSellPrices: convertCurrencyMap(p.scenarioManualUnitSellPrices, p.scenarioManualUnitSellCurrencies, target),
-              scenarioManualUnitSellCurrencies: p.scenarioManualUnitSellPrices
-                  ? Object.fromEntries(Object.keys(p.scenarioManualUnitSellPrices).map(term => [term, target]))
-                  : p.scenarioManualUnitSellCurrencies,
-              scenarioManualUnitProfitAdds: convertCurrencyMap(p.scenarioManualUnitProfitAdds, p.scenarioManualUnitProfitCurrencies, target),
-              scenarioManualUnitProfitCurrencies: p.scenarioManualUnitProfitAdds
-                  ? Object.fromEntries(Object.keys(p.scenarioManualUnitProfitAdds).map(term => [term, target]))
-                  : p.scenarioManualUnitProfitCurrencies,
-              scenarioTargetPrices: convertCurrencyMap(p.scenarioTargetPrices, p.scenarioTargetCurrencies, target),
-              scenarioTargetCurrencies: p.scenarioTargetPrices
-                  ? Object.fromEntries(Object.keys(p.scenarioTargetPrices).map(term => [term, target]))
-                  : p.scenarioTargetCurrencies,
-          };
-      }));
+  const handleInputCurrencyChange = (nextCurrency: string) => {
+      const next = String(nextCurrency || 'IRR').trim().toUpperCase();
+      setConfig(prev => ({ ...prev, inputCurrency: next }));
+      setProducts(prev => prev.map(p => ({ ...p, currency: next })));
   };
   const currentRateBetween = (from: string, to: string) => {
       const fromRate = rates[String(from || '').toUpperCase()];
@@ -15630,13 +15582,13 @@ function AppInner() {
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Input Currency</label>
                     <select
                         value={config.inputCurrency || 'IRR'}
-                        onChange={(e) => setConfig({...config, inputCurrency: e.target.value})}
+                        onChange={(e) => handleInputCurrencyChange(e.target.value)}
                         className="w-full md:w-32 text-sm bg-emerald-50 border border-emerald-200 rounded px-3 py-2 font-medium text-emerald-800 focus:ring-2 focus:ring-emerald-500 outline-none"
                         title="Default currency for entering product prices"
                     >
                         {Object.keys(rates).map(c => <option key={`input-currency-${c}`} value={c}>{c}</option>)}
                     </select>
-                    <p className="mt-1 text-[10px] text-slate-400">Default for new prices</p>
+                    <p className="mt-1 text-[10px] text-slate-400">Changes product table currency only</p>
                 </div>
             </div>
             <div className="flex gap-2 w-full md:w-auto items-end">
@@ -15668,14 +15620,6 @@ function AppInner() {
                 >
                     <Settings className="w-4 h-4" />
                     Rates
-                </button>
-                 <button
-                    type="button"
-                    onClick={convertAllProductPricesToInputCurrency}
-                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors w-full md:w-auto bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
-                    title="Convert existing product input prices to the selected Input Currency"
-                >
-                    Convert to {config.inputCurrency || 'IRR'}
                 </button>
                  <button
                     type="button"
