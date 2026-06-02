@@ -28906,10 +28906,14 @@ ${html}
         {/* Contract Document */}
         <style>{`${contractDraftWatermarkPrintCss()}
           @media print {
+            @page { size: A4 portrait; margin: 15mm; }
             html, body {
+              width: 210mm !important;
               height: auto !important;
               overflow: visible !important;
               background: #fff !important;
+              margin: 0 !important;
+              padding: 0 !important;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
@@ -28928,6 +28932,7 @@ ${html}
               width: 100%;
               max-width: 100%;
               margin: 0 !important;
+              padding: 0 !important;
               box-shadow: none !important;
               border-radius: 0 !important;
               overflow: visible !important;
@@ -28937,7 +28942,6 @@ ${html}
               display: none !important;
               visibility: hidden !important;
             }
-            @page { size: A4; margin: 15mm; }
             #contract-preview-root .contract-clause-table {
               page-break-inside: auto !important;
               break-inside: auto !important;
@@ -29040,65 +29044,77 @@ ${html}
 
           {/* Schedule A */}
           {c.scheduleRows.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div style={{ marginTop: 20 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #94a3b8' }}>
+                <colgroup>
+                  <col style={{ width: '38%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '12%' }} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th colSpan={5} style={{ background: '#1e293b', color: '#fff', padding: '6px 12px', fontSize: '9pt', fontWeight: 700 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <th colSpan={5} style={{ background: '#1e293b', color: '#fff', padding: '7px 12px', fontSize: '9pt', fontWeight: 700 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span>SCHEDULE A — FEES &amp; SELECTED PACKAGE</span>
                         <span dir="rtl" style={{ fontFamily: rtlFont }}>پیوست الف — حق‌الزحمه و بسته‌ی انتخاب‌شده</span>
                       </div>
                     </th>
                   </tr>
-                  <tr style={{ background: '#f1f5f9', fontSize: '8.5pt', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #cbd5e1' }}>Tier / سطح</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Build Fee (OMR)</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Annual Ops Fee (OMR)</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Interp. hrs/mo</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Select</th>
+                  <tr style={{ background: '#f1f5f9', fontSize: '8.5pt', borderBottom: '2px solid #94a3b8' }}>
+                    <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #cbd5e1', fontWeight: 600 }}>Tier / سطح</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontWeight: 600 }}>Build Fee (OMR)</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontWeight: 600 }}>Annual Ops Fee (OMR)</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontWeight: 600 }}>Interp. hrs/mo</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600 }}>Select</th>
                   </tr>
                 </thead>
                 <tbody>
                   {c.scheduleRows.map(row => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', background: row.selected ? '#eff6ff' : 'transparent' }}>
-                      <td style={{ padding: '6px 8px', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>
-                        <div>{row.tierEn}</div>
-                        {row.tierRtl && <div dir="rtl" style={{ textAlign: 'right', fontSize: '8.5pt', color: '#64748b', fontFamily: rtlFont }}>{row.tierRtl}</div>}
+                    <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', background: row.selected ? '#dbeafe' : 'transparent' }}>
+                      <td style={{ padding: '5px 8px', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>
+                        <div style={{ fontWeight: row.selected ? 600 : 400 }}>{row.tierEn}</div>
+                        {row.tierRtl && <div dir="rtl" style={{ textAlign: 'right', fontSize: '8pt', color: '#64748b', fontFamily: rtlFont }}>{row.tierRtl}</div>}
                       </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.buildFee}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.annualFee}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.interpretation}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '13pt' }}>{row.selected ? '☑' : '☐'}</td>
+                      <td style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.buildFee}</td>
+                      <td style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.annualFee}</td>
+                      <td style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{row.interpretation}</td>
+                      <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: '12pt' }}>{row.selected ? '☑' : '☐'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
               {c.addOns.length > 0 && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 0 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', borderLeft: '1px solid #94a3b8', borderRight: '1px solid #94a3b8', borderBottom: '1px solid #94a3b8' }}>
+                  <colgroup>
+                    <col style={{ width: '64%' }} />
+                    <col style={{ width: '21%' }} />
+                    <col style={{ width: '15%' }} />
+                  </colgroup>
                   <thead>
-                    <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', borderTop: '1px solid #cbd5e1' }}>
-                      <th colSpan={3} style={{ padding: '5px 8px', textAlign: 'left', fontSize: '8.5pt', fontWeight: 600 }}>
+                    <tr style={{ background: '#e2e8f0', borderTop: '2px solid #94a3b8', borderBottom: '1px solid #cbd5e1' }}>
+                      <th colSpan={3} style={{ padding: '5px 10px', textAlign: 'left', fontSize: '8.5pt', fontWeight: 600 }}>
                         Visibility Add-Ons (Monthly) | <span dir="rtl" style={{ fontFamily: rtlFont }}>افزونه‌های دیده‌شدن (ماهانه)</span>
                       </th>
                     </tr>
                     <tr style={{ background: '#f8fafc', fontSize: '8pt', borderBottom: '1px solid #cbd5e1' }}>
-                      <th style={{ padding: '5px 8px', textAlign: 'left', borderRight: '1px solid #cbd5e1' }}>Add-On / افزونه</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>Price (OMR)</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'center' }}>Select</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'left', borderRight: '1px solid #cbd5e1', fontWeight: 600 }}>Add-On / افزونه</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontWeight: 600 }}>Price (OMR)</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 600 }}>Select</th>
                     </tr>
                   </thead>
                   <tbody>
                     {c.addOns.map(ao => (
-                      <tr key={ao.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <tr key={ao.id} style={{ borderBottom: '1px solid #e2e8f0', background: ao.selected ? '#dbeafe' : 'transparent' }}>
                         <td style={{ padding: '5px 8px', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>
-                          <span style={{ fontWeight: 600 }}>{ao.nameEn}</span>
-                          {ao.nameRtl && <span dir="rtl" style={{ fontFamily: rtlFont, color: '#475569' }}> / {ao.nameRtl}</span>}
-                          {ao.descEn && <div style={{ fontSize: '8.5pt', color: '#64748b' }}>{ao.descEn}</div>}
+                          <div style={{ fontWeight: 600 }}>{ao.nameEn}</div>
+                          {ao.nameRtl && <div dir="rtl" style={{ fontFamily: rtlFont, color: '#475569', fontSize: '8.5pt' }}>{ao.nameRtl}</div>}
+                          {ao.descEn && <div style={{ fontSize: '8pt', color: '#64748b', marginTop: 1 }}>{ao.descEn}</div>}
                         </td>
                         <td style={{ padding: '5px 8px', textAlign: 'center', borderRight: '1px solid #cbd5e1', fontSize: '9pt' }}>{ao.price}</td>
-                        <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: '13pt' }}>{ao.selected ? '☑' : '☐'}</td>
+                        <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: '12pt' }}>{ao.selected ? '☑' : '☐'}</td>
                       </tr>
                     ))}
                   </tbody>
