@@ -4224,6 +4224,211 @@ function downloadContractAsWord(c: ContractDef) {
   URL.revokeObjectURL(url);
 }
 
+function printContractInNewWindow(c: ContractDef): void {
+  const rtlFont = c.rtlLanguage === 'fa'
+    ? 'Vazirmatn, Tahoma, "Segoe UI", sans-serif'
+    : '"Noto Naskh Arabic", Tahoma, "Segoe UI", sans-serif';
+  const cForMedia: ContractDef = {
+    ...c,
+    logoUrl: c.logoUrl && safeCatalogMediaUrl(c.logoUrl) ? c.logoUrl : '',
+    logo2Url: c.logo2Url && safeCatalogMediaUrl(c.logo2Url) ? c.logo2Url : '',
+  };
+  const headerHtml = buildContractHeaderHtml(cForMedia, rtlFont);
+  const wm = normalizeContractDraftWatermark(c);
+  const watermarkHtml = wm.enabled ? contractDraftWatermarkBodyHtml(wm.text) : '';
+
+  const partiesHtml = c.parties.length > 0 ? `
+    <table style="page-break-inside:avoid;">
+      <thead>
+        <tr><th colspan="2" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:9pt;font-weight:700;">
+          <div style="display:flex;justify-content:space-between;"><span>THE PARTIES</span>
+          <span dir="rtl" style="font-family:${rtlFont}">طرفین قرارداد</span></div>
+        </th></tr>
+      </thead>
+      <tbody>
+        ${c.parties.map((party, pi) => `
+          <tr style="border-bottom:1px solid #cbd5e1;">
+            <td style="width:50%;padding:10px 12px;vertical-align:top;border-right:1px solid #cbd5e1;font-size:9pt;">
+              <div style="font-weight:700;margin-bottom:4px;">${pi + 1}. ${escapeHtml(party.labelEn)}:</div>
+              ${party.companyEn ? `<div>${escapeHtml(party.companyEn)}</div>` : ''}
+              ${party.regNo ? `<div>Reg. No.: ${escapeHtml(party.regNo)}</div>` : ''}
+              ${party.country ? `<div>Country: ${escapeHtml(party.country)}</div>` : ''}
+              ${party.repNameEn ? `<div style="margin-top:4px;">Represented by: ${escapeHtml(party.repNameEn)}</div>` : ''}
+              ${party.repTitleEn ? `<div>Capacity: ${escapeHtml(party.repTitleEn)}</div>` : ''}
+              ${party.aliasEn ? `<div style="margin-top:4px;color:#64748b;font-style:italic;">(hereinafter &quot;${escapeHtml(party.aliasEn)}&quot;)</div>` : ''}
+            </td>
+            <td style="width:50%;padding:10px 12px;vertical-align:top;font-size:9pt;direction:rtl;font-family:${rtlFont};text-align:right;">
+              <div style="font-weight:700;margin-bottom:4px;">${pi + 1}. ${escapeHtml(party.labelRtl)}:</div>
+              ${party.companyRtl ? `<div>${escapeHtml(party.companyRtl)}</div>` : ''}
+              ${party.regNo ? `<div>شماره ثبت: ${escapeHtml(party.regNo)}</div>` : ''}
+              ${party.country ? `<div>کشور: ${escapeHtml(party.country)}</div>` : ''}
+              ${party.repNameRtl ? `<div style="margin-top:4px;">با نمایندگی: ${escapeHtml(party.repNameRtl)}</div>` : ''}
+              ${party.repTitleRtl ? `<div>به عنوان: ${escapeHtml(party.repTitleRtl)}</div>` : ''}
+              ${party.aliasRtl ? `<div style="margin-top:4px;color:#64748b;font-style:italic;">(که از این پس «${escapeHtml(party.aliasRtl)}» نامیده می‌شود)</div>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>` : '';
+
+  const clausesHtml = c.clauses.map(cl => {
+    const titleRow = (cl.titleEn || cl.titleRtl) ? `
+      <tr style="background:#f1f5f9;border-top:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;">
+        <td style="width:50%;padding:6px 12px;font-weight:700;font-size:9pt;border-right:1px solid #cbd5e1;">${escapeHtml(cl.titleEn)}</td>
+        <td style="width:50%;padding:6px 12px;font-weight:700;font-size:9pt;text-align:right;direction:rtl;font-family:${rtlFont};">${escapeHtml(cl.titleRtl)}</td>
+      </tr>` : '';
+    return `<table><tbody>${titleRow}
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="width:50%;padding:10px 12px;vertical-align:top;border-right:1px solid #cbd5e1;font-size:9pt;line-height:1.7;white-space:pre-wrap;">${escapeHtml(cl.contentEn).replace(/\n/g, '<br>')}</td>
+        <td style="width:50%;padding:10px 12px;vertical-align:top;font-size:9pt;line-height:1.7;direction:rtl;font-family:${rtlFont};text-align:right;white-space:pre-wrap;">${escapeHtml(cl.contentRtl).replace(/\n/g, '<br>')}</td>
+      </tr></tbody></table>`;
+  }).join('');
+
+  let schedHtml = '';
+  if (c.scheduleRows.length > 0) {
+    const rowsHtml = c.scheduleRows.map(row => `
+      <tr style="border-bottom:1px solid #e2e8f0;background:${row.selected ? '#dbeafe' : 'transparent'};">
+        <td style="padding:5px 8px;border-right:1px solid #cbd5e1;font-size:9pt;">
+          <div style="font-weight:${row.selected ? '600' : '400'};">${escapeHtml(row.tierEn)}</div>
+          ${row.tierRtl ? `<div dir="rtl" style="text-align:right;font-size:8pt;color:#64748b;font-family:${rtlFont};">${escapeHtml(row.tierRtl)}</div>` : ''}
+        </td>
+        <td style="padding:5px 8px;text-align:center;border-right:1px solid #cbd5e1;font-size:9pt;">${escapeHtml(row.buildFee)}</td>
+        <td style="padding:5px 8px;text-align:center;border-right:1px solid #cbd5e1;font-size:9pt;">${escapeHtml(row.annualFee)}</td>
+        <td style="padding:5px 8px;text-align:center;border-right:1px solid #cbd5e1;font-size:9pt;">${escapeHtml(row.interpretation)}</td>
+        <td style="padding:5px 8px;text-align:center;font-size:12pt;">${row.selected ? '☑' : '☐'}</td>
+      </tr>`).join('');
+
+    const addOnsHtml = c.addOns.length > 0 ? `
+      <table style="border-left:1px solid #94a3b8;border-right:1px solid #94a3b8;border-bottom:1px solid #94a3b8;">
+        <colgroup><col style="width:64%"><col style="width:21%"><col style="width:15%"></colgroup>
+        <thead>
+          <tr style="background:#e2e8f0;border-top:2px solid #94a3b8;border-bottom:1px solid #cbd5e1;">
+            <th colspan="3" style="padding:5px 10px;text-align:left;font-size:8.5pt;font-weight:600;">
+              Visibility Add-Ons (Monthly) | <span dir="rtl" style="font-family:${rtlFont}">افزونه‌های دیده‌شدن (ماهانه)</span>
+            </th>
+          </tr>
+          <tr style="background:#f8fafc;font-size:8pt;border-bottom:1px solid #cbd5e1;">
+            <th style="padding:5px 8px;text-align:left;border-right:1px solid #cbd5e1;font-weight:600;">Add-On / افزونه</th>
+            <th style="padding:5px 8px;text-align:center;border-right:1px solid #cbd5e1;font-weight:600;">Price (OMR)</th>
+            <th style="padding:5px 8px;text-align:center;font-weight:600;">Select</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${c.addOns.map(ao => `
+            <tr style="border-bottom:1px solid #e2e8f0;background:${ao.selected ? '#dbeafe' : 'transparent'};">
+              <td style="padding:5px 8px;border-right:1px solid #cbd5e1;font-size:9pt;">
+                <div style="font-weight:600;">${escapeHtml(ao.nameEn)}</div>
+                ${ao.nameRtl ? `<div dir="rtl" style="font-family:${rtlFont};color:#475569;font-size:8.5pt;">${escapeHtml(ao.nameRtl)}</div>` : ''}
+                ${ao.descEn ? `<div style="font-size:8pt;color:#64748b;margin-top:1px;">${escapeHtml(ao.descEn)}</div>` : ''}
+              </td>
+              <td style="padding:5px 8px;text-align:center;border-right:1px solid #cbd5e1;font-size:9pt;">${escapeHtml(ao.price)}</td>
+              <td style="padding:5px 8px;text-align:center;font-size:12pt;">${ao.selected ? '☑' : '☐'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : '';
+
+    schedHtml = `
+      <div style="margin-top:20px;">
+        <table style="border:1px solid #94a3b8;">
+          <colgroup><col style="width:38%"><col style="width:14%"><col style="width:22%"><col style="width:14%"><col style="width:12%"></colgroup>
+          <thead>
+            <tr><th colspan="5" style="background:#1e293b;color:#fff;padding:7px 12px;font-size:9pt;font-weight:700;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span>SCHEDULE A — FEES &amp; SELECTED PACKAGE</span>
+                <span dir="rtl" style="font-family:${rtlFont}">پیوست الف — حق‌الزحمه و بسته‌ی انتخاب‌شده</span>
+              </div>
+            </th></tr>
+            <tr style="background:#f1f5f9;font-size:8.5pt;border-bottom:2px solid #94a3b8;">
+              <th style="padding:6px 8px;text-align:left;border-right:1px solid #cbd5e1;font-weight:600;">Tier / سطح</th>
+              <th style="padding:6px 8px;text-align:center;border-right:1px solid #cbd5e1;font-weight:600;">Build Fee (OMR)</th>
+              <th style="padding:6px 8px;text-align:center;border-right:1px solid #cbd5e1;font-weight:600;">Annual Ops Fee (OMR)</th>
+              <th style="padding:6px 8px;text-align:center;border-right:1px solid #cbd5e1;font-weight:600;">Interp. hrs/mo</th>
+              <th style="padding:6px 8px;text-align:center;font-weight:600;">Select</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        ${addOnsHtml}
+      </div>`;
+  }
+
+  const defaultSigParties: ContractParty[] = [
+    { id: 'sp', labelEn: 'SERVICE PROVIDER', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: '', aliasRtl: '' },
+    { id: 'cl', labelEn: 'CLIENT', labelRtl: '', companyEn: '', companyRtl: '', regNo: '', country: '', repNameEn: '', repNameRtl: '', repTitleEn: '', repTitleRtl: '', aliasEn: '', aliasRtl: '' },
+  ];
+  const sigParties = c.parties.length > 0 ? c.parties : defaultSigParties;
+  const colW = Math.floor(100 / sigParties.length);
+  const sigHtml = `
+    <div style="margin-top:20px;border-top:2px solid #1e293b;page-break-inside:avoid;">
+      <table>
+        <thead><tr><th colspan="${sigParties.length}" style="background:#1e293b;color:#fff;padding:6px 12px;font-size:9pt;font-weight:700;">
+          <div style="display:flex;justify-content:space-between;">
+            <span>IN WITNESS WHEREOF</span>
+            <span dir="rtl" style="font-family:${rtlFont}">امضای طرفین</span>
+          </div>
+        </th></tr></thead>
+        <tbody><tr>
+          ${sigParties.map((party, pi) => `
+            <td style="width:${colW}%;padding:14px;vertical-align:top;${pi < sigParties.length - 1 ? 'border-right:1px solid #cbd5e1;' : ''}font-size:9pt;">
+              <div style="font-weight:700;margin-bottom:6px;">FOR ${escapeHtml(party.labelEn).toUpperCase()}</div>
+              ${party.companyEn ? `<div style="margin-bottom:4px;">${escapeHtml(party.companyEn)}</div>` : ''}
+              ${party.repNameEn ? `<div>Name: ${escapeHtml(party.repNameEn)}</div>` : ''}
+              ${party.repTitleEn ? `<div>Title: ${escapeHtml(party.repTitleEn)}</div>` : ''}
+              <div style="margin-top:20px;">
+                <div style="font-size:8.5pt;color:#475569;">Signature / امضا:</div>
+                <div style="border-bottom:1px solid #94a3b8;margin-top:28px;margin-bottom:8px;width:85%;"></div>
+                <div style="font-size:8.5pt;color:#475569;">Date / تاریخ: ____________________</div>
+              </div>
+            </td>`).join('')}
+        </tr></tbody>
+      </table>
+    </div>`;
+
+  const fontHref = c.rtlLanguage === 'fa'
+    ? 'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap'
+    : 'https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap';
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(c.titleEn || 'Contract')}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="${fontHref}" rel="stylesheet">
+  <style>
+    @page { size: A4 portrait; margin: 15mm; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; width: 100%; font-family: Georgia, "Times New Roman", serif; font-size: 9.5pt; line-height: 1.65; color: #1e293b; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table { border-collapse: collapse; width: 100%; }
+    .print-toolbar { background: #1e293b; color: #fff; padding: 8px 16px; display: flex; align-items: center; gap: 12px; font-family: sans-serif; font-size: 13px; margin-bottom: 12px; }
+    @media print { @page { size: A4 portrait; margin: 15mm; } .print-toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <span style="flex:1;">${escapeHtml(c.titleEn || 'Contract Preview')}${c.refNo ? ' · Ref. ' + escapeHtml(c.refNo) : ''}</span>
+    <button onclick="window.print()" style="background:#3b82f6;color:#fff;border:none;padding:6px 18px;border-radius:6px;cursor:pointer;font-size:13px;">Print / PDF</button>
+    <button onclick="window.close()" style="background:transparent;color:#94a3b8;border:1px solid #475569;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">Close</button>
+  </div>
+  ${watermarkHtml}
+  ${headerHtml}
+  ${partiesHtml}
+  ${clausesHtml}
+  ${schedHtml}
+  ${sigHtml}
+  <div style="border-top:1px solid #e2e8f0;padding:8px 14px;text-align:center;font-size:8pt;color:#94a3b8;margin-top:8px;">
+    ${escapeHtml(c.titleEn)}${c.refNo ? ' | Ref. ' + escapeHtml(c.refNo) : ''}${c.effectiveDate ? ' | ' + escapeHtml(c.effectiveDate) : ''}
+  </div>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=960,height=800');
+  if (win) {
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }
+}
+
 function buildProposalWordHtml(p: ProposalDef): string {
   const rtlFont = p.rtlLanguage === 'fa'
     ? 'Vazirmatn,Tahoma,Segoe UI,sans-serif'
@@ -28890,7 +29095,7 @@ ${html}
             <span dir="rtl">واترمارک DRAFT</span>
           </label>
           <div className="flex-1" />
-          <button onClick={() => { window.print(); }}
+          <button onClick={() => printContractInNewWindow(c)}
             className="flex items-center gap-2 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700">
             <Printer className="w-4 h-4" /> Print / PDF
           </button>
@@ -28908,7 +29113,6 @@ ${html}
           @media print {
             @page { size: A4 portrait; margin: 15mm; }
             html, body {
-              width: 210mm !important;
               height: auto !important;
               overflow: visible !important;
               background: #fff !important;
@@ -28917,20 +29121,15 @@ ${html}
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
-            /* React mounts under #root — do not use body>child (hides entire app and preview). */
-            body * {
-              visibility: hidden;
-            }
+            body * { visibility: hidden; }
             #contract-preview-root,
-            #contract-preview-root * {
-              visibility: visible;
-            }
+            #contract-preview-root * { visibility: visible; }
             #contract-preview-root {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-              max-width: 100%;
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              max-width: 100% !important;
               margin: 0 !important;
               padding: 0 !important;
               box-shadow: none !important;
@@ -28938,17 +29137,7 @@ ${html}
               overflow: visible !important;
               background: #fff !important;
             }
-            .print\\:hidden {
-              display: none !important;
-              visibility: hidden !important;
-            }
-            #contract-preview-root .contract-clause-table {
-              page-break-inside: auto !important;
-              break-inside: auto !important;
-            }
-            #contract-preview-root .contract-clause-table thead {
-              display: table-header-group;
-            }
+            .print\\:hidden { display: none !important; }
             #contract-preview-root .contract-draft-watermark-layer {
               position: fixed !important;
               inset: 0 !important;
