@@ -7204,7 +7204,18 @@ const prepareCloudProjectData = async (
             if (estimateBytes(stripped) <= FIRESTORE_MAX_BYTES) {
                 return { data: stripped, notice: notices.length ? notices.join('\n') : undefined };
             }
-            notices.push('After upload, document still exceeded 1MB; applying extra compression.');
+            // Firestore doc still too large → upload full project JSON to Firebase Storage
+            const jsonStr = JSON.stringify(stripped);
+            const jsonBlob = new Blob([jsonStr], { type: 'application/json' });
+            const path = `users/${uid}/projectJson/${Date.now()}.json`;
+            const sRef = storageRef(storage, path);
+            await uploadBytes(sRef, jsonBlob, { contentType: 'application/json' });
+            const url = await getDownloadURL(sRef);
+            notices.push(`Large project (${(jsonBlob.size / (1024 * 1024)).toFixed(1)} MB) saved to Firebase Storage.`);
+            return {
+                data: { _storageJsonPath: path, _storageJsonUrl: url },
+                notice: notices.filter(Boolean).join('\n') || undefined
+            };
         } catch (e: any) {
             setProgress(null);
             console.warn('Firebase Storage upload failed, using Firestore fallback:', e);
@@ -8649,7 +8660,19 @@ function AppInner() {
                       return;
                   }
               }
-              const loadedProjects = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as SavedProject[];
+              const rawProjects = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as SavedProject[];
+              const loadedProjects = await Promise.all(
+                  rawProjects.map(async (p: SavedProject) => {
+                      const storageUrl = (p.data as any)?._storageJsonUrl;
+                      if (storageUrl) {
+                          try {
+                              const resp = await fetch(storageUrl);
+                              if (resp.ok) return { ...p, data: await resp.json() };
+                          } catch {}
+                      }
+                      return p;
+                  })
+              );
               loadedProjects.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
               setSavedProjects(loadedProjects);
           },
