@@ -58,7 +58,7 @@ import {
   AlignJustify,   ArrowLeft, Pencil, Inbox,   Mail, ShoppingCart, Link2,   Building2, Phone, Archive, Receipt, BadgeCheck, FolderPlus, ListTodo,
   ChevronUp, ChevronDown, Copy, GraduationCap, Warehouse as WarehouseIcon, Maximize2, RotateCw,
   ShieldCheck, UserPlus, UserX, Crown, KeyRound, CalendarClock, Ban, TrendingUp,
-  HardDrive
+  HardDrive, Search, GripVertical, ArrowUpToLine
 } from 'lucide-react';
 
 // Types
@@ -7932,6 +7932,12 @@ function AppInner() {
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [showImportProductsModal, setShowImportProductsModal] = useState(false); 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [projectOrder, setProjectOrder] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('cep_project_order') || '[]'); } catch { return []; }
+  });
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
   const [editingCatalogDetailsId, setEditingCatalogDetailsId] = useState<number | null>(null);
   const catalogVideoUrlInputRef = useRef<HTMLInputElement | null>(null);
   const productJsonInputRef = useRef<HTMLInputElement | null>(null);
@@ -9557,7 +9563,16 @@ function AppInner() {
     const groups: { [key: string]: SavedProject[] } = {};
     const uncategorized: SavedProject[] = [];
 
-    savedProjects.forEach(p => {
+    const sorted = [...savedProjects].sort((a, b) => {
+      const ai = projectOrder.indexOf(a.id);
+      const bi = projectOrder.indexOf(b.id);
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+
+    sorted.forEach(p => {
         if (p.folder && p.folder.trim() !== '') {
             if (!groups[p.folder]) groups[p.folder] = [];
             groups[p.folder].push(p);
@@ -9567,6 +9582,33 @@ function AppInner() {
     });
 
     return { groups, uncategorized };
+  }, [savedProjects, projectOrder]);
+
+  const filteredGroupedProjects = useMemo(() => {
+    if (!projectSearchQuery.trim()) return groupedProjects;
+    const q = projectSearchQuery.toLowerCase();
+    const filter = (list: SavedProject[]) =>
+      list.filter(p => p.name.toLowerCase().includes(q) || (p.folder || '').toLowerCase().includes(q));
+    const groups: { [key: string]: SavedProject[] } = {};
+    Object.entries(groupedProjects.groups).forEach(([folder, projects]) => {
+      const filtered = filter(projects as SavedProject[]);
+      if (filtered.length > 0) groups[folder] = filtered;
+    });
+    return { groups, uncategorized: filter(groupedProjects.uncategorized) };
+  }, [groupedProjects, projectSearchQuery]);
+
+  useEffect(() => {
+    setProjectOrder(prev => {
+      const allIds = savedProjects.map(p => p.id);
+      const filtered = prev.filter(id => allIds.includes(id));
+      const newIds = allIds.filter(id => !prev.includes(id));
+      const updated = [...filtered, ...newIds];
+      if (updated.join(',') !== prev.join(',')) {
+        try { localStorage.setItem('cep_project_order', JSON.stringify(updated)); } catch {}
+        return updated;
+      }
+      return prev;
+    });
   }, [savedProjects]);
 
   // --- AUTH HANDLERS ---
@@ -12540,6 +12582,38 @@ function AppInner() {
     } finally { 
         setIsDeleting(false); 
     }
+  };
+
+  const getProjectCode = (projectId: string) => {
+    const idx = projectOrder.indexOf(projectId);
+    if (idx === -1) return '#???';
+    return `#${String(idx + 1).padStart(3, '0')}`;
+  };
+
+  const handleMoveProjectToTop = (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setProjectOrder(prev => {
+      const updated = [projectId, ...prev.filter(id => id !== projectId)];
+      try { localStorage.setItem('cep_project_order', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
+
+  const handleProjectDrop = (targetId: string) => {
+    if (!draggedProjectId || draggedProjectId === targetId) return;
+    const dragId = draggedProjectId;
+    setProjectOrder(prev => {
+      const copy = [...prev];
+      const from = copy.indexOf(dragId);
+      const to = copy.indexOf(targetId);
+      if (from === -1 || to === -1) return prev;
+      copy.splice(from, 1);
+      copy.splice(to, 0, dragId);
+      try { localStorage.setItem('cep_project_order', JSON.stringify(copy)); } catch {}
+      return copy;
+    });
+    setDraggedProjectId(null);
+    setDragOverProjectId(null);
   };
 
   // --- IMPORT / EXPORT LOGIC ---
@@ -34847,8 +34921,8 @@ ${html}
       {showLoadModal && (
           <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
-                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                      <div className="flex items-center gap-3">
+                  <div className="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3 bg-slate-50 rounded-t-xl">
+                      <div className="flex items-center gap-3 flex-wrap">
                           <h3 className="font-bold text-slate-800">Open Project</h3>
                           <div className="flex bg-white border border-slate-200 rounded-md p-0.5">
                                <label className="flex items-center gap-2 px-3 py-1 cursor-pointer hover:bg-slate-50 transition-colors">
@@ -34867,7 +34941,24 @@ ${html}
                                </button>
                           </div>
                       </div>
-                      <button onClick={() => setShowLoadModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                      <div className="flex items-center gap-2">
+                          <div className="relative">
+                              <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <input
+                                  type="text"
+                                  value={projectSearchQuery}
+                                  onChange={e => setProjectSearchQuery(e.target.value)}
+                                  placeholder="Search projects..."
+                                  className="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 w-48"
+                              />
+                              {projectSearchQuery && (
+                                  <button onClick={() => setProjectSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                      <X className="w-3.5 h-3.5" />
+                                  </button>
+                              )}
+                          </div>
+                          <button onClick={() => { setShowLoadModal(false); setProjectSearchQuery(''); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                      </div>
                   </div>
                   
                   <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
@@ -34876,22 +34967,47 @@ ${html}
                               <FolderOpen className="w-16 h-16 mb-4 opacity-20" />
                               <p>No saved projects found.</p>
                           </div>
+                      ) : filteredGroupedProjects.uncategorized.length === 0 && Object.keys(filteredGroupedProjects.groups).length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                              <Search className="w-12 h-12 mb-4 opacity-20" />
+                              <p>No projects match your search.</p>
+                          </div>
                       ) : (
                           <div className="space-y-8">
                               {/* Uncategorized */}
-                              {groupedProjects.uncategorized.length > 0 && (
+                              {filteredGroupedProjects.uncategorized.length > 0 && (
                                   <div>
                                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Uncategorized</h4>
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                          {groupedProjects.uncategorized.map(project => (
-                                              <div key={project.id} onClick={() => handleLoadProject(project)} className="group bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md hover:ring-1 hover:ring-blue-400 rounded-xl p-4 cursor-pointer transition-all relative">
+                                          {filteredGroupedProjects.uncategorized.map(project => (
+                                              <div
+                                                  key={project.id}
+                                                  onClick={() => handleLoadProject(project)}
+                                                  draggable
+                                                  onDragStart={(e) => { e.stopPropagation(); setDraggedProjectId(project.id); e.dataTransfer.effectAllowed = 'move'; }}
+                                                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverProjectId(project.id); }}
+                                                  onDragLeave={(e) => { e.stopPropagation(); setDragOverProjectId(null); }}
+                                                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleProjectDrop(project.id); }}
+                                                  onDragEnd={() => { setDraggedProjectId(null); setDragOverProjectId(null); }}
+                                                  className={`group bg-white rounded-xl p-4 cursor-pointer transition-all relative border ${
+                                                    dragOverProjectId === project.id && draggedProjectId !== project.id
+                                                      ? 'border-blue-400 ring-2 ring-blue-300 shadow-lg'
+                                                      : 'border-slate-200 hover:border-blue-400 hover:shadow-md hover:ring-1 hover:ring-blue-400'
+                                                  } ${draggedProjectId === project.id ? 'opacity-40 scale-95' : ''}`}
+                                              >
                                                   <div className="flex justify-between items-start mb-2">
                                                       <div className="flex items-center gap-2">
-                                                          <div className="bg-blue-50 p-2 rounded-lg text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                                          <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors shrink-0" onClick={e => e.stopPropagation()}>
+                                                              <GripVertical className="w-4 h-4" />
+                                                          </div>
+                                                          <div className="bg-blue-50 p-2 rounded-lg text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors shrink-0">
                                                               <FileText className="w-5 h-5" />
                                                           </div>
-                                                          <div>
-                                                              <h4 className="font-semibold text-slate-800 line-clamp-1">{project.name}</h4>
+                                                          <div className="min-w-0">
+                                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-mono shrink-0">{getProjectCode(project.id)}</span>
+                                                                  <h4 className="font-semibold text-slate-800 line-clamp-1">{project.name}</h4>
+                                                              </div>
                                                               <p className="text-[10px] text-slate-400 flex items-center gap-1">
                                                                 <Clock className="w-3 h-3" />
                                                                 {project.createdAt?.seconds ? new Date(project.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown'}
@@ -34901,7 +35017,10 @@ ${html}
                                                   </div>
                                                   <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-50">
                                                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{project.data.config?.outputCurrency || 'USD'}</span>
-                                                       <div className="flex gap-2">
+                                                       <div className="flex gap-1">
+                                                           <button onClick={(e) => handleMoveProjectToTop(project.id, e)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors" title="Move to top (#001)">
+                                                               <ArrowUpToLine className="w-4 h-4" />
+                                                           </button>
                                                            <button onClick={(e) => handleExportProject(project, e)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Export JSON">
                                                                <Download className="w-4 h-4" />
                                                            </button>
@@ -34910,7 +35029,7 @@ ${html}
                                                            </button>
                                                        </div>
                                                   </div>
-                                                  
+
                                                   {deleteConfirmId === project.id && (
                                                       <div className="absolute inset-0 bg-white/95 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center p-4 z-10 animate-in fade-in zoom-in-95">
                                                           <p className="text-sm font-semibold text-red-600 mb-3">Delete this project?</p>
@@ -34929,7 +35048,7 @@ ${html}
                               )}
 
                               {/* Folders */}
-                              {Object.entries(groupedProjects.groups).map(([folder, projects]) => (
+                              {Object.entries(filteredGroupedProjects.groups).map(([folder, projects]) => (
                                   <div key={folder}>
                                       <div className="flex items-center gap-2 mb-3 px-1">
                                           <Folder className="w-4 h-4 text-slate-400" />
@@ -34938,14 +35057,34 @@ ${html}
                                       </div>
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pl-4 border-l-2 border-slate-200">
                                           {(projects as SavedProject[]).map(project => (
-                                              <div key={project.id} onClick={() => handleLoadProject(project)} className="group bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md hover:ring-1 hover:ring-blue-400 rounded-xl p-4 cursor-pointer transition-all relative">
+                                              <div
+                                                  key={project.id}
+                                                  onClick={() => handleLoadProject(project)}
+                                                  draggable
+                                                  onDragStart={(e) => { e.stopPropagation(); setDraggedProjectId(project.id); e.dataTransfer.effectAllowed = 'move'; }}
+                                                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverProjectId(project.id); }}
+                                                  onDragLeave={(e) => { e.stopPropagation(); setDragOverProjectId(null); }}
+                                                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleProjectDrop(project.id); }}
+                                                  onDragEnd={() => { setDraggedProjectId(null); setDragOverProjectId(null); }}
+                                                  className={`group bg-white rounded-xl p-4 cursor-pointer transition-all relative border ${
+                                                    dragOverProjectId === project.id && draggedProjectId !== project.id
+                                                      ? 'border-indigo-400 ring-2 ring-indigo-300 shadow-lg'
+                                                      : 'border-slate-200 hover:border-blue-400 hover:shadow-md hover:ring-1 hover:ring-blue-400'
+                                                  } ${draggedProjectId === project.id ? 'opacity-40 scale-95' : ''}`}
+                                              >
                                                   <div className="flex justify-between items-start mb-2">
                                                       <div className="flex items-center gap-2">
-                                                          <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                          <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors shrink-0" onClick={e => e.stopPropagation()}>
+                                                              <GripVertical className="w-4 h-4" />
+                                                          </div>
+                                                          <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0">
                                                               <FileText className="w-5 h-5" />
                                                           </div>
-                                                          <div>
-                                                              <h4 className="font-semibold text-slate-800 line-clamp-1">{project.name}</h4>
+                                                          <div className="min-w-0">
+                                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded font-mono shrink-0">{getProjectCode(project.id)}</span>
+                                                                  <h4 className="font-semibold text-slate-800 line-clamp-1">{project.name}</h4>
+                                                              </div>
                                                               <p className="text-[10px] text-slate-400 flex items-center gap-1">
                                                                 <Clock className="w-3 h-3" />
                                                                 {project.createdAt?.seconds ? new Date(project.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown'}
@@ -34955,7 +35094,10 @@ ${html}
                                                   </div>
                                                    <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-50">
                                                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{project.data.config?.outputCurrency || 'USD'}</span>
-                                                       <div className="flex gap-2">
+                                                       <div className="flex gap-1">
+                                                           <button onClick={(e) => handleMoveProjectToTop(project.id, e)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors" title="Move to top (#001)">
+                                                               <ArrowUpToLine className="w-4 h-4" />
+                                                           </button>
                                                            <button onClick={(e) => handleExportProject(project, e)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Export JSON">
                                                                <Download className="w-4 h-4" />
                                                            </button>
