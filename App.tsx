@@ -7022,14 +7022,54 @@ const guessExtension = (dataUrl: string): string => {
     return sub;
 };
 
+const storageCandidateUids = (primaryUid: string): string[] => {
+    const candidates = [
+        String(primaryUid || '').trim(),
+        String(auth?.currentUser?.uid || '').trim(),
+    ].filter(Boolean);
+    return Array.from(new Set(candidates));
+};
+
+const isStoragePermissionError = (err: any): boolean => {
+    const code = String(err?.code || '').toLowerCase();
+    const message = String(err?.message || '').toLowerCase();
+    return code.includes('unauthorized') || code.includes('permission') || message.includes('unauthorized') || message.includes('permission');
+};
+
 const uploadBase64ToStorage = async (uid: string, base64: string): Promise<string> => {
     if (!storage) throw new Error('Firebase Storage is not configured.');
     const ext = guessExtension(base64);
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    const path = `users/${uid}/uploads/${id}.${ext}`;
-    const ref = storageRef(storage, path);
-    await uploadString(ref, base64, 'data_url');
-    return await getDownloadURL(ref);
+    let lastErr: any;
+    for (const candidateUid of storageCandidateUids(uid)) {
+        const path = `users/${candidateUid}/uploads/${id}.${ext}`;
+        const ref = storageRef(storage, path);
+        try {
+            await uploadString(ref, base64, 'data_url');
+            return await getDownloadURL(ref);
+        } catch (err: any) {
+            lastErr = err;
+            if (!isStoragePermissionError(err)) break;
+        }
+    }
+    throw lastErr || new Error('Firebase Storage upload failed.');
+};
+
+const uploadProjectJsonToStorage = async (uid: string, jsonBlob: Blob): Promise<{ path: string; url: string }> => {
+    if (!storage) throw new Error('Firebase Storage is not configured.');
+    let lastErr: any;
+    for (const candidateUid of storageCandidateUids(uid)) {
+        const path = `users/${candidateUid}/projectJson/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`;
+        const sRef = storageRef(storage, path);
+        try {
+            await uploadBytes(sRef, jsonBlob, { contentType: 'application/json' });
+            return { path, url: await getDownloadURL(sRef) };
+        } catch (err: any) {
+            lastErr = err;
+            if (!isStoragePermissionError(err)) break;
+        }
+    }
+    throw lastErr || new Error('Firebase Storage JSON upload failed.');
 };
 
 const uploadAllBinariesDeep = async (
@@ -7207,10 +7247,7 @@ const prepareCloudProjectData = async (
             // Firestore doc still too large → upload full project JSON to Firebase Storage
             const jsonStr = JSON.stringify(stripped);
             const jsonBlob = new Blob([jsonStr], { type: 'application/json' });
-            const path = `users/${uid}/projectJson/${Date.now()}.json`;
-            const sRef = storageRef(storage, path);
-            await uploadBytes(sRef, jsonBlob, { contentType: 'application/json' });
-            const url = await getDownloadURL(sRef);
+            const { path, url } = await uploadProjectJsonToStorage(uid, jsonBlob);
             notices.push(`Large project (${(jsonBlob.size / (1024 * 1024)).toFixed(1)} MB) saved to Firebase Storage.`);
             return {
                 data: { _storageJsonPath: path, _storageJsonUrl: url },

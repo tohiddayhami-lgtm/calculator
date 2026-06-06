@@ -6,21 +6,30 @@ service firebase.storage {
              && (request.auth.token.admin == true || request.auth.token.master == true);
     }
 
+    function isConfiguredMasterEmail() {
+      return request.auth != null
+             && request.auth.token.email == 'tohid.dayhami@gmail.com';
+    }
+
+    function canAccessUserStorage(userId) {
+      return request.auth != null
+             && (request.auth.uid == userId || isAdminClaim() || isConfiguredMasterEmail());
+    }
+
     // Public-read catalogs (anyone can open the share link). Only the owner can write.
     match /users/{userId}/catalogs/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdminClaim());
+      allow write: if canAccessUserStorage(userId);
     }
     // Public-read Meta Trading Hub pages (anyone with the link can open). Only the owner can write.
     match /users/{userId}/meta-hub/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdminClaim());
+      allow write: if canAccessUserStorage(userId);
     }
     // Public-read HTML presentations embedded in published custom forms. Only owner can upload.
     match /users/{userId}/formPresentations/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null
-                   && (request.auth.uid == userId || isAdminClaim())
+      allow write: if canAccessUserStorage(userId)
                    && request.resource.size < 10 * 1024 * 1024;
     }
     // Community shared files — all authenticated users can read; any authenticated user can upload; no overwrite
@@ -33,7 +42,7 @@ service firebase.storage {
     }
     // All other private files: only the owner can read/write
     match /users/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdminClaim());
+      allow read, write: if canAccessUserStorage(userId);
     }
     // Public form submission uploads — anonymous respondents (no sign-in)
     match /publicFormSubmissions/{formKey}/{subId}/{filePath=**} {
