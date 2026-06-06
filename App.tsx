@@ -7224,7 +7224,28 @@ const fitToFirestoreLimit = async (
     };
 };
 
-/** Try Storage for base64 blobs; on failure or oversize, compress for Firestore-only. */
+const saveWholeProjectJsonToStorage = async (
+    rawData: any,
+    uid: string,
+    notices: string[],
+    onStep?: (msg: string) => void
+): Promise<{ data: any; notice?: string }> => {
+    const cleaned = stripUndefinedDeep(rawData);
+    const { data: shrunk, warnings } = await shrinkProjectData(cleaned, onStep);
+    if (warnings.length) notices.push(...warnings);
+
+    const jsonStr = JSON.stringify(stripUndefinedDeep(shrunk));
+    const jsonBlob = new Blob([jsonStr], { type: 'application/json' });
+    const { path, url } = await uploadProjectJsonToStorage(uid, jsonBlob);
+    notices.push(`Large project (${(jsonBlob.size / (1024 * 1024)).toFixed(1)} MB) saved to Firebase Storage.`);
+
+    return {
+        data: { _storageJsonPath: path, _storageJsonUrl: url },
+        notice: notices.filter(Boolean).join('\n') || undefined
+    };
+};
+
+/** Try Storage for base64 blobs; if that fails, store the whole project JSON before Firestore fallback. */
 const prepareCloudProjectData = async (
     rawData: any,
     uid: string,
@@ -7255,10 +7276,21 @@ const prepareCloudProjectData = async (
             };
         } catch (e: any) {
             setProgress(null);
-            console.warn('Firebase Storage upload failed, using Firestore fallback:', e);
-            notices.push(
-                `Storage upload failed (${e?.message || 'unknown'}). Saving compressed copy in Firestore only.`
-            );
+            console.warn('Firebase Storage binary upload failed, trying whole-project JSON fallback:', e);
+            try {
+                notices.push(`Storage image upload failed (${e?.message || 'unknown'}). Saving whole project JSON in Storage instead.`);
+                return await saveWholeProjectJsonToStorage(
+                    rawData,
+                    uid,
+                    notices,
+                    (step) => console.info(step)
+                );
+            } catch (jsonErr: any) {
+                console.warn('Firebase Storage JSON fallback failed, using Firestore fallback:', jsonErr);
+                notices.push(
+                    `Storage JSON fallback failed (${jsonErr?.message || 'unknown'}). Saving compressed copy in Firestore only.`
+                );
+            }
         }
     } else {
         notices.push('Firebase Storage is not ready. Saving compressed copy in Firestore only (max ~1MB per project).');
@@ -7267,9 +7299,11 @@ const prepareCloudProjectData = async (
     const fit = await fitToFirestoreLimit(rawData);
     setProgress(null);
     if (!fit.success) {
+        const noticeText = notices.filter(Boolean).join('\n');
         throw new Error(
             `Project is still ${Math.round(fit.sizeBytes / 1024)}KB after compression (Firestore max 1024KB). ` +
-                'Remove some images or supplier attachments, or finish enabling Storage in Firebase Console.'
+                'Storage upload is required for large imports.' +
+                (noticeText ? `\n\nDetails:\n${noticeText}` : '')
         );
     }
     if (fit.warnings.length) notices.push(...fit.warnings);
