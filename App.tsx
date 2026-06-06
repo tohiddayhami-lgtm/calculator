@@ -7244,13 +7244,10 @@ const createFirestoreChunkedProjectData = async (
     notices: string[],
     onStep?: (msg: string) => void
 ): Promise<PreparedCloudProjectData> => {
+    if (onStep) onStep('Saving large project in Firestore chunks...');
     const cleaned = stripUndefinedDeep(rawData);
-    const { data: shrunk, warnings } = await shrinkProjectData(cleaned, onStep);
-    if (warnings.length) notices.push(...warnings);
-
-    const jsonStr = JSON.stringify(stripUndefinedDeep(shrunk));
+    const jsonStr = JSON.stringify(cleaned);
     const chunks = splitProjectJsonForFirestore(jsonStr);
-    notices.push(`Large project (${Math.round(new Blob([jsonStr]).size / 1024)}KB) saved in Firestore chunks.`);
 
     return {
         data: {
@@ -7318,7 +7315,6 @@ const prepareCloudProjectData = async (
             setProgress(null);
             console.warn('Firebase Storage binary upload failed, trying whole-project JSON fallback:', e);
             try {
-                notices.push(`Storage image upload failed (${e?.message || 'unknown'}). Saving whole project JSON in Storage instead.`);
                 return await saveWholeProjectJsonToStorage(
                     rawData,
                     uid,
@@ -7327,12 +7323,24 @@ const prepareCloudProjectData = async (
                 );
             } catch (jsonErr: any) {
                 console.warn('Firebase Storage JSON fallback failed, using Firestore fallback:', jsonErr);
-                notices.push(
-                    `Storage JSON fallback failed (${jsonErr?.message || 'unknown'}). Saving compressed copy in Firestore only.`
-                );
+                if (allowFirestoreChunks) {
+                    return await createFirestoreChunkedProjectData(
+                        rawData,
+                        [],
+                        (step) => console.info(step)
+                    );
+                }
+                notices.push(`Storage upload failed (${jsonErr?.message || e?.message || 'unknown'}). Saving compressed copy in Firestore only.`);
             }
         }
     } else {
+        if (allowFirestoreChunks) {
+            return await createFirestoreChunkedProjectData(
+                rawData,
+                [],
+                (step) => console.info(step)
+            );
+        }
         notices.push('Firebase Storage is not ready. Saving compressed copy in Firestore only (max ~1MB per project).');
     }
 
@@ -7342,7 +7350,7 @@ const prepareCloudProjectData = async (
         if (allowFirestoreChunks) {
             return await createFirestoreChunkedProjectData(
                 rawData,
-                notices,
+                [],
                 (step) => console.info(step)
             );
         }
