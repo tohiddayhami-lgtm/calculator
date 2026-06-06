@@ -92,6 +92,11 @@ service cloud.firestore {
       allow read, write: if canAccessUserData(appId, userId);
     }
 
+    // Large project payload chunks (used when project JSON exceeds Firestore's 1MB document limit)
+    match /artifacts/{appId}/users/{userId}/projects/{projectId}/dataChunks/{chunkId} {
+      allow read, write: if canAccessUserData(appId, userId);
+    }
+
     // Saved HTML catalog share-link metadata (owner only)
     match /artifacts/{appId}/users/{userId}/catalogLinks/{linkId} {
       allow read, write: if canAccessUserData(appId, userId);

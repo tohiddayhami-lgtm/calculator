@@ -7007,8 +7007,15 @@ const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.7): Promi
 };
 
 const FIRESTORE_MAX_BYTES = 1_000_000;
+const FIRESTORE_PROJECT_CHUNK_CHARS = 450_000;
 const isBase64Image = (value: any): value is string => typeof value === 'string' && value.startsWith('data:image/');
 const isBase64DataUrl = (value: any): value is string => typeof value === 'string' && value.startsWith('data:');
+
+type PreparedCloudProjectData = {
+    data: any;
+    notice?: string;
+    firestoreChunks?: string[];
+};
 
 const guessExtension = (dataUrl: string): string => {
     const match = dataUrl.match(/^data:([^;]+);base64,/);
@@ -7224,12 +7231,44 @@ const fitToFirestoreLimit = async (
     };
 };
 
+const splitProjectJsonForFirestore = (jsonStr: string): string[] => {
+    const chunks: string[] = [];
+    for (let i = 0; i < jsonStr.length; i += FIRESTORE_PROJECT_CHUNK_CHARS) {
+        chunks.push(jsonStr.slice(i, i + FIRESTORE_PROJECT_CHUNK_CHARS));
+    }
+    return chunks;
+};
+
+const createFirestoreChunkedProjectData = async (
+    rawData: any,
+    notices: string[],
+    onStep?: (msg: string) => void
+): Promise<PreparedCloudProjectData> => {
+    const cleaned = stripUndefinedDeep(rawData);
+    const { data: shrunk, warnings } = await shrinkProjectData(cleaned, onStep);
+    if (warnings.length) notices.push(...warnings);
+
+    const jsonStr = JSON.stringify(stripUndefinedDeep(shrunk));
+    const chunks = splitProjectJsonForFirestore(jsonStr);
+    notices.push(`Large project (${Math.round(new Blob([jsonStr]).size / 1024)}KB) saved in Firestore chunks.`);
+
+    return {
+        data: {
+            _firestoreChunkedJson: true,
+            _firestoreChunkCount: chunks.length,
+            _firestoreChunkVersion: 1,
+        },
+        firestoreChunks: chunks,
+        notice: notices.filter(Boolean).join('\n') || undefined,
+    };
+};
+
 const saveWholeProjectJsonToStorage = async (
     rawData: any,
     uid: string,
     notices: string[],
     onStep?: (msg: string) => void
-): Promise<{ data: any; notice?: string }> => {
+): Promise<PreparedCloudProjectData> => {
     const cleaned = stripUndefinedDeep(rawData);
     const { data: shrunk, warnings } = await shrinkProjectData(cleaned, onStep);
     if (warnings.length) notices.push(...warnings);
@@ -7249,8 +7288,9 @@ const saveWholeProjectJsonToStorage = async (
 const prepareCloudProjectData = async (
     rawData: any,
     uid: string,
-    setProgress: (p: { current: number; total: number } | null) => void
-): Promise<{ data: any; notice?: string }> => {
+    setProgress: (p: { current: number; total: number } | null) => void,
+    allowFirestoreChunks = false
+): Promise<PreparedCloudProjectData> => {
     const notices: string[] = [];
 
     if (storage) {
@@ -7299,6 +7339,13 @@ const prepareCloudProjectData = async (
     const fit = await fitToFirestoreLimit(rawData);
     setProgress(null);
     if (!fit.success) {
+        if (allowFirestoreChunks) {
+            return await createFirestoreChunkedProjectData(
+                rawData,
+                notices,
+                (step) => console.info(step)
+            );
+        }
         const noticeText = notices.filter(Boolean).join('\n');
         throw new Error(
             `Project is still ${Math.round(fit.sizeBytes / 1024)}KB after compression (Firestore max 1024KB). ` +
@@ -7308,6 +7355,51 @@ const prepareCloudProjectData = async (
     }
     if (fit.warnings.length) notices.push(...fit.warnings);
     return { data: fit.data, notice: notices.filter(Boolean).join('\n') };
+};
+
+const projectChunksCollection = (appIdValue: string, uid: string, projectId: string) => (
+    collection(db, 'artifacts', appIdValue, 'users', uid, 'projects', projectId, 'dataChunks')
+);
+
+const replaceFirestoreProjectChunks = async (
+    appIdValue: string,
+    uid: string,
+    projectId: string,
+    chunks: string[]
+): Promise<void> => {
+    const chunksRef = projectChunksCollection(appIdValue, uid, projectId);
+    const existing = await getDocs(chunksRef);
+    await Promise.all(existing.docs.map((chunkDoc: any) => deleteDoc(chunkDoc.ref)));
+    await Promise.all(chunks.map((value, index) => (
+        setDoc(doc(chunksRef, String(index).padStart(5, '0')), {
+            index,
+            value,
+            updatedAt: serverTimestamp(),
+        })
+    )));
+};
+
+const clearFirestoreProjectChunks = async (
+    appIdValue: string,
+    uid: string,
+    projectId: string
+): Promise<void> => {
+    const existing = await getDocs(projectChunksCollection(appIdValue, uid, projectId));
+    await Promise.all(existing.docs.map((chunkDoc: any) => deleteDoc(chunkDoc.ref)));
+};
+
+const loadFirestoreChunkedProjectData = async (
+    appIdValue: string,
+    uid: string,
+    projectId: string,
+    expectedCount?: number
+): Promise<any> => {
+    const chunksSnap = await getDocs(query(projectChunksCollection(appIdValue, uid, projectId), orderBy('index', 'asc')));
+    const chunks = chunksSnap.docs.map((chunkDoc: any) => String(chunkDoc.data()?.value || ''));
+    if (expectedCount && chunks.length < expectedCount) {
+        throw new Error(`Missing project data chunks (${chunks.length}/${expectedCount}).`);
+    }
+    return JSON.parse(chunks.join(''));
 };
 
 // --- INDEXED DB HELPERS ---
@@ -8740,6 +8832,19 @@ function AppInner() {
                               const resp = await fetch(storageUrl);
                               if (resp.ok) return { ...p, data: await resp.json() };
                           } catch {}
+                      }
+                      if ((p.data as any)?._firestoreChunkedJson) {
+                          try {
+                              const chunkedData = await loadFirestoreChunkedProjectData(
+                                  dataAppId,
+                                  activeOwnerUid,
+                                  p.id,
+                                  Number((p.data as any)?._firestoreChunkCount) || undefined
+                              );
+                              return { ...p, data: chunkedData };
+                          } catch (err) {
+                              console.warn('Failed to load chunked project data:', err);
+                          }
                       }
                       return p;
                   })
@@ -12001,10 +12106,11 @@ function AppInner() {
         throw new Error('Cloud save unavailable. Please sign in again.');
       }
 
-      const { data: prepared, notice } = await prepareCloudProjectData(
+      const { data: prepared, notice, firestoreChunks } = await prepareCloudProjectData(
           projectDataPayloadRaw,
           activeOwnerUid,
-          setUploadProgress
+          setUploadProgress,
+          true
       );
       projectDataPayload = prepared;
       if (notice) {
@@ -12057,7 +12163,25 @@ function AppInner() {
         savedId = docRef.id;
       }
       
-      if (savedId) setLoadedProjectId(savedId);
+      if (savedId) {
+        if (firestoreChunks?.length) {
+          await withTimeout(
+            replaceFirestoreProjectChunks(dataAppId, activeOwnerUid, savedId, firestoreChunks),
+            30000,
+            'Project chunk save'
+          );
+          await updateDoc(doc(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects', savedId), {
+            chunkedDataReadyAt: serverTimestamp(),
+          });
+        } else {
+          try {
+            await clearFirestoreProjectChunks(dataAppId, activeOwnerUid, savedId);
+          } catch {
+            /* ignore stale chunk cleanup failures */
+          }
+        }
+        setLoadedProjectId(savedId);
+      }
 
       setShowSaveModal(false);
       try {
@@ -12468,16 +12592,17 @@ function AppInner() {
                   throw new Error('Cloud import unavailable. Please sign in again.');
               }
 
-              const { data: cleanData, notice } = await prepareCloudProjectData(
+              const { data: cleanData, notice, firestoreChunks } = await prepareCloudProjectData(
                   newProject.data,
                   activeOwnerUid,
-                  setUploadProgress
+                  setUploadProgress,
+                  true
               );
               if (notice) {
                   alert(notice);
               }
 
-              await withTimeout(
+              const importedDocRef = await withTimeout(
                 addDoc(collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects'), {
                     name: newProject.name,
                     folder: newProject.folder || '',
@@ -12487,6 +12612,16 @@ function AppInner() {
                 15000,
                 'Import to cloud'
               );
+              if (firestoreChunks?.length) {
+                  await withTimeout(
+                      replaceFirestoreProjectChunks(dataAppId, activeOwnerUid, importedDocRef.id, firestoreChunks),
+                      30000,
+                      'Import project chunks'
+                  );
+                  await updateDoc(importedDocRef, {
+                      chunkedDataReadyAt: serverTimestamp(),
+                  });
+              }
               
               e.target.value = '';
               alert("Project imported successfully to cloud!");
