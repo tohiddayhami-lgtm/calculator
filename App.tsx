@@ -7410,6 +7410,38 @@ const loadFirestoreChunkedProjectData = async (
     return JSON.parse(chunks.join(''));
 };
 
+/** Large projects store only a pointer in Firestore; full payload lives in Storage or chunk docs. */
+const isDeferredProjectPayload = (data: any): boolean =>
+    !!(data && typeof data === 'object' && (data._storageJsonUrl || data._firestoreChunkedJson));
+
+const hydrateSavedProjectData = async (
+    project: SavedProject,
+    appIdValue: string,
+    uid: string,
+): Promise<SavedProject> => {
+    const data = project.data as any;
+    if (!data || typeof data !== 'object') {
+        throw new Error('Project data is missing.');
+    }
+    if (data._storageJsonUrl) {
+        const resp = await fetch(String(data._storageJsonUrl));
+        if (!resp.ok) {
+            throw new Error(`Failed to download project JSON from Storage (HTTP ${resp.status}).`);
+        }
+        return { ...project, data: await resp.json() };
+    }
+    if (data._firestoreChunkedJson) {
+        const chunkedData = await loadFirestoreChunkedProjectData(
+            appIdValue,
+            uid,
+            project.id,
+            Number(data._firestoreChunkCount) || undefined,
+        );
+        return { ...project, data: chunkedData };
+    }
+    return project;
+};
+
 // --- INDEXED DB HELPERS ---
 const openDB = (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
@@ -7582,6 +7614,9 @@ function AppInner() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [cloudLoadError, setCloudLoadError] = useState('');
+  const [projectsListLoading, setProjectsListLoading] = useState(false);
+  const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
+  const projectsLoadGenRef = useRef(0);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState(DEFAULT_NEW_USER_PASSWORD);
   const [newUserDisplayName, setNewUserDisplayName] = useState('');
@@ -8818,64 +8853,75 @@ function AppInner() {
     }
   }, [editingCatalogDetailsId]);
 
-  // Project Loading (Cloud vs Local)
+  // Project list (Cloud) — metadata only. Full payloads hydrate on open/export.
   useEffect(() => {
     if (authLoading) return;
 
     const isRealCloudUser = user && activeOwnerUid && db && !isDemoMode && user.uid !== DEMO_USER_ID;
     setCloudLoadError('');
 
-    if (isRealCloudUser) {
-        const projectsRef = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects');
-        const unsubscribe = onSnapshot(
-          projectsRef,
-          async (snapshot: any) => {
-              if (snapshot.empty && dataAppId === appId) {
-                  const legacyAppId = await findLegacyAppIdWithProjects(activeOwnerUid);
-                  if (legacyAppId) {
-                      setDataAppId(legacyAppId);
-                      return;
-                  }
-              }
-              const rawProjects = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) as SavedProject[];
-              const loadedProjects = await Promise.all(
-                  rawProjects.map(async (p: SavedProject) => {
-                      const storageUrl = (p.data as any)?._storageJsonUrl;
-                      if (storageUrl) {
-                          try {
-                              const resp = await fetch(storageUrl);
-                              if (resp.ok) return { ...p, data: await resp.json() };
-                          } catch {}
-                      }
-                      if ((p.data as any)?._firestoreChunkedJson) {
-                          try {
-                              const chunkedData = await loadFirestoreChunkedProjectData(
-                                  dataAppId,
-                                  activeOwnerUid,
-                                  p.id,
-                                  Number((p.data as any)?._firestoreChunkCount) || undefined
-                              );
-                              return { ...p, data: chunkedData };
-                          } catch (err) {
-                              console.warn('Failed to load chunked project data:', err);
-                          }
-                      }
-                      return p;
-                  })
-              );
-              loadedProjects.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-              setSavedProjects(loadedProjects);
-          },
-          (error: any) => {
-              console.error('Cloud projects listener failed:', error);
-              setCloudLoadError(error?.message || 'Failed to load cloud projects.');
-              setSavedProjects([]);
-          }
-        );
-        return () => unsubscribe();
-    } else {
-        setSavedProjects([]);
+    if (!isRealCloudUser) {
+      setSavedProjects([]);
+      setProjectsListLoading(false);
+      return;
     }
+
+    const loadGen = ++projectsLoadGenRef.current;
+    setProjectsListLoading(true);
+    const projectsRef = collection(db, 'artifacts', dataAppId, 'users', activeOwnerUid, 'projects');
+    const unsubscribe = onSnapshot(
+      projectsRef,
+      async (snapshot: any) => {
+        if (loadGen !== projectsLoadGenRef.current) return;
+
+        if (snapshot.empty && dataAppId === appId) {
+          try {
+            const legacyAppId = await findLegacyAppIdWithProjects(activeOwnerUid);
+            if (loadGen !== projectsLoadGenRef.current) return;
+            if (legacyAppId) {
+              setDataAppId(legacyAppId);
+              return;
+            }
+          } catch (legacyErr) {
+            console.warn('Legacy project lookup failed:', legacyErr);
+          }
+        }
+
+        if (loadGen !== projectsLoadGenRef.current) return;
+
+        const rawProjects = snapshot.docs.map((docSnap: any) => {
+          const d = docSnap.data() || {};
+          return {
+            id: docSnap.id,
+            name: d.name || 'Untitled',
+            folder: d.folder || '',
+            createdAt: d.createdAt,
+            // Keep pointer stubs or inline payloads as stored — do NOT eager-fetch Storage/chunks here.
+            data: d.data,
+          } as SavedProject;
+        });
+        rawProjects.sort((a: SavedProject, b: SavedProject) => {
+          const as = typeof a.createdAt?.seconds === 'number' ? a.createdAt.seconds : 0;
+          const bs = typeof b.createdAt?.seconds === 'number' ? b.createdAt.seconds : 0;
+          return bs - as;
+        });
+        setSavedProjects(rawProjects);
+        setProjectsListLoading(false);
+      },
+      (error: any) => {
+        if (loadGen !== projectsLoadGenRef.current) return;
+        console.error('Cloud projects listener failed:', error);
+        setCloudLoadError(error?.message || 'Failed to load cloud projects.');
+        setSavedProjects([]);
+        setProjectsListLoading(false);
+      }
+    );
+    return () => {
+      unsubscribe();
+      if (loadGen === projectsLoadGenRef.current) {
+        setProjectsListLoading(false);
+      }
+    };
   }, [user, authLoading, isDemoMode, dataAppId, activeOwnerUid]);
 
   // Keep discount/VAT "base scenario" aligned with visible invoice terms
@@ -12259,9 +12305,28 @@ function AppInner() {
     }
   };
 
-  const handleLoadProject = (project: SavedProject) => {
-    if (!project.data) return;
-    
+  const handleLoadProject = async (projectInput: SavedProject) => {
+    if (openingProjectId) return;
+    setOpeningProjectId(projectInput.id);
+
+    try {
+      let project = projectInput;
+      if (isDeferredProjectPayload(project.data)) {
+        if (!activeOwnerUid) throw new Error('Sign in required to open this project.');
+        project = await withTimeout(
+          hydrateSavedProjectData(project, dataAppId, activeOwnerUid),
+          90000,
+          'Download project data'
+        );
+      }
+      if (!project.data || typeof project.data !== 'object') {
+        throw new Error('Project data is missing or corrupt.');
+      }
+      // Deferred stubs look like { _storageJsonUrl } — reject if still not hydrated.
+      if (isDeferredProjectPayload(project.data)) {
+        throw new Error('Could not load full project content. Try again or re-import the JSON file.');
+      }
+
     setLoadedProjectId(project.id);
     setProjectName(project.name);
     setFolderName(project.folder || '');
@@ -12298,13 +12363,14 @@ function AppInner() {
     }));
     const loadedProducts = ensureSkus(rawLoaded);
     setProducts(loadedProducts);
+    const loadedLogistics = project.data.logistics || logistics;
     setLogistics({ 
         ...logistics, 
-        ...project.data.logistics, 
-        insurance: project.data.logistics.insurance || { val: 0, curr: 'USD' }, 
-        extras: project.data.logistics.extras || [],
-        exwExtras: project.data.logistics.exwExtras || [], 
-        dutyPercent: project.data.logistics.dutyPercent || 0 
+        ...loadedLogistics, 
+        insurance: loadedLogistics.insurance || { val: 0, curr: 'USD' }, 
+        extras: loadedLogistics.extras || [],
+        exwExtras: loadedLogistics.exwExtras || [], 
+        dutyPercent: loadedLogistics.dutyPercent || 0 
     });
     setVisibleScenarioTerms(project.data.visibleScenarioTerms || ['EXW', 'FCA', 'FOB', 'CIF', 'DDP']);
     setInvoiceTerms(project.data.invoiceTerms || ['FOB', 'DDP']);
@@ -12540,6 +12606,12 @@ function AppInner() {
     }
 
     setShowLoadModal(false);
+    } catch (err: any) {
+      console.error('Failed to open project:', err);
+      alert(`Failed to open project: ${err?.message || err}`);
+    } finally {
+      setOpeningProjectId(null);
+    }
   };
   
   const requestDelete = (docId: string, e: React.MouseEvent) => { 
@@ -12617,9 +12689,18 @@ function AppInner() {
   };
 
   // --- IMPORT / EXPORT LOGIC ---
-  const handleExportProject = (project: SavedProject, e: React.MouseEvent) => {
+  const handleExportProject = async (projectInput: SavedProject, e: React.MouseEvent) => {
     if(e && e.stopPropagation) e.stopPropagation();
     try {
+        let project = projectInput;
+        if (isDeferredProjectPayload(project.data)) {
+          if (!activeOwnerUid) throw new Error('Sign in required to export this project.');
+          project = await withTimeout(
+            hydrateSavedProjectData(project, dataAppId, activeOwnerUid),
+            90000,
+            'Download project data for export'
+          );
+        }
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(project));
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.setAttribute("href", dataStr);
@@ -12627,9 +12708,9 @@ function AppInner() {
         document.body.appendChild(downloadAnchorNode); 
         downloadAnchorNode.click();
         downloadAnchorNode.remove();
-    } catch (err) {
+    } catch (err: any) {
         console.error("Export failed", err);
-        alert("Could not export project.");
+        alert(`Could not export project: ${err?.message || err}`);
     }
   };
 
@@ -12719,12 +12800,29 @@ function AppInner() {
   };
   
   // -- GRANULAR IMPORT LOGIC --
-  const handleOpenImportSelection = (project: SavedProject) => {
-      setImportCandidateProject(project);
-      if (project.data?.products) {
-          setImportSelectedProductIds(project.data.products.map(p => p.id));
-      } else {
-          setImportSelectedProductIds([]);
+  const handleOpenImportSelection = async (projectInput: SavedProject) => {
+      try {
+          let project = projectInput;
+          if (isDeferredProjectPayload(project.data)) {
+              if (!activeOwnerUid) throw new Error('Sign in required to open this project.');
+              setOpeningProjectId(project.id);
+              project = await withTimeout(
+                  hydrateSavedProjectData(project, dataAppId, activeOwnerUid),
+                  90000,
+                  'Download project data'
+              );
+          }
+          setImportCandidateProject(project);
+          if (project.data?.products) {
+              setImportSelectedProductIds(project.data.products.map(p => p.id));
+          } else {
+              setImportSelectedProductIds([]);
+          }
+      } catch (err: any) {
+          console.error('Failed to open project for product import:', err);
+          alert(`Failed to open project: ${err?.message || err}`);
+      } finally {
+          setOpeningProjectId(null);
       }
   };
 
@@ -23170,7 +23268,11 @@ ${html}
                                                   <div>
                                                       <h4 className="font-semibold text-slate-800 group-hover:text-blue-700">{proj.name}</h4>
                                                       <p className="text-xs text-slate-500">
-                                                          {proj.data?.products?.length || 0} Products • {new Date((proj.createdAt?.seconds || 0) * 1000).toLocaleDateString()}
+                                                          {isDeferredProjectPayload(proj.data)
+                                                            ? 'Large project — open to load products'
+                                                            : `${proj.data?.products?.length || 0} Products`}
+                                                          {' • '}
+                                                          {new Date((proj.createdAt?.seconds || 0) * 1000).toLocaleDateString()}
                                                       </p>
                                                   </div>
                                                   <Plus className="w-5 h-5 text-slate-300 group-hover:text-blue-600"/>
@@ -34923,7 +35025,14 @@ ${html}
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
                   <div className="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3 bg-slate-50 rounded-t-xl">
                       <div className="flex items-center gap-3 flex-wrap">
-                          <h3 className="font-bold text-slate-800">Open Project</h3>
+                          <h3 className="font-bold text-slate-800">
+                              Open Project
+                              {savedProjects.length > 0 && (
+                                <span className="ml-2 text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  {savedProjects.length}
+                                </span>
+                              )}
+                          </h3>
                           <div className="flex bg-white border border-slate-200 rounded-md p-0.5">
                                <label className="flex items-center gap-2 px-3 py-1 cursor-pointer hover:bg-slate-50 transition-colors">
                                    <FileUp className="w-4 h-4 text-blue-600" />
@@ -34962,7 +35071,12 @@ ${html}
                   </div>
                   
                   <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
-                      {savedProjects.length === 0 ? (
+                      {projectsListLoading ? (
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
+                              <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+                              <p className="text-sm">Loading projects…</p>
+                          </div>
+                      ) : savedProjects.length === 0 ? (
                           <div className="h-full flex flex-col items-center justify-center text-slate-400">
                               <FolderOpen className="w-16 h-16 mb-4 opacity-20" />
                               <p>No saved projects found.</p>
@@ -34974,6 +35088,12 @@ ${html}
                           </div>
                       ) : (
                           <div className="space-y-8">
+                              {openingProjectId && (
+                                  <div className="sticky top-0 z-20 mb-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 flex items-center gap-2 shadow-sm">
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      Opening project… large files may take a few seconds.
+                                  </div>
+                              )}
                               {/* Uncategorized */}
                               {filteredGroupedProjects.uncategorized.length > 0 && (
                                   <div>
@@ -34983,7 +35103,7 @@ ${html}
                                               <div
                                                   key={project.id}
                                                   onClick={() => handleLoadProject(project)}
-                                                  draggable
+                                                  draggable={!openingProjectId}
                                                   onDragStart={(e) => { e.stopPropagation(); setDraggedProjectId(project.id); e.dataTransfer.effectAllowed = 'move'; }}
                                                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverProjectId(project.id); }}
                                                   onDragLeave={(e) => { e.stopPropagation(); setDragOverProjectId(null); }}
@@ -34993,7 +35113,7 @@ ${html}
                                                     dragOverProjectId === project.id && draggedProjectId !== project.id
                                                       ? 'border-blue-400 ring-2 ring-blue-300 shadow-lg'
                                                       : 'border-slate-200 hover:border-blue-400 hover:shadow-md hover:ring-1 hover:ring-blue-400'
-                                                  } ${draggedProjectId === project.id ? 'opacity-40 scale-95' : ''}`}
+                                                  } ${draggedProjectId === project.id ? 'opacity-40 scale-95' : ''} ${openingProjectId === project.id ? 'ring-2 ring-blue-400 opacity-80' : ''} ${openingProjectId && openingProjectId !== project.id ? 'opacity-50 pointer-events-none' : ''}`}
                                               >
                                                   <div className="flex justify-between items-start mb-2">
                                                       <div className="flex items-center gap-2">
@@ -35001,7 +35121,9 @@ ${html}
                                                               <GripVertical className="w-4 h-4" />
                                                           </div>
                                                           <div className="bg-blue-50 p-2 rounded-lg text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors shrink-0">
-                                                              <FileText className="w-5 h-5" />
+                                                              {openingProjectId === project.id
+                                                                ? <Loader2 className="w-5 h-5 animate-spin" />
+                                                                : <FileText className="w-5 h-5" />}
                                                           </div>
                                                           <div className="min-w-0">
                                                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -35016,7 +35138,11 @@ ${html}
                                                       </div>
                                                   </div>
                                                   <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-50">
-                                                       <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{project.data.config?.outputCurrency || 'USD'}</span>
+                                                       <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
+                                                         {isDeferredProjectPayload(project.data)
+                                                           ? 'Large file'
+                                                           : (project.data?.config?.outputCurrency || 'USD')}
+                                                       </span>
                                                        <div className="flex gap-1">
                                                            <button onClick={(e) => handleMoveProjectToTop(project.id, e)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors" title="Move to top (#001)">
                                                                <ArrowUpToLine className="w-4 h-4" />
@@ -35060,7 +35186,7 @@ ${html}
                                               <div
                                                   key={project.id}
                                                   onClick={() => handleLoadProject(project)}
-                                                  draggable
+                                                  draggable={!openingProjectId}
                                                   onDragStart={(e) => { e.stopPropagation(); setDraggedProjectId(project.id); e.dataTransfer.effectAllowed = 'move'; }}
                                                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverProjectId(project.id); }}
                                                   onDragLeave={(e) => { e.stopPropagation(); setDragOverProjectId(null); }}
@@ -35070,7 +35196,7 @@ ${html}
                                                     dragOverProjectId === project.id && draggedProjectId !== project.id
                                                       ? 'border-indigo-400 ring-2 ring-indigo-300 shadow-lg'
                                                       : 'border-slate-200 hover:border-blue-400 hover:shadow-md hover:ring-1 hover:ring-blue-400'
-                                                  } ${draggedProjectId === project.id ? 'opacity-40 scale-95' : ''}`}
+                                                  } ${draggedProjectId === project.id ? 'opacity-40 scale-95' : ''} ${openingProjectId === project.id ? 'ring-2 ring-indigo-400 opacity-80' : ''} ${openingProjectId && openingProjectId !== project.id ? 'opacity-50 pointer-events-none' : ''}`}
                                               >
                                                   <div className="flex justify-between items-start mb-2">
                                                       <div className="flex items-center gap-2">
@@ -35078,7 +35204,9 @@ ${html}
                                                               <GripVertical className="w-4 h-4" />
                                                           </div>
                                                           <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0">
-                                                              <FileText className="w-5 h-5" />
+                                                              {openingProjectId === project.id
+                                                                ? <Loader2 className="w-5 h-5 animate-spin" />
+                                                                : <FileText className="w-5 h-5" />}
                                                           </div>
                                                           <div className="min-w-0">
                                                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -35093,7 +35221,11 @@ ${html}
                                                       </div>
                                                   </div>
                                                    <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-50">
-                                                       <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{project.data.config?.outputCurrency || 'USD'}</span>
+                                                       <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
+                                                         {isDeferredProjectPayload(project.data)
+                                                           ? 'Large file'
+                                                           : (project.data?.config?.outputCurrency || 'USD')}
+                                                       </span>
                                                        <div className="flex gap-1">
                                                            <button onClick={(e) => handleMoveProjectToTop(project.id, e)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors" title="Move to top (#001)">
                                                                <ArrowUpToLine className="w-4 h-4" />
